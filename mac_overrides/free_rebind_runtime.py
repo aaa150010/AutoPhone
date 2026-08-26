@@ -479,7 +479,7 @@ class FreeRebindService:
         binder = getattr(proxies, "bind", None)
         if not callable(binder):
             raise FreeRegisterError("free_rebind_proxy", "准备换绑协议代理", "源账号没有注册代理且共享 Free 代理池不可用", retryable=False)
-        bindings = binder(1, probe=getattr(self.free_manager, "proxy_probe", None), probe_url=str(config.get("proxy_probe_url") or "https://api.ipify.org"), driver="protocol")
+        bindings = binder(1, probe=getattr(self.free_manager, "proxy_probe", None), probe_url=str(config.get("proxy_probe_url") or "https://chatgpt.com/"), driver="protocol", perform_probe=False)
         if not bindings:
             raise FreeRegisterError("free_rebind_proxy", "准备换绑协议代理", "共享 Free 代理池没有健康代理", retryable=False)
         binding = bindings[0]

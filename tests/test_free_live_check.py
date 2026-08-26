@@ -129,7 +129,7 @@ class FreeLiveCheckTests(unittest.TestCase):
         self.assertEqual(pool._row_state(row.row_id)["status"], "success")
         saved = pool.result(row.row_id)
         self.assertEqual(saved["live_check_status"], "live")
-        self.assertEqual(saved["live_check_ip"], "10.0.0.1")
+        self.assertEqual(saved["live_check_ip"], "")
         self.assertTrue(saved["plus_trial_eligible"])
         self.assertTrue(logs.snapshot(started["accepted"][0]["task_id"]))
 
@@ -452,9 +452,9 @@ class FreeLiveCheckTests(unittest.TestCase):
         saved = pool.result(row.row_id)
         self.assertTrue(called)
         self.assertEqual(saved["live_check_status"], "live")
-        self.assertEqual(saved["live_check_ip"], "10.0.0.99")
+        self.assertEqual(saved["live_check_ip"], "")
         self.assertEqual(saved["expected_exit_ip"], "10.0.0.1")
-        self.assertEqual(saved["exit_ip"], "10.0.0.99")
+        self.assertEqual(saved["exit_ip"], "")
         self.assertEqual(pool._row_state(row.row_id)["status"], "success")
         self.assertEqual(saved["access_token"], "old-token-1")
 
@@ -484,9 +484,7 @@ class FreeLiveCheckTests(unittest.TestCase):
 
         saved = pool.result(row.row_id)
         self.assertEqual(saved["registration_ip"], "10.0.0.1")
-        self.assertEqual(saved["live_check_ip"], "10.0.0.99")
-        self.assertEqual(saved["expected_exit_ip"], "10.0.0.1")
-        self.assertEqual(saved["exit_ip"], "10.0.0.99")
+        self.assertNotIn("live_check_ip", saved)
         self.assertEqual(saved["live_check_status"], "free_live_proxy_blocked")
 
     def test_live_failure_identity_is_canonical_and_redacted_in_job_result_and_api(self):

@@ -11,7 +11,7 @@ const defaultConfig: FreeConfig = {
   driver: 'protocol', flow_profile: 'reference_20260823', proxy_allocation_mode: 'healthy_random', target_count: 1, concurrency: 3, email_code_timeout: 90, auto_set_2fa: true,
   mailbox_network_mode: 'local_proxy', mailbox_proxy_url: 'http://127.0.0.1:7897',
   mailbox_request_retries: 3, mailbox_retry_backoff_seconds: 1,
-  proxy_probe_url: 'https://api.ipify.org', proxy_socks5_dns_mode: 'auto', proxy_tls_verify: true, proxy_tls_compat_fallback: true, protocol: { node_runner: '', sentinel_version: '20260219f9f6', sentinel_timeout: 90, network_timeout: 20, network_preflight_retries: 3, security_challenge_wait_seconds: 60, anonymous_warmup: true, authenticated_warmup: true, geo_probe_url: 'https://ipwho.is/' },
+  proxy_probe_url: 'https://chatgpt.com/', proxy_socks5_dns_mode: 'auto', proxy_tls_verify: true, proxy_tls_compat_fallback: true, protocol: { node_runner: '', sentinel_version: '20260219f9f6', sentinel_timeout: 90, network_timeout: 20, network_preflight_retries: 3, security_challenge_wait_seconds: 60, anonymous_warmup: true, authenticated_warmup: true },
   proxy_default_scheme: 'http', proxy_failure_threshold: 2, proxy_quarantine_seconds: 600, proxy_retry_count: 1,
   roxy_circuit_failure_threshold: 3, roxy_circuit_recovery_seconds: 30,
   roxybrowser: {
@@ -19,7 +19,7 @@ const defaultConfig: FreeConfig = {
     workspace_list_path: '/browser/workspace', create_path: '/browser/create', open_path: '/browser/open',
     close_path: '/browser/close', delete_path: '/browser/delete', headless: true, force_open: false, keep_browser_open: false,
     one_profile_per_account: true, delete_profile_after_run: true, random_os: true, os_choices: ['Windows', 'macOS'],
-    random_profile_name: true, profile_name_prefix: 'rb', proxy_check_channel: 'IPRust.io', selenium_timeout: 90,
+    random_profile_name: true, profile_name_prefix: 'rb', selenium_timeout: 90,
     api_retries: 3, api_retry_delay: 2, humanize_delay: true, humanize_factor: 1,
     humanize_browser_actions: true, existing_account_login: true, post_registration_dwell_min: 18, post_registration_dwell_max: 45,
   },
@@ -36,7 +36,7 @@ const config = reactive<FreeConfig>(structuredClone(defaultConfig))
 const state = ref<FreeState>({ running: false, tasks: [], summary: {}, pool: {} })
 const proxyText = ref('')
 const proxyScheme = ref('http')
-const proxyCheckRows = ref<Array<{ index: number; masked: string; fingerprint: string; scheme?: string }>>([])
+const proxyCheckRows = ref<Array<{ index: number; masked: string; fingerprint: string; scheme?: string; available?: boolean; http_status?: number | null; local_to_proxy_ms?: number | null; proxy_to_target_ms?: number | null; failure_node?: string; failure_reason?: string }>>([])
 const proxyRows = ref<FreeProxyRow[]>([])
 const workspaces = ref<Array<{ workspace_id: string; workspace_name: string; project_id: string; project_name: string; label: string }>>([])
 const busy = ref<'load' | 'save' | 'preflight' | 'proxy-preflight' | 'workspace' | ''>('')
@@ -141,7 +141,11 @@ async function preflightProxyPool() {
   try {
     const result = await preflightFreeProxies(proxyText.value, config.proxy_probe_url, { driver: config.driver, scheme: proxyScheme.value, proxy_socks5_dns_mode: config.proxy_socks5_dns_mode, proxy_tls_verify: config.proxy_tls_verify, proxy_tls_compat_fallback: config.proxy_tls_compat_fallback })
     proxyCheckRows.value = result.result?.rows || []
-    ElMessage.success(`代理连通性检测通过：${Number(result.result?.proxies || 0)} 个`)
+    const checkedRows = proxyCheckRows.value
+    const available = checkedRows.filter(row => row.available).length
+    const failed = checkedRows.length - available
+    if (failed) ElMessage.warning(`代理连通性检测完成：可用 ${available} 个，失败 ${failed} 个`)
+    else ElMessage.success(`代理连通性检测通过：${available} 个`)
   } catch (error: any) {
     proxyCheckRows.value = []
     ElMessage.error(error?.message || 'Free 代理连通性检测失败')
@@ -227,7 +231,7 @@ defineExpose({ save })
       <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="Free 并发数（1-16）" help="配置允许同时运行的 Free 注册任务数；运行时可能因协议压力控制或 Roxy 熔断降低实际并发。" /></template><el-input-number v-model="config.concurrency" class="free-scale-number" :min="1" :max="16" controls-position="right" :disabled="running" /></el-form-item></el-col>
       <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="邮箱 OTP 超时（秒）" help="注册流程等待邮箱验证码的最长时间。启用自动动态口令后，第二封 OTP 也使用这项超时。" /></template><el-input-number v-model="config.email_code_timeout" :min="10" :max="600" controls-position="right" :disabled="running" /></el-form-item></el-col>
     </el-row>
-    <el-form-item><template #label><FieldHelpLabel label="代理连通性探测地址" help="通过每条待用代理访问该地址，确认代理请求、HTTP 成功状态和响应格式；观测结果只用于内部健康判断，不绑定账号出口地址。" /></template><el-input v-model="config.proxy_probe_url" :disabled="running" placeholder="https://api.ipify.org" /></el-form-item>
+    <el-form-item><template #label><FieldHelpLabel label="代理连通性目标地址" help="手动检测时通过每条待用代理访问该地址，只确认代理请求和 HTTP 响应是否建立；不会解析、保存或展示账号出口 IP。" /></template><el-input v-model="config.proxy_probe_url" :disabled="running" placeholder="https://chatgpt.com/" /></el-form-item>
     <div class="check-row proxy-tls-options"><el-checkbox v-model="config.proxy_tls_verify" :disabled="running"><FieldHelpLabel label="严格校验探测站证书" help="默认按标准 TLS 证书校验访问探测地址。关闭后只影响连通性探测，不会改代理协议、不会切换节点，也不会影响浏览器页面证书校验。" /></el-checkbox><el-checkbox v-model="config.proxy_tls_compat_fallback" :disabled="running || !config.proxy_tls_verify"><FieldHelpLabel label="TLS/CONNECT 兼容重试" help="严格校验遇到明确证书错误时，用同一代理和同一协议再试一次；协议不匹配不会走证书兼容重试。" /></el-checkbox></div>
     <el-form-item><template #label><FieldHelpLabel label="注册后安全设置" help="Free 注册固定启用 2FA。注册完成会再等待一封邮箱 OTP，执行 TOTP enrollment 和 activation 并保存动态口令密钥；失败时保留 Token，账号进入 2FA 待重试。" /></template><el-checkbox v-model="config.auto_set_2fa" disabled>注册完成后自动设置动态口令（必需）</el-checkbox></el-form-item>
 
@@ -271,7 +275,6 @@ defineExpose({ save })
         <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="网络预检重试" help="ChatGPT、Auth 和 Sentinel 预检的额外尝试次数；每次仍使用同一任务代理。" /></template><el-input-number v-model="config.protocol.network_preflight_retries" :min="1" :max="5" controls-position="right" :disabled="running" /></el-form-item></el-col>
         <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="网络超时（秒）" help="全协议预检和匿名预热的单次网络请求超时。" /></template><el-input-number v-model="config.protocol.network_timeout" :min="5" :max="60" controls-position="right" :disabled="running" /></el-form-item></el-col>
         <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="安全挑战等待（秒）" help="同一会话和代理等待 Cloudflare/安全挑战自然解除的最长时间；不会自动绕过或切换代理。" /></template><el-input-number v-model="config.protocol.security_challenge_wait_seconds" :min="0" :max="60" controls-position="right" :disabled="running" /></el-form-item></el-col>
-      <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="地区画像探测地址" help="用于建立协议链路的地区画像；只记录国家和脱敏结果，不会写入授权信息。" /></template><el-input v-model="config.protocol.geo_probe_url" :disabled="running" placeholder="https://ipwho.is/" /></el-form-item></el-col>
       </el-row>
       <div class="check-row"><el-checkbox v-model="config.protocol.anonymous_warmup" :disabled="running">匿名态预热</el-checkbox><el-checkbox v-model="config.protocol.authenticated_warmup" :disabled="running">认证态预热</el-checkbox></div>
     </div>
@@ -322,7 +325,7 @@ defineExpose({ save })
       <el-row v-if="roxy.random_os" :gutter="10"><el-col :span="12"><el-form-item><template #label><FieldHelpLabel label="随机系统范围" help="创建每个临时 Profile 时从勾选项中随机选择浏览器指纹系统，不改变本机操作系统。" /></template><el-checkbox-group v-model="roxy.os_choices" :disabled="running"><el-checkbox label="Windows" /><el-checkbox label="macOS" /><el-checkbox label="Linux" /></el-checkbox-group></el-form-item></el-col><el-col :span="12"><el-form-item><template #label><FieldHelpLabel label="Profile 名称前缀" help="临时 RoxyBrowser Profile 名称的固定前缀，后面会追加时间和随机标记，便于识别本程序创建的窗口。" /></template><el-input v-model="roxy.profile_name_prefix" :disabled="running" /></el-form-item></el-col></el-row>
       <div class="humanize-heading"><FieldHelpLabel label="Profile 生命周期" help="默认每个账号创建一个临时 Profile，并在完成或失败后关闭和删除。保留浏览器仅用于诊断，会跳过正常清理；无头模式默认开启，浏览器在后台运行，不显示可见窗口。" /></div>
       <div class="check-row"><el-checkbox v-model="roxy.one_profile_per_account" :disabled="running">一号一 Profile</el-checkbox><el-checkbox v-model="roxy.delete_profile_after_run" :disabled="running">运行结束删除 Profile</el-checkbox><el-checkbox v-model="roxy.headless" :disabled="running">无头模式（默认开启）</el-checkbox><el-checkbox v-model="roxy.keep_browser_open" :disabled="running">保留浏览器（调试）</el-checkbox></div>
-      <el-row :gutter="10"><el-col :span="12"><el-form-item><template #label><FieldHelpLabel label="代理检查渠道" help="创建 RoxyBrowser Profile 时传给本地 API 的代理检查服务名称，默认使用 IPRust.io。" /></template><el-input v-model="roxy.proxy_check_channel" :disabled="running" /></el-form-item></el-col><el-col :span="12"><el-form-item><template #label><FieldHelpLabel label="API 默认端口" help="RoxyBrowser 本地 API 的默认监听端口，固定显示 50000；实际访问地址以上方 API 地址为准。" /></template><el-input model-value="50000" readonly /></el-form-item></el-col></el-row>
+      <el-row :gutter="10"><el-col :span="12"><el-form-item><template #label><FieldHelpLabel label="API 默认端口" help="RoxyBrowser 本地 API 的默认监听端口，固定显示 50000；实际访问地址以上方 API 地址为准。" /></template><el-input model-value="50000" readonly /></el-form-item></el-col></el-row>
     </div>
 
     <div class="subsection proxy-section">
@@ -333,7 +336,7 @@ defineExpose({ save })
       </div>
       <el-input v-model="proxyText" type="textarea" :rows="5" :disabled="running" placeholder="每行一个代理，支持 URL、host:port:user:pass 和两种 @ 格式" autocomplete="off" />
       <div class="inline-actions"><el-button size="small" :icon="CircleCheck" :loading="busy === 'proxy-preflight'" :disabled="running || !proxyText.trim()" @click="preflightProxyPool">检测代理连通性</el-button><span class="muted">代理内容会随右下角“保存 Free 配置”一起保存，不会消耗邮箱，也不会启动注册；检测只确认代理请求可用。</span></div>
-      <template v-if="proxyCheckRows.length"><div class="proxy-table-heading"><FieldHelpLabel label="本次检测结果" help="仅展示输入框中代理的声明协议和脱敏地址，不自动保存观测地址。" /></div><el-table :data="proxyCheckRows" size="small" height="150" class="proxy-check-table"><el-table-column type="index" label="序号" width="58" align="center" fixed="left" /><el-table-column prop="masked" label="代理掩码" min-width="220" /><el-table-column prop="scheme" label="协议" width="90" /><el-table-column prop="fingerprint" label="指纹" min-width="120" /></el-table></template>
+      <template v-if="proxyCheckRows.length"><div class="proxy-table-heading"><FieldHelpLabel label="本次检测结果" help="仅展示声明协议、脱敏地址、响应状态和耗时；检测不解析、保存或比较出口 IP。" /></div><el-table :data="proxyCheckRows" size="small" height="180" class="proxy-check-table"><el-table-column type="index" label="序号" width="58" align="center" fixed="left" /><el-table-column prop="masked" label="代理掩码" min-width="220" /><el-table-column prop="scheme" label="协议" width="85" /><el-table-column label="状态" width="75"><template #default="{ row }"><el-tag size="small" :type="row.available ? 'success' : 'danger'">{{ row.available ? '可用' : '失败' }}</el-tag></template></el-table-column><el-table-column prop="http_status" label="HTTP" width="70" /><el-table-column label="耗时" width="85"><template #default="{ row }">{{ row.proxy_to_target_ms != null ? `${row.proxy_to_target_ms} ms` : '-' }}</template></el-table-column><el-table-column prop="failure_node" label="故障节点" min-width="150" /><el-table-column prop="fingerprint" label="指纹" min-width="120" /></el-table></template>
       <template v-if="proxyRows.length"><div class="proxy-table-heading"><FieldHelpLabel label="代理明细" help="已保存共享 Free 代理池的逐条记录。用于查看声明协议、健康状态、探测模式和连续失败次数；认证信息始终隐藏。" /></div><el-table :data="proxyRows" size="small" height="180" class="proxy-check-table"><el-table-column type="index" label="序号" width="58" align="center" fixed="left" /><el-table-column prop="scheme" label="协议" width="85" /><el-table-column prop="masked" label="代理" min-width="210" /><el-table-column width="85"><template #header><FieldHelpLabel label="状态" help="未检测表示尚无成功探测；可用表示最近探测成功；已隔离表示连续失败达到阈值，隔离期内不会分配。" /></template><template #default="{ row }">{{ proxyStatusLabel(row.status) }}</template></el-table-column><el-table-column prop="last_probe_mode" label="探测模式" width="90"><template #default="{ row }">{{ row.last_probe_mode === 'compat' ? '兼容重试' : row.last_probe_mode === 'strict' ? '严格校验' : '-' }}</template></el-table-column><el-table-column prop="consecutive_failures" label="失败次数" width="85" /></el-table></template>
     </div>
 

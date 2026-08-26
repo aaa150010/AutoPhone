@@ -152,6 +152,12 @@ class FreeRegisterError(RuntimeError):
         content_type: str | None = None,
         session_rebuilds: int | None = None,
         retry_after_seconds: int | float | None = None,
+        declared_scheme: str | None = None,
+        transport_scheme: str | None = None,
+        target_domain: str | None = None,
+        request_stage: str | None = None,
+        retry_count: int | None = None,
+        transport_error_code: str | None = None,
     ) -> None:
         super().__init__(message)
         self.node_code = node_code
@@ -171,6 +177,36 @@ class FreeRegisterError(RuntimeError):
         except (TypeError, ValueError):
             parsed_retry_after = 0.0
         self.retry_after_seconds = max(0, min(86400, int(parsed_retry_after)))
+        allowed_schemes = FREE_PROXY_SCHEMES
+        self.declared_scheme = str(declared_scheme or "").strip().lower()
+        if self.declared_scheme not in allowed_schemes:
+            self.declared_scheme = ""
+        self.transport_scheme = str(transport_scheme or "").strip().lower()
+        if self.transport_scheme not in allowed_schemes:
+            self.transport_scheme = ""
+        self.target_domain = clean(target_domain, 255).lower()
+        if self.target_domain:
+            try:
+                self.target_domain = str(urlsplit(self.target_domain).hostname or self.target_domain).lower()
+            except (TypeError, ValueError):
+                self.target_domain = ""
+            if not re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]{0,253}[a-z0-9])?", self.target_domain):
+                self.target_domain = ""
+        self.request_stage = clean(request_stage, 120)
+        try:
+            parsed_retry_count = int(retry_count or 0)
+        except (TypeError, ValueError):
+            parsed_retry_count = 0
+        self.retry_count = max(0, min(100, parsed_retry_count))
+        allowed_transport_errors = {
+            "proxy_protocol_mismatch", "proxy_auth_rejected", "proxy_dns_failed",
+            "proxy_connect_timeout", "proxy_connection_reset",
+            "proxy_tls_certificate_error", "proxy_connect_failed", "tls_connection_failed",
+        }
+        self.transport_error_code = (
+            str(transport_error_code or "").strip()
+            if str(transport_error_code or "").strip() in allowed_transport_errors else ""
+        )
 
 
 class FreeTwoFaPending(RuntimeError):

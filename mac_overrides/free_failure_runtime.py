@@ -37,6 +37,12 @@ _FAILURE_EMAIL_RE = re.compile(
 _FAILURE_PHONE_RE = re.compile(r"(?<![\w])\+?\d{8,15}(?![\w])")
 _IDENTIFIER_RE = re.compile(r"[^a-zA-Z0-9_.:-]+")
 _HTTP_STATUS_RE = re.compile(r"^[1-5]\d\d$")
+_SCHEME_SET = frozenset({"http", "https", "socks4", "socks5", "socks5h"})
+_TRANSPORT_ERROR_CODES = frozenset({
+    "proxy_protocol_mismatch", "proxy_auth_rejected", "proxy_dns_failed",
+    "proxy_connect_timeout", "proxy_connection_reset",
+    "proxy_tls_certificate_error", "proxy_connect_failed", "tls_connection_failed",
+})
 _ACTION_HINTS = {
     "free_process_recovery": "确认中断账号的邮箱状态后重新创建任务",
     "free_run_stop": "可重新选择该邮箱启动 Free 注册",
@@ -71,6 +77,12 @@ FAILURE_KEYS = (
     "content_type",
     "session_rebuilds",
     "retry_after_seconds",
+    "declared_scheme",
+    "transport_scheme",
+    "target_domain",
+    "request_stage",
+    "retry_count",
+    "transport_error_code",
 )
 
 
@@ -203,6 +215,30 @@ def exception_failure_context(error: BaseException) -> dict[str, Any]:
             context["retry_after_seconds"] = max(0, min(86400, int(float(retry_after))))
         except (TypeError, ValueError):
             pass
+    for key in ("declared_scheme", "transport_scheme"):
+        value = str(getattr(error, key, "") or "").strip().lower()
+        if value in _SCHEME_SET:
+            context[key] = value
+    domain = str(getattr(error, "target_domain", "") or "").strip().lower()
+    if domain:
+        try:
+            domain = str(urlsplit(domain).hostname or domain).lower()
+        except (TypeError, ValueError):
+            domain = ""
+        if re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]{0,253}[a-z0-9])?", domain):
+            context["target_domain"] = domain
+    request_stage = _identifier(getattr(error, "request_stage", ""), "")
+    if request_stage:
+        context["request_stage"] = request_stage
+    retry_count = getattr(error, "retry_count", None)
+    if retry_count is not None:
+        try:
+            context["retry_count"] = max(0, min(100, int(retry_count)))
+        except (TypeError, ValueError):
+            pass
+    transport_error_code = str(getattr(error, "transport_error_code", "") or "").strip()
+    if transport_error_code in _TRANSPORT_ERROR_CODES:
+        context["transport_error_code"] = transport_error_code
     return context
 
 
@@ -336,6 +372,29 @@ def canonical_failure(
             output["retry_after_seconds"] = max(0, min(86400, int(float(value.get("retry_after_seconds")))))
         except (TypeError, ValueError):
             pass
+    for key in ("declared_scheme", "transport_scheme"):
+        candidate = str(value.get(key) or "").strip().lower()
+        if candidate in _SCHEME_SET:
+            output[key] = candidate
+    domain = str(value.get("target_domain") or "").strip().lower()
+    if domain:
+        try:
+            domain = str(urlsplit(domain).hostname or domain).lower()
+        except (TypeError, ValueError):
+            domain = ""
+        if re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]{0,253}[a-z0-9])?", domain):
+            output["target_domain"] = domain
+    request_stage = _identifier(value.get("request_stage"), "")
+    if request_stage:
+        output["request_stage"] = request_stage
+    if value.get("retry_count") is not None:
+        try:
+            output["retry_count"] = max(0, min(100, int(value.get("retry_count"))))
+        except (TypeError, ValueError):
+            pass
+    transport_error_code = str(value.get("transport_error_code") or "").strip()
+    if transport_error_code in _TRANSPORT_ERROR_CODES:
+        output["transport_error_code"] = transport_error_code
     return output
 
 
@@ -568,6 +627,13 @@ class FreeFailureRuntimeMixin:
             safe_page=str(failure.get("safe_page") or ""),
             content_type=str(failure.get("content_type") or ""),
             session_rebuilds=int(failure.get("session_rebuilds") or 0),
+            retry_after_seconds=failure.get("retry_after_seconds"),
+            declared_scheme=str(failure.get("declared_scheme") or ""),
+            transport_scheme=str(failure.get("transport_scheme") or ""),
+            target_domain=str(failure.get("target_domain") or ""),
+            request_stage=str(failure.get("request_stage") or ""),
+            retry_count=int(failure.get("retry_count") or 0),
+            transport_error_code=str(failure.get("transport_error_code") or ""),
         )
         classified.__cause__ = error
         return failure, classified, node_code, node_label

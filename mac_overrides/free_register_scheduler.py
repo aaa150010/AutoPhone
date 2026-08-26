@@ -60,9 +60,10 @@ class FreeRegisterSchedulerMixin:
             bindings = self.proxies.bind(
                 1,
                 probe=self.proxy_probe,
-                probe_url=str(config.get("proxy_probe_url") or "https://api.ipify.org"),
+                probe_url=str(config.get("proxy_probe_url") or "https://chatgpt.com/"),
                 driver=driver,
                 exclude_proxy_ids=excluded_proxy_ids,
+                perform_probe=False,
             )
         except FreeRegisterError:
             return False

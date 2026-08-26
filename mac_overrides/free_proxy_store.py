@@ -78,7 +78,10 @@ DEFAULT_PROXY_COUNTRY = "ZZ"
 DEFAULT_PROXY_GROUP = "默认组"
 SINGLE_POOL_COUNTRY = ""
 SINGLE_POOL_GROUP = ""
-DEFAULT_PROXY_PROBE_URL = "https://api.ipify.org"
+# Manual connectivity diagnostics use a normal HTTP target.  The target is
+# never consulted by automatic registration binding and its response is not
+# interpreted as an account or exit-IP assertion.
+DEFAULT_PROXY_PROBE_URL = "https://chatgpt.com/"
 CHATGPT_LOGIN_PROBE_URL = "https://chatgpt.com/login"
 PROXY_COUNTRY_PATTERN = re.compile(
     r"(?:^|[-_.])(?:region|country|res|area|dc|res_sc)-([A-Za-z]{2})(?:[-_.:]|$)",
@@ -179,10 +182,11 @@ def _is_tls_compatibility_error(error: BaseException) -> bool:
 
 _PROBE_BODY_LIMIT = 4096
 _LEGACY_PROBE_HOST = "ipinfo.io"
+_LEGACY_EXIT_IP_HOST = "api.ipify.org"
 
 
 def normalize_probe_url(value: Any) -> str:
-    """Normalize the old built-in ipinfo text endpoint without touching custom URLs."""
+    """Normalize legacy probe settings without treating them as IP checks."""
     candidate = str(value or "").strip()
     if not candidate:
         return DEFAULT_PROXY_PROBE_URL
@@ -190,14 +194,21 @@ def normalize_probe_url(value: Any) -> str:
         parsed = urlsplit(candidate)
     except ValueError:
         return candidate
-    # Older Free builds used ipinfo.io/ip as their implicit default.  That
-    # endpoint is still valid when explicitly chosen, but several residential
-    # SOCKS gateways reject its CONNECT path.  Keep ipinfo JSON and all other
-    # user-supplied URLs unchanged; only migrate this exact legacy default.
+    # Older Free builds used ipinfo.io/ip as their implicit default. Keep
+    # explicit JSON and other user-supplied URLs unchanged; migrate only this
+    # exact legacy default to the normal connectivity target.
     if (
         parsed.scheme in {"http", "https"}
         and str(parsed.hostname or "").lower() == _LEGACY_PROBE_HOST
         and parsed.path.rstrip("/") == "/ip"
+        and not parsed.query
+        and not parsed.fragment
+    ):
+        return DEFAULT_PROXY_PROBE_URL
+    if (
+        parsed.scheme in {"http", "https"}
+        and str(parsed.hostname or "").lower() == _LEGACY_EXIT_IP_HOST
+        and parsed.path.rstrip("/") in {"", "/"}
         and not parsed.query
         and not parsed.fragment
     ):
@@ -341,6 +352,9 @@ class FreeProxyPool:
         # probes must receive the declared URL unchanged.
         self.socks5_dns_mode = "declared"
         self.allocation_mode = "healthy_random"
+        # Ephemeral metadata for the most recent explicit/manual bind.  It is
+        # intentionally not persisted and never contains an observed exit IP.
+        self._last_bind_diagnostics: list[dict[str, Any]] = []
         self._lock = threading.RLock()
 
     def _load(self) -> list[dict[str, Any]]:
@@ -637,7 +651,6 @@ class FreeProxyPool:
             "lease_until": max((float(lease.get("until") or 0) for lease in leases), default=None),
             "active_lease_count": len(leases),
             "last_checked_at": row.get("last_checked_at"),
-            "last_exit_ip": row.get("last_exit_ip", ""),
             "latency_ms": row.get("latency_ms"),
             "last_chatgpt_login_checked_at": row.get("last_chatgpt_login_checked_at"),
             "last_chatgpt_login_status": int(row.get("last_chatgpt_login_status") or 0),
@@ -680,11 +693,19 @@ class FreeProxyPool:
         return [{"country": country, **values} for country, values in sorted(grouped.items())]
 
     @staticmethod
-    def _probe(proxy: str, target: str, *, verify: bool = True) -> str:
+    def _probe(
+        proxy: str,
+        target: str,
+        *,
+        verify: bool = True,
+        socks5_dns_mode: str = "declared",
+    ) -> str:
         from curl_cffi import requests as curl_requests
 
         target = normalize_probe_url(target)
-        transport_proxy = proxy_transport_value(proxy, driver="probe")
+        # Manual diagnostics honor the pool's configured DNS policy while
+        # retaining the declared scheme in storage and public metadata.
+        transport_proxy = proxy_transport_value(proxy, driver="probe", socks5_dns_mode=socks5_dns_mode)
         if not transport_proxy:
             raise ValueError("代理格式无效")
         session = curl_requests.Session(impersonate="chrome", verify=bool(verify))
@@ -705,21 +726,28 @@ class FreeProxyPool:
         status = int(getattr(response, "status_code", 0) or 0)
         if not 200 <= status < 300:
             raise ValueError(f"代理探测请求返回 HTTP {status}")
-        return _extract_probe_ip(getattr(response, "content", b"") or b"")
+        # A connectivity probe is about the proxy request and HTTP response;
+        # it must not require an IP-shaped response body.  Keep returning an
+        # observed IP when a legacy ipify/ipinfo endpoint provides one so old
+        # callers remain compatible, otherwise return an empty observation.
+        try:
+            return _extract_probe_ip(getattr(response, "content", b"") or b"")
+        except (TypeError, ValueError):
+            return ""
 
     def _probe_with_policy(self, proxy: str, target: str) -> tuple[str, str]:
         """Probe securely first and retry only TLS/CONNECT compatibility failures."""
         if not self.proxy_tls_verify:
-            return self._probe(proxy, target, verify=False), "compat"
+            return self._probe(proxy, target, verify=False, socks5_dns_mode=self.socks5_dns_mode), "compat"
         try:
-            return self._probe(proxy, target, verify=True), "strict"
+            return self._probe(proxy, target, verify=True, socks5_dns_mode=self.socks5_dns_mode), "strict"
         except Exception as first_error:
             if not self.proxy_tls_compat_fallback or not _is_tls_compatibility_error(first_error):
                 raise
             # Keep the exact proxy, protocol and target. This is not a node or
             # protocol fallback; it only supports providers with broken certs.
             try:
-                return self._probe(proxy, target, verify=False), "compat"
+                return self._probe(proxy, target, verify=False, socks5_dns_mode=self.socks5_dns_mode), "compat"
             except Exception as second_error:
                 # Preserve both attempts for the structured diagnostic while
                 # keeping the original exception type and redaction rules.
@@ -751,16 +779,18 @@ class FreeProxyPool:
         probe: Callable[[str, str], str] | None = None,
         chatgpt_probe: Callable[[str], int] | None = None,
         check_chatgpt: bool = False,
-        probe_url: str = "https://api.ipify.org",
+        probe_url: str = DEFAULT_PROXY_PROBE_URL,
         country: str | None = None,
         group: str | None = None,
         driver: str = "protocol",
         exclude_proxy_ids: Iterable[str] = (),
         exclude_exit_ips: Iterable[str] = (),
+        perform_probe: bool = True,
     ) -> list[ProxyBinding]:
         requested = max(0, int(count))
         if requested == 0:
             return []
+        self._last_bind_diagnostics = []
         with self._lock:
             inline_content = bool(str(content or "").strip())
             if inline_content:
@@ -810,15 +840,16 @@ class FreeProxyPool:
             if cached is None:
                 started = time.monotonic()
                 try:
-                    if check is None:
-                        exit_ip, probe_mode = self._probe_with_policy(transport_proxy, probe_url)
+                    if perform_probe:
+                        if check is None:
+                            exit_ip, probe_mode = self._probe_with_policy(transport_proxy, probe_url)
+                        else:
+                            exit_ip, probe_mode = str(check(transport_proxy, probe_url)).strip(), "custom"
+                        # Manual diagnostics accept any successful HTTP body;
+                        # an IP is optional legacy metadata, never a gate.
+                        exit_ip = str(exit_ip or "").strip() if _candidate_probe_ip(exit_ip) else ""
                     else:
-                        exit_ip, probe_mode = str(check(transport_proxy, probe_url)).strip(), "custom"
-                    if not _candidate_probe_ip(exit_ip):
-                        raise ValueError("代理探测响应格式无效")
-                    exit_ip = str(exit_ip).strip()
-                    if not exit_ip:
-                        raise ValueError("出口 IP 为空")
+                        exit_ip, probe_mode = "", ""
                     chatgpt_status = 0
                     chatgpt_probe_mode = ""
                 except FreeRegisterError as exc:
@@ -851,7 +882,7 @@ class FreeProxyPool:
                 checked[cache_key] = (exit_ip, probe_mode, latency_ms, chatgpt_status, chatgpt_probe_mode)
             else:
                 exit_ip, probe_mode, latency_ms, chatgpt_status, chatgpt_probe_mode = cached
-            if not inline_content and cached is None:
+            if perform_probe and not inline_content and cached is None:
                 self.record_success(
                     str(record.get("proxy_id") or ""),
                     exit_ip=exit_ip,
@@ -874,19 +905,31 @@ class FreeProxyPool:
                 chatgpt_login_checked=bool(check_chatgpt),
                 chatgpt_login_probe_mode=chatgpt_probe_mode,
             ))
+            self._last_bind_diagnostics.append({
+                "index": len(bindings),
+                "masked": mask_proxy(configured_proxy),
+                "fingerprint": str(record.get("proxy_id") or fingerprint(configured_proxy)),
+                "scheme": declared_scheme,
+                "available": True,
+                "http_status": 200 if perform_probe else None,
+                "local_to_proxy_ms": None,
+                "proxy_to_target_ms": latency_ms if perform_probe else None,
+                "failure_node": "",
+                "failure_reason": "",
+            })
             if len(bindings) >= requested:
                 break
         if len(bindings) < requested:
             raise FreeRegisterError(
                 "free_proxy_preflight",
                 "Free 代理预检",
-                f"代理出口检测数量不足：需要 {requested} 个，当前只有 {len(bindings)} 个",
+                f"代理绑定数量不足：需要 {requested} 个，当前只有 {len(bindings)} 个",
                 retryable=False,
                 error_code="free_proxy_pool_empty",
             )
         return bindings
 
-    def verify(self, binding: ProxyBinding, *, probe: Callable[[str, str], str] | None = None, probe_url: str = "https://api.ipify.org") -> str:
+    def verify(self, binding: ProxyBinding, *, probe: Callable[[str, str], str] | None = None, probe_url: str = DEFAULT_PROXY_PROBE_URL) -> str:
         transport_proxy = proxy_transport_value(
             binding.proxy,
             driver="probe",
@@ -905,9 +948,12 @@ class FreeProxyPool:
                 current, probe_mode = self._probe_with_policy(transport_proxy, probe_url)
             else:
                 current, probe_mode = str(probe(transport_proxy, probe_url)).strip(), "custom"
-            current = str(current).strip()
+            current = str(current or "").strip()
+            # A successful connectivity response does not need to contain an
+            # IP address. Preserve an IP only when a legacy probe endpoint
+            # provides one; otherwise return an empty observation.
             if not _candidate_probe_ip(current):
-                raise ValueError("代理探测响应格式无效")
+                current = ""
         except Exception as exc:
             failure_code = proxy_error_code(exc)
             raise FreeRegisterError(

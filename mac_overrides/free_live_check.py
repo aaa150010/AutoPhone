@@ -8,6 +8,7 @@ import secrets
 import threading
 import time
 from typing import Any, Callable, Mapping, Sequence
+from urllib.parse import urlsplit
 
 try:
     from .free_failure_runtime import canonical_failure, exception_to_failure
@@ -67,6 +68,24 @@ LIVE_STAGE_LABELS = {
     "free_live_network_error": "Free 测活网络异常",
     "free_live_password_required": "深度测活需要真实账号密码",
 }
+
+
+def _live_transport_context(proxy: str, target_url: str, error: BaseException | None = None) -> dict[str, Any]:
+    try:
+        scheme = str(urlsplit(proxy).scheme or "").lower()
+    except (TypeError, ValueError):
+        scheme = ""
+    try:
+        domain = str(urlsplit(target_url).hostname or "").lower()
+    except (TypeError, ValueError):
+        domain = ""
+    code = ""
+    if error is not None:
+        code = proxy_error_code(error)
+        text = str(error).lower()
+        if code.startswith("proxy_") and not any(marker in text for marker in ("proxy", "socks", "connect", "407", "curl:")) and any(marker in text for marker in ("tls", "ssl", "handshake", "certificate")):
+            code = "tls_connection_failed"
+    return {"declared_scheme": scheme, "transport_scheme": scheme, "target_domain": domain, "transport_error_code": code}
 
 
 _LIVE_ACCOUNT_PATH = "/backend-api/accounts/check/v4-2023-04-27"
@@ -362,7 +381,7 @@ class FreeLiveCheckService:
     def _public_job(self, job: Mapping[str, Any]) -> dict[str, Any]:
         keys = (
             "task_id", "row_id", "email", "mode", "status", "stage", "created_at",
-            "updated_at", "checked_at", "registration_ip", "live_check_ip",
+            "updated_at", "checked_at",
             "token_refreshed", "recovered",
         )
         result = {key: copy.deepcopy(job[key]) for key in keys if key in job}
@@ -422,7 +441,6 @@ class FreeLiveCheckService:
                     skipped.append({"row_id": row_id, "reason": "该账号没有可用 Token"})
                     continue
                 proxy = str(result.get("proxy") or registration_state.get("proxy") or "").strip()
-                registration_ip = str(result.get("registration_ip") or registration_state.get("registration_ip") or "").strip()
                 if not proxy:
                     skipped.append({"row_id": row_id, "reason": "该账号缺少可用代理"})
                     continue
@@ -437,9 +455,7 @@ class FreeLiveCheckService:
                     "stage": "free_live_queued",
                     "created_at": now,
                     "updated_at": now,
-                    "registration_ip": registration_ip,
                     "device_id": f"free-live-{secrets.token_hex(16)}",
-                    "live_check_ip": "",
                     "token_refreshed": False,
                 }
                 self._jobs[task_id] = job
@@ -528,7 +544,7 @@ class FreeLiveCheckService:
             current = self.proxies.verify(
                 binding,
                 probe=self.proxy_probe,
-                probe_url=str(config.get("proxy_probe_url") or "https://api.ipify.org"),
+                probe_url=str(config.get("proxy_probe_url") or "https://chatgpt.com/"),
             )
         except Exception as exc:
             code = proxy_error_code(exc)
@@ -614,29 +630,17 @@ class FreeLiveCheckService:
         try:
             config = self._config()
             context = self._context(job)
-            # Persist the existing binding before probing so an exception at
-            # any later stage never loses the last known current exit IP.
-            self._set_job(
-                task_id,
-                registration_ip=context.get("registration_ip", ""),
-                expected_exit_ip=context.get("expected_exit_ip") or context.get("registration_ip", ""),
-                exit_ip=context.get("exit_ip") or context.get("registration_ip", ""),
-            )
             binding = self._binding(context)
             if binding.proxy_id:
                 self.proxies.lease(binding, owner=lease_owner, batch_id=lease_owner, task_id=task_id)
             mode = str(job.get("mode") or "fast")
             stage = "free_live_fast" if mode == "fast" else "free_live_deep"
+            # Fast and deep checks enter their real authenticated transport
+            # directly.  An exit-IP-style observation is neither required
+            # for authentication nor evidence of token validity, so it is not
+            # a hidden preflight step.
             live_ip = ""
-            try:
-                live_ip = self._observe_proxy(binding, config)
-            except Exception:
-                # The probe is informational. The actual fast/deep request
-                # below owns the network failure classification.
-                live_ip = ""
-            context["live_check_ip"] = live_ip
-            context["exit_ip"] = live_ip or context.get("exit_ip", "")
-            self._set_job(task_id, stage=stage, live_check_ip=live_ip, exit_ip=context["exit_ip"])
+            self._set_job(task_id, stage=stage)
             runner = self.fast_runner if mode == "fast" else self.deep_runner
             checked = dict(runner(context, config))
             status = str(checked.get("status") or "").strip().lower()
@@ -674,7 +678,6 @@ class FreeLiveCheckService:
                 status=status,
                 stage="free_live_result",
                 checked_at=checked_at,
-                live_check_ip=live_ip,
                 token_refreshed=token_refreshed,
                 failure=copy.deepcopy(failure) if failure else None,
             )
@@ -703,23 +706,14 @@ class FreeLiveCheckService:
         target_row = row_id or str(job.get("row_id") or "")
         if target_row:
             live_status = str(failure.get("node_code") or "") if str(failure.get("node_code") or "") in _LIVE_FAILURE_STATUSES else "failed"
-            current_exit = str(
-                job.get("exit_ip")
-                or job.get("expected_exit_ip")
-                or job.get("live_check_ip")
-                or ""
-            ).strip()
             result_values: dict[str, Any] = {
                 "live_check_status": live_status,
                 "live_check_mode": str(job.get("mode") or ""),
                 "live_check_task_id": task_id,
                 "live_checked_at": checked_at,
-                "live_check_ip": str(job.get("live_check_ip") or ""),
                 "live_check_token_refreshed": False,
                 "live_check_failure": failure,
             }
-            if current_exit:
-                result_values.update({"exit_ip": current_exit})
             self._save_live_result(target_row, result_values)
         self._log(task_id, failure["node_code"], failure["public_message"], "error")
 
@@ -730,6 +724,7 @@ class FreeLiveCheckService:
         *,
         device_id: str = "",
         failure_node: str = "free_live_fast",
+        proxy: str = "",
     ) -> dict[str, Any]:
         """Query account state through the shared, same-origin live adapter."""
         _prepare_live_session(session, device_id)
@@ -742,13 +737,15 @@ class FreeLiveCheckService:
                 timeout=20,
             )
         except Exception as exc:
+            transport_context = _live_transport_context(proxy, accounts_url, exc)
             raise FreeRegisterError(
                 "free_live_network_error",
                 "Free 测活网络异常",
                 f"账号接口请求异常（{type(exc).__name__}）",
                 retryable=True,
-                error_code="free_live_network_error",
+                error_code=transport_context.get("transport_error_code") or "free_live_network_error",
                 action_hint="保留原注册结果，检查当前绑定代理后重试",
+                **transport_context,
             ) from exc
         accounts_status = _status(accounts_response)
         accounts = _json(accounts_response)
@@ -882,11 +879,19 @@ class FreeLiveCheckService:
                 str(context["access_token"]),
                 device_id=device_id,
                 failure_node="free_live_fast",
+                proxy=transport_proxy,
             )
         except FreeRegisterError:
             raise
         except Exception as exc:
-            raise FreeRegisterError("free_live_fast", "快速测活", f"账号在线查询异常（{type(exc).__name__}）") from exc
+            transport_context = _live_transport_context(transport_proxy, _LIVE_ORIGIN + _LIVE_ACCOUNT_PATH, exc)
+            raise FreeRegisterError(
+                "free_live_fast",
+                "快速测活",
+                f"账号在线查询异常（{type(exc).__name__}）",
+                error_code=transport_context.get("transport_error_code") or "free_live_network_error",
+                **transport_context,
+            ) from exc
         finally:
             close = getattr(session, "close", None)
             if callable(close):
@@ -972,19 +977,16 @@ class FreeLiveCheckService:
                 try:
                     from .free_protocol_bootstrap import (
                         anonymous_warmup,
-                        exit_geo_profile,
                         network_preflight,
                         prepare_reference_session,
                     )
                 except ImportError:
                     from free_protocol_bootstrap import (  # type: ignore[no-redef]
                         anonymous_warmup,
-                        exit_geo_profile,
                         network_preflight,
                         prepare_reference_session,
                     )
                 prepare_reference_session(transport)
-                exit_geo_profile(transport, chain_config, log=log_fn)
                 network_preflight(transport, chain_config, log=log_fn)
                 anonymous_warmup(transport, chain_config, log=log_fn)
             except FreeRegisterError:
@@ -1094,6 +1096,7 @@ class FreeLiveCheckService:
                             token,
                             device_id=device_id,
                             failure_node="free_live_session_rejected",
+                            proxy=proxy,
                         )
                     )
                     if checked.get("status") == "live":
@@ -1108,7 +1111,14 @@ class FreeLiveCheckService:
         except Exception as exc:
             if _is_deactivated(exc):
                 return self._deactivated_result(getattr(exc, "provider_status", None))
-            raise FreeRegisterError("free_live_deep", "深度测活", f"重新登录异常（{type(exc).__name__}）") from exc
+            transport_context = _live_transport_context(proxy, "https://auth.openai.com/", exc)
+            raise FreeRegisterError(
+                "free_live_deep",
+                "深度测活",
+                f"重新登录异常（{type(exc).__name__}）",
+                error_code=transport_context.get("transport_error_code") or "free_live_deep_failed",
+                **transport_context,
+            ) from exc
         finally:
             otp_close = getattr(otp, "close", None)
             if callable(otp_close):

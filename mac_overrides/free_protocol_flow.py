@@ -1318,7 +1318,7 @@ def run_free_protocol_flow(
                 exc.session_rebuilds = session_rebuilds
                 raise
             session_rebuilds += 1
-            _log(log, "OAuth 会话失效，清理旧 Cookie/CSRF 并重建一次授权会话；邮箱、代理和出口 IP 保持不变", "warn")
+            _log(log, "OAuth 会话失效，清理旧 Cookie/CSRF 并重建一次授权会话；邮箱、代理和设备上下文保持不变", "warn")
             close = getattr(active, "close", None)
             if callable(close):
                 try:

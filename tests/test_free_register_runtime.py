@@ -457,9 +457,9 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         )
 
         self.assertEqual(result["proxies"], 2)
-        self.assertGreaterEqual(result["exit_ips"], 1)
-        self.assertLessEqual(result["exit_ips"], 2)
-        self.assertTrue({row["exit_ip"] for row in result["rows"]} <= {"203.0.113.10", "203.0.113.11"})
+        self.assertEqual(len(result["rows"]), 2)
+        self.assertTrue(all(row["available"] for row in result["rows"]))
+        self.assertTrue(all("exit_ip" not in row for row in result["rows"]))
         self.assertEqual(manager.pool.entries(), [])
         self.assertNotIn("https://", str(result))
 
@@ -798,7 +798,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
                 StructuredFreeProxyPool._probe("socks5h://proxy.test:8000", "https://ipinfo.io/ip"),
                 "203.0.113.42",
             )
-        self.assertEqual(calls, ["https://api.ipify.org"])
+        self.assertEqual(calls, ["https://chatgpt.com/"])
 
     def test_legacy_ipinfo_probe_url_is_preserved_by_free_config(self):
         store = FreeConfigStore(self.data_dir)
@@ -808,7 +808,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
     def test_legacy_ipinfo_text_default_is_migrated_to_stable_probe(self):
         store = FreeConfigStore(self.data_dir)
         normalized = store.normalize({"proxy_probe_url": "https://ipinfo.io/ip"})
-        self.assertEqual(normalized["proxy_probe_url"], "https://api.ipify.org")
+        self.assertEqual(normalized["proxy_probe_url"], "https://chatgpt.com/")
 
     def test_probe_url_normalization_keeps_explicit_query_and_custom_hosts(self):
         store = FreeConfigStore(self.data_dir)
@@ -859,8 +859,10 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             country="US",
             group="住宅 A",
         )
-        self.assertEqual(shared["proxies"], 2)
-        self.assertEqual(shared["exit_ips"], 1)
+        self.assertEqual(shared["proxies"], 1)
+        self.assertEqual(len(shared["rows"]), 2)
+        self.assertFalse(shared["rows"][0]["available"])
+        self.assertTrue(shared["rows"][1]["available"])
         result = manager.preflight_proxies(
             proxy_content="socks5://proxy-region-US.example:3001\n",
             driver="roxybrowser",
@@ -910,8 +912,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         )
         self.assertTrue(worker_entered.wait(1))
         proxy = manager.proxies.public()["rows"][0]
-        self.assertEqual(proxy["last_exit_ip"], "203.0.113.76")
-        self.assertEqual(proxy["status"], "available")
+        self.assertEqual(proxy["status"], "unknown")
         release_worker.set()
         deadline = time.time() + 3
         while manager.public_state()["running"] and time.time() < deadline:

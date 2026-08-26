@@ -304,7 +304,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
 
     def _public_task(self, task: Mapping[str, Any]) -> dict[str, Any]:
         result = task.get("result") if isinstance(task.get("result"), Mapping) else {}
-        public = {key: copy.deepcopy(task[key]) for key in ("task_id", "incident_id", "ordinal", "slot_id", "slot_index", "concurrency_limit", "status", "created_at", "updated_at", "batch_id", "run_mode", "driver", "email", "row_id", "stage", "proxy_masked", "proxy_fingerprint", "expected_exit_ip", "registration_ip", "exit_ip", "profile_summary", "proxy_id", "proxy_scheme", "proxy_country", "proxy_group", "proxy_attempts", "cleanup_status") if key in task}
+        public = {key: copy.deepcopy(task[key]) for key in ("task_id", "incident_id", "ordinal", "slot_id", "slot_index", "concurrency_limit", "status", "created_at", "updated_at", "batch_id", "run_mode", "driver", "email", "row_id", "stage", "proxy_masked", "proxy_fingerprint", "profile_summary", "proxy_id", "proxy_scheme", "proxy_country", "proxy_group", "proxy_attempts", "cleanup_status") if key in task}
         public["account"] = public.get("email", "")
         mailbox_url = str(task.get("mailbox_url") or "").strip()
         if not mailbox_url and task.get("row_id"):
@@ -505,8 +505,9 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             target,
             content=proxy_content,
             probe=self.proxy_probe,
-            probe_url=str(config.get("proxy_probe_url") or "https://api.ipify.org"),
+            probe_url=str(config.get("proxy_probe_url") or "https://chatgpt.com/"),
             driver=driver,
+            perform_probe=False,
         )
         roxy_result = {"driver": driver}
         camoufox_result = {"driver": driver}
@@ -520,7 +521,6 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             "target_count": target,
             "mailboxes": available,
             "proxies": len(bindings),
-            "exit_ips": len({binding.exit_ip for binding in bindings}),
             "protocol": protocol_result,
             "roxy": roxy_result,
             "camoufox": camoufox_result,
@@ -528,7 +528,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             "proxy_selection": {"country": "", "group": ""},
         }
 
-    def preflight_proxies(self, *, proxy_content: str = "", probe_url: str = "https://api.ipify.org", driver: str = "protocol", country: str | None = None, group: str | None = None, scheme: str | None = None, tls_verify: bool = True, tls_compat_fallback: bool = True, socks5_dns_mode: str = "declared") -> dict[str, Any]:
+    def preflight_proxies(self, *, proxy_content: str = "", probe_url: str = "https://chatgpt.com/", driver: str = "protocol", country: str | None = None, group: str | None = None, scheme: str | None = None, tls_verify: bool = True, tls_compat_fallback: bool = True, socks5_dns_mode: str = "declared") -> dict[str, Any]:
         """Probe the isolated Free proxy pool without consuming mailboxes or tasks."""
         self.proxies.configure_policy(
             tls_verify=tls_verify,
@@ -540,27 +540,49 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         values = self.proxies.values(proxy_content)
         if not values:
             raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", "请先粘贴或保存至少一个 Free 代理", retryable=False)
-        bindings = self.proxies.bind(
-            len(values),
-            content=proxy_content,
-            probe=self.proxy_probe,
-            probe_url=probe_url,
-            driver=driver,
-        )
+        diagnostics: list[dict[str, Any]] = []
+        for index, value in enumerate(values, 1):
+            try:
+                self.proxies.bind(
+                    1,
+                    content=value,
+                    probe=self.proxy_probe,
+                    probe_url=probe_url,
+                    driver=driver,
+                    perform_probe=True,
+                )
+                row = dict((getattr(self.proxies, "_last_bind_diagnostics", ()) or [{}])[0])
+                row.setdefault("index", index)
+                row.setdefault("available", True)
+                row.setdefault("http_status", 200)
+                row.setdefault("failure_node", "")
+                row.setdefault("failure_reason", "")
+            except Exception as exc:
+                failure = exception_to_failure(
+                    exc,
+                    node_code=str(getattr(exc, "error_code", "") or "proxy_connect_failed"),
+                    node_label=str(getattr(exc, "node_label", "") or "代理连接失败"),
+                )
+                parsed = self.proxies._parse_lines(value, country="", group="", scheme=self.proxies.default_scheme)
+                record = parsed[0] if parsed else {}
+                row = {
+                    "index": index,
+                    "masked": _mask_proxy(value),
+                    "fingerprint": str(record.get("proxy_id") or ""),
+                    "scheme": str(record.get("scheme") or self.proxies.default_scheme),
+                    "available": False,
+                    "http_status": failure.get("http_status"),
+                    "local_to_proxy_ms": None,
+                    "proxy_to_target_ms": None,
+                    "failure_node": failure.get("node_code") or "proxy_connect_failed",
+                    "failure_reason": failure.get("technical_summary") or failure.get("public_message") or "代理请求失败",
+                }
+            row["index"] = index
+            diagnostics.append(row)
         return {
             **runtime_info(),
-            "proxies": len(bindings),
-            "exit_ips": len({binding.exit_ip for binding in bindings}),
-            "rows": [
-                {
-                    "index": index,
-                    "masked": binding.masked,
-                    "fingerprint": binding.fingerprint,
-                    "exit_ip": binding.exit_ip,
-                    "scheme": binding.scheme,
-                }
-                for index, binding in enumerate(bindings, 1)
-            ],
+            "proxies": len([row for row in diagnostics if row.get("available")]),
+            "rows": diagnostics,
         }
 
     def start(self, config: Mapping[str, Any], *, pool_content: str = "", proxy_content: str = "", row_ids: Sequence[str] = ()) -> dict[str, Any]:
@@ -661,8 +683,9 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             bindings = self.proxies.bind(
                 target_count,
                 probe=self.proxy_probe,
-                probe_url=str(config.get("proxy_probe_url") or "https://api.ipify.org"),
+                probe_url=str(config.get("proxy_probe_url") or "https://chatgpt.com/"),
                 driver=driver,
+                perform_probe=False,
             )
             batch_id = f"free-{int(time.time())}-{secrets.token_hex(4)}"
             now = int(time.time())
@@ -970,7 +993,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         current = self.proxies.verify(
             binding,
             probe=self.proxy_probe,
-            probe_url=str(config.get("proxy_probe_url") or "https://api.ipify.org"),
+            probe_url=str(config.get("proxy_probe_url") or "https://chatgpt.com/"),
         )
         if isinstance(task, dict):
             task["exit_ip"] = current
@@ -1140,15 +1163,12 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             if self._stop.is_set():
                 raise FreeRegisterError("free_run_stop", "停止 Free 注册", "任务在执行前已停止", retryable=False)
             retry_limit = max(0, min(5, int(task_config.get("proxy_retry_count") or 0)))
-            self._verify_pre_registration_proxy(snapshot, task_config, retry_limit)
+            # Proxy binding is intentionally not an exit-IP gate.  The
+            # protocol runner performs the real ChatGPT/Auth/Sentinel
+            # preflight before consuming the mailbox; browser drivers perform
+            # their own page/profile connectivity checks.
             self._assert_batch_proxy_uniqueness(snapshot)
             runner = self._runner_for(task_config)
-            with self._lock:
-                current = self._tasks.get(task_id)
-                if current is not None:
-                    current.setdefault("proxy_attempts", []).append({"proxy_id": snapshot.get("proxy_id", ""), "stage": "proxy_preflight", "outcome": "ready", "at": int(time.time())})
-                    current["proxy_attempts"] = current["proxy_attempts"][-10:]
-                    self.task_store.save(self._tasks)
             attempt = 0
             while True:
                 try:

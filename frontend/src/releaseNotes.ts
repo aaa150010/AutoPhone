@@ -19,6 +19,10 @@ export const currentRelease: ReleaseNotes = {
   releasedAt: '2026-08-26',
   sections: [
     {
+      title: 'Free 注册移除出口 IP 门槛',
+      usage: 'Free 注册租用代理时不再调用出口 IP 服务作为硬性条件；全协议仍会在邮箱提交前执行 ChatGPT、Auth 和 Sentinel 真实链路预检，手动代理检测只确认请求和 HTTP 连通性。',
+    },
+    {
       title: 'Free 代理协议与出口校验日志清理',
       usage: 'Free 任务使用代理声明协议建立连接，HTTP、HTTPS、SOCKS4、SOCKS5 和 SOCKS5H 不会被改写为另一种协议标签；SOCKS5 DNS 支持自动、本机和代理端策略，检测到 Clash Fake-IP 时只在协议传输层启用代理端 DNS。Camoufox 与 RoxyBrowser 只在各自传输适配层做必要映射。任务不再比较注册 IP、测活 IP 或出口漂移，也不再显示这些账号 IP 列。代理连通性探测成功和出口观测变化静默处理，只有协议、认证、DNS、超时、连接重置、证书或上游故障才记录结构化诊断。',
     },
@@ -192,7 +196,7 @@ export const currentRelease: ReleaseNotes = {
     },
     {
       title: 'Free 双链路对齐参考流程',
-      usage: 'RoxyBrowser 与全协议注册按新的页面和 OAuth 状态机执行；全协议启动会先完成 ChatGPT/Auth/Sentinel 三段预检、匿名态预热和出口地区画像。保留现有 URL 邮箱取件、阶段基线和旧码排除。注册成功后不会重新运行 Codex OAuth 或手机号接码；升级 Plus 后仍在现有接码工作台导入邮箱处理。',
+      usage: 'RoxyBrowser 与全协议注册按新的页面和 OAuth 状态机执行；全协议启动会先完成 ChatGPT/Auth/Sentinel 三段预检和匿名态预热。保留现有 URL 邮箱取件、阶段基线和旧码排除。注册成功后不会重新运行 Codex OAuth 或手机号接码；升级 Plus 后仍在现有接码工作台导入邮箱处理。',
     },
     {
       title: 'Free 启动数量与实际并发',

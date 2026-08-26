@@ -15,9 +15,9 @@ from typing import Any, Callable, Mapping
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 try:
-    from .free_register_common import FreeRegisterError, safe_log_message
+    from .free_register_common import FreeRegisterError, proxy_error_code, safe_log_message
 except ImportError:  # pragma: no cover
-    from free_register_common import FreeRegisterError, safe_log_message  # type: ignore[no-redef]
+    from free_register_common import FreeRegisterError, proxy_error_code, safe_log_message  # type: ignore[no-redef]
 
 
 LogFn = Callable[..., Any] | None
@@ -338,6 +338,35 @@ def _transient(exc: BaseException) -> bool:
     return any(marker in text for marker in ("timeout", "timed out", "connection", "proxy", "tls", "ssl", "reset", "curl:"))
 
 
+def _transport_context(transport: Any, url: str, exc: BaseException | None = None) -> dict[str, Any]:
+    """Return a bounded, credential-free transport diagnostic context."""
+    proxy = str(getattr(transport, "proxy", "") or "").strip()
+    try:
+        proxy_scheme = str(urlsplit(proxy).scheme or "").lower()
+    except (TypeError, ValueError):
+        proxy_scheme = ""
+    try:
+        target_domain = str(urlsplit(url).hostname or "").lower()
+    except (TypeError, ValueError):
+        target_domain = ""
+    context: dict[str, Any] = {
+        "declared_scheme": proxy_scheme,
+        "transport_scheme": proxy_scheme,
+        "target_domain": target_domain,
+    }
+    if exc is not None:
+        code = proxy_error_code(exc)
+        text = str(exc).lower()
+        # A TLS exception from the OpenAI target without proxy evidence is a
+        # target/session failure, not proof that the proxy itself failed.
+        if code.startswith("proxy_") and not any(
+            marker in text for marker in ("proxy", "socks", "connect", "407", "curl:")
+        ) and any(marker in text for marker in ("tls", "ssl", "handshake", "certificate")):
+            code = "tls_connection_failed"
+        context["transport_error_code"] = code
+    return context
+
+
 def _http_success(status: int) -> bool:
     return 200 <= int(status) < 400
 
@@ -562,6 +591,7 @@ def _request(
             page_type = ""
         elapsed = int((time.monotonic() - started) * 1000)
         result_label = "安全挑战" if challenge else "完成" if success else "HTTP 失败"
+        transport_context = _transport_context(transport, url)
         _emit(
             log,
             f"[协议预热/{label}] {result_label}",
@@ -574,6 +604,9 @@ def _request(
             page_type=page_type,
             duration_ms=elapsed,
             attempt=attempt,
+            retry_count=max(0, int(attempt) - 1),
+            request_stage=node_code,
+            **transport_context,
             outcome="success" if success else "failed",
             diagnostic=(
                 f"HTTP {status}; content_type={content_type or '-'}; page_type={page_type or '-'}"
@@ -618,6 +651,11 @@ def _request(
                 page_type=page_type,
                 safe_page=url,
                 content_type=content_type,
+                declared_scheme=transport_context.get("declared_scheme"),
+                transport_scheme=transport_context.get("transport_scheme"),
+                target_domain=transport_context.get("target_domain"),
+                request_stage=node_code,
+                retry_count=max(0, int(attempt) - 1),
             )
             # Access denied before authorize/continue is route-specific and
             # safe to retry with another pool member.  Keep it distinct from
@@ -631,14 +669,35 @@ def _request(
         raise
     except Exception as exc:
         elapsed = int((time.monotonic() - started) * 1000)
-        _emit(log, f"[协议预热/{label}] 请求失败：{type(exc).__name__}", "warn", node_code=node_code, node_label=node_label, duration_ms=elapsed, attempt=attempt, outcome="failed", diagnostic=safe_log_message(str(exc)))
+        transport_context = _transport_context(transport, url, exc)
+        _emit(
+            log,
+            f"[协议预热/{label}] 请求失败：{type(exc).__name__}",
+            "warn",
+            node_code=node_code,
+            node_label=node_label,
+            duration_ms=elapsed,
+            attempt=attempt,
+            retry_count=max(0, int(attempt) - 1),
+            request_stage=node_code,
+            outcome="failed",
+            diagnostic=safe_log_message(str(exc)),
+            **transport_context,
+        )
         if strict:
+            transport_error = str(transport_context.get("transport_error_code") or "")
             raise FreeRegisterError(
                 node_code, node_label,
                 f"{label} 预检请求失败：{type(exc).__name__}",
                 retryable=_transient(exc),
-                error_code="free_protocol_preflight_request_failed",
+                error_code=transport_error or "free_protocol_preflight_request_failed",
                 action_hint="检查当前任务代理的连接、DNS、TLS 和出口可用性后重试",
+                declared_scheme=transport_context.get("declared_scheme"),
+                transport_scheme=transport_context.get("transport_scheme"),
+                target_domain=transport_context.get("target_domain"),
+                request_stage=node_code,
+                retry_count=max(0, int(attempt) - 1),
+                transport_error_code=transport_error,
             ) from exc
         return None
 
@@ -789,15 +848,6 @@ def exit_geo_profile(transport: Any, config: Mapping[str, Any], log: LogFn = Non
         response = session.get(url, headers={"accept": "application/json"}, timeout=8.0, allow_redirects=True)
         status = int(getattr(response, "status_code", 0) or 0)
         if not _http_success(status):
-            _emit(
-                log,
-                f"[指纹画像/free_proxy_geo] HTTP {status}，已跳过",
-                "warn",
-                node_code="free_proxy_geo",
-                node_label="出口地区画像",
-                http_status=status,
-                outcome="skipped",
-            )
             return {}
         data = response.json() if hasattr(response, "json") else {}
         if not isinstance(data, Mapping):
@@ -807,10 +857,8 @@ def exit_geo_profile(transport: Any, config: Mapping[str, Any], log: LogFn = Non
             "city": str(data.get("city") or "")[:80],
             "timezone": str((data.get("timezone") or {}).get("id") if isinstance(data.get("timezone"), Mapping) else data.get("timezone") or "")[:100],
         }
-        _emit(log, "[指纹画像/free_proxy_geo] 出口地区画像已更新", "info", node_code="free_proxy_geo", node_label="出口地区画像", outcome="success", diagnostic=f"country={profile['country'] or '-'} city={profile['city'] or '-'} timezone={profile['timezone'] or '-'}")
         return profile
     except Exception as exc:
-        _emit(log, f"[指纹画像/free_proxy_geo] 跳过：{type(exc).__name__}", "warn", node_code="free_proxy_geo", node_label="出口地区画像", outcome="skipped", diagnostic=safe_log_message(str(exc)))
         return {}
 
 

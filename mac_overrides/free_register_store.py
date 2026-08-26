@@ -337,9 +337,6 @@ class FreeMailboxPool:
                     "proxy_scheme": current.get("proxy_scheme", ""),
                     "proxy_country": current.get("proxy_country", ""),
                     "proxy_group": current.get("proxy_group", ""),
-                    "expected_exit_ip": result.get("expected_exit_ip") or current.get("expected_exit_ip", ""),
-                    "registration_ip": result.get("registration_ip") or current.get("registration_ip", ""),
-                    "exit_ip": result.get("exit_ip") or result.get("expected_exit_ip") or current.get("exit_ip", ""),
                     "profile_summary": sanitize_failure_text(result.get("profile_summary", ""), 300),
                     "account_flow": sanitize_failure_text(result.get("account_flow", ""), 120),
                     "plan_type": sanitize_failure_text(result.get("plan_type", ""), 120),
@@ -359,7 +356,6 @@ class FreeMailboxPool:
                     "live_check_mode": result.get("live_check_mode", ""),
                     "live_check_task_id": result.get("live_check_task_id", ""),
                     "live_checked_at": result.get("live_checked_at", ""),
-                    "live_check_ip": result.get("live_check_ip", ""),
                     "live_check_token_refreshed": bool(result.get("live_check_token_refreshed", False)),
                     "live_check_http_status": result.get("live_check_http_status"),
                     "live_check_failure": live_failure,
@@ -519,7 +515,7 @@ class FreeProxyPool:
             raise ValueError("代理探测响应格式无效")
         return value
 
-    def bind(self, count: int, *, content: str = "", probe: Callable[[str, str], str] | None = None, probe_url: str = "https://api.ipify.org") -> list[ProxyBinding]:
+    def bind(self, count: int, *, content: str = "", probe: Callable[[str, str], str] | None = None, probe_url: str = "https://chatgpt.com/", perform_probe: bool = True) -> list[ProxyBinding]:
         values = self.values(content)
         if not values:
             raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", "Free 代理池没有有效代理", retryable=False)
@@ -528,6 +524,9 @@ class FreeProxyPool:
         check = probe or self._probe
         exit_ips: list[str] = []
         for index, value in enumerate(selected, 1):
+            if not perform_probe:
+                exit_ips.append("")
+                continue
             try:
                 exit_ips.append(str(check(value, probe_url)).strip())
             except FreeRegisterError:
@@ -539,7 +538,7 @@ class FreeProxyPool:
                 ) from exc
         return [ProxyBinding(value, fp, mask_proxy(value), ip) for value, fp, ip in zip(selected, fingerprints, exit_ips)]
 
-    def verify(self, binding: ProxyBinding, *, probe: Callable[[str, str], str] | None = None, probe_url: str = "https://api.ipify.org") -> str:
+    def verify(self, binding: ProxyBinding, *, probe: Callable[[str, str], str] | None = None, probe_url: str = "https://chatgpt.com/") -> str:
         try:
             current = str((probe or self._probe)(binding.proxy, probe_url)).strip()
         except Exception as exc:

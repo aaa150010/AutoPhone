@@ -8,6 +8,7 @@ from pathlib import Path
 import threading
 import re
 from typing import Any, Mapping
+from urllib.parse import urlsplit
 
 try:
     from .free_failure_runtime import sanitize_failure_text, sanitize_log_message, sanitize_safe_page
@@ -42,6 +43,15 @@ class FreeLogStore:
         "safe_page", "page_type", "content_type", "session_rebuilds",
         "http_status", "attempt", "duration_ms", "outcome", "diagnostic",
         "technical_summary", "action_hint", "retryable", "result", "incident_id",
+        "declared_scheme", "transport_scheme", "target_domain", "request_stage",
+        "retry_count", "transport_error_code",
+        "retry_after_seconds",
+    })
+    _SCHEMES = frozenset({"http", "https", "socks4", "socks5", "socks5h"})
+    _TRANSPORT_CODES = frozenset({
+        "proxy_protocol_mismatch", "proxy_auth_rejected", "proxy_dns_failed",
+        "proxy_connect_timeout", "proxy_connection_reset",
+        "proxy_tls_certificate_error", "proxy_connect_failed", "tls_connection_failed",
     })
 
     def __init__(self, data_dir: str | Path, *, limit: int = 5000, task_limit: int = 5000, diagnostic_store: Any = None) -> None:
@@ -90,6 +100,16 @@ class FreeLogStore:
         safe_page = sanitize_safe_page(raw.get("safe_page") or raw.get("page"))
         technical_summary = sanitize_failure_text(raw.get("technical_summary"), 800)
         diagnostic = sanitize_failure_text(raw.get("diagnostic") or technical_summary, 800)
+        declared_scheme = sanitize_failure_text(raw.get("declared_scheme"), 20).lower()
+        transport_scheme = sanitize_failure_text(raw.get("transport_scheme"), 20).lower()
+        transport_error_code = sanitize_failure_text(raw.get("transport_error_code"), 80)
+        target_domain = sanitize_failure_text(raw.get("target_domain"), 255).lower()
+        try:
+            target_domain = str(urlsplit(target_domain).hostname or target_domain).lower()
+        except (TypeError, ValueError):
+            target_domain = ""
+        if not re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]{0,253}[a-z0-9])?", target_domain):
+            target_domain = ""
         row: dict[str, Any] = {
             "time": cls._safe_time(raw.get("time")),
             "level": level,
@@ -115,6 +135,13 @@ class FreeLogStore:
             "action_hint": sanitize_failure_text(raw.get("action_hint"), 400),
             "result": sanitize_failure_text(raw.get("result"), 800),
             "incident_id": sanitize_failure_text(raw.get("incident_id"), 80),
+            "declared_scheme": declared_scheme if declared_scheme in cls._SCHEMES else "",
+            "transport_scheme": transport_scheme if transport_scheme in cls._SCHEMES else "",
+            "target_domain": target_domain,
+            "request_stage": sanitize_failure_text(raw.get("request_stage"), 120),
+            "retry_count": cls._number(raw.get("retry_count"), maximum=100),
+            "retry_after_seconds": cls._number(raw.get("retry_after_seconds"), maximum=86400),
+            "transport_error_code": transport_error_code if transport_error_code in cls._TRANSPORT_CODES else "",
         }
         retryable = raw.get("retryable")
         if isinstance(retryable, bool):
@@ -165,13 +192,16 @@ class FreeLogStore:
                 "provider_code", "page", "safe_page", "http_status", "attempt",
                 "outcome", "duration_ms", "result", "diagnostic", "technical_summary",
                 "action_hint", "retryable", "page_type", "content_type", "session_rebuilds",
+                "declared_scheme", "transport_scheme", "target_domain", "request_stage",
+                "retry_count", "transport_error_code",
+                "retry_after_seconds",
             ):
                 value = fields.get(key)
                 if value not in (None, ""):
                     # Metadata can arrive from recovered exceptions as well as
                     # hand-written stage logs. Apply the same redactor as the
                     # message so a diagnostic field cannot bypass log safety.
-                    if key == "session_rebuilds":
+                    if key in {"session_rebuilds", "retry_count", "retry_after_seconds"}:
                         try:
                             metadata[key] = max(0, min(100, int(value)))
                         except (TypeError, ValueError):
@@ -183,13 +213,13 @@ class FreeLogStore:
                     else:
                         metadata[key] = sanitize_failure_text(value)
             for key, value in re.findall(
-                r"(?:^|\s)(page|safe_page|page_type|content_type|session_rebuilds|http_status|attempt|outcome|duration_ms|result|diagnostic|action_hint|provider_code)=([^\s]+)",
+                r"(?:^|\s)(page|safe_page|page_type|content_type|session_rebuilds|http_status|attempt|outcome|duration_ms|result|diagnostic|action_hint|provider_code|declared_scheme|transport_scheme|target_domain|request_stage|retry_count|retry_after_seconds|transport_error_code)=([^\s]+)",
                 source_text,
             ):
                 if key not in metadata:
                     if key in {"page", "safe_page"}:
                         metadata[key] = sanitize_safe_page(value)
-                    elif key in {"session_rebuilds", "http_status", "attempt", "duration_ms"}:
+                    elif key in {"session_rebuilds", "http_status", "attempt", "duration_ms", "retry_count", "retry_after_seconds"}:
                         try:
                             metadata[key] = max(0, int(value))
                         except (TypeError, ValueError):

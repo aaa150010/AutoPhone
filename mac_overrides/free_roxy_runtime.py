@@ -612,6 +612,9 @@ class RoxyRegistrationRunner:
             str(task.get("mailbox_url") or ""), str(task.get("proxy") or ""), config,
             log_fn=log, task_id=task_id, stage_fn=stage,
         )
+        # Kept as a legacy result field for persisted-record compatibility;
+        # registration no longer performs an exit-IP probe.
+        registration_ip = ""
         try:
             if stop_event.is_set():
                 raise FreeRegisterError("free_run_stop", "停止 Free 注册", "任务在创建 RoxyBrowser 环境前已停止", retryable=False)
@@ -703,18 +706,6 @@ class RoxyRegistrationRunner:
             driver.set_script_timeout(max(20, int(roxy.get("selenium_timeout") or 90)))
             self._select_active_auth_window(driver, log)
             log(f"Selenium 已连接同一 Profile，duration_ms={int((time.monotonic() - operation_started) * 1000)} outcome=success", "success")
-            # Exit IP is an optional observation.  It is never compared with
-            # a historical value and must not block the account flow or emit
-            # a validation log when the probe endpoint is unavailable.
-            registration_ip = ""
-            try:
-                registration_ip = self._browser_ip(
-                    driver,
-                    str(config.get("proxy_probe_url") or "https://api.ipify.org"),
-                    int(roxy.get("selenium_timeout") or 90),
-                )
-            except Exception:
-                registration_ip = ""
             set_stage("free_roxy_signup_bootstrap")
             otp.prepare()
             operation_started = time.monotonic()

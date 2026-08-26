@@ -555,7 +555,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             value.setdefault("driver", "protocol")
             value.setdefault("concurrency", 3)
             value.setdefault("target_count", 0)
-            value.setdefault("proxy_probe_url", "https://api.ipify.org")
+            value.setdefault("proxy_probe_url", "https://chatgpt.com/")
             value.setdefault("auto_set_2fa", True)
             return value
         return free_config_store.save(data)

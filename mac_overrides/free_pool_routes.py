@@ -236,7 +236,7 @@ class FreePoolRouteController:
             )
             result = self.manager.preflight_proxies(
                 proxy_content=str(data.get("proxy_content") or ""),
-                probe_url=str(probe_config.get("proxy_probe_url") or "https://api.ipify.org"),
+                probe_url=str(probe_config.get("proxy_probe_url") or "https://chatgpt.com/"),
                 driver=str(data.get("driver") or "protocol"),
                 country=str(data.get("country") or "").strip().upper() or None,
                 group=str(data.get("group") or "").strip() or None,

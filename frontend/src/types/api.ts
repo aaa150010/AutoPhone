@@ -187,7 +187,6 @@ export interface RuntimeTask {
   checkpoint?: TaskCheckpoint | null
   proxy_masked?: string
   proxy_fingerprint?: string
-  exit_ip?: string
   result?: {
     plan_type?: string
     plus_trial_eligible?: boolean
@@ -198,7 +197,6 @@ export interface RuntimeTask {
     has_totp?: boolean
     has_credential?: boolean
     proxy?: string
-    exit_ip?: string
     sms_cost_usd?: number | null
     sms_cost_cny?: number | null
     sms_exchange_rate?: number | null

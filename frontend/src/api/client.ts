@@ -98,7 +98,6 @@ export interface FreeConfig {
     security_challenge_wait_seconds?: number
     anonymous_warmup?: boolean
     authenticated_warmup?: boolean
-    geo_probe_url?: string
   }
   roxybrowser: {
     api_base: string
@@ -119,7 +118,6 @@ export interface FreeConfig {
     os_choices: string[]
     random_profile_name: boolean
     profile_name_prefix: string
-    proxy_check_channel: string
     selenium_timeout: number
     api_retries: number
     api_retry_delay: number
@@ -170,7 +168,6 @@ export interface FreeProxyRow {
   status: string
   lease_until?: number | null
   last_checked_at?: number | null
-  last_exit_ip?: string
   last_probe_mode?: 'strict' | 'compat' | string
   last_chatgpt_login_checked_at?: number | null
   last_chatgpt_login_status?: number
@@ -272,9 +269,6 @@ export interface FreeMailboxRow {
   proxy_scheme?: string
   proxy_country?: string
   proxy_group?: string
-  exit_ip?: string
-  expected_exit_ip?: string
-  registration_ip?: string
   plan_type?: string
   subscription_plan?: string
   plan_check_status?: string
@@ -286,7 +280,6 @@ export interface FreeMailboxRow {
   live_check_mode?: 'fast' | 'deep' | string
   live_check_task_id?: string
   live_checked_at?: number | string
-  live_check_ip?: string
   live_check_token_refreshed?: boolean
   live_check_http_status?: number | null
   live_check_failure?: TaskFailure | null
@@ -337,7 +330,6 @@ export interface FreeLiveCheckState {
     status: string
     stage?: string
     stage_label?: string
-    live_check_ip?: string
     checked_at?: number
     failure?: FreeMailboxRow['live_check_failure']
   }>
@@ -402,7 +394,7 @@ export const importFreeProxies = (proxyContent: string, _country?: string, _grou
 )
 export const preflightFreeProxies = (proxyContent: string, proxyProbeUrl?: string, options: { driver?: string; scheme?: string; proxy_tls_verify?: boolean; proxy_tls_compat_fallback?: boolean; proxy_socks5_dns_mode?: string } = {}) => api<{
   ok: true
-  result: { proxies: number; exit_ips: number; rows: Array<{ index: number; masked: string; fingerprint: string; exit_ip: string; scheme?: string }> }
+  result: { proxies: number; rows: Array<{ index: number; masked: string; fingerprint: string; scheme?: string; available?: boolean; http_status?: number | null; local_to_proxy_ms?: number | null; proxy_to_target_ms?: number | null; failure_node?: string; failure_reason?: string }> }
 }>('/api/free/proxies/preflight', { proxy_content: proxyContent, proxy_probe_url: proxyProbeUrl, ...options })
 export const getFreeProxies = () => api<{ ok: true; proxies: { count: number; rows: FreeProxyRow[]; groups: FreeProxySummary[]; countries: FreeProxySummary[] } }>('/api/free/proxies')
 export const updateFreeProxyGroup = (payload: { country: string; group: string; new_country?: string; new_group?: string; enabled?: boolean }) => api<{ ok: true; result: any; proxies: any }>('/api/free/proxies/group', payload)
@@ -689,7 +681,6 @@ export interface NetworkProxyRow {
   group: string
   enabled: boolean
   status: string
-  last_exit_ip?: string
   latency_ms?: number | null
   consecutive_failures?: number
   last_checked_at?: number | null
@@ -709,7 +700,7 @@ export const getNetworkTools = () => api<{ ok: true; rows: NetworkProxyRow[]; gr
 export const saveNetworkToolsConfig = (config: Record<string, any>) => api<{ ok: true; config: Record<string, any> }>('/api/tools/proxies/config', config)
 export const importNetworkProxies = (payload: { proxy_content: string; country?: string; group?: string; scheme?: string }) => api<{ ok: true; imported: number; skipped: number; rows: NetworkProxyRow[]; groups: NetworkToolGroup[] }>('/api/tools/proxies/import', payload)
 export const importNetworkSubscription = (payload: { subscription_url: string; content: string; country?: string; group?: string }) => api<{ ok: true; subscription_id: string; node_count: number; imported: number; rows: NetworkProxyRow[]; groups: NetworkToolGroup[] }>('/api/tools/proxies/subscriptions', payload)
-export const testNetworkSubscription = (payload: { subscription_id: string; target_url?: string; exit_url?: string }) => api<{ ok: true; tested: boolean; available: boolean; message?: string; exit_ip?: string; proxy_to_target_ms?: number }>('/api/tools/proxies/subscriptions/test', payload)
-export const testNetworkProxy = (payload: { proxy_id: string; mode: 'quick' | 'deep'; target_url?: string; exit_url?: string }) => api<{ ok: true; result?: any; proxy_id?: string; exit_ip?: string; local_to_proxy_ms?: number; proxy_to_target_ms?: number }>('/api/tools/proxies/test', payload)
+export const testNetworkSubscription = (payload: { subscription_id: string; target_url?: string; exit_url?: string }) => api<{ ok: true; tested: boolean; available: boolean; message?: string; proxy_to_target_ms?: number }>('/api/tools/proxies/subscriptions/test', payload)
+export const testNetworkProxy = (payload: { proxy_id: string; mode: 'quick' | 'deep'; target_url?: string; exit_url?: string }) => api<{ ok: true; result?: any; proxy_id?: string; local_to_proxy_ms?: number; proxy_to_target_ms?: number }>('/api/tools/proxies/test', payload)
 export const updateNetworkGroup = (payload: { country: string; group: string; action: string; new_group?: string; enabled?: boolean }) => api<{ ok: true; rows: NetworkProxyRow[]; groups: NetworkToolGroup[] }>('/api/tools/proxies/group', payload)
 export const deleteNetworkGroup = (country: string, group: string) => api<{ ok: true; rows: NetworkProxyRow[]; groups: NetworkToolGroup[] }>('/api/tools/proxies/group/delete', { country, group })

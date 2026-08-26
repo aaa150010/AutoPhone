@@ -98,7 +98,7 @@ class FreeProxyHealthTests(unittest.TestCase):
             probe=lambda _proxy, _url: "203.0.113.99",
         )
         self.assertEqual(current, "203.0.113.99")
-        self.assertEqual(self.manager.proxies.public()["rows"][0]["last_exit_ip"], "203.0.113.99")
+        self.assertNotIn("last_exit_ip", self.manager.proxies.public()["rows"][0])
 
     def test_auth_dns_tls_timeout_and_roxy_exit_evidence_are_classified(self):
         failures = (
@@ -166,7 +166,7 @@ class FreeProxyHealthTests(unittest.TestCase):
         self.assertNotEqual(attempts[0][0], attempts[1][0])
         self.assertTrue(attempts[0][1])
         self.assertEqual(attempts[0][1], attempts[1][1])
-        self.assertGreaterEqual(probe_calls, 3)
+        self.assertEqual(probe_calls, 0)
         self.assertEqual(
             sorted(row["consecutive_failures"] for row in manager.proxies.public()["rows"]),
             [0, 1],

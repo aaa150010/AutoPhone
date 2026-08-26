@@ -602,10 +602,13 @@ class FreeProtocolMixin:
                 stage=stage,
                 stop_requested=stop_event.is_set,
                 log=log,
-                geo_profile=_exit_geo_profile,
+                # Region/IP probing is not part of registration transport and
+                # must never gate or consume a Free task. Keep the callback
+                # boundary for compatibility but return an empty profile.
+                geo_profile=lambda *_args, **_kwargs: {},
                 preflight=_network_preflight,
                 warmup=_anonymous_warmup,
-                apply_geo=_apply_geo_fingerprint,
+                apply_geo=lambda _fingerprint, _geo: None,
                 mark_prepared=_mark_reference_session_prepared,
             )
             setattr(created, "_gptphone_timezone_offset_minutes", fingerprint.get("timezone_offset_minutes"))
@@ -613,10 +616,9 @@ class FreeProtocolMixin:
             chain_config["free_protocol_geo"] = geo
             chain_config["free_protocol_warmup"] = warmup
             chain_config["free_protocol_fingerprint"] = dict(fingerprint)
-            log(
-                f"[{task_id}/协议画像/free_protocol_fingerprint] 设备、出口画像与预热会话已固定",
-                "info",
-            )
+            # Fingerprint/geo observations are internal transport state. They
+            # do not represent an account check and should not create a
+            # passive exit-IP validation log entry.
             return created
 
         def make_rebuilt_transport() -> Any:
