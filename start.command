@@ -29,15 +29,30 @@ if [ -z "$PYTHON_BIN" ]; then
   fi
 fi
 
-if [ -z "$PYTHON_BIN" ] || [ ! -x "$PYTHON_BIN" ]; then
+if [ -z "$PYTHON_BIN" ] || [ ! -x "$PYTHON_BIN" ] || ! "$PYTHON_BIN" -c 'import sys; raise SystemExit(0 if sys.version_info[:2] >= (3, 13) else 1)' >/dev/null 2>&1; then
   echo "Python 3.13 was not found after installation."
+  echo "Install Python 3.13 (recommended: brew install python@3.13), then run start.command again."
   read "?Press Enter to close..."
   exit 1
+fi
+
+# A copied venv can still be executable while its interpreter points to the
+# source Mac. Verify that it actually starts before reusing it.
+if [ -x "$VENV_DIR/bin/python" ] && ! "$VENV_DIR/bin/python" -c 'import sys; raise SystemExit(0 if sys.version_info[:2] >= (3, 13) else 1)' >/dev/null 2>&1; then
+  echo "The local Python environment is stale or cannot be opened; rebuilding it..."
+  rm -rf "$VENV_DIR"
 fi
 
 if [ ! -x "$VENV_DIR/bin/python" ]; then
   echo "Creating local Python virtual environment..."
   "$PYTHON_BIN" -m venv "$VENV_DIR"
+fi
+
+if ! "$VENV_DIR/bin/python" -c 'import sys; raise SystemExit(0 if sys.version_info[:2] >= (3, 13) else 1)' >/dev/null 2>&1; then
+  echo "The local Python 3.13 environment could not be started."
+  echo "Remove mac_runtime/.venv and run start.command again, or install Python 3.13 first."
+  read "?Press Enter to close..."
+  exit 1
 fi
 
 if ! "$VENV_DIR/bin/python" - <<'PY' >/dev/null 2>&1
@@ -50,7 +65,7 @@ import werkzeug
 PY
 then
   echo "Installing mac Python dependencies..."
-  "$VENV_DIR/bin/pip" install \
+  "$VENV_DIR/bin/python" -m pip install \
     flask==3.1.3 \
     werkzeug==3.1.8 \
     cryptography==46.0.5 \
@@ -74,7 +89,7 @@ import camoufox  # noqa: F401
 PY
 then
   echo "Installing Camoufox Python package..."
-  if ! "$VENV_DIR/bin/pip" install "camoufox[geoip]"; then
+  if ! "$VENV_DIR/bin/python" -m pip install "camoufox[geoip]"; then
     echo "Camoufox Python package installation failed."
     read "?Press Enter to close..."
     exit 1
@@ -87,13 +102,10 @@ installed_verstr()
 PY
 then
   echo "Downloading Camoufox browser runtime (first run may take a while)..."
-  if ! "$VENV_DIR/bin/python" - <<'PY'
-from camoufox.pkgman import CamoufoxFetcher
-
-CamoufoxFetcher().install()
-PY
-  then
+  if ! "$VENV_DIR/bin/python" "$APP_DIR/tools/install_camoufox_runtime.py"; then
     echo "Camoufox browser runtime installation failed."
+    echo "GitHub API rate limits do not block the direct release fallback."
+    echo "For an offline install, set CAMOUFOX_BROWSER_URL to a local or mirrored archive URL and rerun."
     read "?Press Enter to close..."
     exit 1
   fi
