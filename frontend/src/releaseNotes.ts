@@ -13,9 +13,9 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.78',
-  freeRuntimeVersion: '1.6.78',
-  title: 'Free 批量邮箱与双模式测活修正',
+  version: '1.6.79',
+  freeRuntimeVersion: '1.6.79',
+  title: '跨 Mac 启动与 Camoufox 代理恢复修正',
   releasedAt: '2026-08-26',
   sections: [
     {

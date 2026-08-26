@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from mac_overrides import free_account_service
 from mac_overrides import free_camoufox_runtime as runtime
+from mac_overrides.free_proxy_bridge import Socks5HttpBridge
 
 
 class _FakeLocator:
@@ -499,6 +500,40 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         self.assertEqual(attempts[-1]["proxy"]["server"], "socks5://proxy.test:1080")
         self.assertNotIn("service_workers", attempts[-1])
         self.assertNotIn("reduced_motion", attempts[-1])
+
+    def test_context_creation_failure_with_proxy_is_proxy_retryable(self):
+        async def failing_context(_browser, **_kwargs):
+            raise RuntimeError("SOCKS5 proxy connection timed out")
+
+        async def fake_flow(_page, **_kwargs):
+            return {"ok": True}
+
+        with (
+            patch.object(runtime, "_load_camoufox_api", return_value=(_FakeManager, failing_context)),
+            patch.object(runtime, "_browser_flow", side_effect=fake_flow),
+        ):
+            pool = runtime.CamoufoxBrowserPool(self._config())
+            try:
+                with self.assertRaises(runtime.CamoufoxBrowserError) as raised:
+                    pool.register(
+                        email="user@example.test",
+                        password="password",
+                        proxy="socks5://proxy.example.test:8000",
+                    )
+            finally:
+                pool.shutdown()
+
+        self.assertEqual(raised.exception.error_code, "camoufox_context_create_failed")
+        self.assertTrue(getattr(raised.exception, "proxy_retryable", False))
+
+    def test_authenticated_socks5_browser_bridge_uses_loopback_http_proxy(self):
+        bridge = Socks5HttpBridge("socks5://user:password@proxy.example.test:8000")
+        try:
+            self.assertTrue(bridge.proxy_config["server"].startswith("http://127.0.0.1:"))
+            self.assertNotIn("user", bridge.proxy_config["server"])
+            self.assertNotIn("password", bridge.proxy_config["server"])
+        finally:
+            bridge.close()
 
     def test_pool_closes_context_and_recycles_after_registration_limit(self):
         async def fake_flow(_page, **_kwargs):

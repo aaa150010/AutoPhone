@@ -8,10 +8,12 @@ from types import SimpleNamespace
 from typing import Any
 
 try:
+    from .free_proxy_http import get_via_proxy
     from .free_protocol_bootstrap import _reference_navigation_headers, _security_challenge_html
     from .free_protocol_reference import REFERENCE_TLS_IMPERSONATE, reference_fingerprint
     from .free_register_common import FreeRegisterError, proxy_transport_value
 except ImportError:
+    from free_proxy_http import get_via_proxy  # type: ignore[no-redef]
     from free_protocol_bootstrap import _reference_navigation_headers, _security_challenge_html  # type: ignore[no-redef]
     from free_protocol_reference import REFERENCE_TLS_IMPERSONATE, reference_fingerprint  # type: ignore[no-redef]
     from free_register_common import FreeRegisterError, proxy_transport_value  # type: ignore[no-redef]
@@ -55,34 +57,30 @@ def _reference_probe_headers() -> dict[str, str]:
     )
 
 
-def probe_chatgpt_login(proxy: str, *, verify: bool = True) -> int:
+def probe_chatgpt_login(
+    proxy: str,
+    *,
+    verify: bool = True,
+    socks5_dns_mode: str = "declared",
+) -> int:
     """Return the login status, stopping on a Cloudflare challenge page."""
-    from curl_cffi import requests as curl_requests
-
-    transport_proxy = proxy_transport_value(proxy, driver="probe")
+    transport_proxy = proxy_transport_value(
+        proxy,
+        driver="probe",
+        socks5_dns_mode=socks5_dns_mode,
+    )
     if not transport_proxy:
         raise ValueError("代理格式无效")
-    response: Any = None
-    session: Any = None
     with _without_proxy_environment():
-        try:
-            session = curl_requests.Session(
-                impersonate=REFERENCE_TLS_IMPERSONATE,
-                verify=bool(verify),
-            )
-            session.proxies = {"http": transport_proxy, "https": transport_proxy}
-            if hasattr(session, "trust_env"):
-                session.trust_env = False
-            response = session.get(
-                CHATGPT_LOGIN_PROBE_URL,
-                headers=_reference_probe_headers(),
-                timeout=12,
-                allow_redirects=True,
-            )
-        finally:
-            close = getattr(session, "close", None)
-            if callable(close):
-                close()
+        response = get_via_proxy(
+            CHATGPT_LOGIN_PROBE_URL,
+            proxy=transport_proxy,
+            headers=_reference_probe_headers(),
+            timeout=12,
+            verify=verify,
+            impersonate=REFERENCE_TLS_IMPERSONATE,
+            allow_redirects=True,
+        )
     status = int(getattr(response, "status_code", 0) or 0)
     if not 100 <= status <= 599:
         raise ValueError("ChatGPT 登录页预检未返回有效 HTTP 状态")

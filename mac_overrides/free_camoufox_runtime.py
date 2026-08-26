@@ -46,6 +46,7 @@ try:
     )
     from .free_failure_runtime import sanitize_failure_text
     from .free_mailbox_otp import build_free_mailbox_otp_provider
+    from .free_proxy_bridge import Socks5HttpBridge
 except ImportError:  # pragma: no cover - top-level recovery import
     from free_account_service import (  # type: ignore[no-redef]
         CHATGPT_ACCOUNTS_URL, CHATGPT_ELIGIBILITY_URL, browser_json_fetch,
@@ -59,6 +60,7 @@ except ImportError:  # pragma: no cover - top-level recovery import
     )
     from free_failure_runtime import sanitize_failure_text  # type: ignore[no-redef]
     from free_mailbox_otp import build_free_mailbox_otp_provider  # type: ignore[no-redef]
+    from free_proxy_bridge import Socks5HttpBridge  # type: ignore[no-redef]
 
 
 CHATGPT_LOGIN_URL = "https://chatgpt.com/auth/login"
@@ -1640,10 +1642,21 @@ async def _browser_flow(
                     )
                 await prepare_otp(stage_code)
                 if not await _click_first(page, RESEND_SELECTORS, timeout=5):
+                    snapshot = await _snapshot(page)
                     raise CamoufoxBrowserError(
                         "free_email_otp_validate", "验证 Free 邮箱验证码",
                         "验证码提交后页面未继续，未找到受控重发入口",
                         error_code="camoufox_otp_resend_unavailable",
+                        diagnostic=json.dumps(
+                            {
+                                "safe_page": snapshot.get("url"),
+                                "page_type": await _page_state(page),
+                                "title": sanitize_failure_text(snapshot.get("title"), 160),
+                                "body": sanitize_failure_text(snapshot.get("body"), 600),
+                            },
+                            ensure_ascii=False,
+                        )[:1000],
+                        safe_page=snapshot.get("url"), page_type="otp",
                     )
                 await mark_otp_sent(stage_code)
                 otp_submitted = False
@@ -1999,12 +2012,22 @@ class CamoufoxBrowserPool:
                 slot.idle_event.clear()
             generation = slot.generation
             context = None
+            proxy_bridge: Socks5HttpBridge | None = None
             try:
                 await self._wait_context_start_slot()
                 try:
+                    context_proxy = _proxy_config(str(kwargs.get("proxy") or ""))
+                    if (
+                        context_proxy
+                        and context_proxy.get("username")
+                        and context_proxy.get("password")
+                        and str(context_proxy.get("server") or "").lower().startswith(("socks5://", "socks5h://"))
+                    ):
+                        proxy_bridge = Socks5HttpBridge(str(kwargs.get("proxy") or ""))
+                        context_proxy = proxy_bridge.proxy_config
                     context = await _new_context(
                         slot.browser,
-                        proxy=_proxy_config(str(kwargs.get("proxy") or "")),
+                        proxy=context_proxy,
                     )
                 except CamoufoxBrowserError:
                     raise
@@ -2033,7 +2056,8 @@ class CamoufoxBrowserPool:
                     setattr(
                         failure,
                         "proxy_retryable",
-                        bool(proxy) and "reason=proxy_or_transport" in failure.diagnostic,
+                        bool(kwargs.get("proxy"))
+                        and "reason=proxy_or_transport" in failure.diagnostic,
                     )
                     raise failure from exc
                 try:
@@ -2105,6 +2129,11 @@ class CamoufoxBrowserPool:
                 if context is not None:
                     try:
                         await asyncio.wait_for(context.close(), timeout=float(self.config.get("context_close_timeout_seconds") or 15))
+                    except Exception:
+                        recycle_required = True
+                if proxy_bridge is not None:
+                    try:
+                        proxy_bridge.close()
                     except Exception:
                         recycle_required = True
                 slot.active_contexts = max(0, slot.active_contexts - 1)

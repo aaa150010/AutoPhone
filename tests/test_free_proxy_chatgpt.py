@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from mac_overrides.free_register_common import FreeRegisterError
 from mac_overrides.free_proxy_chatgpt import probe_chatgpt_login
+from mac_overrides.free_proxy_http import get_via_proxy
 
 
 class _FakeResponse:
@@ -168,6 +169,61 @@ class FreeProxyChatgptTests(unittest.TestCase):
         )
         with patch.dict(sys.modules, {"curl_cffi": _curl_module()}):
             self.assertEqual(self._probe("http://proxy.example.test:8080"), 200)
+
+    def test_native_tls_mismatch_uses_requests_without_changing_proxy(self) -> None:
+        calls: list[tuple[str, object]] = []
+
+        class CurlSession:
+            def __init__(self, **kwargs):
+                calls.append(("curl-init", kwargs))
+                self.proxies = {}
+                self.trust_env = True
+
+            def get(self, _url, **_kwargs):
+                raise RuntimeError(
+                    "Failed to perform, curl: (35) TLS connect error: "
+                    "OPENSSL_internal: invalid library (0)"
+                )
+
+            def close(self):
+                calls.append(("curl-close", None))
+
+        class RequestsSession:
+            def __init__(self):
+                calls.append(("requests-init", None))
+                self.proxies = {}
+                self.trust_env = True
+
+            def get(self, url, **kwargs):
+                calls.append(("requests-get", (url, kwargs, dict(self.proxies), self.trust_env)))
+                return SimpleNamespace(status_code=200, content=b"ok")
+
+            def close(self):
+                calls.append(("requests-close", None))
+
+        curl_module = ModuleType("curl_cffi")
+        curl_module.requests = SimpleNamespace(Session=CurlSession)
+        requests_module = ModuleType("requests")
+        requests_module.Session = RequestsSession
+        proxy = "socks5h://probe-user:probe-password@proxy.example.test:8000"
+        with patch.dict(sys.modules, {"curl_cffi": curl_module, "requests": requests_module}):
+            response = get_via_proxy(
+                "https://chatgpt.com/login",
+                proxy=proxy,
+                headers={"Accept": "text/html"},
+                timeout=12,
+                verify=True,
+                impersonate="chrome146",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            next(item[1] for item in calls if item[0] == "requests-get")[2],
+            {"http": proxy, "https": proxy},
+        )
+        self.assertFalse(next(item[1] for item in calls if item[0] == "requests-get")[3])
+        self.assertIn(("curl-close", None), calls)
+        self.assertIn(("requests-close", None), calls)
 
 
 if __name__ == "__main__":

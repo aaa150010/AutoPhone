@@ -56,8 +56,10 @@ except ImportError:
     )
 
 try:
+    from .free_proxy_http import get_via_proxy
     from .free_proxy_chatgpt import probe_chatgpt_login
 except ImportError:
+    from free_proxy_http import get_via_proxy  # type: ignore[no-redef]
     from free_proxy_chatgpt import probe_chatgpt_login  # type: ignore[no-redef]
 
 try:
@@ -700,29 +702,22 @@ class FreeProxyPool:
         verify: bool = True,
         socks5_dns_mode: str = "declared",
     ) -> str:
-        from curl_cffi import requests as curl_requests
-
         target = normalize_probe_url(target)
         # Manual diagnostics honor the pool's configured DNS policy while
         # retaining the declared scheme in storage and public metadata.
         transport_proxy = proxy_transport_value(proxy, driver="probe", socks5_dns_mode=socks5_dns_mode)
         if not transport_proxy:
             raise ValueError("代理格式无效")
-        session = curl_requests.Session(impersonate="chrome", verify=bool(verify))
-        session.proxies = {"http": transport_proxy, "https": transport_proxy}
-        if hasattr(session, "trust_env"):
-            session.trust_env = False
         with _without_proxy_environment():
-            try:
-                response = session.get(
-                    target,
-                    headers={"Accept": "text/plain, application/json", "Cache-Control": "no-cache"},
-                    timeout=12,
-                )
-            finally:
-                close = getattr(session, "close", None)
-                if callable(close):
-                    close()
+            response = get_via_proxy(
+                target,
+                proxy=transport_proxy,
+                headers={"Accept": "text/plain, application/json", "Cache-Control": "no-cache"},
+                timeout=12,
+                verify=verify,
+                impersonate="chrome",
+                allow_redirects=True,
+            )
         status = int(getattr(response, "status_code", 0) or 0)
         if not 200 <= status < 300:
             raise ValueError(f"代理探测请求返回 HTTP {status}")
@@ -754,20 +749,41 @@ class FreeProxyPool:
                 raise second_error from first_error
 
     @staticmethod
-    def _chatgpt_login_probe(proxy: str, *, verify: bool = True) -> int:
-        return probe_chatgpt_login(proxy, verify=verify)
+    def _chatgpt_login_probe(
+        proxy: str,
+        *,
+        verify: bool = True,
+        socks5_dns_mode: str = "declared",
+    ) -> int:
+        return probe_chatgpt_login(
+            proxy,
+            verify=verify,
+            socks5_dns_mode=socks5_dns_mode,
+        )
 
     def _chatgpt_login_with_policy(self, proxy: str) -> tuple[int, str]:
         """Apply the same strict/compat TLS policy to the ChatGPT eligibility check."""
         if not self.proxy_tls_verify:
-            return self._chatgpt_login_probe(proxy, verify=False), "compat"
+            return self._chatgpt_login_probe(
+                proxy,
+                verify=False,
+                socks5_dns_mode=self.socks5_dns_mode,
+            ), "compat"
         try:
-            return self._chatgpt_login_probe(proxy, verify=True), "strict"
+            return self._chatgpt_login_probe(
+                proxy,
+                verify=True,
+                socks5_dns_mode=self.socks5_dns_mode,
+            ), "strict"
         except Exception as first_error:
             if not self.proxy_tls_compat_fallback or not _is_tls_compatibility_error(first_error):
                 raise
             try:
-                return self._chatgpt_login_probe(proxy, verify=False), "compat"
+                return self._chatgpt_login_probe(
+                    proxy,
+                    verify=False,
+                    socks5_dns_mode=self.socks5_dns_mode,
+                ), "compat"
             except Exception as second_error:
                 raise second_error from first_error
 
