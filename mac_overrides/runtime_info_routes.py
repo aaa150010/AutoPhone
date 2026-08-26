@@ -10,10 +10,12 @@ from typing import Any
 try:
     from .mailbox_redaction import url_credential_secrets
     from .mailbox_otp_service import DEFAULT_FREE_MAILBOX_PROXY
+    from .free_mailbox_code import fetch_latest_code
     from .route_failures import explicit_failure_payload
 except ImportError:  # Loaded as a top-level runtime override.
     from mailbox_redaction import url_credential_secrets  # type: ignore[no-redef]
     from mailbox_otp_service import DEFAULT_FREE_MAILBOX_PROXY  # type: ignore[no-redef]
+    from free_mailbox_code import fetch_latest_code  # type: ignore[no-redef]
     from route_failures import explicit_failure_payload  # type: ignore[no-redef]
 
 
@@ -215,6 +217,30 @@ class RuntimeInfoRouteController:
                 "运行批次清单存储读取异常", retryable=True,
             )
             return module.jsonify(payload), 500
+
+    def runtime_task_latest_code(self):
+        """Fetch a code through the server-bound ordinary task mailbox row."""
+        try:
+            _data, _task_id, row_id, line_no = self._runtime_task_mailbox_binding()
+            result = self.mailbox_admin.reveal_mailbox_url(row_id, line_no)
+            if not result.get("ok") or not result.get("mailbox_url"):
+                status = 409 if result.get("code") == "mailbox_row_stale" else 400
+                return self.module.jsonify(dict(result)), status
+            # ``fetch_latest_code`` returns only kind/code/message/fetched_at;
+            # the private URL never crosses this route boundary.
+            return self.module.jsonify(**fetch_latest_code(str(result["mailbox_url"])))
+        except ValueError as exc:
+            return self.module.jsonify(ok=False, code="invalid_payload", error=str(exc)), 400
+        except _RuntimeTaskNotFound as exc:
+            return self.module.jsonify(ok=False, code="runtime_task_not_found", error=str(exc)), 404
+        except _RuntimeTaskMailboxStale as exc:
+            return self.module.jsonify(ok=False, code="mailbox_row_stale", error=str(exc)), 409
+        except Exception as exc:
+            payload = self._exception_payload(
+                "mailbox_latest_code", "读取任务邮箱验证码", "runtime_task_latest_code_failed", exc,
+                "任务邮箱验证码读取异常", action_hint="刷新任务与邮箱列表后重试。",
+            )
+            return self.module.jsonify(payload), 502
 
     def run_batch(self, batch_id: str):
         module = self.module

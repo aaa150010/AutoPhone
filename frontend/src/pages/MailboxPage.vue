@@ -178,6 +178,7 @@ const {
   copyTotp,
   handleRowAction,
   openMailboxUrl,
+  copyLatestCode,
 } = useMailboxRowActions({
   loadingPasswords,
   loadingTotp,
@@ -559,6 +560,7 @@ onUnmounted(() => {
           @password="copyPassword"
           @totp="copyTotp"
           @url="openMailboxUrl"
+          @latest-code="copyLatestCode"
           @quota="retryQuota"
           @openai="retryOpenAI"
           @action="handleRowAction"

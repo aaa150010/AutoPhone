@@ -34,6 +34,7 @@ def save_free_config_bundle(
                 or normalized.get("proxy_default_scheme")
                 or "http"
             ).strip().lower() or None,
+            source_label=str(data.get("proxy_source_label") or data.get("source_label") or data.get("provider") or "").strip()[:40] or None,
         ))
     config_store.save(normalized)
     payload: dict[str, Any] = {

@@ -31,15 +31,32 @@ def import_free_proxies(
     country: str | None,
     group: str | None,
     scheme: str | None,
+    source_label: str | None = None,
 ) -> Any:
     """Call modern or legacy proxy importers exactly once."""
     options = {"country": country, "group": group, "scheme": scheme}
+    if source_label:
+        options["source_label"] = source_label
     accepts_options = signature_accepts_call(importer, content, **options)
-    if accepts_options is False:
-        if signature_accepts_call(importer, content) is not True:
-            raise TypeError("Free 代理导入器签名不兼容")
+    if accepts_options is True:
+        return importer(content, **options)
+    # Older stores may support the original metadata keyword set but not the
+    # optional provider label.  Inspect first so an internal TypeError raised
+    # by the importer is never mistaken for a signature mismatch or retried.
+    options_without_label = dict(options)
+    options_without_label.pop("source_label", None)
+    if signature_accepts_call(importer, content, **options_without_label) is True:
+        return importer(content, **options_without_label)
+    if signature_accepts_call(importer, content) is True:
         return importer(content)
-    return importer(content, **options)
+    if accepts_options is None:
+        try:
+            return importer(content, **options)
+        except TypeError:
+            # Older stores do not know the optional source label.
+            options.pop("source_label", None)
+            return importer(content, **options)
+    raise TypeError("Free 代理导入器签名不兼容")
 
 
 def _request_row_ids(data: Any) -> list[str]:
@@ -104,9 +121,6 @@ class FreePoolRouteController:
     def pool_import(self):
         if self.manager is None:
             return self.module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
-        conflict = self.mutation_conflict("导入 Free 邮箱")
-        if conflict is not None:
-            return conflict
         data = self.module.request.get_json(silent=True) or {}
         if not isinstance(data, Mapping):
             return self.error_response(
@@ -115,17 +129,72 @@ class FreePoolRouteController:
                 default_label="Free 邮箱池",
             )
         try:
+            content = str(data.get("pool_content") or "")
+            join_current_batch = bool(data.get("join_current_batch", False))
+            importer = getattr(self.manager, "import_mailboxes", None)
+            if callable(importer):
+                # The modern manager owns the running-import policy.  Read
+                # state first so a broken state store fails closed before any
+                # mailbox mutation; unlike legacy managers, a healthy modern
+                # manager may accept imports while a batch is running.
+                try:
+                    current_state = self.state()
+                except Exception as exc:
+                    return self.failure_response(
+                        exc,
+                        default_code="free_state_read",
+                        default_label="读取 Free 运行状态",
+                        status=503,
+                    )
+                result = importer(
+                    content,
+                    join_current_batch=join_current_batch,
+                    config=self.config_store.load() if self.config_store is not None else {},
+                )
+                count = int(result.get("imported") or 0)
+                skipped = int(result.get("skipped") or 0)
+                # Import may append tasks to the active batch, so the state
+                # captured before mutation is stale.  Return a fresh snapshot
+                # that accurately reflects queued/active slots and pool
+                # counts.
+                try:
+                    current_state = self.state()
+                except Exception as exc:
+                    return self.failure_response(
+                        exc,
+                        default_code="free_state_read",
+                        default_label="读取 Free 运行状态",
+                        status=503,
+                    )
+                return self.module.jsonify(
+                    ok=True,
+                    imported=count,
+                    skipped=skipped,
+                    queued=int(result.get("queued") or 0),
+                    active_batch_joined=int(result.get("active_batch_joined") or 0),
+                    next_batch=int(result.get("next_batch") or 0),
+                    reason=str(result.get("reason") or ""),
+                    skipped_items=result.get("skipped_items") or [],
+                    rows=self.manager.pool.public_rows(),
+                    state=current_state,
+                )
+            conflict = self.mutation_conflict("导入 Free 邮箱")
+            if conflict is not None:
+                return conflict
             importer_with_stats = getattr(self.manager.pool, "import_text_with_stats", None)
             if callable(importer_with_stats):
-                count, skipped = importer_with_stats(str(data.get("pool_content") or ""))
+                count, skipped = importer_with_stats(content)
             else:
-                count = self.manager.pool.import_text(str(data.get("pool_content") or ""))
+                count = self.manager.pool.import_text(content)
                 skipped = 0
             return self.module.jsonify(
                 ok=True,
                 imported=count,
                 skipped=skipped,
+                queued=0,
+                active_batch_joined=0,
                 rows=self.manager.pool.public_rows(),
+                state=self.state(),
             )
         except Exception as exc:
             return self.error_response(exc, default_code="free_pool", default_label="Free 邮箱池")
@@ -184,6 +253,7 @@ class FreePoolRouteController:
                 country=str(data.get("country") or "").strip().upper() or None,
                 group=str(data.get("group") or "").strip() or None,
                 scheme=str(data.get("scheme") or "").strip().lower() or None,
+                source_label=str(data.get("source_label") or data.get("provider") or "").strip()[:40] or None,
             )
             public = self.manager.proxies.public() if callable(getattr(self.manager.proxies, "public", None)) else None
             return self.module.jsonify(
@@ -244,6 +314,7 @@ class FreePoolRouteController:
                 tls_verify=bool(probe_config.get("proxy_tls_verify", True)),
                 tls_compat_fallback=bool(probe_config.get("proxy_tls_compat_fallback", True)),
                 socks5_dns_mode=str(probe_config.get("proxy_socks5_dns_mode") or "auto"),
+                layered_probe=bool(data.get("layered_probe", False)),
             )
             return self.module.jsonify(ok=True, result=result)
         except Exception as exc:

@@ -21,13 +21,15 @@ const props = withDefaults(defineProps<{
   openingMailboxUrls?: readonly string[]
   loadingMailboxPasswords?: readonly string[]
   loadingMailboxTotps?: readonly string[]
+  loadingMailboxLatestCodes?: readonly string[]
   activeView?: 'pending' | 'running' | 'all'
-}>(), { openingMailboxUrls: () => [], loadingMailboxPasswords: () => [], loadingMailboxTotps: () => [], activeView: 'pending' })
+}>(), { openingMailboxUrls: () => [], loadingMailboxPasswords: () => [], loadingMailboxTotps: () => [], loadingMailboxLatestCodes: () => [], activeView: 'pending' })
 const emit = defineEmits<{
   copyAccount: [RuntimeTask]
   mailboxPassword: [RuntimeTask]
   mailboxTotp: [RuntimeTask]
   mailboxUrl: [RuntimeTask]
+  mailboxLatestCode: [RuntimeTask]
   freeSecret: [{ kind: 'token' | 'password' | 'totp' | 'proxy' | 'credential'; tasks: RuntimeTask[] }]
   freeTwofaRetry: [RuntimeTask]
   diagnostic: [RuntimeTask]
@@ -158,8 +160,8 @@ function emitFreeSecret(kind: 'token' | 'password' | 'totp' | 'proxy' | 'credent
           <span v-else>-</span>
         </template>
       </el-table-column>
-      <el-table-column label="取件 URL" width="92" align="center">
-        <template #default="{ row }"><el-tooltip v-if="row.has_mailbox_url" content="打开取件网页" placement="top"><el-button link :icon="View" :loading="openingMailboxUrls.includes(row.task_id)" @click="emit('mailboxUrl', row)">打开</el-button></el-tooltip><span v-else class="muted">-</span></template>
+      <el-table-column label="取件 URL" width="122" align="center">
+        <template #default="{ row }"><template v-if="row.has_mailbox_url"><el-tooltip content="打开取件网页" placement="top"><el-button link :icon="View" :loading="openingMailboxUrls.includes(row.task_id)" @click="emit('mailboxUrl', row)">打开</el-button></el-tooltip><el-tooltip content="提取并复制最新验证码" placement="top"><el-button link :icon="CopyDocument" :loading="loadingMailboxLatestCodes.includes(row.task_id)" aria-label="提取并复制最新验证码" @click="emit('mailboxLatestCode', row)" /></el-tooltip></template><span v-else class="muted">-</span></template>
       </el-table-column>
       <el-table-column label="密码" width="66" align="center">
         <template #default="{ row }"><el-tooltip v-if="row.run_mode === 'free_register' && row.result?.has_password" content="复制注册密码" placement="top"><el-button link :icon="Key" aria-label="复制注册密码" @click="emitFreeSecret('password', [row])" /></el-tooltip><el-tooltip v-else-if="row.has_mailbox_password" content="复制邮箱密码" placement="top"><el-button link :icon="Key" :loading="loadingMailboxPasswords.includes(row.task_id)" aria-label="复制邮箱密码" @click="emit('mailboxPassword', row)" /></el-tooltip><span v-else class="muted">-</span></template>

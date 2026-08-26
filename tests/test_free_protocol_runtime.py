@@ -555,6 +555,91 @@ class FreeProtocolRuntimeTests(unittest.TestCase):
         self.assertEqual(raised.exception.provider_status, 409)
         self.assertEqual(raised.exception.provider_code, "already_active")
 
+    def test_twofa_retry_converges_when_server_already_enabled(self):
+        class Otp:
+            @staticmethod
+            def mark_sent(*_args, **_kwargs):
+                return None
+
+            @staticmethod
+            def wait_code(_email, **_kwargs):
+                return "123456"
+
+        class Session:
+            def __init__(self):
+                self.posts = []
+
+            def get(self, url, **_kwargs):
+                self.posts.append(("get", url))
+                return _Response(200, {"mfa_enabled": True, "factors": {"totp": [{"factor_type": "totp"}]}})
+
+            def post(self, url, **_kwargs):
+                self.posts.append(("post", url))
+                return _Response(AssertionError("enrollment must not be repeated"), {})
+
+        class Transport:
+            def __init__(self):
+                self.session = Session()
+                self.device_id = "device"
+
+            @staticmethod
+            def send_mfa_otp(_url):
+                return {"_status": 200}
+
+            @staticmethod
+            def verify_mfa_otp(_code):
+                return {"_status": 200}
+
+        result = _Manager()._enroll_twofa(
+            Transport(), "token-private", _task(), runtime.FIXED_PASSWORD,
+            {}, Otp(), lambda *_args: None,
+        )
+        self.assertEqual(result, {"twofa_status": "enabled"})
+
+    def test_twofa_activation_dropped_response_converges_from_mfa_status(self):
+        class Otp:
+            @staticmethod
+            def mark_sent(*_args, **_kwargs):
+                return None
+
+            @staticmethod
+            def wait_code(_email, **_kwargs):
+                return "123456"
+
+        class Session:
+            def __init__(self):
+                self.status_reads = 0
+
+            def get(self, _url, **_kwargs):
+                self.status_reads += 1
+                enabled = self.status_reads > 1
+                return _Response(200, {"mfa_enabled": enabled, "factors": {"totp": ([{"factor_type": "totp"}] if enabled else [])}})
+
+            def post(self, url, **_kwargs):
+                if url.endswith("/mfa/enroll"):
+                    return _Response(200, {"secret": "JBSWY3DPEHPK3PXP", "session_id": "session"})
+                return _Response(503, {"error": {"code": "response_lost"}})
+
+        class Transport:
+            def __init__(self):
+                self.session = Session()
+                self.device_id = "device"
+
+            @staticmethod
+            def send_mfa_otp(_url):
+                return {"_status": 200}
+
+            @staticmethod
+            def verify_mfa_otp(_code):
+                return {"_status": 200}
+
+        result = _Manager()._enroll_twofa(
+            Transport(), "token-private", _task(), runtime.FIXED_PASSWORD,
+            {}, Otp(), lambda *_args: None,
+        )
+        self.assertEqual(result["twofa_status"], "enabled")
+        self.assertEqual(result["totp_secret"], "JBSWY3DPEHPK3PXP")
+
     def test_twofa_reauth_follows_callback_and_uses_fresh_session_token(self):
         class Otp:
             @staticmethod

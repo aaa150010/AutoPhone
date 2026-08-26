@@ -42,7 +42,7 @@ try:
         reference_fingerprint as _reference_fingerprint,
         reference_flow_enabled as _reference_flow_enabled,
     )
-    from .free_account_service import finalize_registration_result
+    from .free_account_service import finalize_registration_result, mfa_enabled_from_payload
     from .free_register_common import (
         FIXED_PASSWORD,
         FreeRegisterError,
@@ -75,7 +75,7 @@ except ImportError:
         reference_fingerprint as _reference_fingerprint,
         reference_flow_enabled as _reference_flow_enabled,
     )
-    from free_account_service import finalize_registration_result  # type: ignore[no-redef]
+    from free_account_service import finalize_registration_result, mfa_enabled_from_payload  # type: ignore[no-redef]
     from free_register_common import (  # type: ignore[no-redef]
         FIXED_PASSWORD, FreeRegisterError, FreeTwoFaPending,
         plus_trial_from_accounts as _plus_trial_from_accounts,
@@ -934,6 +934,27 @@ class FreeProtocolMixin:
                 error_code=phase[2], action_hint=phase[3],
             )
 
+        def mfa_already_enabled() -> bool:
+            """Read the authoritative MFA state for idempotent retries."""
+            getter = getattr(session, "get", None)
+            if not callable(getter):
+                return False
+            try:
+                response = getter(
+                    "https://chatgpt.com/backend-api/accounts/mfa_info",
+                    headers=headers,
+                    timeout=15,
+                )
+                status = _response_status(response)
+                if status is not None and not 200 <= status < 300:
+                    return False
+                data = response.json() if hasattr(response, "json") else response
+                return bool(mfa_enabled_from_payload(data))
+            except Exception:
+                # A status-check outage must preserve the original enrollment
+                # or activation failure; it is never evidence of success.
+                return False
+
         try:
             post_auth_json = getattr(transport, "_post_auth_json", None)
             if callable(post_auth_json):
@@ -1141,6 +1162,8 @@ class FreeProtocolMixin:
                         if refreshed:
                             active_token = refreshed
                     headers["authorization"] = f"Bearer {active_token}"
+            if mfa_already_enabled():
+                return {"twofa_status": "enabled"}
             phase = (
                 "free_twofa_enroll", "注册 Free 账号 2FA", "free_twofa_enroll_failed",
                 "保留账号和 Token，稍后重试 2FA 注册",
@@ -1167,6 +1190,10 @@ class FreeProtocolMixin:
             activated_status = _response_status(activated)
             success = activated_data.get("success") if isinstance(activated_data, Mapping) else None
             if (activated_status is not None and not 200 <= activated_status < 300) or success is not True:
+                if mfa_already_enabled():
+                    # The server may have committed activation while the
+                    # response was dropped or reported an idempotent conflict.
+                    return {"twofa_status": "enabled", "totp_secret": secret}
                 fail(
                     f"2FA 激活失败（HTTP {activated_status if activated_status is not None else '-'}）",
                     activated, activated_data,

@@ -13,6 +13,7 @@ try:
         MailboxOtpService,
         normalize_network_policy,
     )
+    from .manual_verification_runtime import ManualVerificationBroker, ManualVerificationError, wait_with_manual_fallback
     from .mailbox_url_runtime import MailboxResponse
 except ImportError:
     from free_register_common import FreeRegisterError  # type: ignore[no-redef]
@@ -22,6 +23,7 @@ except ImportError:
         MailboxOtpService,
         normalize_network_policy,
     )
+    from manual_verification_runtime import ManualVerificationBroker, ManualVerificationError, wait_with_manual_fallback  # type: ignore[no-redef]
     from mailbox_url_runtime import MailboxResponse  # type: ignore[no-redef]
 
 
@@ -48,6 +50,8 @@ class MailboxUrlOtpProvider:
         sleep_fn: Callable[[float], None] = time.sleep,
         now_fn: Callable[[], float] = time.time,
         monotonic_fn: Callable[[], float] = time.monotonic,
+        manual_broker: ManualVerificationBroker | None = None,
+        manual_generation_getter: Callable[[str, str], int] | None = None,
     ) -> None:
         # ``proxy`` is the former registration-proxy argument. It is retained
         # for callable compatibility and deliberately never used for mailbox IO.
@@ -81,6 +85,8 @@ class MailboxUrlOtpProvider:
         self.log_fn = log_fn
         self.task_id = str(task_id or "")
         self.stage_fn = stage_fn
+        self.manual_broker = manual_broker
+        self.manual_generation_getter = manual_generation_getter
 
     @staticmethod
     def _label(stage_code: str) -> str:
@@ -113,13 +119,34 @@ class MailboxUrlOtpProvider:
         resend_after_seconds: float = 12.0,
         stop_requested: Callable[[], bool] | None = None,
     ) -> str:
+        automatic_wait = lambda: self.service.wait_code(
+            stage_code,
+            resend_fn=resend_fn,
+            resend_after_seconds=resend_after_seconds,
+            stop_requested=stop_requested,
+        )
         try:
-            return self.service.wait_code(
-                stage_code,
-                resend_fn=resend_fn,
-                resend_after_seconds=resend_after_seconds,
-                stop_requested=stop_requested,
-            )
+            if self.manual_broker is not None and self.task_id:
+                try:
+                    generation = int(
+                        self.manual_generation_getter(self.task_id, stage_code)
+                        if callable(self.manual_generation_getter)
+                        else 0
+                    )
+                except (TypeError, ValueError):
+                    generation = 0
+                return str(wait_with_manual_fallback(
+                    automatic_wait,
+                    broker=self.manual_broker,
+                    task_id=self.task_id,
+                    input_kind="email_otp",
+                    generation=generation,
+                    stop_event=stop_requested,
+                    automatic_timeout_seconds=max(1, int(self.timeout)),
+                    manual_timeout_seconds=300,
+                    on_manual_selected=lambda: self._log_manual_selected(stage_code),
+                ) or "").strip()
+            return automatic_wait()
         except MailboxOtpError as exc:
             if exc.code == "mailbox_wait_stopped":
                 raise FreeRegisterError(
@@ -137,6 +164,32 @@ class MailboxUrlOtpProvider:
                 retryable=exc.retryable,
                 provider_status=exc.status,
             ) from exc
+        except ManualVerificationError as exc:
+            raise FreeRegisterError(
+                stage_code,
+                self._label(stage_code),
+                str(exc),
+                error_code=f"{stage_code}_manual_{exc.code}",
+                retryable=exc.code in {"expired", "stopped"},
+            ) from exc
+
+    def _log_manual_selected(self, stage_code: str) -> None:
+        if callable(self.log_fn):
+            try:
+                self.log_fn(
+                    f"[人工邮箱验证码/{stage_code}] 已接收当前任务的人工验证码",
+                    "info",
+                    task_id=self.task_id,
+                    node_code=stage_code,
+                    outcome="manual_submitted",
+                )
+            except TypeError:
+                try:
+                    self.log_fn(f"[人工邮箱验证码/{stage_code}] 已接收当前任务的人工验证码", "info")
+                except Exception:
+                    pass
+            except Exception:
+                pass
 
     def diagnostic(self) -> dict[str, Any]:
         return self.service.diagnostic()
@@ -166,6 +219,8 @@ def build_free_mailbox_otp_provider(
         mailbox_proxy_url=str(config.get("mailbox_proxy_url") or DEFAULT_FREE_MAILBOX_PROXY),
         request_retries=int(config.get("mailbox_request_retries", 3)),
         retry_backoff_seconds=float(config.get("mailbox_retry_backoff_seconds", 1.0)),
+        manual_broker=config.get("_manual_verification_broker"),
+        manual_generation_getter=config.get("_manual_generation_getter"),
     )
 
 

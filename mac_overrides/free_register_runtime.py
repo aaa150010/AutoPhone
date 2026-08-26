@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future
 import copy
 from pathlib import Path
 import re
@@ -47,6 +47,8 @@ try:
     from .free_plan_check import build_free_plan_check_service
     from .free_protocol_runtime import FreeProtocolMixin
     from .free_camoufox_runtime import CamoufoxRegistrationRunner, shutdown_camoufox_pools
+    from .free_notifications import FreeBatchNotificationAdapter
+    from .free_priority_executor import PriorityExecutor
 except ImportError:
     from free_failure_runtime import (  # type: ignore[no-redef]
         FreeFailureRuntimeMixin,
@@ -75,6 +77,8 @@ except ImportError:
     from free_plan_check import build_free_plan_check_service  # type: ignore[no-redef]
     from free_protocol_runtime import FreeProtocolMixin  # type: ignore[no-redef]
     from free_camoufox_runtime import CamoufoxRegistrationRunner, shutdown_camoufox_pools  # type: ignore[no-redef]
+    from free_notifications import FreeBatchNotificationAdapter  # type: ignore[no-redef]
+    from free_priority_executor import PriorityExecutor  # type: ignore[no-redef]
 class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, FreeProtocolMixin):
     # These nodes run before the flow confirms that a new account was created.
     # A failure here did not consume the mailbox, so the row can be dispatched
@@ -94,7 +98,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         "roxy_circuit_open",
     })
 
-    def __init__(self, data_dir: str | Path, *, progress: Any = None, log_fn: Callable[[str, str], None] | None = None, runner: Callable[..., Mapping[str, Any]] | None = None, proxy_probe: Callable[[str, str], str] | None = None, proxy_chatgpt_probe: Callable[[str], int] | None = None, diagnostic_store: Any = None) -> None:
+    def __init__(self, data_dir: str | Path, *, progress: Any = None, log_fn: Callable[[str, str], None] | None = None, runner: Callable[..., Mapping[str, Any]] | None = None, proxy_probe: Callable[[str, str], str] | None = None, proxy_chatgpt_probe: Callable[[str], int] | None = None, diagnostic_store: Any = None, manual_broker: Any = None, notification_config_getter: Callable[[], Any] | None = None) -> None:
         self.data_dir = Path(data_dir).expanduser().resolve()
         self.pool = FreeMailboxPool(self.data_dir)
         self.proxies = FreeProxyPool(self.data_dir)
@@ -106,10 +110,17 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         self._custom_runner = runner is not None
         self.proxy_probe = proxy_probe
         self.proxy_chatgpt_probe = proxy_chatgpt_probe
+        self.manual_broker = manual_broker
+        self._free_notification = FreeBatchNotificationAdapter(notification_config_getter) if callable(notification_config_getter) else None
         self._lock = threading.RLock()
         self._stop = threading.Event()
-        self._executor: ThreadPoolExecutor | None = None
+        self._executor: PriorityExecutor | None = None
         self._futures: set[Future[Any]] = set()
+        # A retry can deliberately use a different transport (for example a
+        # Roxy-origin account is retried through the protocol adapter). Keep
+        # the driver on each Future so terminal cleanup never follows the
+        # previous batch's global configuration.
+        self._future_drivers: dict[Future[Any], str] = {}
         self._tasks: dict[str, dict[str, Any]] = self.task_store.load()
         self._batch_id = ""
         self._roxy_failures = 0
@@ -118,10 +129,17 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         self._circuit_stop_requested = False
         self._user_stop_requested = False
         self._last_config: dict[str, Any] = {}
+        self._stage_started_mono: dict[str, float] = {}
+        self._task_started_mono: dict[str, float] = {}
+        self._manual_generations: dict[str, int] = {}
+        self._retry_leases: dict[str, str] = {}
         self.roxy_cleanup_store = RoxyCleanupStore(self.data_dir / "roxy_cleanup.json")
         self._heartbeat_stop = threading.Event()
         self._heartbeat_thread: threading.Thread | None = None
         self._recover_interrupted_tasks()
+        for existing_id, existing_task in self._tasks.items():
+            if str(existing_task.get("status") or "") in {"queued", "running"} and existing_task.get("retry_key"):
+                self._retry_leases[str(existing_task["retry_key"])] = str(existing_id)
         self.live_checks = build_free_live_check_service(
             self.data_dir,
             pool=self.pool, proxies=self.proxies, log_store=self.log_store,
@@ -190,8 +208,69 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         payload.setdefault("node_label", label)
         self._log(f"[{task_id}/{label}/{code}] {text}", level, **payload)
 
+    def _manual_generation(self, task_id: str, _stage_code: str = "") -> int:
+        """Return the current opaque generation used by manual OTP input."""
+        with self._lock:
+            return max(0, int(self._manual_generations.get(str(task_id), 0)))
+
+    @staticmethod
+    def _timing_record(task: dict[str, Any]) -> dict[str, Any]:
+        value = task.get("timing")
+        if not isinstance(value, dict):
+            value = {"started_at": int(task.get("created_at") or time.time()), "finished_at": None, "elapsed_ms": 0, "elapsed_seconds": 0.0, "stages": []}
+            task["timing"] = value
+        value.setdefault("started_at", int(task.get("created_at") or time.time()))
+        value.setdefault("finished_at", None)
+        value.setdefault("elapsed_ms", 0)
+        value.setdefault("elapsed_seconds", 0.0)
+        value.setdefault("stages", [])
+        return value
+
+    def _append_timing_stage(
+        self,
+        task: dict[str, Any],
+        code: str,
+        duration_ms: int,
+        *,
+        outcome: str = "success",
+        started_at: int | None = None,
+        finished_at: int | None = None,
+        failure_code: str = "",
+        retryable: bool | None = None,
+    ) -> None:
+        timing = self._timing_record(task)
+        stages = timing.setdefault("stages", [])
+        label = FREE_STAGE_LABELS.get(code, code)
+        attempt = 1 + sum(1 for item in stages if str(item.get("code") or "") == code)
+        stage_duration = max(0, int(duration_ms))
+        record: dict[str, Any] = {
+            "code": code,
+            "label": label,
+            "group": "free",
+            "duration_ms": stage_duration,
+            "elapsed_seconds": round(stage_duration / 1000.0, 3),
+            "outcome": str(outcome or "success"),
+            "attempt": attempt,
+            "visits": attempt,
+            "started_at": int(started_at) if started_at is not None else None,
+            "entered_at": int(started_at) if started_at is not None else None,
+            "finished_at": int(finished_at) if finished_at is not None else None,
+            "left_at": int(finished_at) if finished_at is not None else None,
+            "failure_code": str(failure_code or ""),
+            "retryable": retryable if isinstance(retryable, bool) else None,
+            "proxy_attempts": len(task.get("proxy_attempts") or ()) if isinstance(task.get("proxy_attempts"), (list, tuple)) else 0,
+        }
+        stages.append(record)
+        if len(stages) > 200:
+            del stages[:-200]
+        slowest = max(stages, key=lambda item: int(item.get("duration_ms") or 0), default=None)
+        if slowest:
+            timing["slowest_node"] = {"code": slowest.get("code", ""), "label": slowest.get("label", ""), "duration_ms": int(slowest.get("duration_ms") or 0)}
+
     def _stage(self, task_id: str, code: str) -> None:
         changed = False
+        now_wall = int(time.time())
+        now_mono = time.monotonic()
         if self.progress is not None and callable(getattr(self.progress, "set_stage", None)):
             try:
                 changed = bool(self.progress.set_stage(task_id, code))
@@ -206,23 +285,52 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 previous_started = int(progress_before.get("stage_started_at") or progress_before.get("started_at") or 0)
                 changed = changed or previous_code != code
                 self._tasks[task_id]["stage"] = code
-                self._tasks[task_id]["updated_at"] = int(time.time())
+                self._tasks[task_id]["updated_at"] = now_wall
+                task_timing = self._timing_record(self._tasks[task_id])
+                self._task_started_mono.setdefault(task_id, now_mono)
+                if previous_code != code and previous_code:
+                    previous_mono = self._stage_started_mono.pop(task_id, None)
+                    duration_ms = int(max(0.0, (now_mono - previous_mono) * 1000.0)) if previous_mono is not None else max(0, (now_wall - previous_started) * 1000)
+                    self._append_timing_stage(
+                        self._tasks[task_id],
+                        previous_code,
+                        duration_ms,
+                        started_at=previous_started or None,
+                        finished_at=now_wall,
+                    )
+                if previous_code != code or task_id not in self._stage_started_mono:
+                    self._stage_started_mono[task_id] = now_mono
+                    self._manual_generations[task_id] = self._manual_generations.get(task_id, 0) + (1 if previous_code != code else 0)
                 progress = self._tasks[task_id].setdefault("progress", {})
                 stage_started_at = progress.get("stage_started_at")
                 if previous_code != code or not stage_started_at:
-                    stage_started_at = int(time.time())
+                    stage_started_at = now_wall
                 progress.update({
                     "stage": code,
                     "group": "free",
                     "started_at": progress.get("started_at") or int(time.time()),
                     "stage_started_at": stage_started_at,
-                    "updated_at": int(time.time()),
+                    "stage_duration_ms": 0,
+                    "total_elapsed_ms": int(max(0.0, (now_mono - self._task_started_mono[task_id]) * 1000.0)),
+                    "updated_at": now_wall,
                     "finished_at": None,
                 })
+                task_timing["finished_at"] = None
+                task_timing["elapsed_ms"] = int(max(0.0, (now_mono - self._task_started_mono[task_id]) * 1000.0))
+                task_timing["elapsed_seconds"] = round(task_timing["elapsed_ms"] / 1000.0, 3)
                 self.task_store.save(self._tasks)
         if changed:
             if previous_code and previous_code != code:
-                duration_ms = max(0, int(time.time() - previous_started) * 1000) if previous_started else None
+                duration_ms = None
+                with self._lock:
+                    current_timing = self._timing_record(self._tasks.get(task_id, {})) if task_id in self._tasks else {}
+                    if current_timing:
+                        for item in reversed(current_timing.get("stages") or []):
+                            if item.get("code") == previous_code:
+                                duration_ms = int(item.get("duration_ms") or 0)
+                                break
+                if duration_ms is None:
+                    duration_ms = max(0, (now_wall - previous_started) * 1000) if previous_started else None
                 self._log(
                     f"[{task_id}/{FREE_STAGE_LABELS.get(previous_code, previous_code)}/{previous_code}] 完成",
                     "success",
@@ -250,6 +358,27 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             task.update(values)
             task["updated_at"] = int(time.time())
             self.task_store.save(self._tasks)
+
+    def _save_tasks_safely(self, context: str = "Free 任务状态") -> bool:
+        """Persist task state without allowing storage outages to strand workers.
+
+        Worker completion callbacks run outside the request that created the
+        task.  A transient disk/serialization error must therefore be
+        observable, but it must not prevent Future bookkeeping and executor
+        cleanup from running.
+        """
+        try:
+            self.task_store.save(self._tasks)
+            return True
+        except Exception as exc:
+            self._log(
+                f"[Free 任务状态/free_task_store] {context}保存失败（{type(exc).__name__}），继续清理运行资源",
+                "warn",
+                node_code="free_task_store",
+                node_label="保存 Free 任务状态",
+                outcome="storage_warning",
+            )
+            return False
 
     def _sync_plan_task_snapshot(self, row_id: str, result: Mapping[str, Any], promoted: bool) -> None:
         """Keep the in-memory public task view aligned with plan queue writes."""
@@ -284,9 +413,40 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 final_stage = str(progress.get("stage") or task.get("stage") or "")
                 final_label = FREE_STAGE_LABELS.get(final_stage, final_stage)
                 started = int(progress.get("stage_started_at") or 0)
-                duration_ms = max(0, int(time.time() - started) * 1000) if started else None
-                progress["finished_at"] = int(time.time())
-                progress["updated_at"] = int(time.time())
+                now_wall = int(time.time())
+                now_mono = time.monotonic()
+                stage_mono = self._stage_started_mono.pop(task_id, None)
+                duration_ms = int(max(0.0, (now_mono - stage_mono) * 1000.0)) if stage_mono is not None else max(0, (now_wall - started) * 1000) if started else None
+                if final_stage and duration_ms is not None:
+                    final_failure = task.get("failure") if isinstance(task.get("failure"), Mapping) else {}
+                    self._append_timing_stage(
+                        task,
+                        final_stage,
+                        duration_ms,
+                        outcome=outcome,
+                        started_at=started or None,
+                        finished_at=now_wall,
+                        failure_code=str(final_failure.get("error_code") or "") if final_failure else "",
+                        retryable=(bool(final_failure.get("retryable")) if final_failure and "retryable" in final_failure else None),
+                    )
+                    progress["stage_duration_ms"] = duration_ms
+                task_started = self._task_started_mono.pop(task_id, None)
+                timing = self._timing_record(task)
+                total_ms = int(max(0.0, (now_mono - task_started) * 1000.0)) if task_started is not None else max(0, (now_wall - int(timing.get("started_at") or now_wall)) * 1000)
+                timing.update({"finished_at": now_wall, "elapsed_ms": total_ms, "elapsed_seconds": round(total_ms / 1000.0, 3)})
+                progress["total_elapsed_ms"] = total_ms
+                progress["finished_at"] = now_wall
+                progress["updated_at"] = now_wall
+                parent_id = str(task.get("retry_of") or "").strip()
+                if parent_id and parent_id in self._tasks:
+                    parent = self._tasks[parent_id]
+                    child_status = str(task.get("status") or "").strip()
+                    parent.update({
+                        "retry_task_id": str(task.get("task_id") or ""),
+                        "retry_status": child_status,
+                        "retry_updated_at": now_wall,
+                        "retry_resolved": child_status in {"success", "partial_success"},
+                    })
                 self.task_store.save(self._tasks)
         if final_stage:
             self._log(
@@ -304,7 +464,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
 
     def _public_task(self, task: Mapping[str, Any]) -> dict[str, Any]:
         result = task.get("result") if isinstance(task.get("result"), Mapping) else {}
-        public = {key: copy.deepcopy(task[key]) for key in ("task_id", "incident_id", "ordinal", "slot_id", "slot_index", "concurrency_limit", "status", "created_at", "updated_at", "batch_id", "run_mode", "driver", "email", "row_id", "stage", "proxy_masked", "proxy_fingerprint", "profile_summary", "proxy_id", "proxy_scheme", "proxy_country", "proxy_group", "proxy_attempts", "cleanup_status") if key in task}
+        public = {key: copy.deepcopy(task[key]) for key in ("task_id", "incident_id", "ordinal", "slot_id", "slot_index", "concurrency_limit", "status", "created_at", "updated_at", "batch_id", "run_mode", "driver", "email", "row_id", "stage", "proxy_masked", "proxy_fingerprint", "profile_summary", "proxy_id", "proxy_scheme", "proxy_effective_scheme", "proxy_country", "proxy_group", "proxy_attempts", "cleanup_status", "retry_of", "retry_attempt", "retry_task_id", "retry_status", "retry_resolved", "retry_updated_at") if key in task}
         public["account"] = public.get("email", "")
         mailbox_url = str(task.get("mailbox_url") or "").strip()
         if not mailbox_url and task.get("row_id"):
@@ -341,11 +501,35 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             except Exception:
                 progress = None
         if isinstance(progress, Mapping):
-            public["progress"] = copy.deepcopy(progress)
-            if isinstance(progress.get("timing"), Mapping):
-                public["timing"] = copy.deepcopy(progress["timing"])
+            progress_public = copy.deepcopy(dict(progress))
+            # The Free store historically called these fields ``stage`` and
+            # ``stage_started_at`` while the shared progress component uses
+            # ``code``, ``label`` and ``entered_at``. Normalize only the
+            # public snapshot so persisted legacy rows remain untouched.
+            progress_code = str(progress_public.get("code") or progress_public.get("stage") or public.get("stage") or "")
+            progress_public.setdefault("code", progress_code)
+            progress_public.setdefault("label", FREE_STAGE_LABELS.get(progress_code, progress_code))
+            progress_public.setdefault("entered_at", progress_public.get("stage_started_at") or progress_public.get("started_at"))
+            public["progress"] = progress_public
+            if isinstance(progress_public.get("timing"), Mapping):
+                public["timing"] = copy.deepcopy(progress_public["timing"])
         elif isinstance(task.get("progress"), Mapping):
-            public["progress"] = copy.deepcopy(task["progress"])
+            progress_public = copy.deepcopy(dict(task["progress"]))
+            progress_code = str(progress_public.get("code") or progress_public.get("stage") or public.get("stage") or "")
+            progress_public.setdefault("code", progress_code)
+            progress_public.setdefault("label", FREE_STAGE_LABELS.get(progress_code, progress_code))
+            progress_public.setdefault("entered_at", progress_public.get("stage_started_at") or progress_public.get("started_at"))
+            public["progress"] = progress_public
+        if self.manual_broker is not None:
+            try:
+                prompt = self.manual_broker.public(str(task.get("task_id") or ""))
+            except Exception:
+                prompt = {}
+            if isinstance(prompt, Mapping) and prompt.get("input_kind"):
+                public["manual_verification"] = copy.deepcopy(dict(prompt))
+                public["capabilities"] = ["submit_manual_verification"]
+        if isinstance(task.get("timing"), Mapping):
+            public["timing"] = copy.deepcopy(task["timing"])
         if isinstance(task.get("failure"), Mapping):
             failure = canonical_failure(task["failure"])
             if failure is not None:
@@ -359,6 +543,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 self._tasks.values(),
                 key=lambda item: (
                     -int(item.get("created_at") or 0),
+                    0 if item.get("retry_of") else 1,
                     int(item.get("ordinal") or 0),
                     str(item.get("task_id") or ""),
                 ),
@@ -416,8 +601,40 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         with self._lock:
             tasks = self.public_tasks()
             active = sum(1 for task in tasks if task.get("status") not in TERMINAL_STATUSES)
-            success = sum(1 for task in tasks if task.get("status") == "success")
-            failed = sum(1 for task in tasks if task.get("status") == "failed")
+            success = sum(1 for task in tasks if task.get("status") == "success" and not task.get("retry_resolved"))
+            failed = sum(1 for task in tasks if task.get("status") == "failed" and not task.get("retry_resolved"))
+            def proxy_attempt_switched(attempt: Any) -> bool:
+                if not isinstance(attempt, Mapping):
+                    return False
+                # New records store the decision as a boolean. Accept the
+                # legacy outcome marker as well for persisted task histories.
+                return bool(attempt.get("switched")) or str(attempt.get("outcome") or "").strip().lower() == "switched"
+
+            def proxy_attempt_is_retry(attempt: Any) -> bool:
+                if not isinstance(attempt, Mapping):
+                    return False
+                return bool(attempt.get("retryable")) or proxy_attempt_switched(attempt)
+
+            retry_count = sum(
+                max(0, int(task.get("retry_attempt") or 0))
+                + sum(1 for attempt in (task.get("proxy_attempts") or ()) if proxy_attempt_is_retry(attempt))
+                for task in tasks
+            )
+            proxy_switches = sum(
+                sum(1 for attempt in (task.get("proxy_attempts") or ()) if proxy_attempt_switched(attempt))
+                for task in tasks
+            )
+            slowest_node = None
+            first_failure = None
+            for task in sorted(tasks, key=lambda item: int(item.get("created_at") or 0)):
+                if task.get("retry_resolved"):
+                    continue
+                failure = task.get("failure") if isinstance(task.get("failure"), Mapping) else None
+                if failure and first_failure is None:
+                    first_failure = {"node_code": str(failure.get("node_code") or ""), "node_label": str(failure.get("node_label") or "")}
+                candidate = task.get("timing", {}).get("slowest_node") if isinstance(task.get("timing"), Mapping) else None
+                if isinstance(candidate, Mapping) and (slowest_node is None or int(candidate.get("duration_ms") or 0) > int(slowest_node.get("duration_ms") or 0)):
+                    slowest_node = copy.deepcopy(dict(candidate))
             return {
                 **runtime_info(),
                 # Keep the batch marked running until every Future callback
@@ -454,11 +671,173 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     "success": success,
                     "failed": failed,
                     "stopped": sum(1 for task in tasks if task.get("status") == "stopped"),
+                    "total_retries": retry_count,
+                    "proxy_switches": proxy_switches,
+                    "slowest_node": slowest_node,
+                    "first_failure": first_failure,
                 },
             }
 
     def _available_count(self) -> int:
         return len(self.pool.available(10_000))
+
+    def import_mailboxes(
+        self,
+        content: str,
+        *,
+        join_current_batch: bool = False,
+        config: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Append Free mailboxes and optionally enqueue them into this run.
+
+        Import is append-only while a batch is active.  Joining the active
+        batch is an explicit opt-in because it changes that batch's target;
+        the default merely makes the rows available to the next dispatch.
+        """
+        with self._lock:
+            before = {str(row.row_id) for row in self.pool.entries()}
+            imported, skipped = self.pool.import_text_with_stats(str(content or ""))
+            added_rows = [row for row in self.pool.entries() if str(row.row_id) not in before]
+            running = bool(self._executor and self._futures)
+            result: dict[str, Any] = {
+                "imported": int(imported),
+                "skipped": int(skipped),
+                "queued": 0,
+                "active_batch_joined": 0,
+                "skipped_items": [],
+                "running": running,
+            }
+            if not running or not join_current_batch or not added_rows:
+                if running and added_rows:
+                    marker = getattr(self.pool, "mark_next_batch_priority", None)
+                    if callable(marker):
+                        try:
+                            marker([row.row_id for row in added_rows])
+                        except Exception:
+                            self._log("[Free 邮箱池/free_pool_priority] 新增邮箱下一批优先标记失败", "warn")
+                    result["next_batch"] = len(added_rows)
+                    result["reason"] = "运行中的批次未扩展；新增邮箱已加入下一批优先队列"
+                return result
+
+            active_tasks = [
+                task for task in self._tasks.values()
+                if str(task.get("batch_id") or "") == str(self._batch_id or "")
+                and str(task.get("status") or "") in {"queued", "running"}
+            ]
+            batch_id = str(self._batch_id or "")
+            base_config = dict(config or self._last_config)
+            driver = str(
+                (active_tasks[0].get("driver") if active_tasks else base_config.get("driver"))
+                or "protocol"
+            ).strip().lower()
+            workers = max(1, min(int(base_config.get("concurrency") or 3), 16))
+            for row in added_rows:
+                if str(self.pool._row_state(row.row_id).get("status") or "available") != "available":
+                    result["skipped_items"].append({"row_id": row.row_id, "reason": "邮箱当前不可用"})
+                    continue
+                binding: ProxyBinding | None = None
+                task_id = ""
+                reserved = False
+                submitted = False
+                try:
+                    bindings = self.proxies.bind(
+                        1,
+                        probe=self.proxy_probe,
+                        probe_url=str(base_config.get("proxy_probe_url") or "https://chatgpt.com/"),
+                        driver=driver,
+                        perform_probe=False,
+                    )
+                    if not bindings:
+                        raise FreeRegisterError("free_proxy_binding", "绑定 Free 代理", "当前没有可用健康代理", retryable=True)
+                    binding = bindings[0]
+                    ordinal = max((int(item.get("ordinal") or 0) for item in self._tasks.values()), default=0) + 1
+                    task_id = f"{batch_id}-import-{secrets.token_hex(3)}"
+                    now = int(time.time())
+                    task = {
+                        "task_id": task_id,
+                        "ordinal": ordinal,
+                        "slot_id": f"{batch_id}-import",
+                        "slot_index": 0,
+                        "concurrency_limit": workers,
+                        "status": "queued",
+                        "created_at": now,
+                        "updated_at": now,
+                        "batch_id": batch_id,
+                        "run_mode": "free_register",
+                        "driver": driver,
+                        "proxy_allocation_mode": "healthy_random",
+                        "email": row.email,
+                        "row_id": row.row_id,
+                        "mailbox_url": row.mailbox_url,
+                        "proxy": binding.proxy,
+                        "proxy_id": binding.proxy_id,
+                        "proxy_scheme": binding.scheme,
+                        "proxy_effective_scheme": getattr(binding, "effective_scheme", "") or binding.scheme,
+                        "proxy_country": binding.country,
+                        "proxy_group": binding.group,
+                        "proxy_masked": binding.masked,
+                        "proxy_fingerprint": binding.fingerprint,
+                        "expected_exit_ip": binding.exit_ip,
+                        "registration_ip": "",
+                        "exit_ip": binding.exit_ip,
+                        "proxy_attempts": [],
+                        "cleanup_status": "pending",
+                        "progress": {"stage": "free_oauth_session", "group": "free", "started_at": now, "updated_at": now, "finished_at": None},
+                        "result": {"twofa_status": "", "driver": driver, "expected_exit_ip": binding.exit_ip},
+                    }
+                    self.pool.reserve([row], batch_id)
+                    reserved = True
+                    self.proxies.lease(binding, owner=task_id, batch_id=batch_id, task_id=task_id)
+                    self.pool.update(
+                        row.row_id,
+                        status="queued",
+                        batch_id=batch_id,
+                        stage="free_oauth_session",
+                        driver=driver,
+                        proxy=binding.proxy,
+                        proxy_masked=binding.masked,
+                        proxy_fingerprint=binding.fingerprint,
+                        expected_exit_ip=binding.exit_ip,
+                        exit_ip=binding.exit_ip,
+                        proxy_id=binding.proxy_id,
+                        proxy_country=binding.country,
+                        proxy_group=binding.group,
+                    )
+                    self._tasks[task_id] = task
+                    # Persist the task before submitting the worker.  A very
+                    # fast custom runner can finish before the request thread
+                    # reaches its final save, so the completion callback must
+                    # never observe an unknown task on disk.
+                    self.task_store.save(self._tasks)
+                    future = self._executor.submit(self._worker, task_id, dict(base_config), priority=10)
+                    self._futures.add(future)
+                    self._future_drivers[future] = driver
+                    future.add_done_callback(self._future_done)
+                    submitted = True
+                    result["queued"] += 1
+                    result["active_batch_joined"] += 1
+                except Exception as exc:
+                    if submitted:
+                        # The callback will reconcile this task; leave its
+                        # lease and state intact if a post-submit operation
+                        # fails.
+                        result["skipped_items"].append({"row_id": row.row_id, "reason": "已提交到当前批次"})
+                        continue
+                    self._tasks.pop(task_id, None)
+                    if binding is not None:
+                        try:
+                            self.proxies.release(binding, owner=task_id or batch_id)
+                        except Exception:
+                            pass
+                    if reserved:
+                        try:
+                            self.pool.update(row.row_id, status="available", batch_id="", stage="")
+                        except Exception:
+                            pass
+                    self._save_tasks_safely("运行中导入回滚")
+                    result["skipped_items"].append({"row_id": row.row_id, "reason": _safe_log_message(exc)[:240]})
+            self._save_tasks_safely("运行中导入后的 Free 任务状态")
+            return result
 
     def preflight(self, config: Mapping[str, Any], *, proxy_content: str = "") -> dict[str, Any]:
         with self._lock:
@@ -491,6 +870,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         self.proxies.configure_policy(
             failure_threshold=int(config.get("proxy_failure_threshold") or 2),
             quarantine_seconds=int(config.get("proxy_quarantine_seconds") or 600),
+            health_probe_ttl_seconds=int(config["proxy_health_probe_ttl_seconds"]) if "proxy_health_probe_ttl_seconds" in config else 0,
             tls_verify=bool(config.get("proxy_tls_verify", True)),
             tls_compat_fallback=bool(config.get("proxy_tls_compat_fallback", True)),
             socks5_dns_mode=str(config.get("proxy_socks5_dns_mode") or "auto"),
@@ -508,6 +888,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             probe_url=str(config.get("proxy_probe_url") or "https://chatgpt.com/"),
             driver=driver,
             perform_probe=False,
+            health_probe_ttl_seconds=int(config["proxy_health_probe_ttl_seconds"]) if "proxy_health_probe_ttl_seconds" in config else 0,
         )
         roxy_result = {"driver": driver}
         camoufox_result = {"driver": driver}
@@ -528,7 +909,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             "proxy_selection": {"country": "", "group": ""},
         }
 
-    def preflight_proxies(self, *, proxy_content: str = "", probe_url: str = "https://chatgpt.com/", driver: str = "protocol", country: str | None = None, group: str | None = None, scheme: str | None = None, tls_verify: bool = True, tls_compat_fallback: bool = True, socks5_dns_mode: str = "declared") -> dict[str, Any]:
+    def preflight_proxies(self, *, proxy_content: str = "", probe_url: str = "https://chatgpt.com/", driver: str = "protocol", country: str | None = None, group: str | None = None, scheme: str | None = None, tls_verify: bool = True, tls_compat_fallback: bool = True, socks5_dns_mode: str = "declared", layered_probe: bool = False) -> dict[str, Any]:
         """Probe the isolated Free proxy pool without consuming mailboxes or tasks."""
         self.proxies.configure_policy(
             tls_verify=tls_verify,
@@ -543,13 +924,27 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         diagnostics: list[dict[str, Any]] = []
         for index, value in enumerate(values, 1):
             try:
+                layered = None
+                if layered_probe and self.proxy_probe is None:
+                    layered = self.proxies.layered_probe(value, probe_url)
+                    if not layered.get("ok"):
+                        raise FreeRegisterError(
+                            str(layered.get("failure_node") or "free_proxy_preflight"),
+                            "Free 代理分层探测",
+                            str(layered.get("failure_reason") or "代理分层探测失败"),
+                            retryable=True,
+                        )
+                # A layered probe already performed the transport and
+                # ChatGPT-login requests. Reusing its result avoids issuing a
+                # second full HTTPS request for the same proxy during one
+                # preflight, which was a major source of slow diagnostics.
                 self.proxies.bind(
                     1,
                     content=value,
                     probe=self.proxy_probe,
                     probe_url=probe_url,
                     driver=driver,
-                    perform_probe=True,
+                    perform_probe=layered is None,
                 )
                 row = dict((getattr(self.proxies, "_last_bind_diagnostics", ()) or [{}])[0])
                 row.setdefault("index", index)
@@ -557,6 +952,10 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 row.setdefault("http_status", 200)
                 row.setdefault("failure_node", "")
                 row.setdefault("failure_reason", "")
+                if layered is not None:
+                    row["layered_probe"] = layered
+                    row["http_status"] = 200 if layered.get("ok") else None
+                    row["proxy_to_target_ms"] = layered.get("https_request_ms")
             except Exception as exc:
                 failure = exception_to_failure(
                     exc,
@@ -586,14 +985,14 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         }
 
     def start(self, config: Mapping[str, Any], *, pool_content: str = "", proxy_content: str = "", row_ids: Sequence[str] = ()) -> dict[str, Any]:
+        normalized_config = dict(config)
+        normalized_config["auto_set_2fa"] = True
         with self._lock:
             # Keep the production manager boundary aligned with the Free
             # contract even for callers that bypass the HTTP config store.
-            normalized_config = dict(config)
-            normalized_config["auto_set_2fa"] = True
-            self._last_config = copy.deepcopy(normalized_config)
             if self.public_state().get("running"):
                 raise FreeRegisterError("free_run_start", "启动 Free 注册", "已有 Free 注册任务运行中", retryable=False)
+            self._last_config = copy.deepcopy(normalized_config)
             return self._start_locked(
                 normalized_config,
                 pool_content=pool_content,
@@ -675,6 +1074,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             self.proxies.configure_policy(
                 failure_threshold=int(config.get("proxy_failure_threshold") or 2),
                 quarantine_seconds=int(config.get("proxy_quarantine_seconds") or 600),
+                health_probe_ttl_seconds=int(config["proxy_health_probe_ttl_seconds"]) if "proxy_health_probe_ttl_seconds" in config else 0,
                 tls_verify=bool(config.get("proxy_tls_verify", True)),
                 tls_compat_fallback=bool(config.get("proxy_tls_compat_fallback", True)),
                 socks5_dns_mode=str(config.get("proxy_socks5_dns_mode") or "auto"),
@@ -686,6 +1086,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 probe_url=str(config.get("proxy_probe_url") or "https://chatgpt.com/"),
                 driver=driver,
                 perform_probe=False,
+                health_probe_ttl_seconds=int(config["proxy_health_probe_ttl_seconds"]) if "proxy_health_probe_ttl_seconds" in config else 0,
             )
             batch_id = f"free-{int(time.time())}-{secrets.token_hex(4)}"
             now = int(time.time())
@@ -698,7 +1099,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 reserved = True
                 for ordinal, (row, binding) in enumerate(zip(rows, bindings), 1):
                     task_id = f"{batch_id}-{ordinal}"
-                    self._tasks[task_id] = {"task_id": task_id, "ordinal": ordinal, "slot_id": f"{batch_id}-slot-{((ordinal - 1) % workers) + 1}", "slot_index": ((ordinal - 1) % workers) + 1, "concurrency_limit": workers, "status": "queued", "created_at": now, "updated_at": now, "batch_id": batch_id, "run_mode": "free_register", "driver": driver, "proxy_allocation_mode": str(config.get("proxy_allocation_mode") or "healthy_random"), "email": row.email, "row_id": row.row_id, "mailbox_url": row.mailbox_url, "proxy": binding.proxy, "proxy_id": binding.proxy_id, "proxy_scheme": binding.scheme, "proxy_country": binding.country, "proxy_group": binding.group, "proxy_masked": binding.masked, "proxy_fingerprint": binding.fingerprint, "expected_exit_ip": binding.exit_ip, "registration_ip": "", "exit_ip": binding.exit_ip, "proxy_attempts": [], "cleanup_status": "pending", "progress": {"stage": "free_oauth_session", "group": "free", "started_at": now, "updated_at": now, "finished_at": None}, "result": {"twofa_status": "", "driver": driver, "expected_exit_ip": binding.exit_ip, "proxy_country": binding.country, "proxy_group": binding.group}}
+                    self._tasks[task_id] = {"task_id": task_id, "ordinal": ordinal, "slot_id": f"{batch_id}-slot-{((ordinal - 1) % workers) + 1}", "slot_index": ((ordinal - 1) % workers) + 1, "concurrency_limit": workers, "status": "queued", "created_at": now, "updated_at": now, "batch_id": batch_id, "run_mode": "free_register", "driver": driver, "proxy_allocation_mode": str(config.get("proxy_allocation_mode") or "healthy_random"), "email": row.email, "row_id": row.row_id, "mailbox_url": row.mailbox_url, "proxy": binding.proxy, "proxy_id": binding.proxy_id, "proxy_scheme": binding.scheme, "proxy_effective_scheme": getattr(binding, "effective_scheme", "") or binding.scheme, "proxy_country": binding.country, "proxy_group": binding.group, "proxy_masked": binding.masked, "proxy_fingerprint": binding.fingerprint, "expected_exit_ip": binding.exit_ip, "registration_ip": "", "exit_ip": binding.exit_ip, "proxy_attempts": [], "cleanup_status": "pending", "progress": {"stage": "free_oauth_session", "group": "free", "started_at": now, "updated_at": now, "finished_at": None}, "result": {"twofa_status": "", "driver": driver, "expected_exit_ip": binding.exit_ip, "proxy_country": binding.country, "proxy_group": binding.group}}
                     self._tasks[task_id]["device_id"] = f"free-{secrets.token_hex(16)}"
                     created_task_ids.append(task_id)
                     self.proxies.lease(binding, owner=task_id, batch_id=batch_id, task_id=task_id)
@@ -734,12 +1135,13 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             self._heartbeat_stop.clear()
             self._heartbeat_thread = threading.Thread(target=self._heartbeat_loop, args=(batch_id,), name=f"free-proxy-heartbeat-{batch_id[-8:]}", daemon=True)
             self._heartbeat_thread.start()
-            self._executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="free-register")
+            self._executor = PriorityExecutor(max_workers=workers, thread_name_prefix="free-register")
             for task_id in list(self._tasks):
                 if self._tasks[task_id].get("batch_id") != batch_id:
                     continue
-                future = self._executor.submit(self._worker, task_id, dict(config))
+                future = self._executor.submit(self._worker, task_id, dict(config), priority=10)
                 self._futures.add(future)
+                self._future_drivers[future] = driver
                 future.add_done_callback(self._future_done)
             self._log(f"[启动 Free 注册/free_run_start] 已准备 {target_count} 个邮箱，{workers} 并发", "success")
             return {
@@ -752,21 +1154,33 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
     def _future_done(self, future: Future[Any]) -> None:
         cleanup_config: dict[str, Any] | None = None
         cleanup_camoufox = False
-        executor: ThreadPoolExecutor | None = None
+        executor: PriorityExecutor | None = None
+        completed_batch_id = ""
         with self._lock:
             if future not in self._futures:
                 return
             is_last = len(self._futures) == 1
+            executor = self._executor
+            driver = str(self._future_drivers.get(future) or self._last_config.get("driver") or "").strip().lower()
+            # Browser resources are shared by tasks of the same transport,
+            # while protocol retries may coexist in the same executor.  A
+            # Roxy/Camoufox cleanup must therefore wait only for the final
+            # Future using that driver, not for an unrelated protocol Future.
+            remaining_drivers = [
+                str(value or "").strip().lower()
+                for candidate, value in self._future_drivers.items()
+                if candidate is not future and candidate in self._futures
+            ]
+            if not self._custom_runner and driver == "roxybrowser" and "roxybrowser" not in remaining_drivers:
+                cleanup_config = copy.deepcopy(self._last_config)
+            elif not self._custom_runner and driver == "camoufox" and "camoufox" not in remaining_drivers:
+                cleanup_camoufox = True
             if is_last:
-                executor = self._executor
                 self._heartbeat_stop.set()
-                if not self._custom_runner:
-                    driver = str(self._last_config.get("driver") or "").strip().lower()
-                    if driver == "roxybrowser":
-                        cleanup_config = copy.deepcopy(self._last_config)
-                    elif driver == "camoufox":
-                        cleanup_camoufox = True
-            self.task_store.save(self._tasks)
+            # Completion callbacks must always continue into Future and
+            # executor cleanup even when the task store is temporarily
+            # unavailable.
+            self._save_tasks_safely("任务完成回调")
         if cleanup_config is not None:
             try:
                 result = self.recover_roxy_cleanup(cleanup_config)
@@ -787,10 +1201,25 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 self._log(f"[Camoufox/free_camoufox_launch] 批次结束回收浏览器池失败（{type(exc).__name__}）", "warn")
         with self._lock:
             self._futures.discard(future)
+            self._future_drivers.pop(future, None)
             if not self._futures and self._executor is executor and executor is not None:
+                completed_batch_id = str(self._batch_id or "")
                 executor.shutdown(wait=False, cancel_futures=False)
                 self._executor = None
-                self.task_store.save(self._tasks)
+                self._save_tasks_safely("批次完成回调")
+        if completed_batch_id and self._free_notification is not None:
+            try:
+                with self._lock:
+                    batch_tasks = [
+                        copy.deepcopy(task)
+                        for task in self._tasks.values()
+                        if str(task.get("batch_id") or "") == completed_batch_id
+                    ]
+                self._free_notification.submit(batch_tasks, batch_id=completed_batch_id)
+            except Exception:
+                # Notification delivery is advisory and must never affect the
+                # persisted registration result or retry queue.
+                pass
 
     def _heartbeat_loop(self, owner: str) -> None:
         while not self._heartbeat_stop.wait(20):
@@ -829,89 +1258,260 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         self._log("[停止 Free 注册/free_stop] 已请求停止，运行中的账号不切换代理", "warn")
 
     def rerun(self, task_id: str, config: Mapping[str, Any]) -> dict[str, Any]:
-        """Start a fresh batch for a failed task without losing its diagnostics."""
+        """Queue a failed account without starting a competing Free batch."""
+        normalized = str(task_id or "").strip()
+        with self._lock:
+            original = copy.deepcopy(self._tasks.get(normalized))
+        if not original:
+            raise FreeRegisterError("free_rerun", "重跑 Free 账号", "没有找到对应的 Free 任务", retryable=False)
+        if str(original.get("status") or "") not in {"failed", "stopped", "pending_rerun"}:
+            raise FreeRegisterError("free_rerun", "重跑 Free 账号", "只有失败或已停止的 Free 任务可以重跑", retryable=False)
+        failure = original.get("failure") if isinstance(original.get("failure"), Mapping) else {}
+        node_code = str(failure.get("node_code") or original.get("stage") or "free_rerun")
+        return self._enqueue_retry(original, config, retry_node=node_code, twofa_retry=False)
+
+    def _enqueue_retry(
+        self,
+        original: Mapping[str, Any],
+        config: Mapping[str, Any],
+        *,
+        retry_node: str,
+        twofa_retry: bool,
+    ) -> dict[str, Any]:
+        row_id = str(original.get("row_id") or "").strip()
+        if not row_id:
+            raise FreeRegisterError("free_rerun", "重跑 Free 账号", "任务没有绑定 Free 邮箱", retryable=False)
+        retry_key = f"{row_id}:{retry_node}"
+        with self._lock:
+            active_id = self._retry_leases.get(retry_key)
+            if active_id:
+                active = self._tasks.get(active_id)
+                if active and str(active.get("status") or "") in {"queued", "running"}:
+                    return self._public_task(active)
+                self._retry_leases.pop(retry_key, None)
+            row_state = self.pool._row_state(row_id)
+            pool_status = str(row_state.get("status") or "")
+            if not twofa_retry:
+                if pool_status == "pending_rerun":
+                    self.pool.update(row_id, status="available", batch_id="", stage="", error="", reusable_after_failure=False)
+                    pool_status = "available"
+                if pool_status != "available" or self.pool.entry(row_id) is None:
+                    raise FreeRegisterError("free_rerun", "重跑 Free 账号", "该账号当前不可重跑，请先在 Free 邮箱中心恢复为可用", retryable=False, error_code="free_rerun_mailbox_unavailable")
+            else:
+                if pool_status not in {"twofa_pending", "available", "pending_rerun"}:
+                    raise FreeRegisterError("free_twofa_retry", "重试 Free 账号 2FA", "该账号当前没有可重试的 2FA 状态", retryable=False)
+
+            active_batch = bool(self._executor and self._futures)
+            batch_id = str(self._batch_id or "") if active_batch else f"free-retry-{int(time.time())}-{secrets.token_hex(4)}"
+            driver = str(original.get("driver") or config.get("driver") or "protocol").strip().lower()
+            if twofa_retry and driver == "roxybrowser":
+                driver = "protocol"
+            if driver not in {"protocol", "roxybrowser", "camoufox"}:
+                raise FreeRegisterError("free_rerun", "重跑 Free 账号", "Free 注册链路无效", retryable=False)
+            mailbox = self.pool.entry(row_id)
+            if mailbox is None:
+                raise FreeRegisterError("free_rerun", "重跑 Free 账号", "Free 邮箱记录不存在", retryable=False)
+            reserved = False
+            if not twofa_retry:
+                self.pool.reserve([mailbox], batch_id)
+                reserved = True
+            proxy_content = ""
+            binding: ProxyBinding | None = None
+            retry_id = ""
+            submitted = False
+            # ``active_batch`` is false when this retry must create its own
+            # heartbeat/executor.  Track that intent before starting either so
+            # a constructor/thread-start failure can still unwind cleanly.
+            created_executor = not active_batch
+            previous_batch_id = self._batch_id
+            previous_last_config = copy.deepcopy(self._last_config)
+            try:
+                bindings = self.proxies.bind(
+                    1,
+                    content=proxy_content,
+                    probe=self.proxy_probe,
+                    probe_url=str(config.get("proxy_probe_url") or "https://chatgpt.com/"),
+                    driver=driver,
+                    perform_probe=False,
+                    health_probe_ttl_seconds=int(config["proxy_health_probe_ttl_seconds"]) if "proxy_health_probe_ttl_seconds" in config else 0,
+                )
+                if not bindings:
+                    raise FreeRegisterError("free_proxy_binding", "绑定 Free 代理", "当前没有可用健康代理", retryable=True)
+                binding = bindings[0]
+                now = int(time.time())
+                retry_id = f"{batch_id}-{secrets.token_hex(3)}"
+                workers = max(1, min(int(config.get("concurrency") or self._last_config.get("concurrency") or 3), 16))
+                task = {
+                    "task_id": retry_id,
+                    "ordinal": int(original.get("ordinal") or 1),
+                    "slot_id": f"{batch_id}-retry",
+                    "slot_index": 0,
+                    "concurrency_limit": workers,
+                    "status": "queued",
+                    "created_at": now,
+                    "updated_at": now,
+                    "batch_id": batch_id,
+                    "run_mode": "free_register",
+                    "driver": driver,
+                    "email": mailbox.email,
+                    "row_id": row_id,
+                    "mailbox_url": mailbox.mailbox_url,
+                    "proxy": binding.proxy,
+                    "proxy_id": binding.proxy_id,
+                    "proxy_scheme": binding.scheme,
+                    "proxy_effective_scheme": getattr(binding, "effective_scheme", "") or binding.scheme,
+                    "proxy_country": binding.country,
+                    "proxy_group": binding.group,
+                    "proxy_masked": binding.masked,
+                    "proxy_fingerprint": binding.fingerprint,
+                    "expected_exit_ip": binding.exit_ip,
+                    "registration_ip": "",
+                    "exit_ip": binding.exit_ip,
+                    "proxy_attempts": [],
+                    "cleanup_status": "pending",
+                    "retry_of": str(original.get("task_id") or ""),
+                    "retry_attempt": int(original.get("retry_attempt") or 0) + 1,
+                    "retry_node_code": retry_node,
+                    "retry_key": retry_key,
+                    "manual_generation": 0,
+                    "progress": {"stage": "free_twofa_enroll" if twofa_retry else "free_oauth_session", "group": "free", "started_at": now, "updated_at": now, "finished_at": None},
+                    "result": copy.deepcopy(dict(original.get("result") or {})) if isinstance(original.get("result"), Mapping) else {"twofa_status": ""},
+                }
+                self._tasks[retry_id] = task
+                self._retry_leases[retry_key] = retry_id
+                self.proxies.lease(binding, owner=retry_id, batch_id=batch_id, task_id=retry_id)
+                self.pool.update(row_id, status="twofa_pending" if twofa_retry else "queued", batch_id=batch_id, stage=retry_node, driver=driver, proxy=binding.proxy, proxy_masked=binding.masked, proxy_fingerprint=binding.fingerprint, expected_exit_ip=binding.exit_ip, exit_ip=binding.exit_ip, proxy_id=binding.proxy_id, proxy_country=binding.country, proxy_group=binding.group)
+                retry_config = dict(config)
+                retry_config["auto_set_2fa"] = True
+                # Make the retry durable before a worker can complete.  This
+                # is especially important for custom runners that return
+                # synchronously from submit().
+                self.task_store.save(self._tasks)
+                if not active_batch:
+                    self._last_config = copy.deepcopy(retry_config)
+                    self._batch_id = batch_id
+                    self._stop.clear()
+                    self._user_stop_requested = False
+                    self._heartbeat_stop.clear()
+                    self._heartbeat_thread = threading.Thread(target=self._heartbeat_loop, args=(batch_id,), name=f"free-proxy-heartbeat-{batch_id[-8:]}", daemon=True)
+                    self._heartbeat_thread.start()
+                    self._executor = PriorityExecutor(max_workers=workers, thread_name_prefix="free-retry")
+                future = self._executor.submit(self._worker, retry_id, retry_config, twofa_retry, priority=0)
+                self._futures.add(future)
+                self._future_drivers[future] = driver
+                future.add_done_callback(self._future_done)
+                submitted = True
+                self._save_tasks_safely("重试任务提交后")
+                self._log(f"[{retry_id}/Free 重试/{retry_node}] 已排队（第 {task['retry_attempt']} 次）", "info", task_id=retry_id, retry_of=task["retry_of"], retry_node_code=retry_node)
+                return self._public_task(task)
+            except Exception:
+                # After submit the worker owns the task and lease.  Keep the
+                # persisted state intact if a later callback/save fails.
+                if submitted:
+                    raise
+                self._tasks.pop(retry_id, None)
+                if binding is not None:
+                    try:
+                        self.proxies.release(binding, owner=retry_id or batch_id)
+                    except Exception:
+                        pass
+                self._retry_leases.pop(retry_key, None)
+                if reserved or not twofa_retry:
+                    try:
+                        self.pool.update(row_id, status="available", batch_id="", stage="", driver="", proxy="", proxy_masked="", proxy_fingerprint="", expected_exit_ip="", exit_ip="", proxy_id="", proxy_country="", proxy_group="")
+                    except Exception:
+                        pass
+                if created_executor and not self._futures:
+                    try:
+                        self._heartbeat_stop.set()
+                        if self._heartbeat_thread is not None and self._heartbeat_thread is not threading.current_thread():
+                            self._heartbeat_thread.join(timeout=1)
+                    except Exception:
+                        pass
+                    if self._executor is not None:
+                        try:
+                            self._executor.shutdown(wait=False, cancel_futures=True)
+                        except Exception:
+                            pass
+                    self._executor = None
+                    self._heartbeat_thread = None
+                    self._batch_id = previous_batch_id
+                    self._last_config = previous_last_config
+                self._save_tasks_safely("重试任务回滚")
+                raise
+
+    def retry_twofa(self, task_id: str, config: Mapping[str, Any]) -> dict[str, Any]:
         normalized = str(task_id or "").strip()
         with self._lock:
             task = copy.deepcopy(self._tasks.get(normalized))
-        if not task:
-            raise FreeRegisterError("free_rerun", "重跑 Free 账号", "没有找到对应的 Free 任务", retryable=False)
-        if str(task.get("status") or "") not in {"failed", "stopped"}:
-            raise FreeRegisterError("free_rerun", "重跑 Free 账号", "只有失败或已停止的 Free 任务可以重跑", retryable=False)
-        row_id = str(task.get("row_id") or "")
-        row_state = self.pool._row_state(row_id) if row_id else {}
-        pool_status = str(row_state.get("status") or "")
-        if pool_status == "pending_rerun":
-            self.pool.update(
-                row_id, status="available", batch_id="", stage="", error="",
-                reusable_after_failure=False,
-            )
-            pool_status = "available"
-        if not row_id or pool_status != "available" or not any(row.row_id == row_id for row in self.pool.available(10_000)):
-            raise FreeRegisterError("free_rerun", "重跑 Free 账号", "该账号当前不可重跑，请先在 Free 邮箱中心恢复为可用", retryable=False, error_code="free_rerun_mailbox_unavailable")
-        self._log(f"[{normalized}/重跑 Free 账号/free_rerun] 使用待重跑邮箱重新创建独立批次，并重新分配代理", "info")
-        return self.start(config, row_ids=[row_id])
-
-    def retry_twofa(self, task_id: str, config: Mapping[str, Any]) -> dict[str, Any]:
-        with self._lock:
-            task = self._tasks.get(str(task_id))
-            if task is None:
-                row = self.pool.entry(str(task_id))
-                saved = self.pool.result(str(task_id)) if row is not None else {}
-                if row is not None and saved.get("twofa_status") == "pending" and saved.get("proxy"):
-                    recovered_driver = str(saved.get("driver") or config.get("driver") or "protocol").strip().lower()
-                    # Roxy is only the registration source.  Once its Profile
-                    # is closed, 2FA retry deliberately moves to the shared
-                    # protocol transport and never reopens or creates a
-                    # browser Profile.
-                    if recovered_driver == "roxybrowser":
-                        recovered_driver = "protocol"
-                    now = int(time.time())
-                    recovered_task_id = f"free-2fa-{now}-{secrets.token_hex(4)}"
-                    task = {
-                        "task_id": recovered_task_id,
-                        "ordinal": 1,
-                        "status": "twofa_pending",
-                        "created_at": now,
-                        "updated_at": now,
-                        "batch_id": str(saved.get("batch_id") or "free-2fa-retry"),
-                        "run_mode": "free_register",
-                        "email": row.email,
-                        "row_id": row.row_id,
-                        "mailbox_url": row.mailbox_url,
-                        "proxy": str(saved.get("proxy") or ""),
-                        "proxy_masked": _mask_proxy(saved.get("proxy")),
-                        "proxy_fingerprint": _fingerprint(saved.get("proxy")),
-                        "exit_ip": str(saved.get("exit_ip") or ""),
-                        "driver": recovered_driver,
-                        "result": saved,
-                    }
-                    self._tasks[recovered_task_id] = task
-            if task is None or task.get("status") != "twofa_pending":
+        if task is None:
+            row = self.pool.entry(normalized)
+            saved = self.pool.result(normalized) if row is not None else {}
+            if row is None or saved.get("twofa_status") != "pending":
                 raise FreeRegisterError("free_twofa_retry", "重试 Free 账号 2FA", "该任务当前没有待重试的 2FA", retryable=False)
-            result = task.get("result") if isinstance(task.get("result"), Mapping) else {}
-            driver = str(task.get("driver") or result.get("driver") or config.get("driver") or "protocol").strip().lower()
-            if driver == "roxybrowser":
-                driver = "protocol"
-            if driver not in {"protocol", "camoufox"}:
-                raise FreeRegisterError(
-                    "free_twofa_retry", "重试 Free 账号 2FA",
-                    "该任务的注册链路不支持 2FA 重试",
-                    retryable=False, error_code="free_twofa_retry_driver_unsupported",
-                )
-            task["driver"] = driver
-            task["status"] = "queued"
-            task["updated_at"] = int(time.time())
-            self.task_store.save(self._tasks)
-            self._stop.clear()
-            if self._executor is None:
-                self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="free-2fa-retry")
-            resolved_task_id = str(task["task_id"])
-            retry_config = dict(config)
-            retry_config["auto_set_2fa"] = True
-            future = self._executor.submit(self._worker, resolved_task_id, retry_config, True)
-            self._futures.add(future)
-            future.add_done_callback(self._future_done)
-            return self._public_task(task)
+            task = {"task_id": normalized, "row_id": row.row_id, "email": row.email, "result": saved, "driver": saved.get("driver") or "protocol", "status": "twofa_pending"}
+        if str(task.get("status") or "") != "twofa_pending":
+            raise FreeRegisterError("free_twofa_retry", "重试 Free 账号 2FA", "该任务当前没有待重试的 2FA", retryable=False)
+        return self._enqueue_retry(task, config, retry_node="free_twofa_activate", twofa_retry=True)
+
+    def batch_retry(self, task_ids: Sequence[str], config: Mapping[str, Any]) -> dict[str, Any]:
+        """Queue selected failed/2FA tasks independently and report each result."""
+        selected = list(dict.fromkeys(str(value or "").strip() for value in task_ids if str(value or "").strip()))
+        accepted: list[dict[str, Any]] = []
+        skipped: list[dict[str, Any]] = []
+        rejected: list[dict[str, Any]] = []
+        for task_id in selected[:200]:
+            try:
+                with self._lock:
+                    task = copy.deepcopy(self._tasks.get(task_id))
+                if task is None:
+                    rejected.append({"task_id": task_id, "reason": "任务不存在"})
+                    continue
+                status = str(task.get("status") or "")
+                failure = task.get("failure") if isinstance(task.get("failure"), Mapping) else {}
+                if failure and self._batch_retry_blocked(failure):
+                    skipped.append({"task_id": task_id, "reason": "当前失败节点不可自动重试，请按诊断建议处理"})
+                    continue
+                if status == "twofa_pending":
+                    queued = self.retry_twofa(task_id, config)
+                elif status in {"failed", "stopped", "pending_rerun"}:
+                    queued = self.rerun(task_id, config)
+                else:
+                    skipped.append({"task_id": task_id, "reason": "当前状态不可重试"})
+                    continue
+                accepted.append({"task_id": task_id, "retry_task": queued})
+            except Exception as exc:
+                rejected.append({"task_id": task_id, "reason": _safe_log_message(exc)[:240]})
+        if len(selected) > 200:
+            rejected.extend({"task_id": task_id, "reason": "单次最多重试 200 条"} for task_id in selected[200:])
+        return {
+            "accepted": accepted,
+            "accepted_count": len(accepted),
+            "skipped": skipped,
+            "skipped_count": len(skipped),
+            "rejected": rejected,
+            "rejected_count": len(rejected),
+        }
+
+    @staticmethod
+    def _batch_retry_blocked(failure: Mapping[str, Any]) -> bool:
+        """Keep known business/security failures out of bulk replay."""
+        if failure.get("retryable") is False:
+            return True
+        try:
+            status = int(failure.get("http_status") or 0)
+        except (TypeError, ValueError):
+            status = 0
+        if status in {400, 401, 403, 409, 422, 429}:
+            return True
+        text = " ".join(
+            str(failure.get(key) or "").lower()
+            for key in ("node_code", "error_code", "provider_code", "public_message", "technical_summary")
+        )
+        return any(marker in text for marker in (
+            "challenge", "captcha", "security", "account_disabled", "account_banned",
+            "suspended", "invalid_totp", "invalid code", "rate_limit", "429",
+        ))
 
     def secret(self, task_ids: Sequence[str], kind: str, *, row_ids: Sequence[str] = ()) -> str:
         if kind not in {"token", "password", "totp", "proxy", "credential"}:
@@ -1128,6 +1728,77 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             )
         return self._run_protocol
 
+    @staticmethod
+    def _twofa_auto_retry_allowed(result: Mapping[str, Any]) -> bool:
+        """Classify a pending 2FA result before scheduling an automatic retry.
+
+        Only transport/session-transient failures are replayed.  Rate limits,
+        security challenges, account restrictions and an explicitly invalid
+        TOTP remain manual ``twofa_pending`` states so the service is never
+        hammered with a known-bad request.
+        """
+        failure = result.get("twofa_failure") if isinstance(result.get("twofa_failure"), Mapping) else {}
+        if isinstance(failure, Mapping) and failure.get("retryable") is False:
+            return False
+        try:
+            status = int(failure.get("http_status") or 0)
+        except (TypeError, ValueError):
+            status = 0
+        if status in {400, 401, 403, 409, 422, 429}:
+            return False
+        text = " ".join(
+            str(failure.get(key) or "").lower()
+            for key in ("error_code", "provider_code", "public_message", "technical_summary")
+        )
+        blocked = ("challenge", "captcha", "security", "account_disabled", "account_banned", "suspended", "invalid_totp", "invalid code", "rate_limit", "429")
+        return not any(marker in text for marker in blocked)
+
+    def _schedule_auto_twofa_retry(
+        self,
+        task: Mapping[str, Any],
+        result: Mapping[str, Any],
+        config: Mapping[str, Any],
+    ) -> str:
+        """Enqueue one bounded 2FA retry and return its task id, if any."""
+        if str(result.get("twofa_status") or "").strip().lower() != "pending":
+            return ""
+        # The key is intentionally presence-sensitive for compatibility with
+        # direct/integration manager callers from older releases. Production
+        # requests pass a normalized FreeConfigStore snapshot containing this
+        # bounded setting (default: two additional attempts).
+        if "twofa_auto_retry_attempts" not in config:
+            return ""
+        try:
+            limit = max(0, min(2, int(config.get("twofa_auto_retry_attempts") or 0)))
+            attempt = int(task.get("retry_attempt") or 0)
+        except (TypeError, ValueError):
+            return ""
+        if limit <= attempt or not self._twofa_auto_retry_allowed(result):
+            return ""
+        try:
+            queued = self._enqueue_retry(
+                task,
+                config,
+                retry_node="free_twofa_activate",
+                twofa_retry=True,
+            )
+            retry_id = str(queued.get("task_id") or "") if isinstance(queued, Mapping) else ""
+            if retry_id:
+                self._save_task(str(task.get("task_id") or ""), auto_twofa_retry_task_id=retry_id)
+            return retry_id
+        except Exception as exc:
+            # Automatic recovery is best-effort; preserve the original 2FA
+            # incident and leave the account in its manual pending state.
+            self._log(
+                f"[{task.get('task_id', '')}/2FA 自动重试/free_twofa_activate] 自动重试入队失败（{type(exc).__name__}）",
+                "warn",
+                task_id=str(task.get("task_id") or ""),
+                node_code="free_twofa_activate",
+                node_label="激活 Free 账号 2FA",
+                outcome="retry_enqueue_failed",
+            )
+            return ""
+
     def _worker(self, task_id: str, config: dict[str, Any], twofa_retry: bool = False) -> None:
         self._maybe_recover_roxy_circuit(config)
         with self._lock:
@@ -1157,6 +1828,9 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             snapshot_driver = str(snapshot.get("driver") or config.get("driver") or "protocol").strip().lower()
         task_config = dict(config)
         task_config["driver"] = snapshot_driver
+        if self.manual_broker is not None:
+            task_config["_manual_verification_broker"] = self.manual_broker
+            task_config["_manual_generation_getter"] = self._manual_generation
         self._log(f"[{task_id}/free_oauth_session] Free 任务开始", "info")
         task_log = lambda message, level="info", **fields: self._task_log(task_id, message, level, **fields)
         try:
@@ -1224,6 +1898,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 "driver": snapshot.get("driver") or config.get("driver") or "protocol",
                 "proxy_id": snapshot.get("proxy_id", ""),
                 "proxy_scheme": snapshot.get("proxy_scheme", ""),
+                "proxy_effective_scheme": snapshot.get("proxy_effective_scheme", "") or snapshot.get("proxy_scheme", ""),
                 "proxy_country": snapshot.get("proxy_country", ""),
                 "proxy_group": snapshot.get("proxy_group", ""),
             })
@@ -1252,6 +1927,8 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             )
             self._stage(task_id, "free_result_save")
             self._finish_progress(task_id, "success" if status == "success" else "partial")
+            if status == "twofa_pending":
+                self._schedule_auto_twofa_retry(snapshot, result, task_config)
             self._release_task_lease(snapshot)
             failure_identity = f"{(result_failure or {}).get('node_label', '后置检查')}/{(result_failure or {}).get('node_code', 'unknown')}"
             result_label = "完成" if status == "success" else f"注册完成，{failure_identity}{'待重试' if status == 'twofa_pending' else '待处理'}"
@@ -1312,6 +1989,12 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     "账号已进入注册流程，邮箱未自动恢复为可用；可从任务行重跑或邮箱中心手动恢复",
                     "warn",
                 )
+            # Keep the persisted progress cursor aligned with the first real
+            # failure.  The runner may raise before it gets a chance to emit
+            # its own stage transition; recording the failed node here makes
+            # the timing row, task table and diagnostic event agree.
+            if node_code:
+                self._stage(task_id, node_code)
             self._finish_progress(task_id, "failed" if terminal_status == "failed" else "stopped")
             self._record_proxy_failure(snapshot, exc)
             self._roxy_failure(snapshot, exc)
@@ -1351,9 +2034,15 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 task_id, snapshot, status="twofa_pending", failure=failure, result=result,
             )
             self.pool.update(snapshot["row_id"], status="twofa_pending", stage=failure["node_code"], error=failure["public_message"], failure=failure)
-            self._stage(task_id, "free_twofa_activate")
+            self._stage(task_id, failure.get("node_code") or "free_twofa_activate")
             self._finish_progress(task_id, "partial")
             self._release_task_lease(snapshot)
+            # The protocol/browser runner commonly signals a recoverable 2FA
+            # failure by raising ``FreeTwoFaPending`` rather than returning a
+            # result envelope.  Feed that path through the same bounded
+            # automatic retry policy as returned ``twofa_status=pending``
+            # results; the original task and incident remain intact.
+            self._schedule_auto_twofa_retry(snapshot, result, task_config)
             self._log(
                 f"[{task_id}/激活 Free 账号 2FA/free_twofa_activate] 2FA 重试未完成，保留待重试状态：{_safe_log_message(pending)}",
                 "warn", task_id=task_id, node_code=failure["node_code"],
@@ -1368,6 +2057,8 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             failure, classified_exc, current_stage, current_label = (
                 self._persist_unexpected_task_failure(task_id, snapshot, exc)
             )
+            if current_stage:
+                self._stage(task_id, current_stage)
             self._finish_progress(task_id, "failed")
             self._record_proxy_failure(snapshot, classified_exc)
             self._roxy_failure(snapshot, classified_exc)

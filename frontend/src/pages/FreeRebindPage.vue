@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, Link, Plus, Refresh, VideoPlay } from '@element-plus/icons-vue'
+import { CopyDocument, Delete, Link, Plus, Refresh, VideoPlay } from '@element-plus/icons-vue'
 import PageToolbar from '../components/PageToolbar.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import {
   deleteFreeRebindMailboxes,
   getFreeRebindState,
+  getFreeRebindMailboxLatestCode,
+  getFreeRebindMailboxUrl,
   importFreeRebindMailboxes,
   retryFreeRebind,
   setFreeRebindMailboxStatus,
@@ -24,6 +26,7 @@ const selectedMailboxes = ref<FreeRebindMailboxRow[]>([])
 const selectedSource = ref('')
 const selectedTarget = ref('')
 const startBusy = ref(false)
+const loadingLatestCode = ref<string[]>([])
 let refreshTimer = 0
 
 const availableTargets = computed(() => state.value.mailboxes.filter(row => row.status === 'available'))
@@ -93,6 +96,50 @@ async function importPool() {
     ElMessage.error(error?.message || '换绑邮箱池导入失败')
   } finally {
     importing.value = false
+  }
+}
+
+async function copyLatestCode(row: FreeRebindMailboxRow) {
+  const rowId = String(row.row_id || '')
+  if (!rowId || loadingLatestCode.value.includes(rowId)) return
+  if (!navigator.clipboard?.writeText) {
+    ElMessage.error('当前浏览器不支持安全剪贴板写入')
+    return
+  }
+  loadingLatestCode.value = [...loadingLatestCode.value, rowId]
+  try {
+    const result = await getFreeRebindMailboxLatestCode(rowId)
+    const code = String(result.code || '').trim()
+    if (!code) {
+      ElMessage.info('未找到新的 OpenAI 邮箱验证码')
+      return
+    }
+    await navigator.clipboard.writeText(code)
+    ElMessage.success('验证码已复制')
+  } catch (error: any) {
+    ElMessage.error(error?.message || '提取换绑邮箱验证码失败')
+  } finally {
+    loadingLatestCode.value = loadingLatestCode.value.filter(id => id !== rowId)
+  }
+}
+
+async function openMailboxUrl(row: FreeRebindMailboxRow) {
+  const rowId = String(row.row_id || '')
+  if (!rowId) return
+  const target = window.open('', '_blank')
+  if (!target) {
+    ElMessage.error('浏览器阻止了新窗口，请允许弹出窗口后重试')
+    return
+  }
+  target.opener = null
+  try {
+    const value = String((await getFreeRebindMailboxUrl(rowId)).mailbox_url || '').trim()
+    const url = new URL(value)
+    if (!['http:', 'https:'].includes(url.protocol)) throw new Error('取件 URL 协议不安全')
+    target.location.replace(url.href)
+  } catch (error: any) {
+    target.close()
+    ElMessage.error(error?.message || '打开取件地址失败')
   }
 }
 
@@ -213,6 +260,7 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
           <el-table-column type="selection" width="42" />
           <el-table-column prop="email" label="目标邮箱" min-width="220" show-overflow-tooltip />
           <el-table-column label="状态" width="92" align="center"><template #default="{ row }"><el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag></template></el-table-column>
+          <el-table-column label="取件" width="92" align="center"><template #default="{ row }"><el-tooltip content="打开取件地址" placement="top"><el-button link :icon="Link" aria-label="打开取件地址" @click="openMailboxUrl(row)" /></el-tooltip><el-tooltip content="提取并复制最新验证码" placement="top"><el-button link :icon="CopyDocument" :loading="loadingLatestCode.includes(row.row_id)" aria-label="提取并复制最新验证码" @click="copyLatestCode(row)" /></el-tooltip></template></el-table-column>
           <el-table-column label="错误" min-width="180" show-overflow-tooltip><template #default="{ row }"><span class="muted">{{ row.error || '-' }}</span></template></el-table-column>
         </el-table>
       </WorkspacePanel>

@@ -20,6 +20,7 @@ import {
   getRuntimeTaskMailboxPassword,
   getRuntimeTaskMailboxTotp,
   getRuntimeTaskMailboxUrl,
+  getRuntimeTaskLatestCode,
   retryFreeTwofa,
 } from '../api/client'
 import DashboardMetricCard from '../components/DashboardMetricCard.vue'
@@ -47,6 +48,7 @@ const startDialog = ref<InstanceType<typeof RunStartDialog>>()
 const openingMailboxUrlTaskIds = ref<string[]>([])
 const loadingMailboxPasswordTaskIds = ref<string[]>([])
 const loadingMailboxTotpTaskIds = ref<string[]>([])
+const loadingMailboxLatestCodeTaskIds = ref<string[]>([])
 const taskView = ref<'pending' | 'running' | 'all'>('pending')
 const taskCounts = ref({ pending: 0, running: 0, all: 0 })
 const connectivityView = computed(() => buildOpenAIConnectivityView(controller.runtime.value))
@@ -340,6 +342,30 @@ async function copyTaskTotp(task: RuntimeTask) {
   }
 }
 
+async function copyTaskLatestCode(task: RuntimeTask) {
+  const taskId = String(task.task_id || '').trim()
+  if (!taskId || loadingMailboxLatestCodeTaskIds.value.includes(taskId)) return
+  if (!navigator.clipboard?.writeText) {
+    ElMessage.error('当前浏览器不支持安全剪贴板写入')
+    return
+  }
+  loadingMailboxLatestCodeTaskIds.value = [...loadingMailboxLatestCodeTaskIds.value, taskId]
+  try {
+    const result = await getRuntimeTaskLatestCode(taskId)
+    const code = String(result.code || '').trim()
+    if (!code) {
+      ElMessage.info('未找到新的 OpenAI 邮箱验证码')
+      return
+    }
+    await navigator.clipboard.writeText(code)
+    ElMessage.success('验证码已复制')
+  } catch (error: any) {
+    ElMessage.error(error?.message || '提取邮箱验证码失败')
+  } finally {
+    loadingMailboxLatestCodeTaskIds.value = loadingMailboxLatestCodeTaskIds.value.filter(id => id !== taskId)
+  }
+}
+
 async function openTaskMailboxUrl(task: RuntimeTask) {
   const taskId = String(task.task_id || '').trim()
   if (!task.has_mailbox_url || !taskId || openingMailboxUrlTaskIds.value.includes(taskId)) return
@@ -446,11 +472,13 @@ async function disableConnectivityGuard() {
             :opening-mailbox-urls="openingMailboxUrlTaskIds"
             :loading-mailbox-passwords="loadingMailboxPasswordTaskIds"
             :loading-mailbox-totps="loadingMailboxTotpTaskIds"
+            :loading-mailbox-latest-codes="loadingMailboxLatestCodeTaskIds"
             :active-view="taskView"
             @copy-account="copyTaskAccount"
             @mailbox-password="copyTaskPassword"
             @mailbox-totp="copyTaskTotp"
             @mailbox-url="openTaskMailboxUrl"
+            @mailbox-latest-code="copyTaskLatestCode"
             @free-secret="copyFreeTaskSecret"
             @free-twofa-retry="retryFreeTaskTwofa"
             @diagnostic="openDiagnostic"

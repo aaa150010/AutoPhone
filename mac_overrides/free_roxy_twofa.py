@@ -141,6 +141,23 @@ def setup_twofa(
     new_token = str(refreshed.get("accessToken") or token)
     if callable(token_sink):
         token_sink(new_token)
+    status_result = driver.execute_async_script(
+        """
+        const token=arguments[0], done=arguments[arguments.length - 1];
+        fetch('https://chatgpt.com/backend-api/accounts/mfa_info',{
+          credentials:'include',headers:{authorization:'Bearer '+token,accept:'application/json'}
+        }).then(async r=>done({ok:r.ok,status:r.status,value:await r.json().catch(()=>({}))})).catch(e=>done({ok:false,error:String(e)}));
+        """,
+        new_token,
+    ) or {}
+    status_value = status_result.get("value") if isinstance(status_result.get("value"), Mapping) else {}
+    factors = status_value.get("factors") if isinstance(status_value, Mapping) else {}
+    totp_factors = factors.get("totp") if isinstance(factors, Mapping) else None
+    if status_result.get("ok") and (
+        bool(status_value.get("mfa_enabled") or status_value.get("mfaEnabled"))
+        or bool(totp_factors)
+    ):
+        return ""
     enrolled = driver.execute_async_script(
         """
         const token=arguments[0], done=arguments[arguments.length - 1]; fetch('https://chatgpt.com/backend-api/accounts/mfa/enroll',{
@@ -175,6 +192,23 @@ def setup_twofa(
     ) or {}
     value = activated.get("value") if isinstance(activated.get("value"), Mapping) else {}
     if not activated.get("ok") or not value.get("success"):
+        confirmed = driver.execute_async_script(
+            """
+            const token=arguments[0], done=arguments[arguments.length - 1];
+            fetch('https://chatgpt.com/backend-api/accounts/mfa_info',{
+              credentials:'include',headers:{authorization:'Bearer '+token,accept:'application/json'}
+            }).then(async r=>done({ok:r.ok,status:r.status,value:await r.json().catch(()=>({}))})).catch(e=>done({ok:false,error:String(e)}));
+            """,
+            new_token,
+        ) or {}
+        confirmed_value = confirmed.get("value") if isinstance(confirmed.get("value"), Mapping) else {}
+        confirmed_factors = confirmed_value.get("factors") if isinstance(confirmed_value, Mapping) else {}
+        confirmed_totp = confirmed_factors.get("totp") if isinstance(confirmed_factors, Mapping) else None
+        if confirmed.get("ok") and (
+            bool(confirmed_value.get("mfa_enabled") or confirmed_value.get("mfaEnabled"))
+            or bool(confirmed_totp)
+        ):
+            return secret
         status = activated.get("status") or None
         raise FreeRegisterError(
             "free_twofa_activate", "激活 Free 账号 2FA",

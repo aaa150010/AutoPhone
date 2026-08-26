@@ -12,7 +12,7 @@ const defaultConfig: FreeConfig = {
   mailbox_network_mode: 'local_proxy', mailbox_proxy_url: 'http://127.0.0.1:7897',
   mailbox_request_retries: 3, mailbox_retry_backoff_seconds: 1,
   proxy_probe_url: 'https://chatgpt.com/', proxy_socks5_dns_mode: 'auto', proxy_tls_verify: true, proxy_tls_compat_fallback: true, protocol: { node_runner: '', sentinel_version: '20260219f9f6', sentinel_timeout: 90, network_timeout: 20, network_preflight_retries: 3, security_challenge_wait_seconds: 60, anonymous_warmup: true, authenticated_warmup: true },
-  proxy_default_scheme: 'http', proxy_failure_threshold: 2, proxy_quarantine_seconds: 600, proxy_retry_count: 1,
+  proxy_default_scheme: 'http', proxy_failure_threshold: 2, proxy_quarantine_seconds: 600, proxy_health_probe_ttl_seconds: 300, proxy_retry_count: 1,
   roxy_circuit_failure_threshold: 3, roxy_circuit_recovery_seconds: 30,
   roxybrowser: {
     api_base: 'http://127.0.0.1:50000', api_key: '', workspace_id: '', project_id: '',
@@ -36,6 +36,8 @@ const config = reactive<FreeConfig>(structuredClone(defaultConfig))
 const state = ref<FreeState>({ running: false, tasks: [], summary: {}, pool: {} })
 const proxyText = ref('')
 const proxyScheme = ref('http')
+const proxySourceLabel = ref('')
+const layeredProbe = ref(true)
 const proxyCheckRows = ref<Array<{ index: number; masked: string; fingerprint: string; scheme?: string; available?: boolean; http_status?: number | null; local_to_proxy_ms?: number | null; proxy_to_target_ms?: number | null; failure_node?: string; failure_reason?: string }>>([])
 const proxyRows = ref<FreeProxyRow[]>([])
 const workspaces = ref<Array<{ workspace_id: string; workspace_name: string; project_id: string; project_name: string; label: string }>>([])
@@ -64,6 +66,7 @@ function draftSignature() {
     config,
     proxy_content: proxyText.value,
     proxy_scheme: proxyScheme.value,
+    proxy_source_label: proxySourceLabel.value,
   })
 }
 
@@ -109,6 +112,7 @@ async function save() {
       ...config,
       proxy_content: proxyText.value,
       proxy_scheme: proxyScheme.value,
+      proxy_source_label: proxySourceLabel.value,
     })
     mergeConfig(result.config)
     state.value = result.state || state.value
@@ -139,7 +143,7 @@ async function preflight() {
 async function preflightProxyPool() {
   busy.value = 'proxy-preflight'
   try {
-    const result = await preflightFreeProxies(proxyText.value, config.proxy_probe_url, { driver: config.driver, scheme: proxyScheme.value, proxy_socks5_dns_mode: config.proxy_socks5_dns_mode, proxy_tls_verify: config.proxy_tls_verify, proxy_tls_compat_fallback: config.proxy_tls_compat_fallback })
+    const result = await preflightFreeProxies(proxyText.value, config.proxy_probe_url, { driver: config.driver, scheme: proxyScheme.value, proxy_socks5_dns_mode: config.proxy_socks5_dns_mode, proxy_tls_verify: config.proxy_tls_verify, proxy_tls_compat_fallback: config.proxy_tls_compat_fallback, layered_probe: layeredProbe.value })
     proxyCheckRows.value = result.result?.rows || []
     const checkedRows = proxyCheckRows.value
     const available = checkedRows.filter(row => row.available).length
@@ -263,6 +267,9 @@ defineExpose({ save })
         <el-col :span="12"><el-form-item><template #label><FieldHelpLabel label="Roxy 熔断失败阈值" help="Roxy API、工作区、Profile 打开或 Selenium 连接等基础设施错误连续达到此次数后，暂停启动新的 Roxy 任务。页面业务错误不会触发。" /></template><el-input-number v-model="config.roxy_circuit_failure_threshold" :min="1" :max="10" controls-position="right" :disabled="running" /></el-form-item></el-col>
         <el-col :span="12"><el-form-item><template #label><FieldHelpLabel label="Roxy 熔断恢复等待（秒）" help="Roxy 批次打开熔断后等待的恢复时间。熔断只影响当前 Free RoxyBrowser 批次，不影响全协议和普通接码任务。" /></template><el-input-number v-model="config.roxy_circuit_recovery_seconds" :min="0" :max="3600" controls-position="right" :disabled="running" /></el-form-item></el-col>
       </el-row>
+      <el-row :gutter="10">
+        <el-col :span="12"><el-form-item><template #label><FieldHelpLabel label="健康探测有效期（秒）" help="代理最近一次成功探测在这段时间内直接复用；超过后仅在绑定前执行一次有界连通性探测。设为 0 可关闭自动刷新，保留手动代理检测。" /></template><el-input-number v-model="config.proxy_health_probe_ttl_seconds" :min="0" :max="86400" controls-position="right" :disabled="running" /></el-form-item></el-col>
+      </el-row>
     </div>
 
     <div v-if="config.driver === 'protocol'" class="subsection">
@@ -333,11 +340,12 @@ defineExpose({ save })
       <div class="proxy-import-meta">
         <div class="proxy-import-field"><FieldHelpLabel label="无协议默认协议" help="支持 scheme://用户名:密码@主机:端口、主机:端口:用户名:密码、用户名:密码@主机:端口、主机:端口@用户名:密码；裸格式按当前下拉协议解析，显式协议始终优先。" /><el-select v-model="proxyScheme" placeholder="无协议时默认协议"><el-option label="HTTP" value="http" /><el-option label="HTTPS" value="https" /><el-option label="SOCKS4" value="socks4" /><el-option label="SOCKS5" value="socks5" /><el-option label="SOCKS5H" value="socks5h" /></el-select></div>
         <div class="proxy-import-field"><FieldHelpLabel label="SOCKS5 DNS" help="只影响 SOCKS5 代理的域名解析位置，不改变保存的协议标签。自动模式检测到 Clash Fake-IP 时使用代理端解析，普通网络保留本机解析。" /><el-select v-model="config.proxy_socks5_dns_mode" :disabled="running"><el-option label="自动适配" value="auto" /><el-option label="本机解析" value="local" /><el-option label="代理端解析" value="remote" /><el-option label="严格声明" value="declared" /></el-select></div>
+        <div class="proxy-import-field"><FieldHelpLabel label="代理来源（可选）" help="仅用于报表和供应商对比，例如 1024、cliproxy；不会参与代理分配，也不会写入代理凭据。" /><el-input v-model="proxySourceLabel" maxlength="40" show-word-limit placeholder="例如 1024 / cliproxy" /></div>
       </div>
       <el-input v-model="proxyText" type="textarea" :rows="5" :disabled="running" placeholder="每行一个代理，支持 URL、host:port:user:pass 和两种 @ 格式" autocomplete="off" />
-      <div class="inline-actions"><el-button size="small" :icon="CircleCheck" :loading="busy === 'proxy-preflight'" :disabled="running || !proxyText.trim()" @click="preflightProxyPool">检测代理连通性</el-button><span class="muted">代理内容会随右下角“保存 Free 配置”一起保存，不会消耗邮箱，也不会启动注册；检测只确认代理请求可用。</span></div>
-      <template v-if="proxyCheckRows.length"><div class="proxy-table-heading"><FieldHelpLabel label="本次检测结果" help="仅展示声明协议、脱敏地址、响应状态和耗时；检测不解析、保存或比较出口 IP。" /></div><el-table :data="proxyCheckRows" size="small" height="180" class="proxy-check-table"><el-table-column type="index" label="序号" width="58" align="center" fixed="left" /><el-table-column prop="masked" label="代理掩码" min-width="220" /><el-table-column prop="scheme" label="协议" width="85" /><el-table-column label="状态" width="75"><template #default="{ row }"><el-tag size="small" :type="row.available ? 'success' : 'danger'">{{ row.available ? '可用' : '失败' }}</el-tag></template></el-table-column><el-table-column prop="http_status" label="HTTP" width="70" /><el-table-column label="耗时" width="85"><template #default="{ row }">{{ row.proxy_to_target_ms != null ? `${row.proxy_to_target_ms} ms` : '-' }}</template></el-table-column><el-table-column prop="failure_node" label="故障节点" min-width="150" /><el-table-column prop="fingerprint" label="指纹" min-width="120" /></el-table></template>
-      <template v-if="proxyRows.length"><div class="proxy-table-heading"><FieldHelpLabel label="代理明细" help="已保存共享 Free 代理池的逐条记录。用于查看声明协议、健康状态、探测模式和连续失败次数；认证信息始终隐藏。" /></div><el-table :data="proxyRows" size="small" height="180" class="proxy-check-table"><el-table-column type="index" label="序号" width="58" align="center" fixed="left" /><el-table-column prop="scheme" label="协议" width="85" /><el-table-column prop="masked" label="代理" min-width="210" /><el-table-column width="85"><template #header><FieldHelpLabel label="状态" help="未检测表示尚无成功探测；可用表示最近探测成功；已隔离表示连续失败达到阈值，隔离期内不会分配。" /></template><template #default="{ row }">{{ proxyStatusLabel(row.status) }}</template></el-table-column><el-table-column prop="last_probe_mode" label="探测模式" width="90"><template #default="{ row }">{{ row.last_probe_mode === 'compat' ? '兼容重试' : row.last_probe_mode === 'strict' ? '严格校验' : '-' }}</template></el-table-column><el-table-column prop="consecutive_failures" label="失败次数" width="85" /></el-table></template>
+      <div class="inline-actions"><el-button size="small" :icon="CircleCheck" :loading="busy === 'proxy-preflight'" :disabled="running || !proxyText.trim()" @click="preflightProxyPool">检测代理连通性</el-button><el-checkbox v-model="layeredProbe" :disabled="running">分层诊断</el-checkbox><span class="muted">分层诊断会额外记录 TCP、HTTPS 和 ChatGPT 登录页耗时，不保存响应正文。</span></div>
+      <template v-if="proxyCheckRows.length"><div class="proxy-table-heading"><FieldHelpLabel label="本次检测结果" help="仅展示声明协议、脱敏地址、响应状态和耗时；检测不解析、保存或比较出口 IP。" /></div><el-table :data="proxyCheckRows" size="small" height="180" class="proxy-check-table"><el-table-column type="index" label="序号" width="58" align="center" fixed="left" /><el-table-column prop="masked" label="代理掩码" min-width="220" /><el-table-column prop="scheme" label="协议" width="85" /><el-table-column label="状态" width="75"><template #default="{ row }"><el-tag size="small" :type="row.available ? 'success' : 'danger'">{{ row.available ? '可用' : '失败' }}</el-tag></template></el-table-column><el-table-column prop="http_status" label="HTTP" width="70" /><el-table-column label="耗时" width="170"><template #default="{ row }"><span v-if="row.layered_probe">TCP {{ row.layered_probe.tcp_connect_ms ?? '-' }} ms · HTTPS {{ row.layered_probe.https_request_ms ?? '-' }} ms · 登录 {{ row.layered_probe.chatgpt_request_ms ?? '-' }} ms</span><span v-else>{{ row.proxy_to_target_ms != null ? `${row.proxy_to_target_ms} ms` : '-' }}</span></template></el-table-column><el-table-column prop="failure_node" label="故障节点" min-width="150" /><el-table-column prop="fingerprint" label="指纹" min-width="120" /></el-table></template>
+      <template v-if="proxyRows.length"><div class="proxy-table-heading"><FieldHelpLabel label="代理明细" help="已保存共享 Free 代理池的逐条记录。用于查看来源、声明/有效协议、健康状态、成功率和延迟；认证信息始终隐藏。" /></div><el-table :data="proxyRows" size="small" height="180" class="proxy-check-table"><el-table-column type="index" label="序号" width="58" align="center" fixed="left" /><el-table-column prop="source_label" label="来源" width="100" show-overflow-tooltip /><el-table-column label="协议" width="125"><template #default="{ row }">{{ row.declared_scheme || row.scheme || '-' }}<small class="table-subline">有效 {{ row.effective_scheme || row.scheme || '-' }}</small></template></el-table-column><el-table-column prop="masked" label="代理" min-width="210" show-overflow-tooltip /><el-table-column width="85"><template #header><FieldHelpLabel label="状态" help="未检测表示尚无成功探测；可用表示最近探测成功；已隔离表示连续失败达到阈值，隔离期内不会分配。" /></template><template #default="{ row }">{{ proxyStatusLabel(row.status) }}</template></el-table-column><el-table-column label="成功率" width="90"><template #default="{ row }">{{ row.probe_success_rate == null ? '-' : `${(Number(row.probe_success_rate) * 100).toFixed(1)}%` }}</template></el-table-column><el-table-column label="p50 / p95" width="105"><template #default="{ row }">{{ row.p50_latency_ms == null ? '-' : `${row.p50_latency_ms} / ${row.p95_latency_ms ?? '-'} ms` }}</template></el-table-column><el-table-column prop="last_probe_mode" label="探测模式" width="90"><template #default="{ row }">{{ row.last_probe_mode === 'compat' ? '兼容重试' : row.last_probe_mode === 'strict' ? '严格校验' : '-' }}</template></el-table-column><el-table-column prop="consecutive_failures" label="连续失败" width="85" /></el-table></template>
     </div>
 
     <div class="settings-actions"><el-button size="small" :icon="CircleCheck" :loading="busy === 'preflight'" :disabled="running" @click="preflight">注册预检</el-button><el-button size="small" :icon="Refresh" :loading="busy === 'load'" :disabled="running" @click="load">刷新 Free 配置</el-button></div>
@@ -367,9 +375,10 @@ defineExpose({ save })
 .inline-actions, .settings-actions { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .settings-actions { justify-content: flex-end; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--workspace-border); }
 .proxy-check-table { margin-top: 8px; }
-.proxy-import-meta { display: grid; grid-template-columns: 180px minmax(180px, 1fr) 180px; gap: 8px; margin-bottom: 8px; }
+.proxy-import-meta { display: grid; grid-template-columns: 180px minmax(180px, 1fr) minmax(180px, 1fr); gap: 8px; margin-bottom: 8px; }
 .proxy-import-field { display: grid; gap: 5px; min-width: 0; }
 .proxy-table-heading { display: flex; align-items: center; margin: 12px 0 -2px; color: var(--el-text-color-regular); font-size: 12px; font-weight: 650; }
+.table-subline { display: block; color: var(--el-text-color-secondary); font-size: 10px; line-height: 14px; }
 .free-settings-section :deep(.el-input-number), .free-settings-section :deep(.el-select) { width: 100%; }
 .free-settings-section :deep(.free-scale-number) { width: 132px; max-width: 100%; }
 .free-settings-section :deep(.el-form-item) { margin-bottom: 10px; }

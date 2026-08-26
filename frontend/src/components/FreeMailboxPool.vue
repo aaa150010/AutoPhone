@@ -2,8 +2,8 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CopyDocument, Delete, Key, Lock, Plus, Refresh, RefreshRight, Tickets, Link, Download, CircleCheck, Warning, View, VideoPlay, Upload } from '@element-plus/icons-vue'
-import { deleteFreeMailboxes, exportFreeResults, formatFreeMailboxes, getFreeLiveCheckState, getFreeMailboxUrl, getFreeMailboxes, getFreeSecret, getFreeTotp, importFreeMailboxes, retryFreeTwofa, setFreeMailboxStatus, startFree, startFreeLiveCheck, startFreePlanCheck, transferFreeMailboxes } from '../api/client'
-import type { FreeLiveCheckState, FreeMailboxRow } from '../api/client'
+import { deleteFreeMailboxes, exportFreeResults, formatFreeMailboxes, getFreeLiveCheckState, getFreeMailboxLatestCode, getFreeMailboxUrl, getFreeMailboxes, getFreeSecret, getFreeTotp, importFreeMailboxes, retryFreeTwofa, setFreeMailboxStatus, startFree, startFreeLiveCheck, startFreePlanCheck, transferFreeMailboxes } from '../api/client'
+import type { FreeLiveCheckState, FreeMailboxRow, FreeState } from '../api/client'
 import ContentEmptyState from './ContentEmptyState.vue'
 import FreeTaskLogDialog from './FreeTaskLogDialog.vue'
 import WorkspacePanel from './WorkspacePanel.vue'
@@ -24,6 +24,9 @@ const liveStatusFilter = ref('')
 const liveBusy = ref<'fast' | 'deep' | ''>('')
 const planBusy = ref('')
 const loadingTotp = ref<string[]>([])
+const loadingLatestCode = ref<string[]>([])
+const joinCurrentBatch = ref(false)
+const freeState = ref<FreeState>({ running: false, tasks: [], summary: {}, pool: {} })
 const runBusy = ref(false)
 const liveState = ref<FreeLiveCheckState>({ running: false, workers: 3, queue_limit: 500, active: 0, jobs: [] })
 const logDialogOpen = ref(false)
@@ -58,7 +61,9 @@ defineExpose({ openImport })
 async function refresh() {
   loading.value = true
   try {
-    rows.value = (await getFreeMailboxes()).rows || []
+    const result = await getFreeMailboxes()
+    rows.value = result.rows || []
+    freeState.value = result.state || freeState.value
   } catch (error: any) {
     ElMessage.error(error?.message || 'Free 邮箱池刷新失败')
   } finally {
@@ -219,10 +224,13 @@ async function importPools() {
   loading.value = true
   try {
     const messages: string[] = []
-    const result = await importFreeMailboxes(mailboxText.value)
+    const result = await importFreeMailboxes(mailboxText.value, joinCurrentBatch.value)
     messages.push(`新增 ${Number(result.imported || 0)} 条`)
+    if (Number(result.active_batch_joined || 0)) messages.push(`已加入当前批次 ${Number(result.active_batch_joined)} 条`)
+    else if (Number(result.next_batch || 0)) messages.push(`下一批优先 ${Number(result.next_batch)} 条`)
     if (Number(result.skipped || 0)) messages.push(`跳过重复 ${Number(result.skipped || 0)} 条`)
     importOpen.value = false
+    joinCurrentBatch.value = false
     selected.value = []
     tableRef.value?.clearSelection()
     await refresh()
@@ -369,8 +377,32 @@ async function copyRow(kind: 'token' | 'password' | 'totp' | 'proxy' | 'credenti
   await copySecret(kind, [row])
 }
 
+async function copyLatestCode(row: FreeMailboxRow) {
+  const rowId = String(row.row_id || '')
+  if (!rowId || loadingLatestCode.value.includes(rowId)) return
+  if (!navigator.clipboard?.writeText) {
+    ElMessage.error('当前浏览器不支持安全剪贴板写入')
+    return
+  }
+  loadingLatestCode.value = [...loadingLatestCode.value, rowId]
+  try {
+    const result = await getFreeMailboxLatestCode(rowId)
+    const code = String(result.code || '').trim()
+    if (!code) {
+      ElMessage.info('未找到新的 OpenAI 邮箱验证码')
+      return
+    }
+    await navigator.clipboard.writeText(code)
+    ElMessage.success('验证码已复制')
+  } catch (error: any) {
+    ElMessage.error(error?.message || '提取 Free 邮箱验证码失败')
+  } finally {
+    loadingLatestCode.value = loadingLatestCode.value.filter(id => id !== rowId)
+  }
+}
+
 async function retryTwofa(row: FreeMailboxRow) {
-  if (row.twofa_status !== 'pending' || !row.row_id || row.driver === 'roxybrowser') return
+  if (row.twofa_status !== 'pending' || !row.row_id) return
   try {
     await retryFreeTwofa(row.row_id)
     ElMessage.info('已重新加入 2FA 设置任务')
@@ -476,9 +508,9 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
             <template #default="{ row }"><el-tag size="small" :type="liveStatusType(row.live_check_status)">{{ liveStatusLabel(row.live_check_status) }}</el-tag><small v-if="row.live_check_mode">{{ row.live_check_mode === 'deep' ? '深度' : '快速' }}</small></template>
           </el-table-column>
           <el-table-column label="2FA" width="112" align="center">
-            <template #default="{ row }"><template v-if="row.has_totp"><el-tag size="small" type="success" effect="plain">已启用</el-tag><el-tooltip content="复制临时 2FA 验证码"><el-button link :icon="Key" :loading="loadingTotp.includes(row.row_id)" aria-label="复制临时 2FA 验证码" @click="copyRow('totp', row)" /></el-tooltip></template><el-button v-else-if="row.twofa_status === 'pending' && row.driver !== 'roxybrowser'" link type="warning" @click="retryTwofa(row)"><el-tag size="small" type="warning" effect="plain">待重试</el-tag></el-button><el-tag v-else size="small" type="info" effect="plain">未启用</el-tag></template>
+            <template #default="{ row }"><template v-if="row.has_totp"><el-tag size="small" type="success" effect="plain">已启用</el-tag><el-tooltip content="复制临时 2FA 验证码"><el-button link :icon="Key" :loading="loadingTotp.includes(row.row_id)" aria-label="复制临时 2FA 验证码" @click="copyRow('totp', row)" /></el-tooltip></template><el-button v-else-if="row.twofa_status === 'pending'" link type="warning" @click="retryTwofa(row)"><el-tag size="small" type="warning" effect="plain">待重试</el-tag></el-button><el-tag v-else size="small" type="info" effect="plain">未启用</el-tag></template>
           </el-table-column>
-          <el-table-column label="取件" width="62" align="center"><template #default="{ row }"><el-button link :icon="Link" aria-label="打开取件地址" @click="openUrl(row)" /></template></el-table-column>
+          <el-table-column label="取件" width="92" align="center"><template #default="{ row }"><el-tooltip content="打开取件地址" placement="top"><el-button link :icon="Link" aria-label="打开取件地址" @click="openUrl(row)" /></el-tooltip><el-tooltip content="提取并复制最新验证码" placement="top"><el-button link :icon="CopyDocument" :loading="loadingLatestCode.includes(row.row_id)" aria-label="提取并复制最新验证码" @click="copyLatestCode(row)" /></el-tooltip></template></el-table-column>
           <el-table-column label="Token" width="80" align="center"><template #default="{ row }"><el-button v-if="row.has_access_token" link :icon="CopyDocument" aria-label="复制 Token" @click="copyRow('token', row)" /><span v-else>-</span></template></el-table-column>
           <el-table-column label="测活操作" width="118" align="center"><template #default="{ row }"><el-tooltip content="快速测活"><el-button link type="success" :icon="CircleCheck" :disabled="!canLiveCheck(row) || Boolean(liveBusy)" aria-label="快速测活" @click.stop="startLiveCheck('fast', [row])" /></el-tooltip><el-tooltip content="深度测活"><el-button link type="warning" :icon="RefreshRight" :disabled="!canLiveCheck(row) || Boolean(liveBusy)" aria-label="深度测活" @click.stop="startLiveCheck('deep', [row])" /></el-tooltip><el-tooltip content="查看测活日志"><el-button link :icon="View" :disabled="!row.live_check_task_id" aria-label="查看测活日志" @click.stop="openLiveLog(row)" /></el-tooltip></template></el-table-column>
           <el-table-column label="敏感字段" width="210" align="center"><template #default="{ row }"><el-button v-if="row.has_credential" link :icon="CopyDocument" @click="copyRow('credential', row)">完整凭据</el-button><el-button v-if="row.has_password" link :icon="Lock" @click="copyRow('password', row)">密码</el-button><el-button v-if="row.proxy_masked" link :icon="CopyDocument" @click="copyRow('proxy', row)">代理</el-button></template></el-table-column>
@@ -499,6 +531,7 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
     <el-dialog v-model="importOpen" title="导入 Free 邮箱池" width="680px" :close-on-click-modal="false">
       <el-form label-position="top">
         <el-form-item label="Free 邮箱池"><el-input v-model="mailboxText" type="textarea" :rows="7" placeholder="邮箱---取码 URL（也支持 ---- 或 |）" /></el-form-item>
+        <el-form-item v-if="freeState.running"><el-checkbox v-model="joinCurrentBatch">加入当前运行批次（会增加队列目标）</el-checkbox></el-form-item>
       </el-form>
       <template #footer><el-button @click="importOpen = false">取消</el-button><el-button type="primary" :loading="loading" @click="importPools">导入</el-button></template>
     </el-dialog>

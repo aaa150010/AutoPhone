@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-FREE_RUNTIME_VERSION = "1.6.79"
-FREE_OTP_PARSER_REVISION = "pickup-dynamic-v4-roxy-otp-v2"
+FREE_RUNTIME_VERSION = "1.6.80"
+FREE_OTP_PARSER_REVISION = "pickup-dynamic-v5-manual-fallback-v1"
 
 
 def runtime_info() -> dict[str, str]:

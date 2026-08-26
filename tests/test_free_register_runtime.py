@@ -320,8 +320,8 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             runner=lambda *_args, **_kwargs: {},
             proxy_probe=lambda _proxy, _url: "203.0.113.20",
         )
-        self.assertEqual(manager.public_state()["runtime_version"], "1.6.79")
-        self.assertEqual(manager.preflight({"target_count": 1})["otp_parser_revision"], "pickup-dynamic-v4-roxy-otp-v2")
+        self.assertEqual(manager.public_state()["runtime_version"], "1.6.80")
+        self.assertEqual(manager.preflight({"target_count": 1})["otp_parser_revision"], "pickup-dynamic-v5-manual-fallback-v1")
 
     def test_manager_preflight_applies_proxy_allocation_mode_from_config(self):
         pool = FreeMailboxPool(self.data_dir)
@@ -1181,6 +1181,36 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertTrue(public["has_mailbox_url"])
         self.assertNotIn("mailbox_url", public)
 
+    def test_public_tasks_normalize_legacy_progress_fields(self):
+        """Legacy Free progress snapshots remain consumable by the shared UI."""
+        class LegacyProgress:
+            def progress(self, task_id):
+                self.task_id = task_id
+                return {
+                    "stage": "free_email_otp_wait",
+                    "stage_started_at": 123,
+                    "stage_duration_ms": 456,
+                    "total_elapsed_ms": 789,
+                }
+
+        progress = LegacyProgress()
+        manager = FreeRegisterManager(self.data_dir, progress=progress)
+        manager._tasks = {
+            "free-progress-legacy": {
+                "task_id": "free-progress-legacy",
+                "status": "running",
+                "stage": "free_email_otp_wait",
+            },
+        }
+
+        public = manager.public_tasks()[0]
+        self.assertEqual(progress.task_id, "free-progress-legacy")
+        self.assertEqual(public["progress"]["code"], "free_email_otp_wait")
+        self.assertEqual(public["progress"]["label"], "等待 Free 邮箱验证码")
+        self.assertEqual(public["progress"]["entered_at"], 123)
+        self.assertEqual(public["progress"]["stage_duration_ms"], 456)
+        self.assertEqual(public["progress"]["total_elapsed_ms"], 789)
+
     def test_delete_terminal_task_history_preserves_mailbox_and_removes_task_log(self):
         pool = FreeMailboxPool(self.data_dir)
         pool.import_text("a@example.test----https://mail.example.test/a\n")
@@ -1497,6 +1527,24 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertNotIn("/inbox/tenant/private-message", serialized)
         self.assertNotIn("mail-private", serialized)
         self.assertIn("https://mail.test/[路径已隐藏]", serialized)
+
+    def test_summary_counts_boolean_proxy_switch_markers(self):
+        manager = FreeRegisterManager(self.data_dir)
+        manager._tasks = {
+            "task-1": {
+                "task_id": "task-1",
+                "status": "failed",
+                "created_at": 1,
+                "proxy_attempts": [
+                    {"stage": "free_camoufox_navigation", "retryable": True, "switched": True},
+                    {"stage": "free_camoufox_navigation", "retryable": True, "switched": False},
+                ],
+                "timing": {"stages": []},
+            },
+        }
+        summary = manager.public_state()["summary"]
+        self.assertEqual(summary["total_retries"], 2)
+        self.assertEqual(summary["proxy_switches"], 1)
 
 
 if __name__ == "__main__":

@@ -885,6 +885,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
 
     api_mailboxes_url = runtime_info_routes.mailbox_url
     api_runtime_task_mailbox_url = runtime_info_routes.runtime_task_mailbox_url
+    api_runtime_task_latest_code = runtime_info_routes.runtime_task_latest_code
     api_runtime_task_mailbox_password = runtime_info_routes.runtime_task_mailbox_password
     api_runtime_task_mailbox_totp = runtime_info_routes.runtime_task_mailbox_totp
 
@@ -1193,7 +1194,10 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/api/free/roxy/workspaces", "api_free_roxy_workspaces", free_account_routes.roxy_workspaces, ["GET"]),
         *free_pool_routes.routes(),
         ("/api/free/mailboxes/url", "api_free_mailbox_url", free_account_routes.mailbox_url, ["POST"]),
+        ("/api/free/mailboxes/latest-code", "api_free_mailbox_latest_code", free_account_routes.mailbox_latest_code, ["POST"]),
+        ("/api/free/tasks/latest-code", "api_free_task_latest_code", free_account_routes.task_latest_code, ["POST"]),
         ("/api/free/2fa/retry", "api_free_twofa_retry", free_account_routes.retry_twofa, ["POST"]),
+        ("/api/free/retry/batch", "api_free_retry_batch", free_account_routes.batch_retry, ["POST"]),
         ("/api/free/rerun", "api_free_rerun", free_account_routes.rerun, ["POST"]),
         ("/api/free/live-check", "api_free_live_check", free_account_routes.live_check, ["POST"]),
         ("/api/free/live-check/state", "api_free_live_check_state", free_account_routes.live_check_state, ["GET"]),
@@ -1201,7 +1205,9 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/api/free/plan-check/state", "api_free_plan_check_state", free_account_routes.plan_check_state, ["GET"]),
         ("/api/free/rebind/state", "api_free_rebind_state", free_rebind_routes.state, ["GET"]),
         ("/api/free/rebind/mailboxes", "api_free_rebind_mailboxes", free_rebind_routes.mailboxes, ["GET"]),
+        ("/api/free/rebind/mailboxes/url", "api_free_rebind_mailboxes_url", free_rebind_routes.mailbox_url, ["POST"]),
         ("/api/free/rebind/mailboxes/import", "api_free_rebind_mailboxes_import", free_rebind_routes.import_mailboxes, ["POST"]),
+        ("/api/free/rebind/mailboxes/latest-code", "api_free_rebind_mailboxes_latest_code", free_rebind_routes.mailbox_latest_code, ["POST"]),
         ("/api/free/rebind/mailboxes/delete", "api_free_rebind_mailboxes_delete", free_rebind_routes.delete_mailboxes, ["POST"]),
         ("/api/free/rebind/mailboxes/available", "api_free_rebind_mailboxes_available", lambda: free_rebind_routes.mailbox_status("available"), ["POST"]),
         ("/api/free/rebind/mailboxes/unavailable", "api_free_rebind_mailboxes_unavailable", lambda: free_rebind_routes.mailbox_status("unavailable"), ["POST"]),
@@ -1218,6 +1224,12 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             "/api/runtime/tasks/mailbox-url",
             "api_runtime_task_mailbox_url",
             api_runtime_task_mailbox_url,
+            ["POST"],
+        ),
+        (
+            "/api/runtime/tasks/latest-code",
+            "api_runtime_task_latest_code",
+            api_runtime_task_latest_code,
             ["POST"],
         ),
         (

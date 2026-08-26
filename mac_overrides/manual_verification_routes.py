@@ -30,7 +30,9 @@ def patch_flask_app(
     *,
     broker: ManualVerificationBroker,
     task_exists: Callable[[str], bool] | None = None,
+    task_is_free: Callable[[str], bool] | None = None,
     task_generation: Callable[[str], Any] | None = None,
+    task_input_kind: Callable[[str], str] | None = None,
 ) -> Any:
     if getattr(app, "_gptphone_manual_verification_patched", False):
         return app
@@ -109,10 +111,70 @@ def patch_flask_app(
             return jsonify(ok=False, error_code=exc.code, error=str(exc)), exc.status
         return jsonify(ok=True, **result)
 
+    def open_manual_verification():
+        data = request.get_json(silent=True)
+        if not isinstance(data, Mapping):
+            return jsonify(ok=False, error_code="invalid_payload", error="请求必须是 JSON 对象"), 400
+        task_id = str(data.get("task_id") or "").strip()
+        if not task_id:
+            return jsonify(ok=False, error_code="invalid_prompt", error="人工验证码上下文无效"), 400
+        if callable(task_exists):
+            try:
+                if not task_exists(task_id):
+                    return jsonify(ok=False, error_code="task_not_found", error="任务不存在"), 404
+            except Exception:
+                pass
+        requested_kind = normalize_input_kind(data.get("input_kind"))
+        kind = requested_kind
+        is_free_task = False
+        if callable(task_is_free):
+            try:
+                is_free_task = bool(task_is_free(task_id))
+            except Exception:
+                is_free_task = False
+        expected_kind = ""
+        if callable(task_input_kind):
+            try:
+                expected_kind = normalize_input_kind(task_input_kind(task_id))
+            except Exception:
+                expected_kind = ""
+        # Free manual input is allowed only for the task's current OTP stage.
+        # Ordinary SMS/TOTP routes do not pass ``task_is_free`` and therefore
+        # retain their historic explicit-kind behavior.
+        if is_free_task:
+            if not expected_kind:
+                return jsonify(ok=False, error_code="not_waiting", error="当前 Free 任务没有等待邮箱验证码"), 409
+            if requested_kind and requested_kind != expected_kind:
+                return jsonify(ok=False, error_code="stale_generation", error="验证码输入已过期，请使用当前任务提示"), 409
+            kind = expected_kind
+        elif not kind:
+            kind = expected_kind
+        if not kind:
+            kind = "email_otp"
+        generation = normalize_generation(data.get("generation"))
+        if generation < 0 and callable(task_generation):
+            try:
+                generation = normalize_generation(task_generation(task_id))
+            except Exception:
+                generation = -1
+        if generation < 0:
+            return jsonify(ok=False, error_code="invalid_prompt", error="人工验证码上下文无效"), 400
+        try:
+            prompt = broker.open(task_id, kind, generation)
+        except ManualVerificationError as exc:
+            return jsonify(ok=False, error_code=exc.code, error=str(exc)), exc.status
+        return jsonify(ok=True, **prompt)
+
     app.add_url_rule(
         "/api/runtime/tasks/manual-verification",
         "gptphone_manual_verification",
         submit_manual_verification,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/api/runtime/tasks/manual-verification/open",
+        "gptphone_manual_verification_open",
+        open_manual_verification,
         methods=["POST"],
     )
     app._gptphone_manual_verification_patched = True

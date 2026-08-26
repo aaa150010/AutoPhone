@@ -40,6 +40,16 @@ export interface TaskStageTiming {
   group: TaskStageGroup
   elapsed_seconds: number
   visits: number
+  duration_ms?: number
+  attempt?: number
+  started_at?: number | null
+  entered_at?: number | null
+  finished_at?: number | null
+  left_at?: number | null
+  outcome?: string
+  failure_code?: string
+  retryable?: boolean | null
+  proxy_attempts?: number
 }
 
 export interface TaskTimingSegment {
@@ -54,11 +64,13 @@ export interface TaskTiming {
   queued_at?: number
   execution_started_at?: number | null
   finished_at: number | null
+  elapsed_ms?: number
   elapsed_seconds: number
   queue_elapsed_seconds?: number
   execution_elapsed_seconds?: number
   stages: TaskStageTiming[]
   segments?: TaskTimingSegment[]
+  slowest_node?: { code: string; label: string; duration_ms: number } | null
 }
 
 export interface TaskProgress {
@@ -67,6 +79,8 @@ export interface TaskProgress {
   group: TaskStageGroup
   entered_at: number
   finished_at: number | null
+  stage_duration_ms?: number
+  total_elapsed_ms?: number
   timing?: TaskTiming
 }
 
@@ -185,6 +199,12 @@ export interface RuntimeTask {
   timing?: TaskTiming | null
   manual_verification?: ManualVerificationRequest | null
   checkpoint?: TaskCheckpoint | null
+  retry_of?: string
+  retry_attempt?: number
+  retry_task_id?: string
+  retry_status?: string
+  retry_resolved?: boolean
+  retry_updated_at?: number
   proxy_masked?: string
   proxy_fingerprint?: string
   result?: {
@@ -409,6 +429,7 @@ export type MailboxRowAction =
   | 'copy_password'
   | 'copy_totp'
   | 'open_url'
+  | 'copy_latest_code'
   | 'manual_used'
   | 'manual_unused'
   | 'draft'

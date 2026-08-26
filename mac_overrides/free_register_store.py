@@ -103,6 +103,40 @@ class FreeMailboxPool:
             atomic_write(self.state_path, state)
         return added, max(0, len(incoming) - added)
 
+    def mark_next_batch_priority(self, row_ids: Sequence[str]) -> int:
+        """Mark rows imported during an active run for the next dispatch.
+
+        The marker is deliberately separate from ``import_text`` so a normal
+        initial pool load keeps its historical file order.
+        """
+        requested = {str(value or "").strip().lower() for value in row_ids if str(value or "").strip()}
+        if not requested:
+            return 0
+        with self._lock:
+            state = self._state()
+            existing = {row.row_id for row in self.entries()}
+            priorities: list[int] = []
+            for row_state in state["rows"].values():
+                if isinstance(row_state, Mapping):
+                    try:
+                        priorities.append(int(row_state.get("next_batch_priority") or 0))
+                    except (TypeError, ValueError):
+                        continue
+            next_priority = max(priorities, default=0)
+            marked = 0
+            for row_id in requested:
+                if row_id not in existing:
+                    continue
+                row = state["rows"].setdefault(row_id, {})
+                if row.get("next_batch_priority"):
+                    continue
+                next_priority += 1
+                row["next_batch_priority"] = next_priority
+                marked += 1
+            if marked:
+                atomic_write(self.state_path, state)
+            return marked
+
     def _write_entries(self, entries: Sequence[FreeMailbox]) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.pool_path.write_text(
@@ -143,11 +177,24 @@ class FreeMailboxPool:
         with self._lock:
             state = self._state()["rows"]
             now = time.time()
-            return [
+            available = [
                 row for row in self.entries()
                 if str(state.get(row.row_id, {}).get("status") or "available") == "available"
                 and _cooldown_timestamp(state.get(row.row_id, {}).get("cooldown_until")) <= now
-            ][:max(0, int(count))]
+            ]
+            if any(state.get(row.row_id, {}).get("next_batch_priority") for row in available):
+                original_order = {row.row_id: index for index, row in enumerate(available)}
+                def priority(row: FreeMailbox) -> int:
+                    try:
+                        return int(state.get(row.row_id, {}).get("next_batch_priority") or 0)
+                    except (TypeError, ValueError):
+                        return 0
+                available.sort(key=lambda row: (
+                    0 if state.get(row.row_id, {}).get("next_batch_priority") else 1,
+                    priority(row),
+                    original_order[row.row_id],
+                ))
+            return available[:max(0, int(count))]
 
     def reserve(self, rows: Sequence[FreeMailbox], batch_id: str) -> None:
         with self._lock:
@@ -165,6 +212,7 @@ class FreeMailboxPool:
                     "batch_id": batch_id,
                     "error": "",
                 })
+                current.pop("next_batch_priority", None)
                 current.pop("failure", None)
             atomic_write(self.state_path, state)
 

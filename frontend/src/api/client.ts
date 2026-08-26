@@ -6,6 +6,7 @@ import type {
   MailboxPayload,
   MailboxUrlTestResult,
   ManualVerificationAccepted,
+  ManualVerificationRequest,
   ManualVerificationSubmission,
   FreeLogEntry,
   TaskFailure,
@@ -73,6 +74,7 @@ export interface FreeConfig {
   mailbox_request_retries: number
   mailbox_retry_backoff_seconds: number
   auto_set_2fa: boolean
+  twofa_auto_retry_attempts?: number
   proxy_probe_url: string
   proxy_default_scheme?: 'http' | 'https' | 'socks4' | 'socks5' | 'socks5h' | string
   proxy_socks5_dns_mode?: 'auto' | 'declared' | 'local' | 'remote' | string
@@ -80,6 +82,7 @@ export interface FreeConfig {
   proxy_tls_compat_fallback?: boolean
   proxy_failure_threshold?: number
   proxy_quarantine_seconds?: number
+  proxy_health_probe_ttl_seconds?: number
   proxy_retry_count?: number
   roxy_circuit_failure_threshold?: number
   roxy_circuit_recovery_seconds?: number
@@ -169,6 +172,15 @@ export interface FreeProxyRow {
   lease_until?: number | null
   last_checked_at?: number | null
   last_probe_mode?: 'strict' | 'compat' | string
+  last_probe_ok?: boolean | null
+  source_label?: string
+  effective_scheme?: string
+  declared_scheme?: string
+  probe_attempts?: number
+  probe_successes?: number
+  probe_success_rate?: number | null
+  p50_latency_ms?: number | null
+  p95_latency_ms?: number | null
   last_chatgpt_login_checked_at?: number | null
   last_chatgpt_login_status?: number
   last_chatgpt_login_probe_mode?: 'strict' | 'compat' | string
@@ -189,12 +201,13 @@ export const getFreeConfig = () => api<{ ok: true; config: FreeConfig; state: Fr
 export type FreeConfigSavePayload = Partial<FreeConfig> & {
   proxy_content?: string
   proxy_scheme?: string
+  proxy_source_label?: string
 }
 export const saveFreeConfig = (config: FreeConfigSavePayload) => api<{ ok: true; config: FreeConfig; state: FreeState; proxies?: any }>('/api/free/config', config)
 export const getFreeState = () => api<{ ok: true; state: FreeState; config: FreeConfig }>('/api/free/state')
 export const preflightFree = (config?: Partial<FreeConfig> & { proxy_content?: string }) => api<{ ok: true; result: any; state: FreeState; config: FreeConfig }>('/api/free/preflight', config || {})
 export const startFree = (config?: Partial<FreeConfig> & { proxy_content?: string; row_ids?: string[] }) => api<{ ok: true; batch_id: string; batch?: any; state: FreeState }>('/api/free/start', config || {})
-export const rerunFreeTask = (taskId: string) => api<{ ok: true; batch_id: string; batch?: any; state: FreeState }>('/api/free/rerun', { task_id: taskId })
+export const rerunFreeTask = (taskId: string) => api<{ ok: true; batch_id: string; task?: any; batch?: any; state: FreeState }>('/api/free/rerun', { task_id: taskId })
 export const stopFree = () => api<{ ok: true; state: FreeState }>('/api/free/stop', {})
 export const getFreeLogs = (taskId = '') => api<{ ok: true; task_id?: string; logs: FreeLogEntry[] }>(`/api/free/logs${taskId ? `?task_id=${encodeURIComponent(taskId)}` : ''}`)
 export interface DiagnosticIncident {
@@ -299,10 +312,10 @@ export interface FreeMailboxRow {
   error?: string
   failure?: TaskFailure | null
 }
-export const getFreeMailboxes = () => api<{ ok: true; pool: 'free'; rows: FreeMailboxRow[] }>('/api/free/mailboxes')
-export const importFreeMailboxes = (poolContent: string) => api<{ ok: true; imported: number; skipped: number; rows: FreeMailboxRow[] }>(
+export const getFreeMailboxes = () => api<{ ok: true; pool: 'free'; rows: FreeMailboxRow[]; state?: FreeState }>('/api/free/mailboxes')
+export const importFreeMailboxes = (poolContent: string, joinCurrentBatch = false) => api<{ ok: true; imported: number; skipped: number; queued?: number; active_batch_joined?: number; next_batch?: number; reason?: string; skipped_items?: Array<{ row_id: string; reason: string }>; state?: FreeState; rows: FreeMailboxRow[] }>(
   '/api/free/mailboxes/import',
-  { pool_content: poolContent },
+  { pool_content: poolContent, join_current_batch: joinCurrentBatch },
 )
 export const deleteFreeMailboxes = (rowIds: string[]) => api<{ ok: true; deleted: number; rows: FreeMailboxRow[] }>(
   '/api/free/mailboxes/delete',
@@ -317,6 +330,10 @@ export const setFreeMailboxStatus = (status: 'available' | 'unavailable' | 'draf
   { row_ids: rowIds },
 )
 export const getFreeMailboxUrl = (rowId: string) => api<{ ok: true; mailbox_url: string }>('/api/free/mailboxes/url', { row_id: rowId })
+export const getFreeMailboxLatestCode = (rowId: string) => api<{ ok: true; kind: 'email'; code: string; message: string; fetched_at?: number }>('/api/free/mailboxes/latest-code', { row_id: rowId })
+export const getFreeRebindMailboxLatestCode = (rowId: string) => api<{ ok: true; kind: 'email'; code: string; message: string; fetched_at?: number }>('/api/free/rebind/mailboxes/latest-code', { row_id: rowId })
+export const getFreeTaskLatestCode = (taskId: string) => api<{ ok: true; kind: 'email'; code: string; message: string; fetched_at?: number }>('/api/free/tasks/latest-code', { task_id: taskId })
+export const freeBatchRetry = (taskIds: string[]) => api<{ ok: true; accepted: Array<{ task_id: string; retry_task: any }>; accepted_count: number; skipped: Array<{ task_id: string; reason: string }>; skipped_count: number; rejected: Array<{ task_id: string; reason: string }>; rejected_count: number; state?: FreeState }>('/api/free/retry/batch', { task_ids: taskIds })
 export interface FreeLiveCheckState {
   running: boolean
   workers: number
@@ -392,9 +409,9 @@ export const importFreeProxies = (proxyContent: string, _country?: string, _grou
   '/api/free/proxies/import',
   { proxy_content: proxyContent, scheme },
 )
-export const preflightFreeProxies = (proxyContent: string, proxyProbeUrl?: string, options: { driver?: string; scheme?: string; proxy_tls_verify?: boolean; proxy_tls_compat_fallback?: boolean; proxy_socks5_dns_mode?: string } = {}) => api<{
+export const preflightFreeProxies = (proxyContent: string, proxyProbeUrl?: string, options: { driver?: string; scheme?: string; proxy_tls_verify?: boolean; proxy_tls_compat_fallback?: boolean; proxy_socks5_dns_mode?: string; layered_probe?: boolean } = {}) => api<{
   ok: true
-  result: { proxies: number; rows: Array<{ index: number; masked: string; fingerprint: string; scheme?: string; available?: boolean; http_status?: number | null; local_to_proxy_ms?: number | null; proxy_to_target_ms?: number | null; failure_node?: string; failure_reason?: string }> }
+  result: { proxies: number; rows: Array<{ index: number; masked: string; fingerprint: string; scheme?: string; available?: boolean; http_status?: number | null; local_to_proxy_ms?: number | null; proxy_to_target_ms?: number | null; failure_node?: string; failure_reason?: string; layered_probe?: Record<string, any> }> }
 }>('/api/free/proxies/preflight', { proxy_content: proxyContent, proxy_probe_url: proxyProbeUrl, ...options })
 export const getFreeProxies = () => api<{ ok: true; proxies: { count: number; rows: FreeProxyRow[]; groups: FreeProxySummary[]; countries: FreeProxySummary[] } }>('/api/free/proxies')
 export const updateFreeProxyGroup = (payload: { country: string; group: string; new_country?: string; new_group?: string; enabled?: boolean }) => api<{ ok: true; result: any; proxies: any }>('/api/free/proxies/group', payload)
@@ -465,6 +482,7 @@ export interface FreeRebindState {
 
 export const getFreeRebindState = () => api<{ ok: true } & FreeRebindState>('/api/free/rebind/state')
 export const getFreeRebindMailboxes = () => api<{ ok: true; pool: 'free_rebind'; rows: FreeRebindMailboxRow[] }>('/api/free/rebind/mailboxes')
+export const getFreeRebindMailboxUrl = (rowId: string) => api<{ ok: true; mailbox_url: string }>('/api/free/rebind/mailboxes/url', { row_id: rowId })
 export const importFreeRebindMailboxes = (poolContent: string) => api<{ ok: true; imported: number; skipped: number; rows: FreeRebindMailboxRow[] }>(
   '/api/free/rebind/mailboxes/import',
   { pool_content: poolContent },
@@ -583,8 +601,14 @@ export const getMailboxTotp = (row: { row_id: string; line_no: number }) => (
 export const getMailboxUrl = (row: { row_id: string; line_no: number }) => (
   api<{ ok: true; mailbox_url: string }>('/api/mailboxes/url', row)
 )
+export const getMailboxLatestCode = (row: { row_id: string; line_no: number }) => (
+  api<{ ok: true; kind: 'email'; code: string; message: string; fetched_at?: number }>('/api/mailboxes/latest-code', row)
+)
 export const getRuntimeTaskMailboxUrl = (taskId: string) => (
   api<{ ok: true; mailbox_url: string }>('/api/runtime/tasks/mailbox-url', { task_id: taskId })
+)
+export const getRuntimeTaskLatestCode = (taskId: string) => (
+  api<{ ok: true; kind: 'email'; code: string; message: string; fetched_at?: number }>('/api/runtime/tasks/latest-code', { task_id: taskId })
 )
 export const getRuntimeTaskMailboxPassword = (taskId: string) => (
   api<{ ok: true; password: string }>('/api/runtime/tasks/mailbox-password', { task_id: taskId })
@@ -594,6 +618,9 @@ export const getRuntimeTaskMailboxTotp = (taskId: string) => (
 )
 export const submitManualVerification = (data: ManualVerificationSubmission) => (
   api<ManualVerificationAccepted>('/api/runtime/tasks/manual-verification', data)
+)
+export const openManualVerification = (data: { task_id: string; input_kind?: ManualVerificationSubmission['input_kind']; generation?: number }) => (
+  api<ManualVerificationRequest>('/api/runtime/tasks/manual-verification/open', data)
 )
 export const reloginMailboxRows = (rows: Array<{ row_id: string; line_no: number }>) => (
   api<{ ok: true; run_mode: 'relogin'; started: number; mailboxes?: MailboxPayload; state?: any }>(

@@ -31,6 +31,7 @@ CHATGPT_ME_URL = "https://chatgpt.com/backend-api/me"
 CHATGPT_WHAM_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
 MFA_ENROLL_URL = "https://chatgpt.com/backend-api/accounts/mfa/enroll"
 MFA_ACTIVATE_URL = "https://chatgpt.com/backend-api/accounts/mfa/user/activate_enrollment"
+MFA_INFO_URL = "https://chatgpt.com/backend-api/accounts/mfa_info"
 
 
 def _provider_code(payload: Any, fallback: str = "") -> str:
@@ -291,6 +292,21 @@ def twofa_activation_payload(enrollment: Mapping[str, Any]) -> tuple[str, str, d
     }
 
 
+def mfa_enabled_from_payload(payload: Any) -> bool:
+    """Recognize the stable MFA status shapes without exposing factor data."""
+    value = payload if isinstance(payload, Mapping) else {}
+    if bool(value.get("mfa_enabled") or value.get("mfaEnabled")):
+        return True
+    factors = value.get("factors")
+    if isinstance(factors, Mapping):
+        totp = factors.get("totp")
+        if isinstance(totp, (list, tuple)) and bool(totp):
+            return True
+        if isinstance(totp, Mapping) and bool(totp):
+            return True
+    return False
+
+
 def finalize_registration_result(
     result: Mapping[str, Any],
     *,
@@ -392,6 +408,12 @@ async def browser_session(page: Any) -> dict[str, Any]:
 
 
 async def browser_twofa(page: Any, token: str) -> str:
+    # A retry may reach this function after the first activation actually
+    # succeeded.  Query the server-owned state before creating another
+    # enrollment so the operation is idempotent and does not mint a new secret.
+    current = await browser_json_fetch(page, MFA_INFO_URL, token=token)
+    if current.get("ok") and mfa_enabled_from_payload(current.get("payload")):
+        return ""
     enrolled = await browser_json_fetch(page, MFA_ENROLL_URL, method="POST", token=token, body={"factor_type": "totp"})
     if not enrolled.get("ok"):
         raise FreeRegisterError(
@@ -404,6 +426,11 @@ async def browser_twofa(page: Any, token: str) -> str:
     activated = await browser_json_fetch(page, MFA_ACTIVATE_URL, method="POST", token=token, body=activation)
     value = _json_payload(activated)
     if not activated.get("ok") or not bool(value.get("success")):
+        # The activation response can be lost after the server commits it.
+        # Confirm the authoritative state before reporting a retryable failure.
+        confirmed = await browser_json_fetch(page, MFA_INFO_URL, token=token)
+        if confirmed.get("ok") and mfa_enabled_from_payload(confirmed.get("payload")):
+            return secret
         raise FreeRegisterError(
             "free_twofa_activate", "激活 Free 账号 2FA", "浏览器内 2FA activation 未确认",
             provider_status=_status(activated) or None,
@@ -414,8 +441,8 @@ async def browser_twofa(page: Any, token: str) -> str:
 
 
 __all__ = [
-    "CHATGPT_ACCOUNTS_URL", "CHATGPT_ELIGIBILITY_URL", "CHATGPT_ME_URL", "CHATGPT_WHAM_USAGE_URL",
+    "CHATGPT_ACCOUNTS_URL", "CHATGPT_ELIGIBILITY_URL", "CHATGPT_ME_URL", "CHATGPT_WHAM_USAGE_URL", "MFA_INFO_URL",
     "MFA_ENROLL_URL", "MFA_ACTIVATE_URL", "browser_json_fetch", "browser_plan_details",
     "browser_session", "browser_twofa", "finalize_registration_result", "normalize_session",
-    "plan_details_from_payloads", "plan_details_with_fallbacks", "twofa_activation_payload",
+    "plan_details_from_payloads", "plan_details_with_fallbacks", "twofa_activation_payload", "mfa_enabled_from_payload",
 ]

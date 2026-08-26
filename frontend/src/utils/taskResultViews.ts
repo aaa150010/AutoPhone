@@ -20,6 +20,7 @@ export function taskNeedsVerification(task: RuntimeTask) {
 }
 
 export function taskNeedsAttention(task: RuntimeTask, accepted: ReadonlySet<string>) {
+  if (task.retry_resolved) return false
   return (taskNeedsVerification(task) && !accepted.has(taskVerificationKey(task)))
     || String(task.status || '').toLowerCase() === 'twofa_pending'
     || failedTaskStatuses.has(String(task.status || '').toLowerCase())

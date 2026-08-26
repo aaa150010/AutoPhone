@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import random
 import re
+import socket
 import threading
 import time
 from typing import Any, Callable, Iterable, Mapping
@@ -106,6 +107,14 @@ def infer_country(username: Any, host: Any = "") -> str:
 
 def normalize_group(value: Any) -> str:
     return " ".join(str(value or "").split())[:64] or DEFAULT_PROXY_GROUP
+
+
+def _percentile(values: Iterable[int], percentile: float) -> int | None:
+    samples = sorted(max(0, int(value)) for value in values)
+    if not samples:
+        return None
+    index = min(len(samples) - 1, max(0, int(round((len(samples) - 1) * percentile))))
+    return samples[index]
 
 
 def _parse(value: Any, default_scheme: str) -> tuple[str, Any] | None:
@@ -266,7 +275,7 @@ def _extract_probe_ip(payload: Any) -> str:
     raise ValueError("代理探测响应格式无效")
 
 
-def _record_from_url(value: str, *, country: Any, group: Any) -> dict[str, Any] | None:
+def _record_from_url(value: str, *, country: Any, group: Any, source_label: Any = "") -> dict[str, Any] | None:
     parsed_result = _parse(value, DEFAULT_FREE_PROXY_SCHEME)
     if parsed_result is None:
         return None
@@ -281,6 +290,7 @@ def _record_from_url(value: str, *, country: Any, group: Any) -> dict[str, Any] 
         "username": username,
         "password": password,
         "scheme": str(parsed.scheme or DEFAULT_FREE_PROXY_SCHEME).lower(),
+        "effective_scheme": str(parsed.scheme or DEFAULT_FREE_PROXY_SCHEME).lower(),
         # Keep legacy arguments for callers, but persist one shared pool.
         "country": SINGLE_POOL_COUNTRY,
         "group": SINGLE_POOL_GROUP,
@@ -300,6 +310,11 @@ def _record_from_url(value: str, *, country: Any, group: Any) -> dict[str, Any] 
         "consecutive_failures": 0,
         "quarantined_until": None,
         "last_failure": None,
+        "last_probe_ok": None,
+        "source_label": str(source_label or "").strip()[:40],
+        "probe_attempts": 0,
+        "probe_successes": 0,
+        "probe_latencies_ms": [],
         "_identity": _identity(parsed),
         "_normalized": normalized,
     }
@@ -339,6 +354,10 @@ class FreeProxyPool:
         default_scheme: str = DEFAULT_FREE_PROXY_SCHEME,
         failure_threshold: int = 2,
         quarantine_seconds: int = 600,
+        # Keep direct/legacy manager callers on the historic no-extra-probe
+        # path.  The production Free config supplies its explicit 300-second
+        # TTL when it is normalized by FreeConfigStore.
+        health_probe_ttl_seconds: int = 0,
     ) -> None:
         self.data_dir = Path(data_dir).expanduser().resolve()
         self.path = self.data_dir / "free_proxy_pool.json"
@@ -347,6 +366,7 @@ class FreeProxyPool:
         self.default_scheme = scheme if scheme in FREE_PROXY_SCHEMES else DEFAULT_FREE_PROXY_SCHEME
         self.failure_threshold = max(1, int(failure_threshold))
         self.quarantine_seconds = max(1, int(quarantine_seconds))
+        self.health_probe_ttl_seconds = max(0, int(health_probe_ttl_seconds))
         self.proxy_tls_verify = True
         self.proxy_tls_compat_fallback = True
         # Keep the low-level compatibility default strict. Production Free
@@ -407,6 +427,10 @@ class FreeProxyPool:
             "username": username,
             "password": password,
             "scheme": str(url_parts.scheme or value.get("scheme") or self.default_scheme).lower(),
+            # Preserve the transport scheme observed by the last probe. Older
+            # records did not have this field, so the declared scheme is the
+            # correct migration fallback.
+            "effective_scheme": str(value.get("effective_scheme") or url_parts.scheme or self.default_scheme).lower(),
             "country": SINGLE_POOL_COUNTRY,
             "group": SINGLE_POOL_GROUP,
             "enabled": bool(value.get("enabled", True)),
@@ -428,7 +452,15 @@ class FreeProxyPool:
                 else _safe_float(value.get("quarantined_until"), default=0, minimum=0)
             ),
             "last_failure": copy.deepcopy(value.get("last_failure")) if isinstance(value.get("last_failure"), Mapping) else None,
+            "last_probe_ok": value.get("last_probe_ok") if isinstance(value.get("last_probe_ok"), bool) else None,
             "last_probe_mode": str(value.get("last_probe_mode") or ""),
+            "source_label": str(value.get("source_label") or value.get("provider") or "").strip()[:40],
+            "probe_attempts": _safe_int(value.get("probe_attempts"), default=0, minimum=0) or 0,
+            "probe_successes": _safe_int(value.get("probe_successes"), default=0, minimum=0) or 0,
+            "probe_latencies_ms": [
+                max(0, int(item)) for item in (value.get("probe_latencies_ms") or [])
+                if isinstance(item, (int, float)) and not isinstance(item, bool)
+            ][-50:],
             "_identity": _identity(url_parts),
             "_normalized": normalized,
         }
@@ -507,7 +539,7 @@ class FreeProxyPool:
             payload.append(value)
         atomic_write(self.path, {"version": 4, "proxies": payload})
 
-    def _parse_lines(self, content: str, *, country: Any, group: Any, scheme: str) -> list[dict[str, Any]]:
+    def _parse_lines(self, content: str, *, country: Any, group: Any, scheme: str, source_label: Any = "") -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
         seen: set[str] = set()
         selected_scheme = str(scheme or self.default_scheme).strip().lower()
@@ -521,7 +553,7 @@ class FreeProxyPool:
             if parsed_value is None:
                 continue
             normalized, parsed = parsed_value
-            record = _record_from_url(normalized, country=country, group=group)
+            record = _record_from_url(normalized, country=country, group=group, source_label=source_label)
             if record is None:
                 continue
             identity = str(record["_identity"])
@@ -538,8 +570,16 @@ class FreeProxyPool:
         country: str | None = None,
         group: str | None = None,
         scheme: str | None = None,
+        source_label: str | None = None,
+        provider: str | None = None,
     ) -> int:
-        incoming = self._parse_lines(content, country=SINGLE_POOL_COUNTRY, group=SINGLE_POOL_GROUP, scheme=scheme or self.default_scheme)
+        incoming = self._parse_lines(
+            content,
+            country=SINGLE_POOL_COUNTRY,
+            group=SINGLE_POOL_GROUP,
+            scheme=scheme or self.default_scheme,
+            source_label=source_label or provider or "",
+        )
         if not incoming:
             raise FreeRegisterError("free_proxy_pool", "Free 代理池", "Free 代理池没有有效代理")
         with self._lock:
@@ -556,6 +596,8 @@ class FreeProxyPool:
                 current["country"] = SINGLE_POOL_COUNTRY
                 current["group"] = SINGLE_POOL_GROUP
                 current["enabled"] = True
+                if source_label or provider:
+                    current["source_label"] = str(source_label or provider or "").strip()[:40]
                 if current.get("status") == "quarantined" and self._quarantine_expired(current):
                     current["status"] = "unknown"
             self._save(by_identity.values())
@@ -566,6 +608,7 @@ class FreeProxyPool:
         *,
         failure_threshold: int | None = None,
         quarantine_seconds: int | None = None,
+        health_probe_ttl_seconds: int | None = None,
         tls_verify: bool | None = None,
         tls_compat_fallback: bool | None = None,
         socks5_dns_mode: str | None = None,
@@ -573,6 +616,8 @@ class FreeProxyPool:
     ) -> None:
         self.failure_threshold = max(1, int(failure_threshold or self.failure_threshold))
         self.quarantine_seconds = max(1, int(quarantine_seconds or self.quarantine_seconds))
+        if health_probe_ttl_seconds is not None:
+            self.health_probe_ttl_seconds = max(0, int(health_probe_ttl_seconds))
         if tls_verify is not None:
             self.proxy_tls_verify = bool(tls_verify)
         if tls_compat_fallback is not None:
@@ -590,6 +635,14 @@ class FreeProxyPool:
             return False
         normalized = _safe_float(until, default=0, minimum=0) or 0
         return normalized <= (time.time() if now is None else now)
+
+    def _probe_is_stale(self, row: Mapping[str, Any], now: float | None = None) -> bool:
+        """Return whether a persisted health result needs one bounded refresh."""
+        ttl = max(0, int(self.health_probe_ttl_seconds or 0))
+        if ttl <= 0:
+            return False
+        checked = _safe_float(row.get("last_checked_at"), default=0, minimum=0) or 0
+        return row.get("last_probe_ok") is False or not checked or checked + ttl <= (time.time() if now is None else now)
 
     def _eligible(self, *, country: str | None = None, group: str | None = None, driver: str = "protocol", now: float | None = None) -> list[dict[str, Any]]:
         current_time = time.time() if now is None else now
@@ -636,6 +689,12 @@ class FreeProxyPool:
     def _public_row(self, row: Mapping[str, Any], index: int | None = None) -> dict[str, Any]:
         leases = self._active_leases(row)
         configured_scheme = str(row.get("scheme") or self.default_scheme)
+        latency_samples = [
+            max(0, int(item)) for item in (row.get("probe_latencies_ms") or [])
+            if isinstance(item, (int, float)) and not isinstance(item, bool)
+        ]
+        attempts = max(0, int(row.get("probe_attempts") or 0))
+        successes = max(0, min(attempts, int(row.get("probe_successes") or 0)))
         value = {
             "proxy_id": row.get("proxy_id", ""),
             "index": index,
@@ -659,6 +718,14 @@ class FreeProxyPool:
             "last_chatgpt_login_probe_mode": row.get("last_chatgpt_login_probe_mode", ""),
             "consecutive_failures": int(row.get("consecutive_failures") or 0),
             "last_probe_mode": row.get("last_probe_mode", ""),
+            "last_probe_ok": row.get("last_probe_ok"),
+            "source_label": str(row.get("source_label") or "")[:40],
+            "probe_attempts": attempts,
+            "probe_successes": successes,
+            "probe_success_rate": round(successes / attempts, 4) if attempts else None,
+            "p50_latency_ms": _percentile(latency_samples, 0.50),
+            "p95_latency_ms": _percentile(latency_samples, 0.95),
+            "effective_scheme": str(row.get("effective_scheme") or configured_scheme),
         }
         return value
 
@@ -787,6 +854,57 @@ class FreeProxyPool:
             except Exception as second_error:
                 raise second_error from first_error
 
+    def layered_probe(self, proxy: str, target: str = DEFAULT_PROXY_PROBE_URL) -> dict[str, Any]:
+        """Collect bounded transport timings for a diagnostic-only probe.
+
+        This method never returns response bodies or credentials.  It is kept
+        separate from normal binding so registration retains its existing
+        AutoRegister probe order and cost.
+        """
+        configured = str(proxy or "").strip()
+        parsed = urlsplit(configured)
+        if not parsed.hostname or not parsed.port:
+            raise ValueError("代理格式无效")
+        result: dict[str, Any] = {
+            "declared_scheme": parsed.scheme.lower(),
+            "effective_scheme": proxy_transport_value(configured, driver="probe", socks5_dns_mode=self.socks5_dns_mode).split(":", 1)[0].lower(),
+            "tcp_connect_ms": None,
+            "https_request_ms": None,
+            "chatgpt_request_ms": None,
+            "chatgpt_status": None,
+            "ok": False,
+        }
+        started = time.monotonic()
+        try:
+            with socket.create_connection((str(parsed.hostname), int(parsed.port)), timeout=5):
+                pass
+            result["tcp_connect_ms"] = int((time.monotonic() - started) * 1000)
+        except Exception as exc:
+            result["failure_node"] = "proxy_tcp_connect"
+            result["failure_reason"] = type(exc).__name__
+            return result
+        started = time.monotonic()
+        try:
+            self._probe_with_policy(configured, target)
+            result["https_request_ms"] = int((time.monotonic() - started) * 1000)
+        except Exception as exc:
+            result["https_request_ms"] = int((time.monotonic() - started) * 1000)
+            result["failure_node"] = proxy_error_code(exc)
+            result["failure_reason"] = proxy_error_detail(exc)
+            return result
+        started = time.monotonic()
+        try:
+            status, _mode = self._chatgpt_login_with_policy(configured)
+            result["chatgpt_status"] = int(status)
+            result["chatgpt_request_ms"] = int((time.monotonic() - started) * 1000)
+        except Exception as exc:
+            result["chatgpt_request_ms"] = int((time.monotonic() - started) * 1000)
+            result["failure_node"] = getattr(exc, "error_code", "free_proxy_chatgpt_probe")
+            result["failure_reason"] = proxy_error_detail(exc)
+            return result
+        result["ok"] = True
+        return result
+
     def bind(
         self,
         count: int,
@@ -802,18 +920,24 @@ class FreeProxyPool:
         exclude_proxy_ids: Iterable[str] = (),
         exclude_exit_ips: Iterable[str] = (),
         perform_probe: bool = True,
+        health_probe_ttl_seconds: int | None = None,
     ) -> list[ProxyBinding]:
         requested = max(0, int(count))
         if requested == 0:
             return []
         self._last_bind_diagnostics = []
         with self._lock:
+            if health_probe_ttl_seconds is not None:
+                self.health_probe_ttl_seconds = max(0, int(health_probe_ttl_seconds))
             inline_content = bool(str(content or "").strip())
             if inline_content:
                 values = self._parse_lines(content, country=SINGLE_POOL_COUNTRY, group=SINGLE_POOL_GROUP, scheme=self.default_scheme)
             else:
-                # Keep unsupported-but-otherwise-healthy candidates long
-                # enough to report an exact Roxy protocol error.
+                # Read the shared healthy pool before applying the Roxy
+                # protocol capability filter.  This preserves the explicit
+                # SOCKS4 diagnostic below instead of collapsing an otherwise
+                # healthy-but-unsupported row into the generic pool-empty
+                # error.  Other drivers accept the same shared candidates.
                 values = self._eligible(driver="protocol")
             excluded = {str(value) for value in exclude_proxy_ids if str(value)}
             if excluded:
@@ -838,7 +962,83 @@ class FreeProxyPool:
             if not values:
                 raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", "当前没有符合条件的健康代理", retryable=False, error_code="free_proxy_pool_empty")
             source = random.SystemRandom()
-            selected_values = [source.choice(values) for _ in range(requested)]
+            # Production startup passes ``perform_probe=False`` to preserve
+            # the AutoRegister call order.  Refresh only stale candidates in
+            # that mode, once each, before leasing them. Recent successful
+            # health results remain fast-path and are preferred.
+            stale_refresh = (
+                not inline_content
+                and not perform_probe
+                and self.health_probe_ttl_seconds > 0
+            )
+            if stale_refresh:
+                now = time.time()
+                recent = [row for row in values if not self._probe_is_stale(row, now)]
+                stale = [row for row in values if self._probe_is_stale(row, now)]
+                source.shuffle(recent)
+                source.shuffle(stale)
+                selected_values = list(recent[:requested])
+                # Only probe enough stale rows to fill the requested count.
+                # A failed stale proxy is quarantined and skipped so another
+                # healthy candidate can be leased in the same transaction.
+                for record in stale:
+                    if len(selected_values) >= requested:
+                        break
+                    configured_proxy = _proxy_url(record)
+                    transport_proxy = proxy_transport_value(
+                        configured_proxy,
+                        driver=driver,
+                        socks5_dns_mode=self.socks5_dns_mode,
+                    )
+                    try:
+                        started = time.monotonic()
+                        if probe is None:
+                            exit_ip, probe_mode = self._probe_with_policy(transport_proxy, probe_url)
+                        else:
+                            exit_ip, probe_mode = str(probe(transport_proxy, probe_url)).strip(), "custom"
+                        exit_ip = str(exit_ip or "").strip() if _candidate_probe_ip(exit_ip) else ""
+                        self.record_success(
+                            str(record.get("proxy_id") or ""),
+                            exit_ip=exit_ip,
+                            latency_ms=int((time.monotonic() - started) * 1000),
+                            probe_mode=probe_mode,
+                            effective_scheme=urlsplit(transport_proxy).scheme.lower(),
+                        )
+                        # ``record_success`` reloads and persists the row;
+                        # carry the fresh observation into this bind's local
+                        # snapshot so the returned binding reflects it.
+                        record["last_exit_ip"] = exit_ip
+                        record["latency_ms"] = int((time.monotonic() - started) * 1000)
+                        record["last_probe_mode"] = probe_mode
+                        selected_values.append(record)
+                    except Exception as exc:
+                        self.record_failure(
+                            str(record.get("proxy_id") or ""),
+                            node_code=proxy_error_code(exc),
+                            message=proxy_error_detail(exc),
+                        )
+                # Shared healthy_random allocation intentionally permits a
+                # single healthy proxy to serve multiple concurrent tasks.
+                # Once one stale candidate has passed its bounded refresh,
+                # reuse it for any remaining requested slots.
+                if selected_values and len(selected_values) < requested:
+                    selected_values.extend(
+                        source.choice(selected_values)
+                        for _ in range(requested - len(selected_values))
+                    )
+                if len(selected_values) < requested:
+                    raise FreeRegisterError(
+                        "free_proxy_preflight", "Free 代理预检",
+                        f"代理绑定数量不足：需要 {requested} 个，当前只有 {len(selected_values)} 个",
+                        retryable=True,
+                        error_code="free_proxy_pool_empty",
+                    )
+                # Recent rows were already health-checked; stale rows have
+                # just been refreshed and should not be probed a second time.
+                perform_probe_for_selected = False
+            else:
+                selected_values = [source.choice(values) for _ in range(requested)]
+                perform_probe_for_selected = perform_probe
         check = probe
         bindings: list[ProxyBinding] = []
         checked: dict[str, tuple[str, str, int, int, str]] = {}
@@ -856,7 +1056,7 @@ class FreeProxyPool:
             if cached is None:
                 started = time.monotonic()
                 try:
-                    if perform_probe:
+                    if perform_probe_for_selected:
                         if check is None:
                             exit_ip, probe_mode = self._probe_with_policy(transport_proxy, probe_url)
                         else:
@@ -865,9 +1065,24 @@ class FreeProxyPool:
                         # an IP is optional legacy metadata, never a gate.
                         exit_ip = str(exit_ip or "").strip() if _candidate_probe_ip(exit_ip) else ""
                     else:
-                        exit_ip, probe_mode = "", ""
+                        exit_ip = str(record.get("last_exit_ip") or "")
+                        probe_mode = str(record.get("last_probe_mode") or "")
                     chatgpt_status = 0
                     chatgpt_probe_mode = ""
+                    if not perform_probe_for_selected:
+                        latency_ms = int(record.get("latency_ms") or 0)
+                        chatgpt_status = int(record.get("last_chatgpt_login_status") or 0)
+                        chatgpt_probe_mode = str(record.get("last_chatgpt_login_probe_mode") or "")
+                    if check_chatgpt:
+                        # ChatGPT login-page status is diagnostic metadata,
+                        # not an account or proxy-health gate.  In particular,
+                        # a normal 403/401 login response must not quarantine
+                        # an otherwise reachable proxy.
+                        if chatgpt_probe is None:
+                            chatgpt_status, chatgpt_probe_mode = self._chatgpt_login_with_policy(transport_proxy)
+                        else:
+                            chatgpt_status = int(chatgpt_probe(transport_proxy) or 0)
+                            chatgpt_probe_mode = "custom"
                 except FreeRegisterError as exc:
                     if not inline_content and is_proxy_health_failure(exc):
                         self.record_failure(
@@ -897,17 +1112,26 @@ class FreeProxyPool:
                 latency_ms = int((time.monotonic() - started) * 1000)
                 checked[cache_key] = (exit_ip, probe_mode, latency_ms, chatgpt_status, chatgpt_probe_mode)
             else:
-                exit_ip, probe_mode, latency_ms, chatgpt_status, chatgpt_probe_mode = cached
-            if perform_probe and not inline_content and cached is None:
+                if not perform_probe_for_selected:
+                    exit_ip = str(record.get("last_exit_ip") or "")
+                    probe_mode = str(record.get("last_probe_mode") or "")
+                    latency_ms = int(record.get("latency_ms") or 0)
+                    chatgpt_status = int(record.get("last_chatgpt_login_status") or 0)
+                    chatgpt_probe_mode = str(record.get("last_chatgpt_login_probe_mode") or "")
+                else:
+                    exit_ip, probe_mode, latency_ms, chatgpt_status, chatgpt_probe_mode = cached
+            if (perform_probe_for_selected or check_chatgpt) and not inline_content and cached is None:
                 self.record_success(
                     str(record.get("proxy_id") or ""),
                     exit_ip=exit_ip,
-                    latency_ms=latency_ms,
+                    latency_ms=latency_ms if perform_probe_for_selected else None,
                     probe_mode=probe_mode,
                     chatgpt_login_status=chatgpt_status,
                     chatgpt_login_probe_mode=chatgpt_probe_mode,
+                    effective_scheme=urlsplit(transport_proxy).scheme.lower(),
                 )
             declared_scheme = urlsplit(configured_proxy).scheme.lower()
+            effective_scheme = urlsplit(transport_proxy).scheme.lower()
             bindings.append(ProxyBinding(
                 configured_proxy,
                 str(record.get("proxy_id") or fingerprint(configured_proxy)),
@@ -915,6 +1139,7 @@ class FreeProxyPool:
                 exit_ip,
                 proxy_id=str(record.get("proxy_id") or ""),
                 scheme=declared_scheme,
+                effective_scheme=effective_scheme,
                 country=SINGLE_POOL_COUNTRY,
                 group=SINGLE_POOL_GROUP,
                 chatgpt_login_status=chatgpt_status,
@@ -926,6 +1151,8 @@ class FreeProxyPool:
                 "masked": mask_proxy(configured_proxy),
                 "fingerprint": str(record.get("proxy_id") or fingerprint(configured_proxy)),
                 "scheme": declared_scheme,
+                "declared_scheme": declared_scheme,
+                "effective_scheme": effective_scheme,
                 "available": True,
                 "http_status": 200 if perform_probe else None,
                 "local_to_proxy_ms": None,
@@ -979,7 +1206,12 @@ class FreeProxyPool:
                 error_code=failure_code,
             ) from exc
         if binding.proxy_id:
-            self.record_success(binding.proxy_id, exit_ip=current, probe_mode=probe_mode)
+            self.record_success(
+                binding.proxy_id,
+                exit_ip=current,
+                probe_mode=probe_mode,
+                effective_scheme=urlsplit(transport_proxy).scheme.lower(),
+            )
         return current
 
     def lease(self, binding: ProxyBinding, *, owner: str, batch_id: str, task_id: str, lease_seconds: int = 180) -> None:
@@ -1071,6 +1303,7 @@ class FreeProxyPool:
         probe_mode: str = "",
         chatgpt_login_status: int = 0,
         chatgpt_login_probe_mode: str = "",
+        effective_scheme: str = "",
     ) -> None:
         with self._lock:
             rows = self._load()
@@ -1078,11 +1311,18 @@ class FreeProxyPool:
                 if str(row.get("proxy_id")) != str(proxy_id):
                     continue
                 now = time.time()
+                latency_samples = list(row.get("probe_latencies_ms") or [])
+                if latency_ms is not None:
+                    latency_samples.append(max(0, int(latency_ms)))
                 row.update({
                     "status": "available", "consecutive_failures": 0, "last_checked_at": now,
                     "last_exit_ip": exit_ip or row.get("last_exit_ip", ""),
                     "latency_ms": latency_ms if latency_ms is not None else row.get("latency_ms"),
                     "last_failure": None,
+                    "last_probe_ok": True,
+                    "probe_attempts": int(row.get("probe_attempts") or 0) + 1,
+                    "probe_successes": int(row.get("probe_successes") or 0) + 1,
+                    "probe_latencies_ms": latency_samples[-50:],
                 })
                 if chatgpt_login_status:
                     row["last_chatgpt_login_checked_at"] = now
@@ -1091,6 +1331,8 @@ class FreeProxyPool:
                     row["last_chatgpt_login_probe_mode"] = str(chatgpt_login_probe_mode)
                 if probe_mode:
                     row["last_probe_mode"] = str(probe_mode)
+                if effective_scheme:
+                    row["effective_scheme"] = str(effective_scheme).lower()
                 row["quarantined_until"] = None
                 self._save(rows)
                 return
@@ -1103,7 +1345,7 @@ class FreeProxyPool:
                     continue
                 failures = int(row.get("consecutive_failures") or 0) + 1
                 limit = max(1, int(threshold or self.failure_threshold))
-                row.update({"consecutive_failures": failures, "last_checked_at": time.time(), "last_failure": {"node_code": node_code, "message": safe_log_message(message)[:300]}})
+                row.update({"consecutive_failures": failures, "last_checked_at": time.time(), "probe_attempts": int(row.get("probe_attempts") or 0) + 1, "last_probe_ok": False, "last_failure": {"node_code": node_code, "message": safe_log_message(message)[:300]}})
                 if failures >= limit:
                     row["status"] = "quarantined"
                     row["quarantined_until"] = time.time() + max(1, int(quarantine_seconds or self.quarantine_seconds))

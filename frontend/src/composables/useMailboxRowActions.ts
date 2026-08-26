@@ -4,6 +4,7 @@ import {
   api,
   ApiError,
   getMailboxTotp,
+  getMailboxLatestCode,
   getMailboxUrl,
   markMailboxRowsManualUsed,
   moveMailboxRowsToDraft,
@@ -112,6 +113,30 @@ export function useMailboxRowActions(options: MailboxRowActionOptions) {
     }
   }
 
+  async function copyLatestCode(row: MailboxRow) {
+    if (!row.has_mailbox_url || options.rowActionLoading.value.includes(row.row_id)) return
+    if (!navigator.clipboard?.writeText) {
+      ElMessage.error('当前浏览器不支持安全剪贴板写入')
+      return
+    }
+    setActionLoading(row, true)
+    try {
+      const result = await getMailboxLatestCode({ row_id: row.row_id, line_no: row.line_no })
+      const code = String(result.code || '').trim()
+      if (!code) {
+        ElMessage.info('未找到新的 OpenAI 邮箱验证码')
+        return
+      }
+      await navigator.clipboard.writeText(code)
+      ElMessage.success('验证码已复制')
+    } catch (error: any) {
+      if (error instanceof ApiError && error.payload?.code === 'mailbox_row_stale') await options.refresh()
+      ElMessage.error(error?.message || '提取邮箱验证码失败')
+    } finally {
+      setActionLoading(row, false)
+    }
+  }
+
   function rowBinding(row: MailboxRow) {
     return [{ row_id: row.row_id, line_no: row.line_no }]
   }
@@ -173,6 +198,7 @@ export function useMailboxRowActions(options: MailboxRowActionOptions) {
       copy_password: () => copyPassword(row),
       copy_totp: () => copyTotp(row),
       open_url: () => openMailboxUrl(row),
+      copy_latest_code: () => copyLatestCode(row),
       manual_used: () => runMutation(
         row,
         '确认将该邮箱标记为已手动接码？标记后会从可运行池移出。',
@@ -231,5 +257,6 @@ export function useMailboxRowActions(options: MailboxRowActionOptions) {
     copyTotp,
     handleRowAction,
     openMailboxUrl,
+    copyLatestCode,
   }
 }

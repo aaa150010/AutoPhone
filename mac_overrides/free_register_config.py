@@ -46,6 +46,10 @@ DEFAULT_FREE_CONFIG: dict[str, Any] = {
     "mailbox_request_retries": 3,
     "mailbox_retry_backoff_seconds": 1.0,
     "auto_set_2fa": True,
+    # Automatic recovery is bounded to two additional attempts (three total
+    # 2FA attempts including the initial enrollment). Direct manager callers
+    # that omit this key retain the historical manual-only behavior.
+    "twofa_auto_retry_attempts": 2,
     "proxy_probe_url": DEFAULT_PROXY_PROBE_URL,
     "proxy_default_scheme": "http",
     "proxy_socks5_dns_mode": "auto",
@@ -53,6 +57,7 @@ DEFAULT_FREE_CONFIG: dict[str, Any] = {
     "proxy_tls_compat_fallback": True,
     "proxy_failure_threshold": 2,
     "proxy_quarantine_seconds": 600,
+    "proxy_health_probe_ttl_seconds": 300,
     "proxy_retry_count": 1,
     "roxy_circuit_failure_threshold": 3,
     "roxy_circuit_recovery_seconds": 30,
@@ -219,6 +224,7 @@ class FreeConfigStore:
         # a failed enrollment remains ``twofa_pending`` and is never reported
         # as a successful account.
         result["auto_set_2fa"] = True
+        result["twofa_auto_retry_attempts"] = _int(result.get("twofa_auto_retry_attempts"), 2, 0, 2)
         scheme = str(result.get("proxy_default_scheme") or "http").strip().lower()
         if scheme not in {"http", "https", "socks4", "socks5", "socks5h"}:
             scheme = "http"
@@ -229,6 +235,7 @@ class FreeConfigStore:
         result["proxy_tls_compat_fallback"] = _as_bool(result.get("proxy_tls_compat_fallback"), True)
         result["proxy_failure_threshold"] = _int(result.get("proxy_failure_threshold"), 2, 1, 10)
         result["proxy_quarantine_seconds"] = _int(result.get("proxy_quarantine_seconds"), 600, 30, 86400)
+        result["proxy_health_probe_ttl_seconds"] = _int(result.get("proxy_health_probe_ttl_seconds"), 300, 0, 86400)
         result["proxy_retry_count"] = _int(result.get("proxy_retry_count"), 1, 0, 5)
         result["roxy_circuit_failure_threshold"] = _int(result.get("roxy_circuit_failure_threshold"), 3, 1, 10)
         result["roxy_circuit_recovery_seconds"] = _int(result.get("roxy_circuit_recovery_seconds"), 30, 0, 3600)

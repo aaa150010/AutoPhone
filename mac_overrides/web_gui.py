@@ -3509,7 +3509,18 @@ def _automatic_outlook_mailbox_wait_code(self, email):
     return code
 
 
-_manual_task_generation = lambda task_id: _oauth_mfa_runtime_ext.task_generation(task_id, _AUTH_SESSIONS.public_snapshot)
+def _manual_task_generation(task_id):
+    free_manager = globals().get("_FREE_REGISTER")
+    if free_manager is not None:
+        try:
+            task = next(
+                item for item in free_manager.public_tasks()
+                if str(item.get("task_id") or "") == str(task_id or "").strip()
+            )
+            return int(free_manager._manual_generation(str(task_id)))
+        except (StopIteration, TypeError, ValueError, AttributeError):
+            pass
+    return _oauth_mfa_runtime_ext.task_generation(task_id, _AUTH_SESSIONS.public_snapshot)
 _manual_stop_event = _oauth_mfa_runtime_ext.provider_stop_event
 
 
@@ -3840,6 +3851,8 @@ _RUN_BATCH_MANIFEST = _run_batch_runtime_ext.RunBatchManifestStore(
 _FREE_REGISTER = _free_register_runtime_ext.FreeRegisterManager(
     _FREE_DATA_DIR,
     diagnostic_store=_DIAGNOSTIC_STORE,
+    manual_broker=_MANUAL_VERIFICATION,
+    notification_config_getter=lambda: (_read_local_config() or {}).get("email_notification", {}),
 )
 _SUB2_RUNTIME = _sub2_runtime_ext.Sub2Runtime(
     _read_local_config,
@@ -3974,7 +3987,55 @@ def _public_task(task):
 def _task_exists(task_id):
     importer = getattr(_module, "importer", None)
     tasks = getattr(importer, "tasks", {}) if importer is not None else {}
-    return str(task_id or "").strip() in tasks
+    normalized = str(task_id or "").strip()
+    if normalized in tasks:
+        return True
+    free_manager = globals().get("_FREE_REGISTER")
+    if free_manager is not None:
+        try:
+            return any(str(item.get("task_id") or "") == normalized for item in free_manager.public_tasks())
+        except Exception:
+            pass
+    return False
+
+
+def _free_manual_task_input_kind(task_id):
+    """Expose email OTP input only while a Free task is in an OTP stage."""
+    normalized = str(task_id or "").strip()
+    free_manager = globals().get("_FREE_REGISTER")
+    if free_manager is None or not normalized:
+        return ""
+    allowed_stages = {
+        "free_email_otp_wait",
+        "free_existing_login_otp",
+        "free_email_otp_validate",
+    }
+    try:
+        with free_manager._lock:
+            task = free_manager._tasks.get(normalized)
+            if not isinstance(task, dict):
+                return ""
+            status = str(task.get("status") or "")
+            progress = task.get("progress") if isinstance(task.get("progress"), dict) else {}
+            stage = str(task.get("stage") or progress.get("stage") or "")
+        if status in {"queued", "running"} and stage in allowed_stages:
+            return "email_otp"
+    except Exception:
+        return ""
+    return ""
+
+
+def _free_task_exists(task_id):
+    """Return whether an identifier belongs to the isolated Free task store."""
+    normalized = str(task_id or "").strip()
+    free_manager = globals().get("_FREE_REGISTER")
+    if free_manager is None or not normalized:
+        return False
+    try:
+        with free_manager._lock:
+            return normalized in free_manager._tasks
+    except Exception:
+        return False
 
 
 _runtime_summary = _PUBLIC_STATE.runtime_summary
@@ -4079,7 +4140,9 @@ def _patch_flask_app(app):
         patched,
         broker=_MANUAL_VERIFICATION,
         task_exists=_task_exists,
+        task_is_free=_free_task_exists,
         task_generation=_manual_task_generation,
+        task_input_kind=_free_manual_task_input_kind,
     )
 
 

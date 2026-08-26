@@ -138,6 +138,37 @@ class FreeConfigRouteTests(unittest.TestCase):
             saved = store.load()
             self.assertEqual((saved["target_count"], saved["concurrency"]), (4, 2))
 
+    def test_proxy_source_label_is_forwarded_without_becoming_allocation_policy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = FreeConfigStore(Path(directory))
+
+            class Proxies:
+                def __init__(self):
+                    self.calls = []
+
+                def import_text(self, content, **kwargs):
+                    self.calls.append((content, kwargs))
+                    return 1
+
+                def public(self):
+                    return {"count": 1, "rows": []}
+
+            proxies = Proxies()
+            save_free_config_bundle(
+                store,
+                SimpleNamespace(proxies=proxies),
+                {
+                    "proxy_content": "proxy.test:8000",
+                    "proxy_scheme": "socks5",
+                    "proxy_source_label": "cliproxy",
+                    "proxy_country": "CN",
+                    "proxy_group": "住宅",
+                },
+            )
+
+            self.assertEqual(proxies.calls[0][1]["source_label"], "cliproxy")
+            self.assertEqual(store.load()["proxy_allocation_mode"], "healthy_random")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -64,6 +64,7 @@ class FreeRegisterSchedulerMixin:
                 driver=driver,
                 exclude_proxy_ids=excluded_proxy_ids,
                 perform_probe=False,
+                health_probe_ttl_seconds=int(config["proxy_health_probe_ttl_seconds"]) if "proxy_health_probe_ttl_seconds" in config else 0,
             )
         except FreeRegisterError:
             return False
@@ -89,6 +90,7 @@ class FreeRegisterSchedulerMixin:
         updates = {
             "proxy": replacement.proxy, "proxy_id": replacement.proxy_id,
             "proxy_scheme": replacement.scheme, "proxy_country": replacement.country,
+            "proxy_effective_scheme": getattr(replacement, "effective_scheme", "") or replacement.scheme,
             "proxy_group": replacement.group, "proxy_masked": replacement.masked,
             "proxy_fingerprint": replacement.fingerprint,
             "exit_ip": replacement.exit_ip, "registration_ip": "",

@@ -181,6 +181,18 @@ class MailboxHttpTransport:
         self.request_attempts = 0
         self.last_error_code = ""
         self.last_http_status: int | None = None
+        # A single OTP request may cause a listing request plus several
+        # same-origin detail requests.  Keep one optional monotonic deadline
+        # for the whole scan so a slow detail page cannot multiply the
+        # configured email timeout by the number of links in the mailbox.
+        self._deadline_monotonic: float | None = None
+
+    def set_deadline(self, deadline: float | None) -> None:
+        """Bound all subsequent requests until the current scan completes."""
+        self._deadline_monotonic = None if deadline is None else float(deadline)
+
+    def clear_deadline(self) -> None:
+        self._deadline_monotonic = None
 
     def _event(self, **fields: Any) -> None:
         if callable(self.event_fn):
@@ -255,6 +267,19 @@ class MailboxHttpTransport:
             self.request_attempts += 1
             started = self.monotonic_fn()
             try:
+                request_timeout = self.policy.request_timeout_seconds
+                if self._deadline_monotonic is not None:
+                    remaining = self._deadline_monotonic - self.monotonic_fn()
+                    if remaining <= 0:
+                        raise MailboxOtpError(
+                            "mailbox_timeout",
+                            "邮箱取件请求已达到本轮时间预算",
+                            retryable=True,
+                        )
+                    # urllib/curl transports accept fractional timeouts, but
+                    # retain a small floor so a request is not handed a zero
+                    # timeout due to clock rounding.
+                    request_timeout = min(request_timeout, max(0.2, remaining))
                 kwargs: dict[str, Any] = {
                     "headers": {
                         "Accept": "application/json,text/plain,text/html,*/*",
@@ -262,7 +287,7 @@ class MailboxHttpTransport:
                         "Cache-Control": "no-cache, no-store, max-age=0",
                         "Pragma": "no-cache",
                     },
-                    "timeout": self.policy.request_timeout_seconds,
+                    "timeout": request_timeout,
                     "allow_redirects": False,
                     "impersonate": "chrome",
                     "verify": True,
@@ -554,6 +579,19 @@ class MailboxOtpService:
     def diagnostic(self) -> dict[str, Any]:
         return _selection_diagnostic(self.state, self.transport)
 
+    def _scan_with_deadline(self, deadline: float | None, callback: Callable[[], Any]) -> Any:
+        """Run one mailbox scan under a request-level transport budget."""
+        transport = self.transport
+        setter = getattr(transport, "set_deadline", None)
+        clearer = getattr(transport, "clear_deadline", None)
+        if callable(setter):
+            setter(deadline)
+        try:
+            return callback()
+        finally:
+            if callable(clearer):
+                clearer()
+
     def _log_diagnostic(self, *, force: bool = False) -> None:
         diagnostic = self.diagnostic()
         reason = str(diagnostic.get("reason") or "")
@@ -591,7 +629,12 @@ class MailboxOtpService:
             self.state.baseline_fallback_codes.clear()
         if self.state.last_scan is None:
             try:
-                self.state.snapshot()
+                # Baseline is part of the same bounded mailbox operation. A
+                # provider with many stale detail links must not hold the
+                # registration worker indefinitely before the OTP request
+                # even starts.
+                baseline_deadline = self.monotonic_fn() + self.timeout_seconds
+                self._scan_with_deadline(baseline_deadline, self.state.snapshot)
                 diagnostic = self.diagnostic()
                 self._log(
                     f"[邮箱验证码基线/{self.current_stage}] 已记录请求前基线"
@@ -682,7 +725,7 @@ class MailboxOtpService:
                     retryable=False,
                 )
             try:
-                selection = self.state.snapshot()
+                selection = self._scan_with_deadline(deadline, self.state.snapshot)
                 successful_scan = True
                 last_error = None
             except MailboxUrlError as exc:
@@ -756,7 +799,17 @@ class MailboxOtpService:
                     self.sleep_fn(delay)
 
         try:
-            fallback = self.state.final_baseline_fallback()
+            # Preserve the existing final-baseline fallback, but give it one
+            # short bounded request window instead of allowing a fresh full
+            # detail sweep after the main OTP deadline has elapsed.
+            fallback_deadline = self.monotonic_fn() + min(
+                5.0,
+                max(3.0, float(self.policy.request_timeout_seconds)),
+            )
+            fallback = self._scan_with_deadline(
+                fallback_deadline,
+                self.state.final_baseline_fallback,
+            )
         except MailboxUrlError as exc:
             fallback = None
             last_error = mailbox_error_from_url_error(exc, self.diagnostic())

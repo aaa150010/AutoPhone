@@ -38,6 +38,7 @@ const emit = defineEmits<{
   password: [MailboxRow]
   totp: [MailboxRow]
   url: [MailboxRow]
+  latestCode: [MailboxRow]
   quota: [MailboxRow]
   openai: [MailboxRow]
   action: [MailboxRowAction, MailboxRow]
@@ -220,11 +221,12 @@ defineExpose({ clearSelection })
         <span v-else>-</span>
       </template>
     </el-table-column>
-    <el-table-column label="取件 URL" width="92" align="center">
+    <el-table-column label="取件 URL" width="132" align="center">
       <template #default="{ row }">
-        <el-tooltip v-if="row.has_mailbox_url" content="打开取件网页" placement="top">
-          <el-button link size="small" :icon="View" @click="emit('url', row)">查看</el-button>
-        </el-tooltip>
+        <template v-if="row.has_mailbox_url">
+          <el-tooltip content="打开取件网页" placement="top"><el-button link size="small" :icon="View" @click="emit('url', row)">查看</el-button></el-tooltip>
+          <el-tooltip content="提取并复制最新验证码" placement="top"><el-button link size="small" :icon="CopyDocument" @click="emit('latestCode', row)" /></el-tooltip>
+        </template>
         <span v-else class="muted">-</span>
       </template>
     </el-table-column>

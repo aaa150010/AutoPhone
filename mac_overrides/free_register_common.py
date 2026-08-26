@@ -248,6 +248,9 @@ class ProxyBinding:
     scheme: str = ""
     country: str = "ZZ"
     group: str = "默认组"
+    # Observed transport scheme.  Appended after the legacy positional fields
+    # so recovered callers constructing ProxyBinding positionally remain safe.
+    effective_scheme: str = ""
     chatgpt_login_status: int = 0
     chatgpt_login_checked: bool = False
     chatgpt_login_probe_mode: str = ""

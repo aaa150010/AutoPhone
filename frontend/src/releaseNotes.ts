@@ -13,11 +13,19 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.79',
-  freeRuntimeVersion: '1.6.79',
-  title: '跨 Mac 启动与 Camoufox 代理恢复修正',
-  releasedAt: '2026-08-26',
+  version: '1.6.80',
+  freeRuntimeVersion: '1.6.80',
+  title: 'Free 注册稳定性与人工验证码兜底',
+  releasedAt: '2026-08-27',
   sections: [
+    {
+      title: 'Free 注册稳定性与人工验证码兜底',
+      usage: 'Free protocol、RoxyBrowser 和 Camoufox 保持 AutoRegister 对齐的主流程，新增每节点与账号总耗时、慢节点和首个失败诊断；邮箱验证码自动等待超时后提供 300 秒人工输入窗口，自动码与人工码按任务阶段仲裁。统一重试队列支持单账号、2FA 和当前失败节点批量重试，2FA 仅对会话或临时网络错误最多追加两次尝试；运行中导入默认进入下一批，也可显式加入当前批次。',
+    },
+    {
+      title: '代理分层诊断与快捷取码',
+      usage: '代理池继续使用共享 healthy_random 和声明协议，支持来源标签、出口地区画像、成功率、p50/p95 延迟及 SOCKS5 TCP、HTTPS、ChatGPT 登录页分层探测；生产绑定优先复用 300 秒内的健康结果，过期代理只做一次有界刷新，认证 SOCKS5 bridge 记录连接、relay 超时和关闭原因。普通邮箱、Free 注册、换绑和运行任务均保留打开取件地址，并可按绑定安全提取、复制最新验证码；Free 批次完成后复用现有 SMTP 队列发送脱敏汇总。',
+    },
     {
       title: '跨 Mac 启动与 Camoufox 安装修复',
       usage: 'start.command 会验证本机 Python 3.13 和本地虚拟环境是否真的可启动，复制项目产生的失效 venv 会自动重建；Camoufox 浏览器运行时遇到 GitHub releases API 限流时会改用兼容版本直链，并支持通过 CAMOUFOX_BROWSER_URL 指定镜像。',

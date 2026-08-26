@@ -7,6 +7,7 @@ import select
 import socket
 import socketserver
 import threading
+import time
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
@@ -51,6 +52,7 @@ class _SocksHttpHandler(socketserver.BaseRequestHandler):
         client = self.request
         client.settimeout(_SOCKET_TIMEOUT)
         upstream: Any = None
+        started = time.monotonic()
         try:
             head, remainder = self._read_headers(client)
             if not head:
@@ -90,18 +92,21 @@ class _SocksHttpHandler(socketserver.BaseRequestHandler):
                 lines = [line for line in lines if line.lower() != b"proxy-connection: keep-alive"]
                 head = b"\r\n".join(lines)
             upstream = self.bridge._connect_upstream(*destination)
+            self.bridge._record_event("connect_established", elapsed_ms=int((time.monotonic() - started) * 1000))
             if connect_mode:
                 client.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
                 self._relay(client, upstream)
             else:
                 upstream.sendall(head + b"\r\n\r\n" + remainder)
                 self._relay(client, upstream)
-        except (OSError, ValueError, RuntimeError):
+        except (OSError, ValueError, RuntimeError) as exc:
+            self.bridge._record_event("request_failed", reason=type(exc).__name__, elapsed_ms=int((time.monotonic() - started) * 1000))
             try:
                 self._reply(client, HTTPStatus.BAD_GATEWAY)
             except OSError:
                 pass
         finally:
+            self.bridge._record_event("closed", reason="request_complete", elapsed_ms=int((time.monotonic() - started) * 1000))
             for connection in (upstream, client):
                 try:
                     if connection is not None:
@@ -132,12 +137,21 @@ class _SocksHttpHandler(socketserver.BaseRequestHandler):
     def _reply(client: socket.socket, status: HTTPStatus) -> None:
         client.sendall(f"HTTP/1.1 {int(status)} {status.phrase}\r\nConnection: close\r\n\r\n".encode("ascii"))
 
-    @staticmethod
-    def _relay(left: socket.socket, right: socket.socket) -> None:
+    def _relay(self, left: socket.socket, right: socket.socket) -> None:
         sockets = [left, right]
         while True:
             readable, _, exceptional = select.select(sockets, [], sockets, _SOCKET_TIMEOUT)
-            if exceptional or not readable:
+            if exceptional:
+                self.bridge._record_event("relay_error", reason="socket_exception")
+                return
+            if not readable:
+                with self.bridge._metrics_lock:
+                    self.bridge._metrics["relay_timeouts"] += 1
+                    self.bridge._metrics.update({
+                        "last_event": "relay_timeout",
+                        "last_reason": "idle_timeout",
+                        "last_elapsed_ms": int(_SOCKET_TIMEOUT * 1000),
+                    })
                 return
             for source in readable:
                 data = source.recv(_BUFFER_SIZE)
@@ -167,6 +181,18 @@ class Socks5HttpBridge:
         self._server.allow_reuse_address = True
         self._thread = threading.Thread(target=self._server.serve_forever, name="gptphone-socks-bridge", daemon=True)
         self._closed = False
+        self._metrics_lock = threading.Lock()
+        self._metrics = {
+            "created_at": time.time(),
+            "connect_attempts": 0,
+            "connect_successes": 0,
+            "connect_failures": 0,
+            "relay_timeouts": 0,
+            "close_count": 0,
+            "last_event": "created",
+            "last_reason": "",
+            "last_elapsed_ms": None,
+        }
         self._thread.start()
 
     @property
@@ -179,6 +205,9 @@ class Socks5HttpBridge:
             import socks
         except ImportError as exc:  # pragma: no cover - start.command installs PySocks
             raise RuntimeError("PySocks is required for the browser proxy bridge") from exc
+        started = time.monotonic()
+        with self._metrics_lock:
+            self._metrics["connect_attempts"] += 1
         connection = socks.socksocket(socket.AF_INET, socket.SOCK_STREAM)
         connection.settimeout(_SOCKET_TIMEOUT)
         connection.set_proxy(
@@ -189,13 +218,37 @@ class Socks5HttpBridge:
             username=self.username,
             password=self.password,
         )
-        connection.connect((host, int(port)))
+        try:
+            connection.connect((host, int(port)))
+        except Exception as exc:
+            with self._metrics_lock:
+                self._metrics["connect_failures"] += 1
+                self._metrics.update({"last_event": "connect_failed", "last_reason": type(exc).__name__, "last_elapsed_ms": int((time.monotonic() - started) * 1000)})
+            raise
+        with self._metrics_lock:
+            self._metrics["connect_successes"] += 1
+            self._metrics.update({"last_event": "connect_established", "last_reason": "", "last_elapsed_ms": int((time.monotonic() - started) * 1000)})
         return connection
+
+    def _record_event(self, event: str, *, reason: str = "", elapsed_ms: int | None = None) -> None:
+        with self._metrics_lock:
+            self._metrics["last_event"] = str(event or "")[:40]
+            self._metrics["last_reason"] = str(reason or "")[:80]
+            if elapsed_ms is not None:
+                self._metrics["last_elapsed_ms"] = max(0, int(elapsed_ms))
+
+    def diagnostics(self) -> dict[str, Any]:
+        """Return non-secret bridge counters for structured diagnostics."""
+        with self._metrics_lock:
+            return dict(self._metrics)
 
     def close(self) -> None:
         if self._closed:
             return
         self._closed = True
+        self._record_event("close_requested", reason="explicit")
+        with self._metrics_lock:
+            self._metrics["close_count"] += 1
         self._server.shutdown()
         self._server.server_close()
         self._thread.join(timeout=2.0)

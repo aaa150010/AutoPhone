@@ -400,14 +400,72 @@ def wait_with_manual_fallback(
     worker = threading.Thread(target=run_automatic, name="manual-verification-auto", daemon=True)
     worker.start()
     deadline = time.monotonic() + max(1, int(automatic_timeout_seconds))
+
+    def visible_prompt() -> dict[str, Any] | None:
+        try:
+            prompt = broker.public(task_id)
+        except Exception:
+            return None
+        if not (
+            isinstance(prompt, dict)
+            and str(prompt.get("input_kind") or "") == normalize_input_kind(input_kind)
+            and normalize_generation(prompt.get("generation")) == normalize_generation(generation)
+        ):
+            return None
+        return prompt
+
     while True:
         if _is_set(stop_event):
             broker.cancel_task(task_id)
             raise ManualVerificationStopped()
+        # The UI may explicitly open the manual window before the automatic
+        # timeout.  Treat that prompt as the same arbitration gate used by the
+        # automatic fallback path.
+        prompt = visible_prompt()
+        if prompt is not None:
+            manual_open.set()
+            # A user may have opened the prompt and submitted a code before
+            # the automatic waiter reaches its timeout.  Consume it now so an
+            # explicit manual action is responsive while preserving the same
+            # broker arbitration semantics.
+            if not bool(prompt.get("can_submit", True)):
+                value = broker.wait(
+                    task_id,
+                    input_kind,
+                    generation,
+                    stop_event=stop_event,
+                    timeout_seconds=max(1, int(manual_timeout_seconds)),
+                )
+                if not automatic_submitted.is_set() and on_manual_selected is not None:
+                    try:
+                        on_manual_selected()
+                    except Exception:
+                        pass
+                return value
         with condition:
             if result_queue:
                 kind, value = result_queue.pop(0)
                 if kind == "result" and value:
+                    if manual_open.is_set():
+                        try:
+                            broker.submit(task_id, input_kind, generation, value)
+                        except ManualVerificationError:
+                            pass
+                        else:
+                            automatic_submitted.set()
+                        waited = broker.wait(
+                            task_id,
+                            input_kind,
+                            generation,
+                            stop_event=stop_event,
+                            timeout_seconds=max(1, int(manual_timeout_seconds)),
+                        )
+                        if not automatic_submitted.is_set() and on_manual_selected is not None:
+                            try:
+                                on_manual_selected()
+                            except Exception:
+                                pass
+                        return waited
                     broker.cancel_task(task_id)
                     return value
                 if kind == "error" and not is_timeout_error(value):

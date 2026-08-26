@@ -5,6 +5,7 @@ from pathlib import Path
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 from mac_overrides.free_register_common import FreeRegisterError
 from mac_overrides.free_proxy_store import FreeProxyPool
@@ -75,6 +76,83 @@ class FreeProxyRobustnessTests(unittest.TestCase):
         row = pool.public()["rows"][0]
         self.assertEqual(row["consecutive_failures"], 1)
         self.assertEqual(row["status"], "quarantined")
+
+    def test_effective_scheme_survives_pool_reload(self) -> None:
+        pool = FreeProxyPool(self.data_dir)
+        pool.import_text("socks5h://probe-user:probe-pass@proxy.example.test:3000\n")
+        proxy_id = pool.public()["rows"][0]["proxy_id"]
+
+        pool.record_success(
+            proxy_id,
+            latency_ms=42,
+            effective_scheme="socks5",
+        )
+
+        reloaded = FreeProxyPool(self.data_dir)
+        row = reloaded.public()["rows"][0]
+        self.assertEqual(row["scheme"], "socks5h")
+        self.assertEqual(row["effective_scheme"], "socks5")
+
+    def test_stale_pool_candidate_gets_one_bounded_refresh_before_bind(self) -> None:
+        pool = FreeProxyPool(self.data_dir, health_probe_ttl_seconds=300)
+        pool.import_text("http://proxy.example.test:8000\n")
+        calls: list[tuple[str, str]] = []
+
+        def probe(proxy: str, target: str) -> str:
+            calls.append((proxy, target))
+            return "203.0.113.81"
+
+        binding = pool.bind(
+            1,
+            probe=probe,
+            probe_url="https://chatgpt.com/",
+            perform_probe=False,
+            health_probe_ttl_seconds=300,
+        )[0]
+        self.assertEqual(binding.exit_ip, "203.0.113.81")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(pool.public()["rows"][0]["probe_successes"], 1)
+
+    def test_chatgpt_probe_is_recorded_when_explicitly_requested(self) -> None:
+        pool = FreeProxyPool(self.data_dir)
+        pool.import_text("http://proxy.example.test:8000\n")
+        calls: list[str] = []
+        binding = pool.bind(
+            1,
+            probe=lambda _proxy, _target: "203.0.113.82",
+            chatgpt_probe=lambda proxy: calls.append(proxy) or 403,
+            check_chatgpt=True,
+        )[0]
+        self.assertEqual(calls, [binding.proxy])
+        self.assertEqual(binding.chatgpt_login_status, 403)
+        row = pool.public()["rows"][0]
+        self.assertEqual(row["last_chatgpt_login_status"], 403)
+
+    def test_layered_probe_reports_each_transport_boundary_without_body(self) -> None:
+        pool = FreeProxyPool(self.data_dir)
+        proxy = "socks5h://probe-user:probe-pass@proxy.example.test:3000"
+
+        fake_socket = patch(
+            "mac_overrides.free_proxy_store.socket.create_connection",
+        )
+        with fake_socket as create_connection:
+            create_connection.return_value.__enter__.return_value = object()
+            with patch.object(pool, "_probe_with_policy", return_value=("", "strict")) as https_probe:
+                with patch.object(pool, "_chatgpt_login_with_policy", return_value=(200, "strict")) as login_probe:
+                    result = pool.layered_probe(proxy, "https://chatgpt.com/")
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["declared_scheme"], "socks5h")
+        self.assertEqual(result["effective_scheme"], "socks5h")
+        self.assertIsInstance(result["tcp_connect_ms"], int)
+        self.assertIsInstance(result["https_request_ms"], int)
+        self.assertIsInstance(result["chatgpt_request_ms"], int)
+        self.assertEqual(result["chatgpt_status"], 200)
+        https_probe.assert_called_once_with(proxy, "https://chatgpt.com/")
+        login_probe.assert_called_once_with(proxy)
+        # Diagnostic output must stay metadata-only; response bodies are never
+        # returned by the layered probe contract.
+        self.assertNotIn("probe-pass", repr(result))
 
     def test_malformed_persisted_numeric_fields_are_safely_normalized(self) -> None:
         secret_values = (

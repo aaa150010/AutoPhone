@@ -5,6 +5,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+try:
+    from .free_mailbox_code import fetch_latest_code
+    from .mailbox_otp_service import DEFAULT_FREE_MAILBOX_PROXY
+except ImportError:  # pragma: no cover
+    from free_mailbox_code import fetch_latest_code  # type: ignore[no-redef]
+    from mailbox_otp_service import DEFAULT_FREE_MAILBOX_PROXY  # type: ignore[no-redef]
+
 
 class FreeRebindRouteController:
     def __init__(self, *, module: Any, service: Any, error_response: Any) -> None:
@@ -18,6 +25,21 @@ class FreeRebindRouteController:
     def _body(self) -> Mapping[str, Any] | None:
         data = self.module.request.get_json(silent=True) or {}
         return data if isinstance(data, Mapping) else None
+
+    def _mailbox_proxy(self) -> str:
+        try:
+            config = self.service._config() if callable(getattr(self.service, "_config", None)) else {}
+        except Exception:
+            config = {}
+        if not isinstance(config, Mapping) or str(config.get("mailbox_network_mode") or "local_proxy").strip().lower() != "local_proxy":
+            return ""
+        return str(config.get("mailbox_proxy_url") or DEFAULT_FREE_MAILBOX_PROXY).strip()
+
+    @staticmethod
+    def _latest_code_status(exc: Exception) -> int:
+        if isinstance(exc, ValueError) or getattr(exc, "retryable", None) is False:
+            return 400
+        return 502
 
     def state(self):
         if self.service is None:
@@ -46,6 +68,32 @@ class FreeRebindRouteController:
             return self.module.jsonify(ok=True, imported=imported, skipped=skipped, rows=self.service.pool.public_rows())
         except Exception as exc:
             return self.error_response(exc, default_code="free_rebind_pool", default_label="换绑邮箱池")
+
+    def mailbox_latest_code(self):
+        if self.service is None:
+            return self._unavailable()
+        data = self._body()
+        row_id = str(data.get("row_id") or "").strip() if data is not None else ""
+        try:
+            row = self.service.pool.entry(row_id)
+            if row is None:
+                raise ValueError("换绑邮箱行不存在")
+            return self.module.jsonify(**fetch_latest_code(row.mailbox_url, proxy=self._mailbox_proxy()))
+        except Exception as exc:
+            return self.error_response(exc, default_code="free_rebind_latest_code", default_label="读取换绑邮箱验证码", status=self._latest_code_status(exc))
+
+    def mailbox_url(self):
+        if self.service is None:
+            return self._unavailable()
+        data = self._body()
+        row_id = str(data.get("row_id") or "").strip() if data is not None else ""
+        try:
+            row = self.service.pool.entry(row_id)
+            if row is None:
+                raise ValueError("换绑邮箱行不存在")
+            return self.module.jsonify(ok=True, mailbox_url=row.mailbox_url)
+        except Exception as exc:
+            return self.error_response(exc, default_code="free_rebind_mailbox_url", default_label="读取换绑取件地址")
 
     def delete_mailboxes(self):
         if self.service is None:
