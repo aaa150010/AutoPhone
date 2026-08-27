@@ -13,6 +13,7 @@ try:
         MailboxOtpService,
         normalize_network_policy,
     )
+    from .free_timing import TimingCallback
     from .manual_verification_runtime import ManualVerificationBroker, ManualVerificationError, wait_with_manual_fallback
     from .mailbox_url_runtime import MailboxResponse
 except ImportError:
@@ -23,6 +24,7 @@ except ImportError:
         MailboxOtpService,
         normalize_network_policy,
     )
+    from free_timing import TimingCallback  # type: ignore[no-redef]
     from manual_verification_runtime import ManualVerificationBroker, ManualVerificationError, wait_with_manual_fallback  # type: ignore[no-redef]
     from mailbox_url_runtime import MailboxResponse  # type: ignore[no-redef]
 
@@ -52,6 +54,7 @@ class MailboxUrlOtpProvider:
         monotonic_fn: Callable[[], float] = time.monotonic,
         manual_broker: ManualVerificationBroker | None = None,
         manual_generation_getter: Callable[[str, str], int] | None = None,
+        timing_fn: TimingCallback | None = None,
     ) -> None:
         # ``proxy`` is the former registration-proxy argument. It is retained
         # for callable compatibility and deliberately never used for mailbox IO.
@@ -77,6 +80,7 @@ class MailboxUrlOtpProvider:
             sleep_fn=sleep_fn,
             now_fn=now_fn,
             monotonic_fn=monotonic_fn,
+            timing_fn=timing_fn,
         )
         # Compatibility attributes used by focused tests and older helpers.
         self.client = self.service.client
@@ -87,6 +91,7 @@ class MailboxUrlOtpProvider:
         self.stage_fn = stage_fn
         self.manual_broker = manual_broker
         self.manual_generation_getter = manual_generation_getter
+        self.timing_fn = timing_fn
 
     @staticmethod
     def _label(stage_code: str) -> str:
@@ -221,6 +226,7 @@ def build_free_mailbox_otp_provider(
         retry_backoff_seconds=float(config.get("mailbox_retry_backoff_seconds", 1.0)),
         manual_broker=config.get("_manual_verification_broker"),
         manual_generation_getter=config.get("_manual_generation_getter"),
+        timing_fn=config.get("_timing_substep"),
     )
 
 

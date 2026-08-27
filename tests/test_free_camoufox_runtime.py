@@ -170,6 +170,218 @@ class CamoufoxRuntimeTests(unittest.TestCase):
     def test_browser_flow_accepts_transport_proxy_argument(self):
         self.assertIn("proxy", inspect.signature(runtime._browser_flow).parameters)
 
+    def test_profile_transition_timing_is_non_overlapping(self):
+        """The async submit and home confirmation intervals are distinct."""
+        class Locator:
+            first = None
+
+            def __init__(self):
+                self.first = self
+
+            async def is_visible(self, **_kwargs):
+                return False
+
+            async def count(self):
+                return 0
+
+            async def input_value(self, **_kwargs):
+                return ""
+
+        class Page:
+            url = "https://auth.openai.com/about-you"
+
+            def locator(self, _selector):
+                return Locator()
+
+        clock = [0.0]
+        events = []
+
+        async def fake_sleep(seconds):
+            clock[0] += float(seconds or 0.0)
+
+        stable_result = {
+            "ok": True,
+            "reason": "form_request_submit",
+            "form_present": True,
+            "input_selector": "input",
+            "submit_selector": "submit",
+        }
+        with (
+            patch.object(runtime.time, "monotonic", side_effect=lambda: clock[0]),
+            patch.object(runtime.asyncio, "sleep", side_effect=fake_sleep),
+            patch.object(runtime, "_goto_with_retry", new=AsyncMock()),
+            patch.object(runtime, "_wait_for_any_selector", new=AsyncMock(return_value="input")),
+            patch.object(runtime, "_submit_email_form_stable", new=AsyncMock(return_value=stable_result)),
+            patch.object(runtime, "_submit_visible_form", new=AsyncMock(return_value=True)),
+            patch.object(runtime, "_page_state", new=AsyncMock(side_effect=("profile", "oauth_callback", "home"))),
+            patch.object(runtime, "_find_visible_selector", new=AsyncMock(return_value=None)),
+            patch.object(runtime, "_sync_hidden_birthday_input", new=AsyncMock(return_value=False)),
+            patch.object(runtime, "_accept_about_you_consents", new=AsyncMock(return_value=False)),
+            patch.object(runtime, "_wait_for_submit_enabled", new=AsyncMock(return_value="submit")),
+            patch.object(runtime, "_click_first", new=AsyncMock(return_value=True)),
+            patch.object(runtime, "_confirm_birthday", new=AsyncMock(return_value=False)),
+            patch.object(runtime, "browser_session", new=AsyncMock(return_value={"accessToken": "token"})),
+            patch.object(runtime, "browser_plan_details", new=AsyncMock(return_value={"plan_type": "free"})),
+            patch.object(runtime, "finalize_registration_result", side_effect=lambda result, **_kwargs: result),
+        ):
+            result = asyncio.run(
+                runtime._browser_flow(
+                    Page(), email="user@example.test", password="password",
+                    otp_callback=lambda: "", config={
+                        "registration_timeout_seconds": 60, "auto_set_2fa": False,
+                    }, log=lambda *_args: None,
+                    otp_prepare=Mock(), otp_mark_sent=Mock(),
+                    timing_fn=lambda *event: events.append(event),
+                )
+            )
+
+        self.assertEqual(result["twofa_status"], "disabled")
+        profile_events = {
+            event[1]: event for event in events
+            if event[0] == "free_camoufox_profile"
+        }
+        self.assertEqual(profile_events["profile_async_submit_wait"][3], "success")
+        self.assertEqual(profile_events["profile_home_state_wait"][3], "success")
+        # The callback-to-home interval starts where async-submit ends; it must
+        # not repeat the full profile-submit duration.
+        self.assertEqual(profile_events["profile_async_submit_wait"][2], 1000)
+        self.assertEqual(profile_events["profile_home_state_wait"][2], 1000)
+
+    def test_profile_security_transition_is_not_reported_as_success(self):
+        class Locator:
+            first = None
+
+            def __init__(self):
+                self.first = self
+
+            async def is_visible(self, **_kwargs):
+                return False
+
+            async def count(self):
+                return 0
+
+            async def input_value(self, **_kwargs):
+                return ""
+
+        class Page:
+            url = "https://auth.openai.com/about-you"
+
+            def locator(self, _selector):
+                return Locator()
+
+        clock = [0.0]
+        events = []
+
+        async def fake_sleep(seconds):
+            clock[0] += float(seconds or 0.0)
+
+        async def stop_on_challenge(*_args, **_kwargs):
+            raise runtime.CamoufoxBrowserError(
+                "free_camoufox_challenge", "等待安全验证", "challenge",
+                error_code="challenge",
+            )
+
+        stable_result = {
+            "ok": True,
+            "reason": "form_request_submit",
+            "form_present": True,
+            "input_selector": "input",
+            "submit_selector": "submit",
+        }
+        with (
+            patch.object(runtime.time, "monotonic", side_effect=lambda: clock[0]),
+            patch.object(runtime.asyncio, "sleep", side_effect=fake_sleep),
+            patch.object(runtime, "_goto_with_retry", new=AsyncMock()),
+            patch.object(runtime, "_wait_for_any_selector", new=AsyncMock(return_value="input")),
+            patch.object(runtime, "_submit_email_form_stable", new=AsyncMock(return_value=stable_result)),
+            patch.object(runtime, "_submit_visible_form", new=AsyncMock(return_value=True)),
+            patch.object(runtime, "_page_state", new=AsyncMock(side_effect=("profile", "security"))),
+            patch.object(runtime, "_find_visible_selector", new=AsyncMock(return_value=None)),
+            patch.object(runtime, "_sync_hidden_birthday_input", new=AsyncMock(return_value=False)),
+            patch.object(runtime, "_accept_about_you_consents", new=AsyncMock(return_value=False)),
+            patch.object(runtime, "_wait_for_submit_enabled", new=AsyncMock(return_value="submit")),
+            patch.object(runtime, "_click_first", new=AsyncMock(return_value=True)),
+            patch.object(runtime, "_confirm_birthday", new=AsyncMock(return_value=False)),
+            patch.object(runtime, "_wait_challenge_then_stop", new=stop_on_challenge),
+        ):
+            with self.assertRaises(runtime.CamoufoxBrowserError):
+                asyncio.run(
+                    runtime._browser_flow(
+                        Page(), email="user@example.test", password="password",
+                        otp_callback=lambda: "", config={"registration_timeout_seconds": 60},
+                        log=lambda *_args: None, otp_prepare=Mock(), otp_mark_sent=Mock(),
+                        timing_fn=lambda *event: events.append(event),
+                    )
+                )
+
+        async_event = next(
+            event for event in events
+            if event[1] == "profile_async_submit_wait"
+        )
+        self.assertEqual(async_event[3], "security_challenge")
+        self.assertNotIn(
+            ("free_camoufox_profile", "profile_home_state_wait", 0, "success"),
+            events,
+        )
+
+    def test_profile_transition_outcome_only_accepts_authenticated_states(self):
+        self.assertEqual(runtime._profile_transition_timing_outcome("home"), "success")
+        self.assertEqual(runtime._profile_transition_timing_outcome("oauth_callback"), "success")
+        self.assertEqual(runtime._profile_transition_timing_outcome("security"), "security_challenge")
+        self.assertEqual(runtime._profile_transition_timing_outcome("unknown"), "unexpected_state")
+
+    def test_signup_discovery_records_otp_transition_under_existing_login_stage(self):
+        class Page(_FakePage):
+            url = "https://auth.openai.com/log-in"
+
+        clock = [0.0]
+        events = []
+        callback_stages = []
+
+        async def fake_sleep(seconds):
+            clock[0] += float(seconds or 0.0)
+
+        stable_result = {
+            "ok": True,
+            "reason": "form_request_submit",
+            "form_present": True,
+            "input_selector": "input",
+            "submit_selector": "submit",
+        }
+        with (
+            patch.object(runtime.time, "monotonic", side_effect=lambda: clock[0]),
+            patch.object(runtime.asyncio, "sleep", side_effect=fake_sleep),
+            patch.object(runtime, "_goto_with_retry", new=AsyncMock()),
+            patch.object(runtime, "_wait_for_any_selector", new=AsyncMock(return_value="input")),
+            patch.object(runtime, "_submit_email_form_stable", new=AsyncMock(return_value=stable_result)),
+            patch.object(runtime, "_submit_visible_form", new=AsyncMock(return_value=True)),
+            patch.object(
+                runtime, "_page_state",
+                new=AsyncMock(side_effect=("login_password", "otp", "otp", "otp", "home")),
+            ),
+            patch.object(runtime, "_find_visible_selector", new=AsyncMock(return_value="otp-input")),
+            patch.object(runtime, "_fill_input_like_user", new=AsyncMock(return_value=True)),
+            patch.object(runtime, "_click_first", new=AsyncMock(return_value=True)),
+            patch.object(runtime, "browser_session", new=AsyncMock(return_value={"accessToken": "token"})),
+            patch.object(runtime, "browser_plan_details", new=AsyncMock(return_value={})),
+            patch.object(runtime, "finalize_registration_result", side_effect=lambda result, **_kwargs: result),
+        ):
+            result = asyncio.run(
+                runtime._browser_flow(
+                    Page(), email="user@example.test", password="password",
+                    otp_callback=lambda stage: callback_stages.append(stage) or "123456",
+                    config={"registration_timeout_seconds": 60, "auto_set_2fa": False},
+                    log=lambda *_args: None, otp_prepare=Mock(), otp_mark_sent=Mock(),
+                    timing_fn=lambda *event: events.append(event),
+                )
+            )
+
+        self.assertEqual(result["account_flow"], "existing_login")
+        self.assertEqual(callback_stages, ["free_existing_login_otp"])
+        transition = next(event for event in events if event[1] == "otp_submit_transition")
+        self.assertEqual(transition[0], "free_existing_login_otp")
+        self.assertEqual(transition[3], "success")
+
     def test_email_form_submission_scopes_current_form_and_excludes_social_buttons(self):
         class Page:
             def __init__(self):

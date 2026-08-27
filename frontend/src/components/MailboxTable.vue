@@ -18,6 +18,10 @@ import ContentEmptyState from './ContentEmptyState.vue'
 import TaskProgressCell from './TaskProgressCell.vue'
 import { useTaskProgressClock } from '../composables/useTaskProgressClock'
 import type { MailboxRow, MailboxRowAction } from '../types/api'
+import {
+  ACCOUNT_BANNED_DISPLAY_MESSAGE,
+  isCurrentAccountBanned,
+} from '../utils/freeFailure'
 import { needsSub2Rerun } from '../utils/mailboxFilters'
 
 const props = defineProps<{
@@ -100,7 +104,57 @@ function sub2Tone(row: MailboxRow): 'success' | 'warning' | 'danger' | 'info' {
   return 'info'
 }
 
+const MAILBOX_SUCCESS_STATUSES = new Set([
+  'success', 'succeeded', 'complete', 'completed', 'partial', 'partial_success',
+  'ok', 'uploaded', 'consumed',
+])
+const MAILBOX_ACTIVE_STATUSES = new Set(['queued', 'pending', 'running', 'active'])
+
+/**
+ * Resolve the current mailbox outcome before applying the shared ban display
+ * rule. Pool rows use `consumed`, while task results use `success`/`uploaded`;
+ * treating both as success prevents an older banned failure from resurfacing
+ * after a retry has completed.
+ */
+function mailboxBanStatus(row: MailboxRow): string {
+  const taskStatus = String(row.task_status || '').trim().toLowerCase()
+  const poolStatus = String(row.status || '').trim().toLowerCase()
+  const status = taskStatus || poolStatus
+  return MAILBOX_SUCCESS_STATUSES.has(status) ? 'success' : status
+}
+
+function isMailboxAccountBanned(row: MailboxRow): boolean {
+  const taskStatus = String(row.task_status || '').trim().toLowerCase()
+  const poolStatus = String(row.status || '').trim().toLowerCase()
+  const outcomeStatus = mailboxBanStatus(row)
+  if (MAILBOX_SUCCESS_STATUSES.has(outcomeStatus)) return false
+  if (taskStatus === 'account_banned' || poolStatus === 'account_banned') return true
+  if (String(row.reason || '').trim().toLowerCase() === 'account_banned') return true
+  // A live retry can retain the original failure object while its task is
+  // running. It must not be presented as a new terminal ban.
+  if (MAILBOX_ACTIVE_STATUSES.has(taskStatus)) return false
+  return isCurrentAccountBanned(outcomeStatus, row.failure)
+}
+
+function statusTagType(row: MailboxRow) {
+  if (isMailboxAccountBanned(row)) return 'danger'
+  return row.status === 'consumed'
+    ? 'success'
+    : row.status === 'failed'
+      ? 'danger'
+      : row.status === 'running'
+        ? 'warning'
+        : 'info'
+}
+
+function statusLabel(row: MailboxRow) {
+  return isMailboxAccountBanned(row)
+    ? ACCOUNT_BANNED_DISPLAY_MESSAGE
+    : (row.status_label || row.status)
+}
+
 function explanation(row: MailboxRow) {
+  if (isMailboxAccountBanned(row)) return ACCOUNT_BANNED_DISPLAY_MESSAGE
   const value = String(row.error || row.reason || '').trim()
   return value === 'sub2_uploaded' ? '-' : value || '-'
 }
@@ -291,10 +345,10 @@ defineExpose({ clearSelection })
         </el-tooltip>
       </template>
     </el-table-column>
-    <el-table-column label="状态" width="105">
+    <el-table-column label="状态" width="170">
       <template #default="{ row }">
-        <el-tag :type="row.status === 'consumed' ? 'success' : row.status === 'failed' ? 'danger' : row.status === 'running' ? 'warning' : 'info'">
-          {{ row.status_label || row.status }}
+        <el-tag :type="statusTagType(row)">
+          {{ statusLabel(row) }}
         </el-tag>
       </template>
     </el-table-column>

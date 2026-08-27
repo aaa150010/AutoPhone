@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { CopyDocument, View } from '@element-plus/icons-vue'
-import type { RuntimeTask, TaskStageGroup, TaskStageTiming } from '../types/api'
+import type { RuntimeTask, TaskStageGroup, TaskStageTiming, TaskTimingSubstep } from '../types/api'
+import { ACCOUNT_BANNED_DISPLAY_MESSAGE, isCurrentAccountBanned, isRetryResolved } from '../utils/freeFailure'
+import { FREE_CAMOUFOX_STAGE_NODES, type TaskStageNodeDefinition } from '../utils/taskStageNodes'
 
 const props = defineProps<{
   modelValue: boolean
@@ -15,7 +17,7 @@ const emit = defineEmits<{
   copyDiagnosticId: [string]
 }>()
 
-const standardNodes: Array<{ code: string; label: string; group: TaskStageGroup }> = [
+const standardNodes: TaskStageNodeDefinition[] = [
   { code: 'queue_waiting', label: '排队等待', group: 'queue' },
   { code: 'queue_reserved', label: '邮箱已预留', group: 'queue' },
   { code: 'oauth_create_node', label: 'OAuth 创建节点', group: 'oauth' },
@@ -37,7 +39,8 @@ const standardNodes: Array<{ code: string; label: string; group: TaskStageGroup 
   { code: 'finalizing_upload', label: '上传账号凭据', group: 'finalizing' },
   { code: 'finalizing_save', label: '保存任务结果', group: 'finalizing' },
 ]
-const freeNodes: Array<{ code: string; label: string; group: TaskStageGroup }> = [
+const freeNodes: TaskStageNodeDefinition[] = [
+  ...FREE_CAMOUFOX_STAGE_NODES,
   { code: 'oauth_create_node', label: '初始化 Node/Sentinel', group: 'free' },
   { code: 'free_roxy_create', label: '创建 RoxyBrowser 环境', group: 'free' },
   { code: 'free_roxy_open', label: '打开 RoxyBrowser 环境', group: 'free' },
@@ -83,7 +86,24 @@ const normalizedStatus = computed(() => String(props.task?.status || '').trim().
 const isTerminal = computed(() => terminalStatuses.has(normalizedStatus.value))
 const currentCode = computed(() => String(props.task?.progress?.code || ''))
 const failureCode = computed(() => String(props.task?.failure?.node_code || ''))
+const accountBanned = computed(() => isCurrentAccountBanned(props.task?.status, props.task?.failure, props.task?.retry_resolved))
+const retryResolved = computed(() => isRetryResolved(props.task?.retry_resolved))
 const displayNodes = computed(() => props.task?.run_mode === 'free_register' ? freeNodes : standardNodes)
+
+function taskStatusLabel() {
+  if (retryResolved.value) return '已由重试解决'
+  return accountBanned.value ? ACCOUNT_BANNED_DISPLAY_MESSAGE : (props.task?.status || '-')
+}
+
+function failureNodeLabel() {
+  if (retryResolved.value) return '历史失败（已由重试解决）'
+  return accountBanned.value ? ACCOUNT_BANNED_DISPLAY_MESSAGE : `${props.task?.failure?.node_label || '-'} / ${props.task?.failure?.node_code || '-'}`
+}
+
+function failurePublicMessage() {
+  if (retryResolved.value) return '已由重试解决（原始失败已保留在日志中）'
+  return accountBanned.value ? ACCOUNT_BANNED_DISPLAY_MESSAGE : (props.task?.failure?.public_message || '-')
+}
 
 function formatSeconds(value: unknown) {
   const seconds = Math.max(0, Number(value || 0))
@@ -92,6 +112,36 @@ function formatSeconds(value: unknown) {
     return `${seconds.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')} 秒`
   }
   return `${Math.floor(seconds)} 秒`
+}
+
+function formatMilliseconds(value: unknown) {
+  const milliseconds = Math.max(0, Number(value || 0))
+  if (!Number.isFinite(milliseconds)) return '0 ms'
+  if (milliseconds < 1000) return `${Math.round(milliseconds)} ms`
+  return `${(milliseconds / 1000).toFixed(2).replace(/0+$/, '').replace(/\.$/, '')} 秒`
+}
+
+function substepDetail(row: TaskTimingSubstep) {
+  const visits = Math.max(0, Number(row.visits || 0))
+  if (visits <= 1) return formatMilliseconds(row.duration_ms)
+  const latest = formatMilliseconds(row.last_duration_ms)
+  const maximum = formatMilliseconds(row.max_duration_ms)
+  return `${formatMilliseconds(row.duration_ms)}（${visits} 次；最近 ${latest}，最长 ${maximum}）`
+}
+
+function substepOutcomeLabel(value: unknown) {
+  const labels: Record<string, string> = {
+    success: '完成',
+    skipped: '跳过',
+    waiting: '等待中',
+    state_changed: '状态已切换',
+    not_confirmed: '未确认',
+    partial: '部分成功',
+    timeout: '超时',
+    error: '失败',
+  }
+  const key = String(value || '')
+  return labels[key] || key || '-'
 }
 
 function liveStageElapsed(stage: TaskStageTiming | undefined, code: string) {
@@ -106,8 +156,8 @@ function liveStageElapsed(stage: TaskStageTiming | undefined, code: string) {
 function nodeState(code: string) {
   const visited = stageByCode.value.has(code)
   const current = currentCode.value === code
-  const failed = failureCode.value === code
-    || (current && failureStatuses.has(normalizedStatus.value))
+  const failed = !retryResolved.value && (failureCode.value === code
+    || (current && failureStatuses.has(normalizedStatus.value)))
   if (failed) return { label: '失败', type: 'danger' as const, className: 'is-failed' }
   if (current && !isTerminal.value) return { label: '当前', type: 'warning' as const, className: 'is-current' }
   if (visited || (current && normalizedStatus.value === 'success')) {
@@ -156,7 +206,7 @@ function checkpointType() {
       </div>
       <el-descriptions :column="2" border size="small" class="summary-grid">
         <el-descriptions-item label="账号">{{ task.account || task.email || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="任务状态">{{ task.status || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="任务状态">{{ taskStatusLabel() }}</el-descriptions-item>
         <el-descriptions-item label="日志 ID">{{ task.incident_id || '未生成' }}</el-descriptions-item>
         <el-descriptions-item label="运行批次">{{ task.batch_id || '-' }}</el-descriptions-item>
         <el-descriptions-item label="批内序号">{{ task.ordinal || '-' }}</el-descriptions-item>
@@ -210,15 +260,35 @@ function checkpointType() {
         </el-table>
       </section>
 
+      <section v-if="timing?.substeps?.length" class="detail-section">
+        <h3>OTP / Camoufox 子步骤耗时</h3>
+        <el-table :data="timing.substeps" size="small" stripe>
+          <el-table-column type="index" label="序号" width="58" align="center" fixed="left" />
+          <el-table-column prop="stage_label" label="所属节点" min-width="180" />
+          <el-table-column prop="label" label="子步骤" min-width="220" />
+          <el-table-column prop="code" label="代码" min-width="205" />
+          <el-table-column label="结果" width="92" align="center">
+            <template #default="{ row }">
+              <el-tag size="small" :type="row.outcome === 'success' ? 'success' : row.outcome === 'skipped' ? 'info' : 'warning'">
+                {{ substepOutcomeLabel(row.outcome) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="耗时" min-width="235" align="right">
+            <template #default="{ row }">{{ substepDetail(row) }}</template>
+          </el-table-column>
+        </el-table>
+      </section>
+
       <section v-if="task.failure" class="detail-section failure-section">
-        <h3>失败诊断</h3>
+        <h3>{{ retryResolved ? '失败诊断（已由重试解决）' : '失败诊断' }}</h3>
         <el-descriptions :column="2" border size="small">
-          <el-descriptions-item label="失败节点">{{ task.failure.node_label }} / {{ task.failure.node_code }}</el-descriptions-item>
+          <el-descriptions-item label="失败节点">{{ failureNodeLabel() }}</el-descriptions-item>
           <el-descriptions-item label="可重试">{{ task.failure.retryable ? '是' : '否' }}</el-descriptions-item>
           <el-descriptions-item label="错误代码">{{ task.failure.error_code || '-' }}</el-descriptions-item>
           <el-descriptions-item label="Provider Code">{{ task.failure.provider_code || '-' }}</el-descriptions-item>
           <el-descriptions-item label="HTTP 状态">{{ task.failure.http_status ?? '-' }}</el-descriptions-item>
-          <el-descriptions-item label="公开原因">{{ task.failure.public_message || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="公开原因">{{ failurePublicMessage() }}</el-descriptions-item>
           <el-descriptions-item v-if="task.failure.technical_summary" label="技术摘要" :span="2">
             {{ task.failure.technical_summary }}
           </el-descriptions-item>

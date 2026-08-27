@@ -40,3 +40,10 @@ test('accepted verification leaves pending immediately and returns for a new gen
   assert.deepEqual(runningTaskRows([first], accepted).map(task => task.task_id), ['task-1'])
   assert.deepEqual(pendingTaskRows([manual('task-1', 200, 2)], accepted).map(task => task.task_id), ['task-1'])
 })
+
+test('legacy string retry marker does not hide unresolved tasks', () => {
+  const unresolved: RuntimeTask = { task_id: 'legacy-false', status: 'failed', retry_resolved: 'false' }
+  const resolved: RuntimeTask = { task_id: 'legacy-true', status: 'failed', retry_resolved: 'true' }
+
+  assert.deepEqual(pendingTaskRows([unresolved, resolved], new Set()).map(task => task.task_id), ['legacy-false'])
+})

@@ -14,7 +14,14 @@ import {
   taskNeedsVerification,
   taskVerificationKey,
 } from '../utils/taskResultViews'
-import { freeFailureCause, freeFailureDetails, freeFailureNodeIdentity } from '../utils/freeFailure'
+import {
+  ACCOUNT_BANNED_DISPLAY_MESSAGE,
+  freeFailureCause,
+  freeFailureDetails,
+  freeFailureNodeIdentity,
+  isCurrentAccountBanned,
+  isRetryResolved,
+} from '../utils/freeFailure'
 
 const props = withDefaults(defineProps<{
   tasks: RuntimeTask[]
@@ -95,22 +102,25 @@ function markVerificationAccepted(row: RuntimeTask) {
   if (props.activeView === 'pending' && pendingTasks.value.length === 0) emit('update:activeView', 'running')
 }
 
-function statusLabel(status?: string) {
+function statusLabel(status?: string, row?: RuntimeTask) {
   const value = String(status || '').toLowerCase()
+  if (row && isRetryResolved(row.retry_resolved)) return '已由重试解决'
+  if (value === 'account_banned' || (row && isAccountBanned(row))) return ACCOUNT_BANNED_DISPLAY_MESSAGE
   if (value === 'success') return '成功'
   if (value === 'failed') return '失败'
   if (value === 'retryable_infra') return '基础设施可重试'
   if (value === 'retryable_email') return '邮箱可重试'
   if (value === 'repair_pending') return '待修复'
   if (value === 'email_damaged') return '邮箱不可用'
-  if (value === 'account_banned') return '封禁'
   if (value === 'twofa_pending') return '2FA 待重试'
   if (value === 'stopped' || value === 'stopped_before_start') return '停止'
   return value ? '运行中' : '-'
 }
 
-function statusType(status?: string) {
+function statusType(status?: string, row?: RuntimeTask) {
   const value = String(status || '').toLowerCase()
+  if (row && isRetryResolved(row.retry_resolved)) return 'success'
+  if (value === 'account_banned' || (row && isAccountBanned(row))) return 'danger'
   if (value === 'success') return 'success'
   if (failedTaskStatuses.has(value)) return 'danger'
   if (value.startsWith('stopped')) return 'info'
@@ -118,7 +128,11 @@ function statusType(status?: string) {
 }
 
 function failureCause(row: RuntimeTask) {
-  return freeFailureCause(row.failure)
+  return freeFailureCause(row.failure, { retryResolved: row.retry_resolved })
+}
+
+function isAccountBanned(row: RuntimeTask) {
+  return isCurrentAccountBanned(row.status, row.failure, row.retry_resolved)
 }
 
 function failureIdentity(row: RuntimeTask) {
@@ -126,7 +140,11 @@ function failureIdentity(row: RuntimeTask) {
 }
 
 function failureTooltip(row: RuntimeTask) {
-  return freeFailureDetails(row.failure, { includeNode: true }).join(' · ')
+  if (isAccountBanned(row)) return ACCOUNT_BANNED_DISPLAY_MESSAGE
+  const details = freeFailureDetails(row.failure, { includeNode: true })
+  return isRetryResolved(row.retry_resolved)
+    ? ['历史失败已由重试解决', ...details].join(' · ')
+    : details.join(' · ')
 }
 
 function openDetails(row: RuntimeTask) {
@@ -171,10 +189,10 @@ function emitFreeSecret(kind: 'token' | 'password' | 'totp' | 'proxy' | 'credent
       </el-table-column>
       <el-table-column label="Token / 代理" width="108" align="center"><template #default="{ row }"><template v-if="row.run_mode === 'free_register'"><el-button v-if="row.result?.has_access_token" link @click="emitFreeSecret('token', [row])">Token</el-button><el-button v-if="row.proxy_masked" link @click="emitFreeSecret('proxy', [row])">代理</el-button><span v-if="!row.result?.has_access_token && !row.proxy_masked" class="muted">-</span></template><span v-else class="muted">-</span></template></el-table-column>
       <el-table-column label="当前阶段 / 结果" min-width="340">
-        <template #default="{ row }"><div class="result-cell"><TaskProgressCell :progress="row.progress" :timing="row.timing" :now-seconds="nowSeconds" :status="row.status" /><el-tag class="result-tag" :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag></div></template>
+        <template #default="{ row }"><div class="result-cell"><TaskProgressCell :progress="row.progress" :timing="row.timing" :now-seconds="nowSeconds" :status="row.status" /><el-tag class="result-tag" :type="statusType(row.status, row)">{{ statusLabel(row.status, row) }}</el-tag></div></template>
       </el-table-column>
       <el-table-column label="待处理事项" min-width="280" show-overflow-tooltip>
-        <template #default="{ row }"><div v-if="row.failure" class="failure-actions"><el-tooltip :content="failureTooltip(row)" placement="top"><span class="failure-detail"><span class="failure-node">{{ failureIdentity(row).label || failureIdentity(row).code }}<code v-if="failureIdentity(row).showCode">{{ failureIdentity(row).code }}</code></span>{{ failureCause(row) }}</span></el-tooltip><el-button v-if="row.run_mode === 'free_register' && row.status === 'twofa_pending' && row.driver !== 'roxybrowser'" link type="warning" @click="emit('freeTwofaRetry', row)">重试 2FA</el-button></div><el-button v-else-if="row.run_mode === 'free_register' && row.status === 'twofa_pending' && row.driver !== 'roxybrowser'" link type="warning" @click="emit('freeTwofaRetry', row)">重试 2FA</el-button><TaskVerificationInput v-else-if="shouldShowManualVerification(row) && !acceptedVerificationKeys.has(verificationKey(row))" :task-id="row.task_id" :request="row.manual_verification" :now-seconds="nowSeconds" @accepted="markVerificationAccepted(row)" /><span v-else class="muted">-</span></template>
+        <template #default="{ row }"><span v-if="isRetryResolved(row.retry_resolved)" class="muted">已由重试解决</span><div v-else-if="row.failure" class="failure-actions"><el-tooltip :content="failureTooltip(row)" placement="top"><span class="failure-detail" :class="{ 'account-banned-detail': isAccountBanned(row) }"><template v-if="isAccountBanned(row)">{{ ACCOUNT_BANNED_DISPLAY_MESSAGE }}</template><template v-else><span class="failure-node">{{ failureIdentity(row).label || failureIdentity(row).code }}<code v-if="failureIdentity(row).showCode">{{ failureIdentity(row).code }}</code></span>{{ failureCause(row) }}</template></span></el-tooltip><el-button v-if="row.run_mode === 'free_register' && row.status === 'twofa_pending' && row.driver !== 'roxybrowser'" link type="warning" @click="emit('freeTwofaRetry', row)">重试 2FA</el-button></div><el-button v-else-if="row.run_mode === 'free_register' && row.status === 'twofa_pending' && row.driver !== 'roxybrowser'" link type="warning" @click="emit('freeTwofaRetry', row)">重试 2FA</el-button><TaskVerificationInput v-else-if="shouldShowManualVerification(row) && !acceptedVerificationKeys.has(verificationKey(row))" :task-id="row.task_id" :request="row.manual_verification" :now-seconds="nowSeconds" @accepted="markVerificationAccepted(row)" /><span v-else class="muted">-</span></template>
       </el-table-column>
       <el-table-column label="操作" width="100" fixed="right" align="center"><template #default="{ row }"><el-tooltip content="查看任务链路详情" placement="top"><el-button link :icon="Document" aria-label="查看任务链路详情" @click="openDetails(row)" /></el-tooltip><el-tooltip v-if="row.incident_id" content="打开故障日志" placement="top"><el-button link :icon="View" aria-label="打开故障日志" @click="emit('diagnostic', row)" /></el-tooltip></template></el-table-column>
       <template #empty><ContentEmptyState /></template>

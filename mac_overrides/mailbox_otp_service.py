@@ -16,7 +16,9 @@ try:
         MailboxSelection,
         MailboxUrlClient,
         MailboxUrlError,
+        TimingFn,
     )
+    from .free_timing import TimingCallback, emit_timing
 except ImportError:
     from mailbox_url_runtime import (  # type: ignore[no-redef]
         BASELINE_FALLBACK_POLL_MILESTONES,
@@ -26,7 +28,9 @@ except ImportError:
         MailboxSelection,
         MailboxUrlClient,
         MailboxUrlError,
+        TimingFn,
     )
+    from free_timing import TimingCallback, emit_timing  # type: ignore[no-redef]
 
 
 DEFAULT_FREE_MAILBOX_PROXY = "http://127.0.0.1:7897"
@@ -375,6 +379,7 @@ def _url_source_factory(
     monotonic_fn: Callable[[], float] = time.monotonic,
     event_fn: Callable[[Mapping[str, Any]], None] | None = None,
     now_fn: Callable[[], float] = time.time,
+    timing_fn: TimingFn | None = None,
 ) -> tuple[MailboxUrlClient, MailboxHttpTransport | None]:
     transport: MailboxHttpTransport | None = None
     effective_fetcher = fetcher
@@ -394,6 +399,8 @@ def _url_source_factory(
         proxy=policy.effective_proxy,
         fetcher=effective_fetcher,
         now_fn=now_fn,
+        monotonic_fn=monotonic_fn,
+        timing_fn=timing_fn,
     )
     return client, transport
 
@@ -485,6 +492,7 @@ class MailboxOtpService:
         sleep_fn: Callable[[float], None] = time.sleep,
         now_fn: Callable[[], float] = time.time,
         monotonic_fn: Callable[[], float] = time.monotonic,
+        timing_fn: TimingCallback | None = None,
     ) -> None:
         normalized_source = str(source or "url").strip().lower()
         factory = _SOURCE_FACTORIES.get(normalized_source)
@@ -502,6 +510,7 @@ class MailboxOtpService:
         self.stage_fn = stage_fn
         self.sleep_fn = sleep_fn
         self.monotonic_fn = monotonic_fn
+        self.timing_fn = timing_fn
         self.current_stage = "email_code_waiting"
         # OTP usage is scoped to an authentication phase.  A provider may
         # legitimately reuse the same code for a later re-authentication mail;
@@ -521,8 +530,15 @@ class MailboxOtpService:
             monotonic_fn=monotonic_fn,
             event_fn=self._transport_event,
             now_fn=now_fn,
+            timing_fn=self._client_timing,
         )
         self.state = MailboxRequestState(self.client, now_fn=now_fn)
+
+    def _timing(self, code: str, elapsed_ms: Any, outcome: str = "success") -> None:
+        emit_timing(self.timing_fn, self.current_stage, code, elapsed_ms, outcome)
+
+    def _client_timing(self, code: str, elapsed_ms: int, outcome: str = "success") -> None:
+        self._timing(code, elapsed_ms, outcome)
 
     def _log(self, message: str, level: str = "info") -> None:
         if not callable(self.log_fn):
@@ -628,6 +644,7 @@ class MailboxOtpService:
             self.state.baseline_fallback_identities.clear()
             self.state.baseline_fallback_codes.clear()
         if self.state.last_scan is None:
+            baseline_started = self.monotonic_fn()
             try:
                 # Baseline is part of the same bounded mailbox operation. A
                 # provider with many stale detail links must not hold the
@@ -642,7 +659,9 @@ class MailboxOtpService:
                     f"OpenAI 邮件 {int(diagnostic.get('openai_messages') or 0)}，验证码内容未记录）",
                     "info",
                 )
+                self._timing("mailbox_baseline", (self.monotonic_fn() - baseline_started) * 1000.0, "success")
             except MailboxUrlError as exc:
+                self._timing("mailbox_baseline", (self.monotonic_fn() - baseline_started) * 1000.0, "error")
                 error = mailbox_error_from_url_error(exc, self.diagnostic())
                 if not error.retryable:
                     raise error from exc
@@ -651,6 +670,8 @@ class MailboxOtpService:
                     f"（{error.code}）",
                     "warn",
                 )
+        else:
+            self._timing("mailbox_baseline", 0, "skipped")
         self.state.begin_request()
 
     def mark_sent(self, stage_code: str = "email_code_waiting") -> None:
@@ -716,6 +737,9 @@ class MailboxOtpService:
         resend_attempted = False
         last_error: MailboxOtpError | None = None
         successful_scan = False
+        first_listing_seen = False
+        first_openai_seen = False
+        first_code_seen = False
         while self.monotonic_fn() < deadline:
             if callable(stop_requested) and bool(stop_requested()):
                 self.state.finish_request()
@@ -724,14 +748,25 @@ class MailboxOtpService:
                     "邮箱验证码轮询已按任务停止请求中断",
                     retryable=False,
                 )
+            poll_started = self.monotonic_fn()
             try:
                 selection = self._scan_with_deadline(deadline, self.state.snapshot)
                 successful_scan = True
                 last_error = None
             except MailboxUrlError as exc:
+                self._timing("mailbox_poll_scan", (self.monotonic_fn() - poll_started) * 1000.0, "error")
                 last_error = mailbox_error_from_url_error(exc, self.diagnostic())
                 self.state.finish_request()
                 raise last_error from exc
+            self._timing("mailbox_poll_scan", (self.monotonic_fn() - poll_started) * 1000.0, "success")
+            diagnostics = self.diagnostic()
+            poll_elapsed_ms = int(max(0.0, (self.monotonic_fn() - started) * 1000.0))
+            if not first_listing_seen and int(diagnostics.get("listing_messages") or 0) > 0:
+                first_listing_seen = True
+                self._timing("mailbox_first_listing", poll_elapsed_ms, "success")
+            if not first_openai_seen and int(diagnostics.get("openai_messages") or 0) > 0:
+                first_openai_seen = True
+                self._timing("mailbox_first_openai", poll_elapsed_ms, "success")
             if selection is not None:
                 code = str(selection.code or "").strip()
                 identity = str(selection.identity or "").strip()
@@ -741,6 +776,9 @@ class MailboxOtpService:
                     used_identities.add(identity) if identity else None
                     code_identities.setdefault(code, set()).add(identity or "__value__")
                     self._last_returned_by_stage[stage_key] = (code, identity)
+                    if not first_code_seen:
+                        first_code_seen = True
+                        self._timing("mailbox_first_code", poll_elapsed_ms, "success")
                     self.state.finish_request()
                     return code
                 if code:
@@ -756,13 +794,16 @@ class MailboxOtpService:
             ):
                 resend_attempted = True
                 try:
+                    resend_started = self.monotonic_fn()
                     resend_fn()
+                    self._timing("mailbox_resend", (self.monotonic_fn() - resend_started) * 1000.0, "success")
                     self._log(
                         f"[邮箱验证码重发/{self.current_stage}] 已触发一次受控重发，"
                         "继续沿用原始邮箱基线并排除已使用验证码",
                         "warn",
                     )
                 except Exception as exc:
+                    self._timing("mailbox_resend", (self.monotonic_fn() - resend_started) * 1000.0, "error")
                     # A resend callback can be the point where the OAuth
                     # session is discovered to be invalid.  Do not turn that
                     # structured failure into a misleading OTP timeout: the
@@ -798,6 +839,7 @@ class MailboxOtpService:
                 else:
                     self.sleep_fn(delay)
 
+        fallback_started = self.monotonic_fn()
         try:
             # Preserve the existing final-baseline fallback, but give it one
             # short bounded request window instead of allowing a fresh full
@@ -813,6 +855,9 @@ class MailboxOtpService:
         except MailboxUrlError as exc:
             fallback = None
             last_error = mailbox_error_from_url_error(exc, self.diagnostic())
+            self._timing("mailbox_final_fallback", (self.monotonic_fn() - fallback_started) * 1000.0, "error")
+        else:
+            self._timing("mailbox_final_fallback", (self.monotonic_fn() - fallback_started) * 1000.0, "success")
         if fallback is not None:
             code = str(fallback.code or "").strip()
             identity = str(fallback.identity or "").strip()
@@ -822,6 +867,13 @@ class MailboxOtpService:
                 used_identities.add(identity) if identity else None
                 code_identities.setdefault(code, set()).add(identity or "__value__")
                 self._last_returned_by_stage[stage_key] = (code, identity)
+                if not first_code_seen:
+                    first_code_seen = True
+                    self._timing(
+                        "mailbox_first_code",
+                        (self.monotonic_fn() - started) * 1000.0,
+                        "success",
+                    )
                 self._log_diagnostic(force=True)
                 self.state.finish_request()
                 return code

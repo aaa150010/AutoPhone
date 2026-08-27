@@ -1,6 +1,20 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { freeFailureCause, freeFailureDetails, freeFailureNodeIdentity, selectCurrentFreeFailure } from '../src/utils/freeFailure.ts'
+import {
+  ACCOUNT_BANNED_DISPLAY_MESSAGE,
+  diagnosticEventNodeLabel,
+  diagnosticIncidentNodeLabel,
+  diagnosticNodeLabel,
+  freeFailureCause,
+  freeFailureDetails,
+  freeFailureNodeIdentity,
+  isAccountBannedDiagnostic,
+  isAccountBannedFailure,
+  isCurrentAccountBanned,
+  isRetryResolved,
+  isSuccessfulDiagnosticOutcome,
+  selectCurrentFreeFailure,
+} from '../src/utils/freeFailure.ts'
 
 test('free failure tooltip includes safe page and HTTP session context', () => {
   const details = freeFailureDetails({
@@ -60,6 +74,109 @@ test('free failure presentation removes duplicated node identity and message pre
     node_label: '等待 Free 邮箱验证码',
     public_message: '等待 Free 邮箱验证码 [等待 Free 邮箱验证码/free_email_otp_wait]：三轮未收到新邮件',
   }), '三轮未收到新邮件')
+})
+
+test('account-banned failures use direct user-facing copy without changing other failures', () => {
+  const banned = {
+    node_code: 'account_banned',
+    node_label: '检查 OpenAI 账号状态',
+    error_code: 'password_verify_failed',
+    provider_code: 'account_banned',
+    public_message: 'OpenAI 账号已被封禁，无法继续接码',
+    retryable: false,
+  }
+  assert.equal(isAccountBannedFailure(banned), true)
+  assert.equal(freeFailureCause(banned), ACCOUNT_BANNED_DISPLAY_MESSAGE)
+  assert.equal(isAccountBannedFailure({
+    ...banned,
+    node_code: 'oauth_authorize_node',
+    provider_code: 'password_verify_failed',
+  }), false)
+  assert.equal(freeFailureCause({
+    ...banned,
+    node_code: 'oauth_authorize_node',
+    provider_code: 'password_verify_failed',
+    public_message: '授权请求超时',
+  }), '授权请求超时')
+
+  assert.equal(isCurrentAccountBanned('failed', banned), true)
+  assert.equal(isCurrentAccountBanned('success', banned), false)
+  assert.equal(isCurrentAccountBanned('failed', banned, true), false)
+  assert.equal(isCurrentAccountBanned('account_banned', banned, 'true'), false)
+})
+
+test('historical account-banned failures cannot replace a later successful result', () => {
+  const banned = {
+    node_code: 'account_banned',
+    node_label: '检查 OpenAI 账号状态',
+    error_code: 'account_banned',
+    public_message: 'OpenAI账号已被封禁',
+    retryable: false,
+  }
+  assert.equal(isCurrentAccountBanned('failed', banned), true)
+  assert.equal(isCurrentAccountBanned('account_banned', null), true)
+  assert.equal(isCurrentAccountBanned('success', banned), false)
+  assert.equal(isCurrentAccountBanned('partial_success', banned), false)
+})
+
+test('retry resolution marker accepts persisted boolean and string forms', () => {
+  assert.equal(isRetryResolved(true), true)
+  assert.equal(isRetryResolved('true'), true)
+  assert.equal(isRetryResolved(false), false)
+  assert.equal(isRetryResolved('false'), false)
+})
+
+test('diagnostic account-banned labels hide legacy status text but preserve stable code separately', () => {
+  assert.equal(isAccountBannedDiagnostic({
+    first_node_code: 'account_banned',
+    first_node_label: '检查 OpenAI 账号状态',
+    first_error_code: 'password_verify_failed',
+  }), true)
+  assert.equal(diagnosticNodeLabel({
+    first_node_code: 'account_banned',
+    first_node_label: '检查 OpenAI 账号状态',
+  }), ACCOUNT_BANNED_DISPLAY_MESSAGE)
+  assert.equal(diagnosticNodeLabel({
+    node_code: 'oauth_callback',
+    node_label: 'OAuth 回调',
+    failure: { provider_code: 'account_banned' },
+  }), ACCOUNT_BANNED_DISPLAY_MESSAGE)
+  assert.equal(diagnosticNodeLabel({
+    node_code: 'free_email_otp_wait',
+    node_label: '等待 Free 邮箱验证码',
+  }), '等待 Free 邮箱验证码')
+  assert.equal(diagnosticNodeLabel(null), '未命名节点')
+  assert.equal(diagnosticNodeLabel(null, '-'), '-')
+})
+
+test('successful retries preserve historical incident and event labels instead of a current ban label', () => {
+  const historicalIncident = {
+    status: 'success',
+    outcome: 'success',
+    first_node_code: 'account_banned',
+    first_node_label: '检查 OpenAI 账号状态',
+    first_error_code: 'account_banned',
+  }
+  assert.equal(isSuccessfulDiagnosticOutcome(historicalIncident.status), true)
+  assert.equal(diagnosticIncidentNodeLabel(historicalIncident), '检查 OpenAI 账号状态')
+  assert.equal(diagnosticEventNodeLabel({
+    outcome: 'success',
+    node_code: 'account_banned',
+    node_label: '检查 OpenAI 账号状态',
+    error_code: 'account_banned',
+  }), '检查 OpenAI 账号状态')
+
+  assert.equal(diagnosticIncidentNodeLabel({
+    status: 'error',
+    outcome: 'error',
+    first_node_code: 'account_banned',
+    first_node_label: '检查 OpenAI 账号状态',
+  }), ACCOUNT_BANNED_DISPLAY_MESSAGE)
+  assert.equal(diagnosticEventNodeLabel({
+    outcome: 'error',
+    node_code: 'account_banned',
+    node_label: '检查 OpenAI 账号状态',
+  }), ACCOUNT_BANNED_DISPLAY_MESSAGE)
 })
 
 test('current mailbox failure prefers a terminal live-check failure but ignores stale live failures', () => {

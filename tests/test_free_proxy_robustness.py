@@ -6,6 +6,7 @@ import tempfile
 import time
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 
 from mac_overrides.free_register_common import FreeRegisterError
 from mac_overrides.free_proxy_store import FreeProxyPool
@@ -77,6 +78,120 @@ class FreeProxyRobustnessTests(unittest.TestCase):
         self.assertEqual(row["consecutive_failures"], 1)
         self.assertEqual(row["status"], "quarantined")
 
+    def test_chatgpt_connectivity_probe_accepts_anonymous_401_and_403(self) -> None:
+        """An edge authorization response proves the proxy path reached ChatGPT."""
+        for status in (401, 403):
+            with self.subTest(status=status), patch(
+                "mac_overrides.free_proxy_store.get_via_proxy",
+                return_value=SimpleNamespace(status_code=status, content=b""),
+            ) as request:
+                self.assertEqual(
+                    FreeProxyPool._probe(
+                        "socks5h://proxy.example.test:8000",
+                        "https://chatgpt.com/",
+                    ),
+                    "",
+                )
+                request.assert_called_once()
+
+    def test_chatgpt_challenge_page_is_rejected_for_200_401_and_403(self) -> None:
+        """A challenge document must win over every otherwise plausible status."""
+        marker = b"Just a moment... /cdn-cgi/challenge-platform/"
+        for status in (200, 401, 403):
+            with self.subTest(status=status), patch(
+                "mac_overrides.free_proxy_store.get_via_proxy",
+                return_value=SimpleNamespace(status_code=status, content=marker),
+            ):
+                with self.assertRaises(FreeRegisterError) as raised:
+                    FreeProxyPool._probe(
+                        "http://proxy.example.test:8000",
+                        "https://chatgpt.com/",
+                    )
+                error = raised.exception
+                self.assertEqual(error.node_code, "free_proxy_preflight")
+                self.assertEqual(error.error_code, "free_proxy_chatgpt_security_challenge")
+                self.assertEqual(error.provider_status, status)
+                self.assertFalse(error.retryable)
+                self.assertEqual(error.page_type, "security_challenge")
+                self.assertNotIn("challenge-platform", str(error))
+
+    def test_probe_status_is_kept_in_bind_diagnostics_and_health_snapshot(self) -> None:
+        pool = FreeProxyPool(self.data_dir)
+        pool.import_text("http://proxy.example.test:8000\n")
+        with patch(
+            "mac_overrides.free_proxy_store.get_via_proxy",
+            return_value=SimpleNamespace(status_code=403, content=b"anonymous edge denial"),
+        ):
+            bindings = pool.bind(1, probe_url="https://chatgpt.com/")
+
+        self.assertEqual(len(bindings), 1)
+        self.assertEqual(pool._last_bind_diagnostics[0]["http_status"], 403)
+        row = pool.public()["rows"][0]
+        self.assertEqual(row["last_probe_http_status"], 403)
+
+    def test_chatgpt_challenge_does_not_quarantine_saved_proxy(self) -> None:
+        pool = FreeProxyPool(self.data_dir, failure_threshold=1)
+        pool.import_text("http://proxy.example.test:8000\n")
+        with patch(
+            "mac_overrides.free_proxy_store.get_via_proxy",
+            return_value=SimpleNamespace(
+                status_code=403,
+                content=b"<html>Just a moment... /cdn-cgi/challenge-platform/</html>",
+            ),
+        ):
+            with self.assertRaises(FreeRegisterError) as raised:
+                pool.bind(1, probe_url="https://chatgpt.com/")
+
+        self.assertEqual(raised.exception.error_code, "free_proxy_chatgpt_security_challenge")
+        row = pool.public()["rows"][0]
+        self.assertEqual(row["consecutive_failures"], 0)
+        self.assertNotEqual(row["status"], "quarantined")
+
+    def test_non_chatgpt_http_403_remains_a_failed_probe(self) -> None:
+        with patch(
+            "mac_overrides.free_proxy_store.get_via_proxy",
+            return_value=SimpleNamespace(status_code=403, content=b""),
+        ):
+            with self.assertRaisesRegex(ValueError, "HTTP 403"):
+                FreeProxyPool._probe(
+                    "http://proxy.example.test:8000",
+                    "https://probe.example.test/",
+                )
+
+    def test_expired_quarantine_is_not_reported_as_active(self) -> None:
+        pool = FreeProxyPool(self.data_dir, failure_threshold=1)
+        pool.import_text("http://proxy.example.test:8000\n")
+        proxy_id = pool.public()["rows"][0]["proxy_id"]
+        pool.record_failure(
+            proxy_id,
+            node_code="proxy_connect_failed",
+            message="temporary transport failure",
+            threshold=1,
+            quarantine_seconds=600,
+        )
+        rows = pool._load()
+        rows[0]["quarantined_until"] = time.time() - 1
+        pool._save(rows)
+
+        row = pool.public()["rows"][0]
+        self.assertEqual(row["status"], "unknown")
+        self.assertEqual(row["stored_status"], "quarantined")
+        self.assertFalse(row["quarantine_active"])
+        self.assertTrue(row["quarantine_expired"])
+        self.assertTrue(row["eligible"])
+        self.assertTrue(row["dispatchable"])
+
+    def test_disabled_proxy_is_never_reported_as_dispatchable(self) -> None:
+        pool = FreeProxyPool(self.data_dir)
+        pool.import_text("http://proxy.example.test:8000\n")
+        pool.update_group("", "", enabled=False)
+
+        row = pool.public()["rows"][0]
+        self.assertFalse(row["enabled"])
+        self.assertEqual(row["status"], "disabled")
+        self.assertFalse(row["eligible"])
+        self.assertFalse(row["dispatchable"])
+
     def test_effective_scheme_survives_pool_reload(self) -> None:
         pool = FreeProxyPool(self.data_dir)
         pool.import_text("socks5h://probe-user:probe-pass@proxy.example.test:3000\n")
@@ -112,6 +227,38 @@ class FreeProxyRobustnessTests(unittest.TestCase):
         self.assertEqual(binding.exit_ip, "203.0.113.81")
         self.assertEqual(len(calls), 1)
         self.assertEqual(pool.public()["rows"][0]["probe_successes"], 1)
+
+    def test_stale_refresh_challenge_is_not_quarantined(self) -> None:
+        pool = FreeProxyPool(self.data_dir, failure_threshold=1, health_probe_ttl_seconds=1)
+        pool.import_text("http://proxy.example.test:8000\n")
+        proxy_id = pool.public()["rows"][0]["proxy_id"]
+        rows = pool._load()
+        rows[0]["last_checked_at"] = time.time() - 10
+        rows[0]["last_probe_ok"] = True
+        pool._save(rows)
+
+        def challenge(_proxy: str, _target: str) -> str:
+            raise FreeRegisterError(
+                "free_proxy_preflight",
+                "Free 代理预检",
+                "ChatGPT 代理预检返回安全挑战页面",
+                provider_status=403,
+                retryable=False,
+                error_code="free_proxy_chatgpt_security_challenge",
+                page_type="security_challenge",
+            )
+
+        with self.assertRaises(FreeRegisterError):
+            pool.bind(
+                1,
+                probe=challenge,
+                perform_probe=False,
+                health_probe_ttl_seconds=1,
+            )
+        row = pool.public()["rows"][0]
+        self.assertEqual(row["proxy_id"], proxy_id)
+        self.assertEqual(row["consecutive_failures"], 0)
+        self.assertNotEqual(row["status"], "quarantined")
 
     def test_chatgpt_probe_is_recorded_when_explicitly_requested(self) -> None:
         pool = FreeProxyPool(self.data_dir)

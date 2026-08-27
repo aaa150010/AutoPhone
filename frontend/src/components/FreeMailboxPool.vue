@@ -7,7 +7,16 @@ import type { FreeLiveCheckState, FreeMailboxRow, FreeState } from '../api/clien
 import ContentEmptyState from './ContentEmptyState.vue'
 import FreeTaskLogDialog from './FreeTaskLogDialog.vue'
 import WorkspacePanel from './WorkspacePanel.vue'
-import { freeFailureCause, freeFailureDetails, freeFailureNodeIdentity, selectCurrentFreeFailure } from '../utils/freeFailure'
+import {
+  ACCOUNT_BANNED_DISPLAY_MESSAGE,
+  freeFailureCause,
+  freeFailureDetails,
+  freeFailureNodeIdentity,
+  isAccountBannedFailure,
+  isCurrentAccountBanned,
+  isRetryResolved,
+  selectCurrentFreeFailure,
+} from '../utils/freeFailure'
 
 const rows = ref<FreeMailboxRow[]>([])
 const selected = ref<FreeMailboxRow[]>([])
@@ -151,7 +160,7 @@ async function openLiveLog(row: FreeMailboxRow) {
 }
 
 function mailboxFailureCause(row: FreeMailboxRow) {
-  return freeFailureCause(mailboxFailure(row))
+  return freeFailureCause(mailboxFailure(row), { retryResolved: row.retry_resolved })
 }
 
 function mailboxFailureDetails(row: FreeMailboxRow) {
@@ -164,6 +173,15 @@ function mailboxFailureNode(row: FreeMailboxRow) {
 
 function mailboxFailure(row: FreeMailboxRow) {
   return selectCurrentFreeFailure(row.failure, row.live_check_failure, row.live_check_status)
+}
+
+function mailboxIsAccountBanned(row: FreeMailboxRow) {
+  if (isCurrentAccountBanned(row.status, row.failure, row.retry_resolved)) return true
+  const liveStatus = String(row.live_check_status || '').trim().toLowerCase()
+  // A completed registration can later be disabled during a live check. That
+  // is current account state, unlike a retained registration failure.
+  return ['deactivated', 'failed'].includes(liveStatus)
+    && isAccountBannedFailure(row.live_check_failure)
 }
 
 function liveStatusLabel(status = '') {
@@ -194,9 +212,19 @@ function planTagType(row: FreeMailboxRow) {
 }
 
 function mailboxStageLabel(row: FreeMailboxRow) {
+  if (mailboxIsAccountBanned(row)) return ACCOUNT_BANNED_DISPLAY_MESSAGE
   const remaining = Number(row.cooldown_remaining || 0)
   if (remaining > 0) return `限流冷却 ${Math.ceil(remaining / 60)} 分钟`
   return row.stage || row.status || '可用'
+}
+
+function mailboxStageType(row: FreeMailboxRow) {
+  if (mailboxIsAccountBanned(row)) return 'danger'
+  if (row.cooldown_remaining) return 'warning'
+  if (row.status === 'success') return 'success'
+  if (row.status === 'failed') return 'danger'
+  if (row.status === 'pending_rerun' || row.status === 'twofa_pending') return 'warning'
+  return 'info'
 }
 
 async function copyEmail(row: FreeMailboxRow) {
@@ -499,7 +527,7 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
           <el-table-column prop="line_no" label="原序号" width="68" align="right" />
           <el-table-column label="邮箱" min-width="190" show-overflow-tooltip><template #default="{ row }"><el-tooltip content="点击复制邮箱" placement="top"><el-button link class="email-copy" @click.stop="copyEmail(row)"><span>{{ row.email }}</span><el-icon><CopyDocument /></el-icon></el-button></el-tooltip></template></el-table-column>
           <el-table-column label="链路 / 阶段" min-width="180" show-overflow-tooltip>
-            <template #default="{ row }"><el-tag size="small" effect="plain">{{ row.driver === 'roxybrowser' ? 'RoxyBrowser' : row.driver === 'camoufox' ? 'Camoufox' : '全协议' }}</el-tag><el-tag size="small" :type="row.cooldown_remaining ? 'warning' : row.status === 'success' ? 'success' : row.status === 'failed' ? 'danger' : row.status === 'pending_rerun' ? 'warning' : 'info'">{{ mailboxStageLabel(row) }}</el-tag></template>
+            <template #default="{ row }"><el-tag size="small" effect="plain">{{ row.driver === 'roxybrowser' ? 'RoxyBrowser' : row.driver === 'camoufox' ? 'Camoufox' : '全协议' }}</el-tag><el-tag size="small" :type="mailboxStageType(row)">{{ mailboxStageLabel(row) }}</el-tag></template>
           </el-table-column>
           <el-table-column label="套餐 / Plus 试用" width="178">
             <template #default="{ row }"><el-tag size="small" :type="planTagType(row)" effect="light">{{ planLabel(row) }}</el-tag><el-tag v-if="row.plus_trial_eligible && String(row.subscription_plan || row.plan_type || '').toLowerCase() !== 'free'" size="small" type="success" effect="plain" class="trial-tag">Plus 试用</el-tag><el-tooltip v-if="row.has_access_token && String(row.plan_check_status || '').toLowerCase() === 'failed'" content="重新查询套餐"><el-button link size="small" :icon="Refresh" :loading="planBusy === row.row_id" :disabled="Boolean(planBusy)" aria-label="重新查询套餐" @click.stop="retryPlan(row)" /></el-tooltip></template>
@@ -518,7 +546,7 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
             <template #default="{ row }">
               <el-tooltip placement="top" :disabled="!mailboxFailureDetails(row).length">
                 <template #content><div class="failure-tooltip"><span v-for="item in mailboxFailureDetails(row)" :key="item">{{ item }}</span></div></template>
-                <div class="failure-cell"><strong v-if="mailboxFailureNode(row).label || mailboxFailureNode(row).code">{{ mailboxFailureNode(row).label || mailboxFailureNode(row).code }}<code v-if="mailboxFailureNode(row).showCode">{{ mailboxFailureNode(row).code }}</code></strong><span>{{ mailboxFailureCause(row) }}</span></div>
+                <div class="failure-cell"><template v-if="isRetryResolved(row.retry_resolved)"><strong class="resolved-text">已由重试解决</strong></template><template v-else-if="mailboxIsAccountBanned(row)"><strong>{{ ACCOUNT_BANNED_DISPLAY_MESSAGE }}</strong></template><template v-else><strong v-if="mailboxFailureNode(row).label || mailboxFailureNode(row).code">{{ mailboxFailureNode(row).label || mailboxFailureNode(row).code }}<code v-if="mailboxFailureNode(row).showCode">{{ mailboxFailureNode(row).code }}</code></strong><span>{{ mailboxFailureCause(row) }}</span></template></div>
               </el-tooltip>
             </template>
           </el-table-column>

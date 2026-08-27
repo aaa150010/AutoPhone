@@ -47,6 +47,7 @@ try:
     from .free_failure_runtime import sanitize_failure_text
     from .free_mailbox_otp import build_free_mailbox_otp_provider
     from .free_proxy_bridge import Socks5HttpBridge
+    from .free_timing import TimingCallback, emit_timing
 except ImportError:  # pragma: no cover - top-level recovery import
     from free_account_service import (  # type: ignore[no-redef]
         CHATGPT_ACCOUNTS_URL, CHATGPT_ELIGIBILITY_URL, browser_json_fetch,
@@ -61,6 +62,7 @@ except ImportError:  # pragma: no cover - top-level recovery import
     from free_failure_runtime import sanitize_failure_text  # type: ignore[no-redef]
     from free_mailbox_otp import build_free_mailbox_otp_provider  # type: ignore[no-redef]
     from free_proxy_bridge import Socks5HttpBridge  # type: ignore[no-redef]
+    from free_timing import TimingCallback, emit_timing  # type: ignore[no-redef]
 
 
 CHATGPT_LOGIN_URL = "https://chatgpt.com/auth/login"
@@ -129,6 +131,21 @@ class CamoufoxDependencyError(FreeRegisterError):
             error_code="camoufox_dependency_missing",
             action_hint="安装 camoufox 及其浏览器运行时后重新执行 Free 预检",
         )
+
+
+def _profile_transition_timing_outcome(state: str) -> str:
+    """Return a public timing outcome for an about-you page transition.
+
+    Only the states that prove the request was accepted by the auth flow are
+    successful.  In particular, a security challenge or an unknown shell must
+    never be presented as a successful profile submission.
+    """
+    normalized = str(state or "").strip().lower()
+    if normalized in {"home", "oauth_callback"}:
+        return "success"
+    if normalized == "security":
+        return "security_challenge"
+    return "unexpected_state"
 
 
 class CamoufoxBrowserError(FreeRegisterError):
@@ -1159,6 +1176,7 @@ async def _browser_flow(
     otp_prepare: Callable[..., Any] | None = None,
     otp_mark_sent: Callable[..., Any] | None = None,
     stage_fn: Callable[[str, str], None] | None = None,
+    timing_fn: TimingCallback | None = None,
     force_existing_login: bool = False,
     startup_gate: asyncio.Semaphore | None = None,
 ) -> dict[str, Any]:
@@ -1169,6 +1187,11 @@ async def _browser_flow(
     entry_submitted = False
     otp_submitted = False
     otp_submitted_at = 0.0
+    # Keep the stage that actually supplied the submitted code.  The entry
+    # stage can be ``free_email_otp_wait`` even when the flow later discovers
+    # that the address belongs to an existing account.
+    otp_submitted_stage = ""
+    otp_transition_recorded = False
     otp_resend_used = False
     otp_input_selector = ""
     password_stage_started_at = 0.0
@@ -1178,6 +1201,13 @@ async def _browser_flow(
     email_verification_retried = False
     profile_submitted = False
     profile_submitted_at = 0.0
+    # ``profile_submitted_at`` guards the reference flow's 60s retry window;
+    # the timing anchors below describe two non-overlapping intervals:
+    # request completion (leaving profile) and subsequent home confirmation.
+    profile_async_started_at = 0.0
+    profile_home_state_started_at = 0.0
+    profile_home_state_recorded = False
+    profile_transition_recorded = False
     entry_transition_deadline = 0.0
     entry_retry_used = False
     entry_signin_fallback_used = False
@@ -1187,6 +1217,15 @@ async def _browser_flow(
     seen: dict[str, int] = {}
     step_count = 0
     entry_otp_stage = "free_existing_login_otp" if force_existing_login else "free_email_otp_wait"
+
+    def timing_mark(stage_code: str, code: str, started: float, outcome: str = "success") -> None:
+        emit_timing(
+            timing_fn,
+            stage_code,
+            code,
+            max(0.0, (time.monotonic() - started) * 1000.0),
+            outcome,
+        )
 
     def set_stage(code: str) -> None:
         if callable(stage_fn):
@@ -1211,6 +1250,82 @@ async def _browser_flow(
     async def mark_otp_sent(stage_code: str) -> None:
         if callable(otp_mark_sent):
             await asyncio.to_thread(otp_mark_sent, stage_code)
+
+    def record_profile_timing(state: str, *, terminal_outcome: str = "") -> None:
+        """Close profile timing intervals only after an observable outcome.
+
+        ``unknown`` is deliberately left open because auth.openai.com can
+        render a transient shell during navigation.  The caller closes it
+        explicitly when the state machine raises or reaches its deadline.
+        """
+        nonlocal profile_transition_recorded
+        nonlocal profile_home_state_started_at, profile_home_state_recorded
+        if not profile_submitted:
+            return
+        normalized_state = str(state or "").strip().lower()
+        if not profile_transition_recorded:
+            if normalized_state == "profile" or normalized_state == "unknown":
+                return
+            started = profile_async_started_at or profile_submitted_at
+            if not started:
+                return
+            outcome = str(terminal_outcome or _profile_transition_timing_outcome(normalized_state))
+            timing_mark("free_camoufox_profile", "profile_async_submit_wait", started, outcome)
+            profile_transition_recorded = True
+            # Only an accepted auth transition opens the home-confirmation
+            # interval.  Security/unexpected outcomes are terminal for this
+            # branch and must not manufacture a zero-length home success.
+            if outcome != "success":
+                profile_home_state_started_at = 0.0
+                profile_home_state_recorded = True
+                return
+            # Start the second interval exactly when the first one ends.
+            profile_home_state_started_at = time.monotonic()
+            if normalized_state == "home":
+                timing_mark(
+                    "free_camoufox_profile", "profile_home_state_wait",
+                    profile_home_state_started_at, "success",
+                )
+                profile_home_state_recorded = True
+            return
+        if profile_home_state_recorded or not profile_home_state_started_at:
+            return
+        if normalized_state == "home":
+            timing_mark(
+                "free_camoufox_profile", "profile_home_state_wait",
+                profile_home_state_started_at, "success",
+            )
+            profile_home_state_recorded = True
+        elif normalized_state == "security":
+            timing_mark(
+                "free_camoufox_profile", "profile_home_state_wait",
+                profile_home_state_started_at, "security_challenge",
+            )
+            profile_home_state_recorded = True
+        elif terminal_outcome:
+            timing_mark(
+                "free_camoufox_profile", "profile_home_state_wait",
+                profile_home_state_started_at, terminal_outcome,
+            )
+            profile_home_state_recorded = True
+
+    def close_profile_timing(outcome: str = "timeout") -> None:
+        """Close any pending profile intervals before a terminal failure."""
+        nonlocal profile_transition_recorded
+        nonlocal profile_home_state_started_at, profile_home_state_recorded
+        if not profile_submitted:
+            return
+        if not profile_transition_recorded:
+            started = profile_async_started_at or profile_submitted_at
+            if started:
+                timing_mark("free_camoufox_profile", "profile_async_submit_wait", started, outcome)
+                profile_transition_recorded = True
+        if profile_home_state_started_at and not profile_home_state_recorded:
+            timing_mark(
+                "free_camoufox_profile", "profile_home_state_wait",
+                profile_home_state_started_at, outcome,
+            )
+            profile_home_state_recorded = True
 
     async def submit_entry_email(selector: str, *, recovery: bool = False) -> dict[str, Any]:
         nonlocal entry_form_present, entry_submit_selector, entry_recovery
@@ -1295,7 +1410,7 @@ async def _browser_flow(
         remaining = max(1.0, deadline - time.monotonic())
         return await _wait_state(page, min(float(seconds), remaining), *states)
 
-    async def wait_for_otp_input(seconds: float = 45.0) -> tuple[str, str]:
+    async def wait_for_otp_input(stage_code: str = "", seconds: float = 45.0) -> tuple[str, str]:
         """Wait for the reference flow's OTP layer without consuming a code.
 
         ChatGPT can render an intermediate email-verification shell and then
@@ -1305,15 +1420,20 @@ async def _browser_flow(
         early.  Return the observed page state so the caller can hand control
         back to the main state machine.
         """
-        end = min(deadline, time.monotonic() + max(1.0, float(seconds)))
+        timing_stage = str(stage_code or entry_otp_stage)
+        started = time.monotonic()
+        end = min(deadline, started + max(1.0, float(seconds)))
         while time.monotonic() < end:
             current = await _page_state(page)
             if current not in {"otp", "otp_wait"}:
+                timing_mark(timing_stage, "otp_input_ready", started, "state_changed")
                 return "", current
             selector = await _find_visible_selector(page, OTP_SELECTORS)
             if selector:
+                timing_mark(timing_stage, "otp_input_ready", started, "success")
                 return selector, current
             await asyncio.sleep(0.5)
+        timing_mark(timing_stage, "otp_input_ready", started, "timeout")
         return "", await _page_state(page)
 
     async def finish_home() -> dict[str, Any]:
@@ -1418,6 +1538,27 @@ async def _browser_flow(
                 safe_page=_safe_url(page), page_type="state_machine",
             )
         state = await _page_state(page)
+        if (
+            otp_submitted
+            and not otp_transition_recorded
+            and state not in {"otp", "otp_wait"}
+        ):
+            transition_stage = otp_submitted_stage or entry_otp_stage
+            if state == "security":
+                transition_outcome = "security_challenge"
+            elif state in {
+                "signup_password", "login_password", "email_verification",
+                "profile", "oauth_callback", "home",
+            }:
+                transition_outcome = "success"
+            else:
+                # Unknown shells can be transient.  Preserve the timing as a
+                # diagnosed transition, but never call it a successful page
+                # hand-off.
+                transition_outcome = "unexpected_state"
+            timing_mark(transition_stage, "otp_submit_transition", otp_submitted_at, transition_outcome)
+            otp_transition_recorded = True
+        record_profile_timing(state)
         seen[state] = seen.get(state, 0) + 1
         if (
             state not in {"signup_password", "login_password", "otp", "otp_wait", "email_verification", "profile", "security"}
@@ -1468,6 +1609,7 @@ async def _browser_flow(
                 await asyncio.sleep(1.0)
                 continue
             error_text = await _auth_error_text(page)
+            close_profile_timing("unexpected_state")
             raise CamoufoxBrowserError(
                 "free_camoufox_navigation", "打开 Camoufox 注册页面",
                 error_text or (
@@ -1592,7 +1734,7 @@ async def _browser_flow(
                 # wait for the actual OTP input before asking the shared
                 # mailbox provider for a code.  If the page advances while
                 # waiting, let the next state branch handle it.
-                selector, observed_state = await wait_for_otp_input()
+                selector, observed_state = await wait_for_otp_input(stage_code)
                 if observed_state not in {"otp", "otp_wait"}:
                     seen.clear()
                     await asyncio.sleep(0.2)
@@ -1617,7 +1759,9 @@ async def _browser_flow(
                 if current_state not in {"otp", "otp_wait"}:
                     seen.clear()
                     continue
+                otp_submit_started = time.monotonic()
                 if not await _fill_input_like_user(page, selector, code):
+                    timing_mark(stage_code, "otp_code_submit", otp_submit_started, "error")
                     current_state = await _page_state(page)
                     if current_state not in {"otp", "otp_wait"}:
                         seen.clear()
@@ -1629,8 +1773,11 @@ async def _browser_flow(
                 otp_input_selector = selector
                 if not await _click_first(page, PASSWORD_SUBMIT_SELECTORS, timeout=6):
                     await _submit_visible_form(page, selector)
+                timing_mark(stage_code, "otp_code_submit", otp_submit_started, "success")
                 otp_submitted = True
                 otp_submitted_at = time.monotonic()
+                otp_submitted_stage = stage_code
+                otp_transition_recorded = False
                 await asyncio.sleep(1.0)
                 continue
             elapsed = time.monotonic() - otp_submitted_at
@@ -1660,6 +1807,7 @@ async def _browser_flow(
                     )
                 await mark_otp_sent(stage_code)
                 otp_submitted = False
+                otp_submitted_stage = ""
                 otp_resend_used = True
                 continue
             await asyncio.sleep(1.0)
@@ -1669,12 +1817,25 @@ async def _browser_flow(
             set_stage("free_camoufox_profile")
             if not profile_submitted:
                 age_value, birthdate = _reference_age_and_birthdate()
+                name_started = time.monotonic()
                 name = await _find_visible_selector(page, NAME_SELECTORS)
+                name_filled = False
                 if name:
-                    await _fill_input_like_user(page, name, random_display_name())
+                    name_filled = await _fill_input_like_user(page, name, random_display_name())
+                timing_mark(
+                    "free_camoufox_profile", "profile_name_fill", name_started,
+                    "success" if name_filled else "skipped",
+                )
+                age_started = time.monotonic()
                 age = await _find_visible_selector(page, AGE_SELECTORS)
+                age_filled = False
                 if age:
-                    await _fill_input_like_user(page, age, str(age_value))
+                    age_filled = await _fill_input_like_user(page, age, str(age_value))
+                timing_mark(
+                    "free_camoufox_profile", "profile_age_fill", age_started,
+                    "success" if age_filled else "skipped",
+                )
+                birthday_started = time.monotonic()
                 birthday_filled = False
                 for birthday_selector in BIRTHDAY_SELECTORS:
                     try:
@@ -1688,19 +1849,58 @@ async def _browser_flow(
                             break
                     except Exception:
                         continue
+                timing_mark(
+                    "free_camoufox_profile", "profile_birthday_fill", birthday_started,
+                    "success" if birthday_filled else "skipped",
+                )
+                hidden_birthday_started = time.monotonic()
                 if not birthday_filled:
-                    await _sync_hidden_birthday_input(page, birthdate)
-                await _accept_about_you_consents(page, log)
+                    hidden_birthday_filled = await _sync_hidden_birthday_input(page, birthdate)
+                    hidden_outcome = "success" if hidden_birthday_filled else "skipped"
+                else:
+                    hidden_outcome = "skipped"
+                timing_mark(
+                    "free_camoufox_profile", "profile_birthday_hidden_sync", hidden_birthday_started,
+                    hidden_outcome,
+                )
+                consent_started = time.monotonic()
+                consent_accepted = await _accept_about_you_consents(page, log)
+                timing_mark(
+                    "free_camoufox_profile", "profile_consent", consent_started,
+                    "success" if consent_accepted else "skipped",
+                )
+                submit_wait_started = time.monotonic()
                 submit_selector = await _wait_for_submit_enabled(page, PROFILE_SUBMIT_SELECTORS, timeout=25)
+                timing_mark(
+                    "free_camoufox_profile", "profile_submit_button_wait", submit_wait_started,
+                    "success" if submit_selector else "error",
+                )
                 if not submit_selector:
                     raise CamoufoxBrowserError(
                         "free_camoufox_profile", "填写 Camoufox 账号资料",
                         "资料页提交按钮长时间不可用", error_code="camoufox_profile_submit_unavailable",
                     )
-                await _click_first(page, (submit_selector,), timeout=8)
+                submit_click_started = time.monotonic()
+                clicked = await _click_first(page, (submit_selector,), timeout=8)
+                timing_mark(
+                    "free_camoufox_profile", "profile_submit_click", submit_click_started,
+                    "success" if clicked else "not_confirmed",
+                )
                 profile_submitted = True
                 profile_submitted_at = time.monotonic()
-                await _confirm_birthday(page, log, timeout=5)
+                # Start the diagnostic async interval after the optional
+                # birthday confirmation.  This keeps the modal's own timing
+                # out of the network/page-transition measurement.
+                profile_transition_recorded = False
+                birthday_modal_started = time.monotonic()
+                birthday_confirmed = await _confirm_birthday(page, log, timeout=5)
+                timing_mark(
+                    "free_camoufox_profile", "profile_birthday_modal", birthday_modal_started,
+                    "success" if birthday_confirmed else "skipped",
+                )
+                profile_async_started_at = time.monotonic()
+                profile_home_state_started_at = 0.0
+                profile_home_state_recorded = False
             else:
                 # Match aBaiFreeGPT: submitting about-you is an asynchronous
                 # account-creation request. Keep the page alive for 60s,
@@ -1709,8 +1909,16 @@ async def _browser_flow(
                 # failure.
                 elapsed = time.monotonic() - (profile_submitted_at or time.monotonic())
                 if elapsed >= 60:
+                    timing_mark(
+                        "free_camoufox_profile", "profile_async_submit_wait",
+                        profile_async_started_at or profile_submitted_at, "timeout",
+                    )
+                    profile_transition_recorded = True
                     profile_submitted = False
                     profile_submitted_at = 0.0
+                    profile_async_started_at = 0.0
+                    profile_home_state_started_at = 0.0
+                    profile_home_state_recorded = False
                     log("Camoufox 资料页提交后 60 秒未跳转，允许重新填写重试", "warn")
                 else:
                     await _confirm_birthday(page, log, timeout=0.5)
@@ -1724,6 +1932,7 @@ async def _browser_flow(
             continue
 
         if state == "external_auth":
+            close_profile_timing("unexpected_state")
             snapshot = await _snapshot(page)
             raise CamoufoxBrowserError(
                 "free_camoufox_navigation", "打开 Camoufox 注册页面",
@@ -1741,6 +1950,7 @@ async def _browser_flow(
             )
         error_text = await _auth_error_text(page)
         if error_text:
+            close_profile_timing("error")
             raise CamoufoxBrowserError(
                 "free_camoufox_navigation", "打开 Camoufox 注册页面", error_text,
                 retryable=not entry_submitted, error_code="camoufox_auth_page_error",
@@ -1748,6 +1958,9 @@ async def _browser_flow(
             )
         await asyncio.sleep(1.0)
 
+    # If the global deadline expires while the about-you request is still
+    # pending, close any open timing intervals before returning the failure.
+    close_profile_timing("timeout")
     raise CamoufoxBrowserError(
         "free_camoufox_page_state", "确认 ChatGPT 登录首页",
         "注册状态机超时，页面未确认进入首页", error_code="camoufox_home_not_confirmed",
@@ -2301,6 +2514,7 @@ class CamoufoxRegistrationRunner:
                 otp_prepare=otp.prepare, otp_mark_sent=otp.mark_sent,
                 config={**config, **browser_config, "task_id": task_id}, log=log,
                 stage_fn=stage,
+                timing_fn=config.get("_timing_substep"),
                 force_existing_login=twofa_retry,
             )
             result = dict(result)

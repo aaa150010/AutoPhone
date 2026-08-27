@@ -69,6 +69,163 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
+    def test_free_adapter_substep_timing_is_aggregated_and_safe(self):
+        logs = []
+        manager = FreeRegisterManager(
+            self.data_dir,
+            log_fn=lambda message, level="info", **fields: logs.append(
+                (message, level, fields)
+            ),
+        )
+        manager._tasks["timing-task"] = {
+            "task_id": "timing-task",
+            "status": "running",
+            "created_at": 100,
+            "timing": {},
+        }
+
+        manager._record_timing_substep(
+            "timing-task", "free_camoufox_profile", "profile_name_fill", 120, "success"
+        )
+        manager._record_timing_substep(
+            "timing-task", "free_camoufox_profile", "profile_name_fill", 80, "success"
+        )
+        manager._record_timing_substep(
+            "timing-task", "free_camoufox_profile", "profile_consent", 0, "skipped"
+        )
+
+        rows = manager._tasks["timing-task"]["timing"]["substeps"]
+        name = next(row for row in rows if row["code"] == "profile_name_fill")
+        consent = next(row for row in rows if row["code"] == "profile_consent")
+        self.assertEqual(name["duration_ms"], 200)
+        self.assertEqual(name["first_duration_ms"], 120)
+        self.assertEqual(name["last_duration_ms"], 80)
+        self.assertEqual(name["max_duration_ms"], 120)
+        self.assertEqual(name["visits"], 2)
+        self.assertEqual(consent["outcome"], "skipped")
+        self.assertNotIn("654321", str(rows))
+        self.assertTrue(any("子步骤完成" in message for message, _level, _fields in logs))
+
+    def test_free_adapter_substeps_use_bounded_task_store_checkpoints(self):
+        manager = FreeRegisterManager(
+            self.data_dir,
+            log_fn=lambda *_args, **_kwargs: None,
+        )
+        manager._tasks["timing-checkpoint"] = {
+            "task_id": "timing-checkpoint",
+            "status": "running",
+            "created_at": 100,
+            "timing": {},
+        }
+        clock = [0.0]
+        with (
+            patch.object(manager.task_store, "save_timing", return_value=True) as save_timing,
+            patch(
+                "mac_overrides.free_register_runtime.time.monotonic",
+                side_effect=lambda: clock[0],
+            ),
+        ):
+            manager._record_timing_substep(
+                "timing-checkpoint", "free_camoufox_profile",
+                "profile_name_fill", 10, "success",
+            )
+            manager._record_timing_substep(
+                "timing-checkpoint", "free_camoufox_profile",
+                "profile_age_fill", 20, "success",
+            )
+            self.assertEqual(save_timing.call_count, 1)
+            clock[0] += 1.1
+            manager._record_timing_substep(
+                "timing-checkpoint", "free_camoufox_profile",
+                "profile_birthday_fill", 30, "success",
+            )
+            self.assertEqual(save_timing.call_count, 2)
+            # A failure is flushed without waiting for the next interval.
+            manager._record_timing_substep(
+                "timing-checkpoint", "free_camoufox_profile",
+                "profile_submit_button_wait", 40, "timeout",
+            )
+            self.assertEqual(save_timing.call_count, 3)
+
+    def test_timing_checkpoint_merges_only_timing_and_skips_terminal_task(self):
+        store = __import__("mac_overrides.free_register_store", fromlist=["FreeTaskStore"]).FreeTaskStore(self.data_dir)
+        store.save({
+            "running-task": {
+                "task_id": "running-task",
+                "status": "running",
+                "result": {"preserve": True},
+                "timing": {"elapsed_ms": 1},
+            },
+            "other-task": {"task_id": "other-task", "status": "queued", "marker": "keep"},
+        })
+        self.assertTrue(store.save_timing("running-task", {"elapsed_ms": 42, "substeps": []}))
+        payload = json.loads(store.path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["tasks"]["running-task"]["timing"]["elapsed_ms"], 42)
+        self.assertEqual(payload["tasks"]["running-task"]["result"], {"preserve": True})
+        self.assertEqual(payload["tasks"]["other-task"]["marker"], "keep")
+
+        store.save({"running-task": {"task_id": "running-task", "status": "success", "timing": {"elapsed_ms": 99}}})
+        self.assertFalse(store.save_timing("running-task", {"elapsed_ms": 100}))
+        terminal_payload = json.loads(store.path.read_text(encoding="utf-8"))
+        self.assertEqual(terminal_payload["tasks"]["running-task"]["timing"]["elapsed_ms"], 99)
+
+    def test_stale_timing_checkpoint_cannot_rollback_newer_running_snapshot(self):
+        store = __import__("mac_overrides.free_register_store", fromlist=["FreeTaskStore"]).FreeTaskStore(self.data_dir)
+        newer_timing = {
+            "started_at": 100,
+            "elapsed_ms": 99,
+            "elapsed_seconds": 0.099,
+            "finished_at": None,
+            "stages": [
+                {"code": "free_camoufox_profile", "attempt": 1, "started_at": 100, "finished_at": 110, "duration_ms": 10},
+                {"code": "free_email_otp_wait", "attempt": 1, "started_at": 111, "finished_at": 199, "duration_ms": 88},
+            ],
+            "substeps": [
+                {"key": "free_camoufox_profile:profile_name_fill", "stage_code": "free_camoufox_profile", "code": "profile_name_fill", "duration_ms": 30, "first_duration_ms": 10, "last_duration_ms": 20, "max_duration_ms": 20, "visits": 2, "last_recorded_at": 200, "outcome": "success"},
+                {"key": "free_email_otp_wait:mailbox_poll_scan", "stage_code": "free_email_otp_wait", "code": "mailbox_poll_scan", "duration_ms": 40, "visits": 1, "last_recorded_at": 201, "outcome": "success"},
+            ],
+            "slowest_node": {"code": "free_email_otp_wait", "label": "等待 Free 邮箱验证码", "duration_ms": 88},
+        }
+        store.save({
+            "timing-race": {
+                "task_id": "timing-race",
+                "status": "running",
+                "result": {"marker": "newer-task-state"},
+                "timing": newer_timing,
+            },
+        })
+
+        # This is the snapshot captured before the newer stage/substep save;
+        # it arrives late after the runtime manager has released its lock.
+        stale_timing = {
+            "started_at": 100,
+            "elapsed_ms": 42,
+            "elapsed_seconds": 0.042,
+            "finished_at": None,
+            "stages": [
+                {"code": "free_camoufox_profile", "attempt": 1, "started_at": 100, "finished_at": 110, "duration_ms": 10},
+            ],
+            "substeps": [
+                {"key": "free_camoufox_profile:profile_name_fill", "stage_code": "free_camoufox_profile", "code": "profile_name_fill", "duration_ms": 10, "first_duration_ms": 10, "last_duration_ms": 10, "max_duration_ms": 10, "visits": 1, "last_recorded_at": 150, "outcome": "success"},
+            ],
+            "slowest_node": {"code": "free_camoufox_profile", "label": "填写 Camoufox 账号资料", "duration_ms": 10},
+        }
+        self.assertTrue(store.save_timing("timing-race", stale_timing))
+        payload = json.loads(store.path.read_text(encoding="utf-8"))
+        task = payload["tasks"]["timing-race"]
+        timing = task["timing"]
+        self.assertEqual(task["status"], "running")
+        self.assertEqual(task["result"], {"marker": "newer-task-state"})
+        self.assertEqual(timing["elapsed_ms"], 99)
+        self.assertEqual({row["code"] for row in timing["stages"]}, {"free_camoufox_profile", "free_email_otp_wait"})
+        substeps = {row["key"]: row for row in timing["substeps"]}
+        self.assertEqual(substeps["free_camoufox_profile:profile_name_fill"]["visits"], 2)
+        self.assertEqual(substeps["free_camoufox_profile:profile_name_fill"]["duration_ms"], 30)
+        self.assertEqual(substeps["free_camoufox_profile:profile_name_fill"]["last_duration_ms"], 20)
+        self.assertEqual(substeps["free_camoufox_profile:profile_name_fill"]["last_recorded_at"], 200)
+        self.assertIn("free_email_otp_wait:mailbox_poll_scan", substeps)
+        self.assertEqual(timing["slowest_node"]["code"], "free_email_otp_wait")
+
     def test_free_pool_uses_separate_files_and_masks_public_secrets(self):
         pool = FreeMailboxPool(self.data_dir)
         imported = pool.import_text(
@@ -162,6 +319,25 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertEqual(row["diagnostic"], "")
         self.assertEqual(row["action_hint"], "")
         self.assertEqual(row["result"], "")
+
+    def test_free_logs_preserve_safe_substep_metadata(self):
+        logs = FreeLogStore(self.data_dir)
+        logs.add(
+            "[free-task-1/填写 Camoufox 账号资料/free_camoufox_profile] 子步骤完成 duration_ms=42",
+            "info",
+            task_id="free-task-1",
+            node_code="free_camoufox_profile",
+            node_label="填写 Camoufox 账号资料",
+            substep_code="profile_submit_click",
+            substep_label="点击资料提交",
+            duration_ms=42,
+            outcome="success",
+        )
+        row = logs.snapshot("free-task-1")[0]
+        self.assertEqual(row["substep_code"], "profile_submit_click")
+        self.assertEqual(row["substep_label"], "点击资料提交")
+        self.assertEqual(row["duration_ms"], 42)
+        self.assertNotIn("token", str(row).lower())
 
     def test_free_logs_migrate_legacy_rows_and_drop_unknown_secrets(self):
         logs = FreeLogStore(self.data_dir)
@@ -320,8 +496,8 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             runner=lambda *_args, **_kwargs: {},
             proxy_probe=lambda _proxy, _url: "203.0.113.20",
         )
-        self.assertEqual(manager.public_state()["runtime_version"], "1.6.80")
-        self.assertEqual(manager.preflight({"target_count": 1})["otp_parser_revision"], "pickup-dynamic-v5-manual-fallback-v1")
+        self.assertEqual(manager.public_state()["runtime_version"], "1.6.82")
+        self.assertEqual(manager.preflight({"target_count": 1})["otp_parser_revision"], "pickup-dynamic-v5-manual-fallback-v1-timing-v1-proxy-recheck-v1")
 
     def test_manager_preflight_applies_proxy_allocation_mode_from_config(self):
         pool = FreeMailboxPool(self.data_dir)
@@ -462,6 +638,26 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertTrue(all("exit_ip" not in row for row in result["rows"]))
         self.assertEqual(manager.pool.entries(), [])
         self.assertNotIn("https://", str(result))
+
+    def test_saved_proxy_preflight_releases_quarantine_after_successful_recheck(self):
+        manager = FreeRegisterManager(
+            self.data_dir,
+            proxy_probe=lambda _proxy, _url: "203.0.113.19",
+        )
+        manager.proxies.import_text("proxy-a.test:8000\n")
+        proxy_id = manager.proxies.entries()[0]["proxy_id"]
+        manager.proxies.record_failure(
+            proxy_id,
+            node_code="proxy_connect_failed",
+            message="代理探测请求返回 HTTP 403",
+            threshold=1,
+        )
+
+        result = manager.preflight_proxies(proxy_content="", probe_url="https://probe.example.test/")
+
+        self.assertEqual(result["proxies"], 1)
+        self.assertEqual(manager.proxies.public()["rows"][0]["status"], "available")
+        self.assertEqual(manager.proxies.public()["rows"][0]["consecutive_failures"], 0)
 
     def test_proxy_binding_reports_the_failed_row_without_exposing_credentials(self):
         proxies = FreeProxyPool(self.data_dir)

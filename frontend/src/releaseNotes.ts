@@ -13,11 +13,19 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.80',
-  freeRuntimeVersion: '1.6.80',
-  title: 'Free 注册稳定性与人工验证码兜底',
+  version: '1.6.82',
+  freeRuntimeVersion: '1.6.82',
+  title: 'Free 代理隔离复检与日志 ID 修复',
   releasedAt: '2026-08-27',
   sections: [
+    {
+      title: 'Free 代理隔离复检与日志 ID 修复',
+      usage: '代理池有记录但全部处于隔离时，错误会区分保存总数、健康候选数、隔离数量和最近失败节点。配置页留空代理内容即可复检已保存代理，只有实际探测成功才解除隔离；诊断日志中的 LOG-日期-短标识不再被手机号脱敏规则破坏。',
+    },
+    {
+      title: 'Free 注册子步骤耗时诊断',
+      usage: 'Free 邮箱 OTP 记录请求前基线、每轮轮询、详情/服务刷新、首次看到列表与 OpenAI 邮件、首次识别新验证码、重发和最终兜底；Camoufox 资料页记录姓名、年龄、生日、隐藏生日同步、隐私条款、提交按钮、点击、生日弹窗、异步提交和 home/认证状态。任务详情会聚合总耗时、最近一次、最长一次和访问次数，日志只保留稳定代码与耗时，不包含验证码、取件地址、代理或页面正文。',
+    },
     {
       title: 'Free 注册稳定性与人工验证码兜底',
       usage: 'Free protocol、RoxyBrowser 和 Camoufox 保持 AutoRegister 对齐的主流程，新增每节点与账号总耗时、慢节点和首个失败诊断；邮箱验证码自动等待超时后提供 300 秒人工输入窗口，自动码与人工码按任务阶段仲裁。统一重试队列支持单账号、2FA 和当前失败节点批量重试，2FA 仅对会话或临时网络错误最多追加两次尝试；运行中导入默认进入下一批，也可显式加入当前批次。',

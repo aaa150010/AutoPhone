@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -19,6 +20,7 @@ try:
         FreeMailbox,
         FreeRegisterError,
         ProxyBinding,
+        TERMINAL_STATUSES,
         atomic_write,
         fingerprint,
         mask_proxy,
@@ -38,6 +40,7 @@ except ImportError:
         FreeMailbox,
         FreeRegisterError,
         ProxyBinding,
+        TERMINAL_STATUSES,
         atomic_write,
         fingerprint,
         mask_proxy,
@@ -611,6 +614,261 @@ class FreeTaskStore:
     def save(self, tasks: Mapping[str, Mapping[str, Any]]) -> None:
         with self._lock:
             atomic_write(self.path, {"version": 1, "tasks": copy.deepcopy(dict(tasks))})
+
+    @staticmethod
+    def _timing_number(value: Any, *, integer: bool = False) -> float | int | None:
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(parsed):
+            return None
+        if not parsed or parsed < 0:
+            return 0 if integer else 0.0
+        return int(parsed) if integer else parsed
+
+    @classmethod
+    def _merge_timing_stage(cls, current: Mapping[str, Any], incoming: Mapping[str, Any]) -> dict[str, Any]:
+        """Merge two immutable stage samples without allowing duration rollback."""
+        result = copy.deepcopy(dict(current))
+        for key, value in incoming.items():
+            if key not in result or result.get(key) in (None, ""):
+                result[key] = copy.deepcopy(value)
+
+        for key in ("duration_ms", "visits", "attempt", "proxy_attempts"):
+            values = [
+                cls._timing_number(current.get(key), integer=True),
+                cls._timing_number(incoming.get(key), integer=True),
+            ]
+            numeric = [value for value in values if value is not None]
+            if numeric:
+                result[key] = max(numeric)
+        for key in ("elapsed_seconds",):
+            values = [
+                cls._timing_number(current.get(key)),
+                cls._timing_number(incoming.get(key)),
+            ]
+            numeric = [value for value in values if value is not None]
+            if numeric:
+                result[key] = max(numeric)
+
+        for key in ("started_at", "entered_at"):
+            values = [
+                cls._timing_number(current.get(key), integer=True),
+                cls._timing_number(incoming.get(key), integer=True),
+            ]
+            numeric = [value for value in values if value]
+            if numeric:
+                result[key] = min(numeric)
+        for key in ("finished_at", "left_at"):
+            values = [
+                cls._timing_number(current.get(key), integer=True),
+                cls._timing_number(incoming.get(key), integer=True),
+            ]
+            numeric = [value for value in values if value]
+            if numeric:
+                result[key] = max(numeric)
+        # A later completed sample carries the authoritative outcome and
+        # failure metadata.  When wall-clock timestamps tie, a larger visit
+        # count is the only monotonic signal available to identify it.
+        current_finished = cls._timing_number(current.get("finished_at"), integer=True) or 0
+        incoming_finished = cls._timing_number(incoming.get("finished_at"), integer=True) or 0
+        current_seen = cls._timing_number(current.get("last_recorded_at"), integer=True) or 0
+        incoming_seen = cls._timing_number(incoming.get("last_recorded_at"), integer=True) or 0
+        current_visits = cls._timing_number(current.get("visits"), integer=True) or 0
+        incoming_visits = cls._timing_number(incoming.get("visits"), integer=True) or 0
+        incoming_is_newer = incoming_finished > current_finished or (
+            incoming_finished == current_finished
+            and (incoming_seen > current_seen or incoming_visits > current_visits)
+        )
+        for key in ("outcome", "failure_code", "retryable"):
+            if key not in incoming or incoming.get(key) in (None, ""):
+                continue
+            # The current row comes from disk and may have been written by a
+            # newer stage/terminal save.  On a tie, preserve it; only fill a
+            # missing value or accept an explicitly newer timestamp.
+            if incoming_is_newer or result.get(key) in (None, ""):
+                result[key] = copy.deepcopy(incoming[key])
+        return result
+
+    @classmethod
+    def _merge_timing(cls, current: Mapping[str, Any] | None, incoming: Mapping[str, Any]) -> dict[str, Any]:
+        """Monotonically merge a checkpoint with a newer on-disk snapshot.
+
+        Checkpoints are written after releasing the runtime manager lock, so a
+        stage/terminal save can win the race while the old snapshot is in
+        flight.  This merge is intentionally limited to timing fields and
+        never changes task status or any other task data.
+        """
+        base = copy.deepcopy(dict(current)) if isinstance(current, Mapping) else {}
+        candidate = copy.deepcopy(dict(incoming))
+        for key, value in candidate.items():
+            if key not in base or base.get(key) in (None, ""):
+                base[key] = copy.deepcopy(value)
+
+        for key in ("elapsed_ms", "queue_elapsed_seconds", "execution_elapsed_seconds"):
+            values = [cls._timing_number(base.get(key)), cls._timing_number(candidate.get(key))]
+            numeric = [value for value in values if value is not None]
+            if numeric:
+                base[key] = max(numeric)
+        if "elapsed_seconds" in base or "elapsed_seconds" in candidate:
+            values = [cls._timing_number(base.get("elapsed_seconds")), cls._timing_number(candidate.get("elapsed_seconds"))]
+            numeric = [value for value in values if value is not None]
+            if numeric:
+                base["elapsed_seconds"] = max(numeric)
+        for key in ("started_at", "queued_at", "execution_started_at"):
+            values = [
+                cls._timing_number(base.get(key), integer=True),
+                cls._timing_number(candidate.get(key), integer=True),
+            ]
+            numeric = [value for value in values if value]
+            if numeric:
+                base[key] = min(numeric)
+        finished_values = [
+            cls._timing_number(base.get("finished_at"), integer=True),
+            cls._timing_number(candidate.get("finished_at"), integer=True),
+        ]
+        finished_numeric = [value for value in finished_values if value]
+        if finished_numeric:
+            base["finished_at"] = max(finished_numeric)
+
+        current_stages = base.get("stages") if isinstance(base.get("stages"), list) else []
+        incoming_stages = candidate.get("stages") if isinstance(candidate.get("stages"), list) else []
+        stage_rows: dict[tuple[str, int, int], dict[str, Any]] = {}
+        stage_order: list[tuple[str, int, int]] = []
+        for row in [*current_stages, *incoming_stages]:
+            if not isinstance(row, Mapping):
+                continue
+            code = str(row.get("code") or "")
+            try:
+                attempt = int(row.get("attempt") or 0)
+            except (TypeError, ValueError):
+                attempt = 0
+            try:
+                started = int(row.get("started_at") or row.get("entered_at") or 0)
+            except (TypeError, ValueError):
+                started = 0
+            identity = (code, attempt, started)
+            if identity not in stage_rows:
+                stage_order.append(identity)
+                stage_rows[identity] = copy.deepcopy(dict(row))
+            else:
+                stage_rows[identity] = cls._merge_timing_stage(stage_rows[identity], row)
+        order_index = {identity: index for index, identity in enumerate(stage_order)}
+        stage_order.sort(key=lambda identity: (identity[2] or 2**63 - 1, order_index[identity]))
+        if stage_rows:
+            base["stages"] = [stage_rows[identity] for identity in stage_order][-200:]
+
+        current_substeps = base.get("substeps") if isinstance(base.get("substeps"), list) else []
+        incoming_substeps = candidate.get("substeps") if isinstance(candidate.get("substeps"), list) else []
+        substep_rows: dict[str, dict[str, Any]] = {}
+        substep_order: list[str] = []
+        for row in [*current_substeps, *incoming_substeps]:
+            if not isinstance(row, Mapping):
+                continue
+            identity = str(row.get("key") or f"{row.get('stage_code') or ''}:{row.get('code') or ''}")
+            if not identity:
+                continue
+            if identity not in substep_rows:
+                substep_order.append(identity)
+                substep_rows[identity] = copy.deepcopy(dict(row))
+                continue
+            existing = substep_rows[identity]
+            merged = cls._merge_timing_stage(existing, row)
+            for key in ("first_duration_ms",):
+                first_values = [
+                    cls._timing_number(existing.get(key), integer=True),
+                    cls._timing_number(row.get(key), integer=True),
+                ]
+                numeric = [value for value in first_values if value is not None]
+                if numeric:
+                    merged[key] = min(numeric)
+            for key in ("max_duration_ms",):
+                max_values = [
+                    cls._timing_number(existing.get(key), integer=True),
+                    cls._timing_number(row.get(key), integer=True),
+                ]
+                numeric = [value for value in max_values if value is not None]
+                if numeric:
+                    merged[key] = max(numeric)
+            existing_seen = cls._timing_number(existing.get("last_recorded_at"), integer=True) or 0
+            incoming_seen = cls._timing_number(row.get("last_recorded_at"), integer=True) or 0
+            existing_visits = cls._timing_number(existing.get("visits"), integer=True) or 0
+            incoming_visits = cls._timing_number(row.get("visits"), integer=True) or 0
+            if incoming_seen > existing_seen or (
+                incoming_seen == existing_seen and incoming_visits > existing_visits
+            ):
+                for key in ("last_duration_ms", "last_recorded_at", "outcome"):
+                    if key in row and row.get(key) not in (None, ""):
+                        merged[key] = copy.deepcopy(row[key])
+            substep_rows[identity] = merged
+        if substep_rows:
+            base["substeps"] = [substep_rows[identity] for identity in substep_order]
+
+        candidates = [base.get("slowest_node"), candidate.get("slowest_node")]
+        slowest = [row for row in candidates if isinstance(row, Mapping)]
+        if slowest:
+            base["slowest_node"] = copy.deepcopy(max(slowest, key=lambda row: int(cls._timing_number(row.get("duration_ms"), integer=True) or 0)))
+        return base
+
+    def save_timing(
+        self,
+        task_id: str,
+        timing: Mapping[str, Any],
+        *,
+        skip_terminal: bool = True,
+    ) -> bool:
+        """Merge one diagnostic timing snapshot without rewriting task state.
+
+        Adapter callbacks are frequent and can run concurrently with a task
+        completion callback.  A normal ``save(tasks)`` from a callback would
+        serialize the whole in-memory task table while the manager lock is
+        held, and could also overwrite a newer status written by another
+        worker.  This narrow read/modify/write keeps every non-timing field
+        from the current on-disk snapshot and refuses to apply a stale
+        checkpoint after a task reaches a terminal state.
+
+        The return value is false when the task is absent or terminal and the
+        checkpoint was intentionally skipped.  Storage errors still propagate
+        so callers can report a diagnostic-only warning without changing the
+        registration outcome.
+        """
+        normalized_id = str(task_id or "").strip()
+        if not normalized_id or not isinstance(timing, Mapping):
+            return False
+        with self._lock:
+            try:
+                payload = json.loads(self.path.read_text(encoding="utf-8"))
+            except (FileNotFoundError, OSError, UnicodeError, json.JSONDecodeError):
+                return False
+            if not isinstance(payload, Mapping):
+                return False
+            raw_tasks = payload.get("tasks")
+            if not isinstance(raw_tasks, Mapping):
+                return False
+            current = raw_tasks.get(normalized_id)
+            if not isinstance(current, Mapping):
+                return False
+            status = str(current.get("status") or "").strip().lower()
+            if skip_terminal and status in TERMINAL_STATUSES:
+                return False
+            tasks = {
+                str(key): dict(value)
+                for key, value in raw_tasks.items()
+                if isinstance(value, Mapping)
+            }
+            merged = tasks.get(normalized_id)
+            if merged is None:
+                return False
+            merged["timing"] = self._merge_timing(merged.get("timing"), timing)
+            tasks[normalized_id] = merged
+            version = payload.get("version")
+            try:
+                version_value = int(version) if version is not None else 1
+            except (TypeError, ValueError):
+                version_value = 1
+            atomic_write(self.path, {"version": version_value, "tasks": tasks})
+            return True
 
 
 # Keep the historical import path while moving all runtime calls to the

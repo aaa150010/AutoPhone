@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 
@@ -20,6 +21,7 @@ _NETWORK_EVIDENCE_NODES = frozenset({
     "proxy_connection_reset",
     "proxy_tls_certificate_error",
     "proxy_connect_failed",
+    "proxy_tcp_connect",
 })
 _NETWORK_ERROR_TYPES = frozenset({
     "certificateverifyerror",
@@ -99,6 +101,7 @@ _NETWORK_TEXT_MARKERS = (
     "连接超时",
     "请求超时",
 )
+_HTTP_STATUS_RE = re.compile(r"\bHTTP\s+([1-5]\d{2})\b", re.IGNORECASE)
 
 
 def _exception_chain(error: BaseException):
@@ -133,8 +136,22 @@ def is_proxy_health_failure(error: BaseException) -> bool:
     # remain safe to charge against the selected proxy.
     if provider_status == 429:
         return False
-    if node_code == "free_camoufox_navigation" and (provider_status in {403, 407} or provider_status >= 500):
+    # A target-side 5xx is the only HTTP response class that is sufficiently
+    # strong transport evidence to quarantine a proxy even when the wrapped
+    # exception text is localized or otherwise sparse.  Restrict this to the
+    # explicit proxy/network nodes so an account/API 5xx elsewhere is not
+    # accidentally charged to the pool.
+    if 500 <= provider_status <= 599:
         return True
+    # HTTP 407 is the proxy protocol's authentication response, unlike other
+    # 4xx business responses, and is safe evidence against the selected proxy.
+    if provider_status == 407:
+        return True
+    # Ordinary business 4xx responses (401/403/404/409/etc.) do not prove a
+    # broken proxy.  Return before inspecting generic words such as
+    # ``connect`` in a provider's business error message.
+    if 400 <= provider_status <= 499:
+        return False
 
     details: list[str] = []
     for current in _exception_chain(error):
@@ -148,6 +165,20 @@ def is_proxy_health_failure(error: BaseException) -> bool:
     combined = " | ".join(details).lower()
     if any(marker in combined for marker in _EXIT_TEXT_MARKERS):
         return True
+    # Some compatibility wrappers only retain the localized exception text
+    # (for example ``代理探测请求返回 HTTP 503``) and drop the status field.
+    # Recover only the numeric class here; 5xx is proxy-health evidence,
+    # while 429 and other business 4xx remain non-quarantining.
+    for raw_status in _HTTP_STATUS_RE.findall(combined):
+        status = int(raw_status)
+        if status == 429:
+            return False
+        if 500 <= status <= 599:
+            return True
+        if status == 407:
+            return True
+        if 400 <= status <= 499:
+            return False
     if any(marker in combined for marker in _NON_NETWORK_MARKERS):
         return False
     return any(marker in combined for marker in _NETWORK_TEXT_MARKERS)

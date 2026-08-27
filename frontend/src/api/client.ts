@@ -309,6 +309,7 @@ export interface FreeMailboxRow {
   rebind_plan_type?: string
   rebind_plus_trial_eligible?: boolean
   task_id?: string
+  retry_resolved?: boolean | string
   error?: string
   failure?: TaskFailure | null
 }

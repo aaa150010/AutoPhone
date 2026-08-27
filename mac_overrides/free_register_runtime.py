@@ -38,6 +38,7 @@ try:
         safe_log_message as _safe_log_message,
     )
     from .free_runtime_info import runtime_info
+    from .free_timing import FREE_TIMING_SUBSTEPS
     from .free_register_store import FreeMailboxPool, FreeProxyPool, FreeTaskStore
     from .free_register_scheduler import FreeRegisterSchedulerMixin
     from .free_roxy_runtime import RoxyBrowserClient, RoxyRegistrationRunner
@@ -68,6 +69,7 @@ except ImportError:
         random_birthdate, random_display_name, safe_log_message as _safe_log_message,
     )
     from free_runtime_info import runtime_info  # type: ignore[no-redef]
+    from free_timing import FREE_TIMING_SUBSTEPS  # type: ignore[no-redef]
     from free_register_store import FreeMailboxPool, FreeProxyPool, FreeTaskStore  # type: ignore[no-redef]
     from free_register_scheduler import FreeRegisterSchedulerMixin  # type: ignore[no-redef]
     from free_roxy_runtime import RoxyBrowserClient, RoxyRegistrationRunner  # type: ignore[no-redef]
@@ -131,6 +133,10 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         self._last_config: dict[str, Any] = {}
         self._stage_started_mono: dict[str, float] = {}
         self._task_started_mono: dict[str, float] = {}
+        # Adapter timing is diagnostic-only.  Keep a short checkpoint window
+        # so a profile with many substeps does not synchronously rewrite the
+        # entire task table for every callback while holding the manager lock.
+        self._timing_checkpoint_mono: dict[str, float] = {}
         self._manual_generations: dict[str, int] = {}
         self._retry_leases: dict[str, str] = {}
         self.roxy_cleanup_store = RoxyCleanupStore(self.data_dir / "roxy_cleanup.json")
@@ -224,7 +230,153 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         value.setdefault("elapsed_ms", 0)
         value.setdefault("elapsed_seconds", 0.0)
         value.setdefault("stages", [])
+        value.setdefault("substeps", [])
         return value
+
+    def _record_timing_substep(
+        self,
+        task_id: str,
+        stage_code: str,
+        code: str,
+        elapsed_ms: Any,
+        outcome: str = "success",
+    ) -> None:
+        """Append a credential-safe, aggregated adapter timing sample.
+
+        Adapter callbacks run inside browser/mailbox workers.  A timing error
+        is deliberately best-effort and can never alter the registration
+        result.  Samples are kept in memory between short checkpoints; stage
+        transitions and terminal persistence save the complete snapshot as
+        usual.
+        """
+        normalized_stage = str(stage_code or "").strip()
+        normalized_code = str(code or "").strip()
+        label = FREE_TIMING_SUBSTEPS.get(normalized_code)
+        if not normalized_stage or not label or normalized_stage not in FREE_STAGE_LABELS:
+            return
+        try:
+            duration = max(0, int(elapsed_ms))
+        except (TypeError, ValueError):
+            return
+        normalized_outcome = str(outcome or "success").strip()[:40] or "success"
+        now_wall = int(time.time())
+        now_mono = time.monotonic()
+        key = f"{normalized_stage}:{normalized_code}"
+        poll_codes = {
+            "mailbox_poll_scan", "mailbox_detail_refresh", "mailbox_provider_refresh",
+        }
+        row_snapshot: dict[str, Any] | None = None
+        timing_snapshot: dict[str, Any] | None = None
+        checkpoint_requested = False
+        checkpoint_task_id = str(task_id or "")
+        with self._lock:
+            task = self._tasks.get(checkpoint_task_id)
+            if not isinstance(task, dict) or str(task.get("status") or "").strip().lower() in TERMINAL_STATUSES:
+                return
+            timing = self._timing_record(task)
+            rows = timing.setdefault("substeps", [])
+            if not isinstance(rows, list):
+                rows = []
+                timing["substeps"] = rows
+            row = next(
+                (
+                    item for item in rows
+                    if isinstance(item, dict) and item.get("key") == key
+                ),
+                None,
+            )
+            if row is None:
+                row = {
+                    "key": key,
+                    "stage_code": normalized_stage,
+                    "stage_label": FREE_STAGE_LABELS.get(normalized_stage, normalized_stage),
+                    "code": normalized_code,
+                    "label": label,
+                    "duration_ms": duration,
+                    "elapsed_seconds": round(duration / 1000.0, 3),
+                    "first_duration_ms": duration,
+                    "last_duration_ms": duration,
+                    "max_duration_ms": duration,
+                    "visits": 1,
+                    "outcome": normalized_outcome,
+                    "last_recorded_at": now_wall,
+                }
+                rows.append(row)
+            else:
+                previous_total = max(0, int(row.get("duration_ms") or 0))
+                previous_visits = max(0, int(row.get("visits") or 0))
+                row["duration_ms"] = previous_total + duration
+                row["elapsed_seconds"] = round((previous_total + duration) / 1000.0, 3)
+                row["last_duration_ms"] = duration
+                row["max_duration_ms"] = max(int(row.get("max_duration_ms") or 0), duration)
+                row["visits"] = previous_visits + 1
+                row["outcome"] = normalized_outcome
+                row["last_recorded_at"] = now_wall
+            # Checkpoint the first sample, then at most once per second.  A
+            # non-success outcome is flushed immediately so an early failure
+            # remains visible even if the worker exits before its terminal
+            # callback.  Terminal/stage saves still persist every in-memory
+            # sample regardless of this advisory checkpoint.
+            normalized_task_id = str(task_id or "")
+            has_checkpoint = normalized_task_id in self._timing_checkpoint_mono
+            last_checkpoint = self._timing_checkpoint_mono.get(normalized_task_id, 0.0)
+            checkpoint_due = (
+                not has_checkpoint
+                or now_mono - last_checkpoint >= 1.0
+                or normalized_outcome not in {"success", "skipped"}
+            )
+            should_save = bool(checkpoint_due)
+            row_snapshot = dict(row)
+            if should_save:
+                # Copy only the timing object while holding the manager lock;
+                # the potentially slow disk operation happens below after the
+                # lock is released.  A checkpoint is advisory and never
+                # replaces the authoritative stage/terminal save paths.
+                try:
+                    timing_snapshot = copy.deepcopy(timing)
+                except Exception:
+                    timing_snapshot = None
+                checkpoint_requested = timing_snapshot is not None
+                if checkpoint_requested:
+                    # Reserve the interval before leaving the lock so two
+                    # concurrent adapter callbacks do not both rewrite the
+                    # same task snapshot.  A failed write is released below.
+                    self._timing_checkpoint_mono[normalized_task_id] = now_mono
+        if checkpoint_requested and timing_snapshot is not None:
+            try:
+                self.task_store.save_timing(checkpoint_task_id, timing_snapshot)
+            except Exception as exc:
+                # Timing persistence is diagnostic only; the worker's normal
+                # result save path remains authoritative.  Allow a later
+                # callback to retry after a storage failure.
+                with self._lock:
+                    if self._timing_checkpoint_mono.get(checkpoint_task_id) == now_mono:
+                        self._timing_checkpoint_mono.pop(checkpoint_task_id, None)
+                self._log(
+                    f"[{checkpoint_task_id}/保存 Free 任务计时/free_task_timing_checkpoint] "
+                    f"计时 checkpoint 保存失败（{type(exc).__name__}）",
+                    "warn",
+                    task_id=checkpoint_task_id,
+                    node_code="free_task_timing_checkpoint",
+                    node_label="保存 Free 任务计时",
+                    outcome="storage_warning",
+                )
+        if row_snapshot is not None and normalized_code not in poll_codes:
+            self._log(
+                f"[{task_id}/{label}/{normalized_stage}] 子步骤完成 "
+                f"duration_ms={int(row_snapshot.get('last_duration_ms') or 0)} "
+                f"outcome={normalized_outcome}",
+                "info" if normalized_outcome in {"success", "skipped"} else "warn",
+                task_id=task_id,
+                stage=normalized_stage,
+                stage_label=FREE_STAGE_LABELS.get(normalized_stage, normalized_stage),
+                node_code=normalized_stage,
+                node_label=FREE_STAGE_LABELS.get(normalized_stage, normalized_stage),
+                substep_code=normalized_code,
+                substep_label=label,
+                duration_ms=int(row_snapshot.get("last_duration_ms") or 0),
+                outcome=normalized_outcome,
+            )
 
     def _append_timing_stage(
         self,
@@ -448,6 +600,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                         "retry_resolved": child_status in {"success", "partial_success"},
                     })
                 self.task_store.save(self._tasks)
+                self._timing_checkpoint_mono.pop(task_id, None)
         if final_stage:
             self._log(
                 f"[{task_id}/{final_label}/{final_stage}] 完成",
@@ -918,6 +1071,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         )
         if proxy_content.strip() and scheme:
             self.proxies.default_scheme = str(scheme).strip().lower()
+        saved_pool = not str(proxy_content or "").strip()
         values = self.proxies.values(proxy_content)
         if not values:
             raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", "请先粘贴或保存至少一个 Free 代理", retryable=False)
@@ -933,6 +1087,9 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                             "Free 代理分层探测",
                             str(layered.get("failure_reason") or "代理分层探测失败"),
                             retryable=True,
+                            provider_status=layered.get("http_status")
+                            or layered.get("https_status")
+                            or layered.get("chatgpt_status"),
                         )
                 # A layered probe already performed the transport and
                 # ChatGPT-login requests. Reusing its result avoids issuing a
@@ -954,8 +1111,26 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 row.setdefault("failure_reason", "")
                 if layered is not None:
                     row["layered_probe"] = layered
-                    row["http_status"] = 200 if layered.get("ok") else None
+                    row["http_status"] = (
+                        layered.get("http_status")
+                        or layered.get("https_status")
+                        or layered.get("chatgpt_status")
+                    )
                     row["proxy_to_target_ms"] = layered.get("https_request_ms")
+                if saved_pool:
+                    # A successful manual recheck is explicit health evidence:
+                    # clear quarantine and make the saved row eligible again.
+                    parsed = self.proxies._parse_lines(value, country="", group="", scheme=self.proxies.default_scheme)
+                    record = parsed[0] if parsed else {}
+                    proxy_id = str(record.get("proxy_id") or "")
+                    if proxy_id:
+                        self.proxies.record_success(
+                            proxy_id,
+                            latency_ms=row.get("proxy_to_target_ms"),
+                            probe_mode=str(row.get("probe_mode") or "manual"),
+                            effective_scheme=str(row.get("effective_scheme") or ""),
+                            http_status=row.get("http_status"),
+                        )
             except Exception as exc:
                 failure = exception_to_failure(
                     exc,
@@ -976,6 +1151,15 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     "failure_node": failure.get("node_code") or "proxy_connect_failed",
                     "failure_reason": failure.get("technical_summary") or failure.get("public_message") or "代理请求失败",
                 }
+                if saved_pool and is_proxy_health_failure(exc):
+                    proxy_id = str(record.get("proxy_id") or "")
+                    if proxy_id:
+                        self.proxies.record_failure(
+                            proxy_id,
+                            node_code=str(failure.get("node_code") or "proxy_connect_failed"),
+                            message=str(failure.get("technical_summary") or failure.get("public_message") or "代理请求失败"),
+                            http_status=failure.get("http_status"),
+                        )
             row["index"] = index
             diagnostics.append(row)
         return {
@@ -1833,6 +2017,13 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             task_config["_manual_generation_getter"] = self._manual_generation
         self._log(f"[{task_id}/free_oauth_session] Free 任务开始", "info")
         task_log = lambda message, level="info", **fields: self._task_log(task_id, message, level, **fields)
+        # Keep adapter-level timings attached to this task without changing
+        # the historical runner callable signature or protocol ordering.
+        task_config["_timing_substep"] = (
+            lambda stage_code, code, elapsed_ms, outcome="success": self._record_timing_substep(
+                task_id, stage_code, code, elapsed_ms, outcome,
+            )
+        )
         try:
             if self._stop.is_set():
                 raise FreeRegisterError("free_run_stop", "停止 Free 注册", "任务在执行前已停止", retryable=False)

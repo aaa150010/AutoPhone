@@ -10,7 +10,14 @@ import FreeTaskLogDialog from '../components/FreeTaskLogDialog.vue'
 import TaskVerificationInput from '../components/TaskVerificationInput.vue'
 import TaskProgressCell from '../components/TaskProgressCell.vue'
 import { currentRelease } from '../releaseNotes'
-import { freeFailureCause, freeFailureDetails, freeFailureNodeIdentity } from '../utils/freeFailure'
+import {
+  ACCOUNT_BANNED_DISPLAY_MESSAGE,
+  freeFailureCause,
+  freeFailureDetails,
+  freeFailureNodeIdentity,
+  isCurrentAccountBanned,
+  isRetryResolved,
+} from '../utils/freeFailure'
 import { useTaskProgressClock } from '../composables/useTaskProgressClock'
 
 const defaultConfig: FreeConfig = {
@@ -73,12 +80,12 @@ const filteredTasks = computed(() => {
   return visibleTasks.value.filter(task => {
     const haystack = [task.email, task.task_id, task.failure?.node_label, task.failure?.node_code].join(' ').toLowerCase()
     return (!query || haystack.includes(query))
-      && (taskStatusFilter.value === 'all' || (taskStatusFilter.value === 'active' ? ['queued', 'running'].includes(task.status) : task.status === taskStatusFilter.value && !task.retry_resolved))
+      && (taskStatusFilter.value === 'all' || (taskStatusFilter.value === 'active' ? ['queued', 'running'].includes(task.status) : task.status === taskStatusFilter.value && !isRetryResolved(task.retry_resolved)))
       && (!taskDriverFilter.value || task.driver === taskDriverFilter.value)
   })
 })
 const taskCounts = computed(() => {
-  const count = (status: string) => visibleTasks.value.filter(task => task.status === status && !task.retry_resolved).length
+  const count = (status: string) => visibleTasks.value.filter(task => task.status === status && !isRetryResolved(task.retry_resolved)).length
   return { total: visibleTasks.value.length, running: count('running') + count('queued'), success: count('success') + count('partial_success'), partial: count('partial_success'), failed: count('failed'), pending: count('twofa_pending'), rerun: count('pending_rerun'), stopped: count('stopped') }
 })
 const selectedTask = computed(() => visibleTasks.value.find(task => task.task_id === selectedTaskId.value))
@@ -465,19 +472,26 @@ async function refreshPlan(task: any) {
 }
 
 function taskStatusLabel(status: string) {
-  return ({ queued: '排队', running: '运行中', success: '成功', partial_success: '部分成功', failed: '失败', pending_rerun: '待重跑', stopped: '已停止', twofa_pending: '2FA 待重试' } as Record<string, string>)[status] || status || '-'
+  return ({ queued: '排队', running: '运行中', success: '成功', partial_success: '部分成功', failed: '失败', pending_rerun: '待重跑', stopped: '已停止', twofa_pending: '2FA 待重试', account_banned: ACCOUNT_BANNED_DISPLAY_MESSAGE } as Record<string, string>)[status] || status || '-'
 }
 
 function displayTaskStatus(task: any) {
-  return task?.retry_resolved ? '已由重试解决' : taskStatusLabel(String(task?.status || ''))
+  if (isCurrentAccountBanned(task?.status, task?.failure, task?.retry_resolved)) {
+    return ACCOUNT_BANNED_DISPLAY_MESSAGE
+  }
+  return isRetryResolved(task?.retry_resolved) ? '已由重试解决' : taskStatusLabel(String(task?.status || ''))
 }
 
 function taskStatusType(status: string) {
-  return status === 'success' ? 'success' : ['partial_success', 'pending_rerun'].includes(status) ? 'warning' : status === 'failed' ? 'danger' : status === 'stopped' ? 'info' : 'warning'
+  return ['success'].includes(status) ? 'success' : ['partial_success', 'pending_rerun', 'twofa_pending'].includes(status) ? 'warning' : ['failed', 'account_banned'].includes(status) ? 'danger' : status === 'stopped' ? 'info' : 'warning'
 }
 
 function taskFailureCause(task: any) {
-  return freeFailureCause(task?.failure)
+  return freeFailureCause(task?.failure, { retryResolved: task?.retry_resolved })
+}
+
+function taskIsAccountBanned(task: any) {
+  return isCurrentAccountBanned(task?.status, task?.failure, task?.retry_resolved)
 }
 
 function taskFailureDetails(task: any) {
@@ -548,7 +562,7 @@ onUnmounted(() => window.clearTimeout(timer))
             <el-table-column label="耗时" min-width="190"><template #default="{ row }"><TaskProgressCell :progress="row.progress" :timing="row.timing" :now-seconds="nowSeconds" :status="row.status" /></template></el-table-column>
             <el-table-column label="Slot" width="78" align="center"><template #default="{ row }">{{ row.slot_index || '-' }} / {{ row.concurrency_limit || config.concurrency }}</template></el-table-column>
             <el-table-column label="代理池" min-width="180" show-overflow-tooltip><template #default="{ row }"><span>共享健康随机池</span><small class="task-subline">{{ row.proxy_scheme || '' }} · {{ row.proxy_masked || '' }}</small></template></el-table-column>
-            <el-table-column label="状态" width="108" align="center"><template #default="{ row }"><el-tag size="small" :type="row.retry_resolved ? 'success' : taskStatusType(row.status)">{{ displayTaskStatus(row) }}</el-tag></template></el-table-column>
+            <el-table-column label="状态" width="180" align="center" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" :type="isRetryResolved(row.retry_resolved) ? 'success' : taskStatusType(row.status)">{{ displayTaskStatus(row) }}</el-tag></template></el-table-column>
             <el-table-column label="套餐" min-width="155" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" :type="taskPlanType(row)" effect="light">{{ taskPlanLabel(row) }}</el-tag><el-tooltip v-if="row.result?.has_access_token && String(row.result?.plan_check_status || '').toLowerCase() === 'failed'" content="重新查询套餐"><el-button link size="small" :icon="Refresh" :loading="planBusy === String(row.task_id || row.row_id)" :disabled="Boolean(planBusy)" aria-label="重新查询套餐" @click.stop="refreshPlan(row)" /></el-tooltip></template></el-table-column>
             <el-table-column label="2FA" width="92" align="center"><template #default="{ row }"><el-tag size="small" :type="taskTwofaType(row)" effect="plain">{{ taskTwofaLabel(row) }}</el-tag></template></el-table-column>
             <el-table-column label="Profile" min-width="110" show-overflow-tooltip><template #default="{ row }">{{ row.profile_summary || '-' }}</template></el-table-column>
@@ -558,8 +572,12 @@ onUnmounted(() => window.clearTimeout(timer))
                 <el-tooltip placement="top" :disabled="!taskFailureDetails(row).length">
                   <template #content><div class="failure-tooltip"><span v-for="item in taskFailureDetails(row)" :key="item">{{ item }}</span></div></template>
                   <div class="failure-cell">
-                    <strong v-if="taskFailureNode(row).label || taskFailureNode(row).code">{{ taskFailureNode(row).label || taskFailureNode(row).code }}<code v-if="taskFailureNode(row).showCode">{{ taskFailureNode(row).code }}</code></strong>
-                    <span>{{ taskFailureCause(row) }}</span>
+                    <template v-if="isRetryResolved(row.retry_resolved)"><strong class="resolved-text">已由重试解决</strong></template>
+                    <template v-else-if="taskIsAccountBanned(row)"><strong>{{ ACCOUNT_BANNED_DISPLAY_MESSAGE }}<code>{{ taskFailureNode(row).code || 'account_banned' }}</code></strong></template>
+                    <template v-else>
+                      <strong v-if="taskFailureNode(row).label || taskFailureNode(row).code">{{ taskFailureNode(row).label || taskFailureNode(row).code }}<code v-if="taskFailureNode(row).showCode">{{ taskFailureNode(row).code }}</code></strong>
+                      <span>{{ taskFailureCause(row) }}</span>
+                    </template>
                     <small v-if="row.incident_id" class="task-incident">
                       <el-button text size="small" :icon="CopyDocument" @click.stop="copyIncidentId(row.incident_id)">日志 ID {{ row.incident_id }}</el-button>
                       <el-button text size="small" :icon="View" aria-label="打开故障详情" @click.stop="openIncidentCenter(row.incident_id)" />

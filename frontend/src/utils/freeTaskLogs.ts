@@ -80,6 +80,8 @@ export function freeLogContextText(row: FreeLogEntry): string {
   const page = safeFreeLogPage(row.safe_page || row.page)
   const rebuilds = row.session_rebuilds
   return [
+    row.substep_label ? `子步骤 ${row.substep_label}` : '',
+    row.substep_code && row.substep_code !== row.substep_label ? row.substep_code : '',
     row.duration_ms ? `${row.duration_ms}ms` : '',
     row.page_type ? `页面 ${row.page_type}` : '',
     page,

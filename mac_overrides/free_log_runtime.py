@@ -46,6 +46,7 @@ class FreeLogStore:
         "declared_scheme", "transport_scheme", "target_domain", "request_stage",
         "retry_count", "transport_error_code",
         "retry_after_seconds",
+        "substep_code", "substep_label",
     })
     _SCHEMES = frozenset({"http", "https", "socks4", "socks5", "socks5h"})
     _TRANSPORT_CODES = frozenset({
@@ -142,6 +143,8 @@ class FreeLogStore:
             "retry_count": cls._number(raw.get("retry_count"), maximum=100),
             "retry_after_seconds": cls._number(raw.get("retry_after_seconds"), maximum=86400),
             "transport_error_code": transport_error_code if transport_error_code in cls._TRANSPORT_CODES else "",
+            "substep_code": sanitize_failure_text(raw.get("substep_code"), 120),
+            "substep_label": sanitize_failure_text(raw.get("substep_label"), 160),
         }
         retryable = raw.get("retryable")
         if isinstance(retryable, bool):
@@ -195,6 +198,7 @@ class FreeLogStore:
                 "declared_scheme", "transport_scheme", "target_domain", "request_stage",
                 "retry_count", "transport_error_code",
                 "retry_after_seconds",
+                "substep_code", "substep_label",
             ):
                 value = fields.get(key)
                 if value not in (None, ""):

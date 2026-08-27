@@ -59,6 +59,22 @@ export interface TaskTimingSegment {
   visits: number
 }
 
+export interface TaskTimingSubstep {
+  key: string
+  stage_code: string
+  stage_label: string
+  code: string
+  label: string
+  duration_ms: number
+  elapsed_seconds: number
+  first_duration_ms?: number
+  last_duration_ms?: number
+  max_duration_ms?: number
+  visits: number
+  outcome?: string
+  last_recorded_at?: number
+}
+
 export interface TaskTiming {
   started_at: number
   queued_at?: number
@@ -70,6 +86,7 @@ export interface TaskTiming {
   execution_elapsed_seconds?: number
   stages: TaskStageTiming[]
   segments?: TaskTimingSegment[]
+  substeps?: TaskTimingSubstep[]
   slowest_node?: { code: string; label: string; duration_ms: number } | null
 }
 
@@ -129,6 +146,8 @@ export interface FreeLogEntry {
   retryable?: boolean
   result?: string
   incident_id?: string
+  substep_code?: string
+  substep_label?: string
 }
 
 export type ManualVerificationInputKind = 'email_otp' | 'sms_otp' | 'totp'
@@ -203,7 +222,9 @@ export interface RuntimeTask {
   retry_attempt?: number
   retry_task_id?: string
   retry_status?: string
-  retry_resolved?: boolean
+  // Old persisted task snapshots can encode this as a string. Consumers must
+  // normalize it with isRetryResolved rather than relying on truthiness.
+  retry_resolved?: boolean | string
   retry_updated_at?: number
   proxy_masked?: string
   proxy_fingerprint?: string

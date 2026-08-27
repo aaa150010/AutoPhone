@@ -47,6 +47,8 @@ const savedSignature = ref('')
 const running = computed(() => Boolean(state.value.running))
 const pendingRoxyCleanup = computed(() => Math.max(0, Number(state.value.roxy_cleanup?.pending || 0)))
 const roxy = computed(() => config.roxybrowser)
+const savedProxyAvailable = computed(() => proxyRows.value.filter(row => row.status === 'available').length)
+const savedProxyQuarantined = computed(() => proxyRows.value.filter(row => row.status === 'quarantined').length)
 
 function mergeConfig(value: any) {
   if (!value || typeof value !== 'object') return
@@ -148,6 +150,7 @@ async function preflightProxyPool() {
     const checkedRows = proxyCheckRows.value
     const available = checkedRows.filter(row => row.available).length
     const failed = checkedRows.length - available
+    if (!proxyText.value.trim()) await loadProxies()
     if (failed) ElMessage.warning(`代理连通性检测完成：可用 ${available} 个，失败 ${failed} 个`)
     else ElMessage.success(`代理连通性检测通过：${available} 个`)
   } catch (error: any) {
@@ -222,7 +225,7 @@ defineExpose({ save })
     <div class="selection-summary shared-proxy-summary">
       <span>共享健康随机代理池</span>
       <b>{{ Number(state.pool?.proxies || 0) }}</b>
-      <small>任务共享健康随机代理；连接观测变化不会阻断健康任务</small>
+      <small>已保存 {{ savedProxyAvailable }} 个可用 · {{ savedProxyQuarantined }} 个隔离；任务共享健康随机代理</small>
     </div>
 
     <el-row :gutter="10">
@@ -343,7 +346,7 @@ defineExpose({ save })
         <div class="proxy-import-field"><FieldHelpLabel label="代理来源（可选）" help="仅用于报表和供应商对比，例如 1024、cliproxy；不会参与代理分配，也不会写入代理凭据。" /><el-input v-model="proxySourceLabel" maxlength="40" show-word-limit placeholder="例如 1024 / cliproxy" /></div>
       </div>
       <el-input v-model="proxyText" type="textarea" :rows="5" :disabled="running" placeholder="每行一个代理，支持 URL、host:port:user:pass 和两种 @ 格式" autocomplete="off" />
-      <div class="inline-actions"><el-button size="small" :icon="CircleCheck" :loading="busy === 'proxy-preflight'" :disabled="running || !proxyText.trim()" @click="preflightProxyPool">检测代理连通性</el-button><el-checkbox v-model="layeredProbe" :disabled="running">分层诊断</el-checkbox><span class="muted">分层诊断会额外记录 TCP、HTTPS 和 ChatGPT 登录页耗时，不保存响应正文。</span></div>
+      <div class="inline-actions"><el-button size="small" :icon="CircleCheck" :loading="busy === 'proxy-preflight'" :disabled="running || (!proxyText.trim() && !proxyRows.length)" @click="preflightProxyPool">{{ proxyText.trim() ? '检测代理连通性' : '复检已保存代理' }}</el-button><el-checkbox v-model="layeredProbe" :disabled="running">分层诊断</el-checkbox><span class="muted">留空时复检已保存代理，成功会解除隔离；分层诊断会额外记录 TCP、HTTPS 和 ChatGPT 登录页耗时，不保存响应正文。</span></div>
       <template v-if="proxyCheckRows.length"><div class="proxy-table-heading"><FieldHelpLabel label="本次检测结果" help="仅展示声明协议、脱敏地址、响应状态和耗时；检测不解析、保存或比较出口 IP。" /></div><el-table :data="proxyCheckRows" size="small" height="180" class="proxy-check-table"><el-table-column type="index" label="序号" width="58" align="center" fixed="left" /><el-table-column prop="masked" label="代理掩码" min-width="220" /><el-table-column prop="scheme" label="协议" width="85" /><el-table-column label="状态" width="75"><template #default="{ row }"><el-tag size="small" :type="row.available ? 'success' : 'danger'">{{ row.available ? '可用' : '失败' }}</el-tag></template></el-table-column><el-table-column prop="http_status" label="HTTP" width="70" /><el-table-column label="耗时" width="170"><template #default="{ row }"><span v-if="row.layered_probe">TCP {{ row.layered_probe.tcp_connect_ms ?? '-' }} ms · HTTPS {{ row.layered_probe.https_request_ms ?? '-' }} ms · 登录 {{ row.layered_probe.chatgpt_request_ms ?? '-' }} ms</span><span v-else>{{ row.proxy_to_target_ms != null ? `${row.proxy_to_target_ms} ms` : '-' }}</span></template></el-table-column><el-table-column prop="failure_node" label="故障节点" min-width="150" /><el-table-column prop="fingerprint" label="指纹" min-width="120" /></el-table></template>
       <template v-if="proxyRows.length"><div class="proxy-table-heading"><FieldHelpLabel label="代理明细" help="已保存共享 Free 代理池的逐条记录。用于查看来源、声明/有效协议、健康状态、成功率和延迟；认证信息始终隐藏。" /></div><el-table :data="proxyRows" size="small" height="180" class="proxy-check-table"><el-table-column type="index" label="序号" width="58" align="center" fixed="left" /><el-table-column prop="source_label" label="来源" width="100" show-overflow-tooltip /><el-table-column label="协议" width="125"><template #default="{ row }">{{ row.declared_scheme || row.scheme || '-' }}<small class="table-subline">有效 {{ row.effective_scheme || row.scheme || '-' }}</small></template></el-table-column><el-table-column prop="masked" label="代理" min-width="210" show-overflow-tooltip /><el-table-column width="85"><template #header><FieldHelpLabel label="状态" help="未检测表示尚无成功探测；可用表示最近探测成功；已隔离表示连续失败达到阈值，隔离期内不会分配。" /></template><template #default="{ row }">{{ proxyStatusLabel(row.status) }}</template></el-table-column><el-table-column label="成功率" width="90"><template #default="{ row }">{{ row.probe_success_rate == null ? '-' : `${(Number(row.probe_success_rate) * 100).toFixed(1)}%` }}</template></el-table-column><el-table-column label="p50 / p95" width="105"><template #default="{ row }">{{ row.p50_latency_ms == null ? '-' : `${row.p50_latency_ms} / ${row.p95_latency_ms ?? '-'} ms` }}</template></el-table-column><el-table-column prop="last_probe_mode" label="探测模式" width="90"><template #default="{ row }">{{ row.last_probe_mode === 'compat' ? '兼容重试' : row.last_probe_mode === 'strict' ? '严格校验' : '-' }}</template></el-table-column><el-table-column prop="consecutive_failures" label="连续失败" width="85" /></el-table></template>
     </div>

@@ -34,6 +34,14 @@ _FAILURE_EMAIL_RE = re.compile(
     r"(?<![\w.+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}(?![\w.-])",
     re.IGNORECASE,
 )
+# Incident IDs are the only digit-bearing diagnostic values that may remain
+# visible.  Protect the complete generated format before applying phone
+# redaction; merely exempting a ``LOG-`` prefix would allow spoofed values such
+# as ``LOG-15551234567`` to leak a real phone number.
+_FAILURE_INCIDENT_RE = re.compile(
+    r"(?<![\w-])LOG-\d{8}-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}(?![\w-])",
+    re.IGNORECASE,
+)
 _FAILURE_PHONE_RE = re.compile(r"(?<![\w])\+?\d{8,15}(?![\w])")
 _IDENTIFIER_RE = re.compile(r"[^a-zA-Z0-9_.:-]+")
 _HTTP_STATUS_RE = re.compile(r"^[1-5]\d\d$")
@@ -109,10 +117,21 @@ def _redact_secret(match: re.Match[str]) -> str:
 def sanitize_failure_text(value: Any, limit: int = 800) -> str:
     """Return diagnostic text without transport or account credentials."""
     text = safe_log_message(value)
+    protected_incidents: list[str] = []
+
+    def protect_incident(match: re.Match[str]) -> str:
+        protected_incidents.append(match.group(0))
+        # Use a non-numeric marker so the phone and OTP passes cannot consume
+        # any part of the protected identifier.
+        return f"__INCIDENT_{len(protected_incidents) - 1}__"
+
+    text = _FAILURE_INCIDENT_RE.sub(protect_incident, text)
     text = _FAILURE_URL_RE.sub(_redact_url, text)
     text = _FAILURE_SECRET_RE.sub(_redact_secret, text)
     text = _FAILURE_EMAIL_RE.sub("<邮箱>", text)
     text = _FAILURE_PHONE_RE.sub("<手机号>", text)
+    for index, incident_id in enumerate(protected_incidents):
+        text = text.replace(f"__INCIDENT_{index}__", incident_id)
     return text[: max(0, int(limit))]
 
 

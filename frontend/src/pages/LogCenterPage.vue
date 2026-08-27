@@ -12,6 +12,13 @@ import {
   type DiagnosticEvent,
   type DiagnosticIncident,
 } from '../api/client'
+import {
+  ACCOUNT_BANNED_DISPLAY_MESSAGE,
+  diagnosticEventNodeLabel,
+  diagnosticIncidentNodeLabel,
+  isAccountBannedDiagnostic,
+  isSuccessfulDiagnosticOutcome,
+} from '../utils/freeFailure'
 
 const props = defineProps<{ locationKey?: string }>()
 
@@ -71,6 +78,34 @@ function outcomeType(value: any, status?: any) {
 }
 function chainLabel(value: any) {
   return ({ ordinary: '普通流程', free: 'Free', free_rebind: 'Free 换绑', payment: '支付', network: '网络' } as Record<string, string>)[String(value || '')] || String(value || '未知链路')
+}
+function incidentIsAccountBannedStatus(row: DiagnosticIncident) {
+  // An incident can retain an earlier failure after a later retry succeeds.
+  // Keep the final status truthful while still mapping the historical node.
+  if (isSuccessfulDiagnosticOutcome(row.status) || isSuccessfulDiagnosticOutcome(row.outcome)) return false
+  return isAccountBannedDiagnostic(row)
+}
+function incidentStatusLabel(row: DiagnosticIncident) {
+  return incidentIsAccountBannedStatus(row) ? ACCOUNT_BANNED_DISPLAY_MESSAGE : outcomeLabel(row.outcome, row.status)
+}
+function incidentStatusType(row: DiagnosticIncident) {
+  return incidentIsAccountBannedStatus(row) ? 'danger' : outcomeType(row.outcome, row.status)
+}
+function eventOutcomeLabel(event: DiagnosticEvent) {
+  return !isSuccessfulDiagnosticOutcome(event.outcome) && isAccountBannedDiagnostic(event)
+    ? ACCOUNT_BANNED_DISPLAY_MESSAGE
+    : outcomeLabel(event.outcome)
+}
+function eventOutcomeType(event: DiagnosticEvent) {
+  return !isSuccessfulDiagnosticOutcome(event.outcome) && isAccountBannedDiagnostic(event)
+    ? 'danger'
+    : outcomeType(event.outcome)
+}
+function eventNodeLabel(event: DiagnosticEvent) {
+  return diagnosticEventNodeLabel(event)
+}
+function incidentNodeLabel(row: DiagnosticIncident) {
+  return diagnosticIncidentNodeLabel(row)
 }
 function formatTime(value: any) {
   if (!value) return '-'
@@ -228,11 +263,11 @@ watch(() => props.locationKey, (value, previous) => {
       <el-table v-else class="incident-table" :data="incidents" v-loading="loading" height="100%" stripe @selection-change="selectRows">
         <el-table-column type="selection" width="46" fixed="left" />
         <el-table-column label="日志 ID" min-width="188" fixed="left"><template #default="{ row }"><div class="incident-id"><el-link type="primary" @click="openIncident(row)">{{ row.incident_id }}</el-link><el-button text size="small" :icon="CopyDocument" aria-label="复制日志 ID" @click="copyIncidentId(row)" /></div></template></el-table-column>
-        <el-table-column label="状态" width="78"><template #default="{ row }"><el-tag size="small" :type="outcomeType(row.outcome, row.status)">{{ outcomeLabel(row.outcome, row.status) }}</el-tag></template></el-table-column>
+        <el-table-column label="状态" width="170"><template #default="{ row }"><el-tag size="small" :type="incidentStatusType(row)">{{ incidentStatusLabel(row) }}</el-tag></template></el-table-column>
         <el-table-column prop="subject_display" label="账号" min-width="150" show-overflow-tooltip />
         <el-table-column label="链路" min-width="150"><template #default="{ row }">{{ chainLabel(row.chain) }} / {{ row.driver || '-' }}</template></el-table-column>
         <el-table-column label="匹配依据" min-width="150" show-overflow-tooltip><template #default="{ row }">{{ (row.match_basis || []).join('、') || '最近发生时间' }}</template></el-table-column>
-        <el-table-column label="首个失败节点" min-width="210" show-overflow-tooltip><template #default="{ row }"><span class="failure-node">{{ row.first_node_label || '-' }}</span><code>{{ row.first_node_code || '' }}</code></template></el-table-column>
+        <el-table-column label="首个失败节点" min-width="210" show-overflow-tooltip><template #default="{ row }"><span class="failure-node">{{ incidentNodeLabel(row) }}</span><code>{{ row.first_node_code || '' }}</code></template></el-table-column>
         <el-table-column prop="task_id" label="任务 ID" min-width="150" show-overflow-tooltip />
         <el-table-column label="发生时间" min-width="170"><template #default="{ row }">{{ formatTime(row.updated_at) }}</template></el-table-column>
         <el-table-column label="操作" width="170" fixed="right"><template #default="{ row }"><el-button text size="small" @click="copyGpt(row)">复制 GPT 诊断</el-button><el-button text size="small" :icon="Download" aria-label="下载 JSON" @click="downloadJson(row)" /></template></el-table-column>
@@ -242,9 +277,9 @@ watch(() => props.locationKey, (value, previous) => {
     <el-drawer v-model="detailOpen" :title="detail ? `日志详情 · ${detail.incident_id}` : '日志详情'" size="720px" destroy-on-close>
       <template v-if="detail">
         <div class="detail-actions"><el-button size="small" :icon="CopyDocument" @click="copyIncidentId(detail)">复制日志 ID</el-button><el-button size="small" @click="copyGpt(detail)">复制 GPT 诊断</el-button><el-button size="small" :icon="Download" @click="downloadJson(detail)">下载 JSON</el-button></div>
-        <el-descriptions :column="2" border size="small" class="detail-summary"><el-descriptions-item label="日志 ID">{{ detail.incident_id }}</el-descriptions-item><el-descriptions-item label="最终状态">{{ outcomeLabel(detail.outcome, detail.status) }}</el-descriptions-item><el-descriptions-item label="完整性">{{ detail.integrity_status || '-' }}</el-descriptions-item><el-descriptions-item label="链路">{{ chainLabel(detail.chain) }}</el-descriptions-item><el-descriptions-item label="驱动">{{ detail.driver || '-' }}</el-descriptions-item><el-descriptions-item label="任务 ID">{{ detail.task_id || '-' }}</el-descriptions-item><el-descriptions-item label="批次 ID">{{ detail.batch_id || '-' }}</el-descriptions-item><el-descriptions-item label="首个失败节点" :span="2">{{ detail.first_node_label || '-' }} / {{ detail.first_node_code || '-' }}</el-descriptions-item><el-descriptions-item label="错误代码">{{ detail.first_error_code || '-' }}</el-descriptions-item><el-descriptions-item label="HTTP 状态">{{ detail.failure?.http_status || '-' }}</el-descriptions-item><el-descriptions-item label="Provider Code">{{ detail.failure?.provider_code || '-' }}</el-descriptions-item><el-descriptions-item label="事件数">{{ detail.event_count || 0 }}</el-descriptions-item></el-descriptions>
+        <el-descriptions :column="2" border size="small" class="detail-summary"><el-descriptions-item label="日志 ID">{{ detail.incident_id }}</el-descriptions-item><el-descriptions-item label="最终状态">{{ incidentStatusLabel(detail) }}</el-descriptions-item><el-descriptions-item label="完整性">{{ detail.integrity_status || '-' }}</el-descriptions-item><el-descriptions-item label="链路">{{ chainLabel(detail.chain) }}</el-descriptions-item><el-descriptions-item label="驱动">{{ detail.driver || '-' }}</el-descriptions-item><el-descriptions-item label="任务 ID">{{ detail.task_id || '-' }}</el-descriptions-item><el-descriptions-item label="批次 ID">{{ detail.batch_id || '-' }}</el-descriptions-item><el-descriptions-item label="首个失败节点" :span="2">{{ incidentNodeLabel(detail) }} / {{ detail.first_node_code || '-' }}</el-descriptions-item><el-descriptions-item label="错误代码">{{ detail.first_error_code || '-' }}</el-descriptions-item><el-descriptions-item label="HTTP 状态">{{ detail.failure?.http_status || '-' }}</el-descriptions-item><el-descriptions-item label="Provider Code">{{ detail.failure?.provider_code || '-' }}</el-descriptions-item><el-descriptions-item label="事件数">{{ detail.event_count || 0 }}</el-descriptions-item></el-descriptions>
         <section class="detail-section"><h3>已确认事实</h3><p class="fact-note">以下内容来自本地脱敏审计事件，不代表未记录内容。</p></section>
-        <section class="detail-section"><h3>关键时间线</h3><el-timeline><el-timeline-item v-for="event in detail.events || []" :key="event.event_id" :timestamp="formatTime(event.occurred_at)" :type="outcomeType(event.outcome)"><div class="event-row"><strong>{{ event.node_label || event.node_code || '未命名节点' }}</strong><el-tag size="small" :type="outcomeType(event.outcome)">{{ outcomeLabel(event.outcome) }}</el-tag><span v-if="event.attempt">第 {{ event.attempt }} 次</span><span v-if="event.elapsed_ms != null">耗时 {{ formatDuration(event) }}</span></div><code v-if="event.node_code">{{ event.node_code }}</code><p v-if="event.message">{{ event.message }}</p></el-timeline-item></el-timeline></section>
+        <section class="detail-section"><h3>关键时间线</h3><el-timeline><el-timeline-item v-for="event in detail.events || []" :key="event.event_id" :timestamp="formatTime(event.occurred_at)" :type="eventOutcomeType(event)"><div class="event-row"><strong>{{ eventNodeLabel(event) }}</strong><el-tag size="small" :type="eventOutcomeType(event)">{{ eventOutcomeLabel(event) }}</el-tag><span v-if="event.attempt">第 {{ event.attempt }} 次</span><span v-if="event.elapsed_ms != null">耗时 {{ formatDuration(event) }}</span></div><code v-if="event.node_code">{{ event.node_code }}</code><p v-if="event.message">{{ event.message }}</p></el-timeline-item></el-timeline></section>
         <section class="detail-section"><h3>未确认信息</h3><p class="unknown-note">历史原始日志可能已经按保留策略清理；当前详情只使用已进入诊断索引的脱敏事件。</p></section>
       </template>
     </el-drawer>

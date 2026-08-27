@@ -28,7 +28,6 @@ import LogPanel from '../components/LogPanel.vue'
 import MailboxImportDialog from '../components/MailboxImportDialog.vue'
 import OpenAIConnectivityBanner from '../components/OpenAIConnectivityBanner.vue'
 import PageToolbar from '../components/PageToolbar.vue'
-import RunStartDialog from '../components/RunStartDialog.vue'
 import TaskResultsPanel from '../components/TaskResultsPanel.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import { useAppController } from '../composables/useAppController'
@@ -44,7 +43,6 @@ import {
 const emit = defineEmits<{ navigate: [string] }>()
 const controller = useAppController()
 const mailboxImportDialog = ref<InstanceType<typeof MailboxImportDialog>>()
-const startDialog = ref<InstanceType<typeof RunStartDialog>>()
 const openingMailboxUrlTaskIds = ref<string[]>([])
 const loadingMailboxPasswordTaskIds = ref<string[]>([])
 const loadingMailboxTotpTaskIds = ref<string[]>([])
@@ -189,18 +187,14 @@ const statusTone = computed(() => controller.runtime.value.sms_safe_stop
   : controller.runtime.value.stop_requested
     ? 'warning'
     : controller.running.value ? 'success' : 'info')
-function openStartDialog() {
+async function start() {
   if (controller.dirty.value) {
     emit('navigate', '/settings')
     ElMessage.warning('请先保存运行配置')
     return
   }
-  startDialog.value?.open()
-}
-
-async function start(selection: { runMode: 'register' }) {
   try {
-    const result = await controller.start(false, selection.runMode)
+    const result = await controller.start(false, 'register')
     if (!result) return
     ElMessage.success('任务已启动')
   } catch (error: any) {
@@ -424,7 +418,7 @@ async function disableConnectivityGuard() {
       <el-tooltip v-if="controller.dirty.value" content="存在未保存配置，请先进入运行配置保存" placement="bottom">
         <span><el-button type="primary" disabled><el-icon><VideoPlay /></el-icon>开始运行</el-button></span>
       </el-tooltip>
-      <el-button v-else type="primary" :loading="controller.actions.starting" :disabled="controller.running.value || !controller.hasPool.value" @click="openStartDialog">
+      <el-button v-else type="primary" :loading="controller.actions.starting" :disabled="controller.running.value || !controller.hasPool.value" @click="start">
         <el-icon><VideoPlay /></el-icon>开始运行
       </el-button>
       <el-button type="danger" plain :loading="controller.actions.stopping" :disabled="!controller.running.value" @click="stop">
@@ -496,11 +490,6 @@ async function disableConnectivityGuard() {
       </div>
     </div>
 
-    <RunStartDialog
-      ref="startDialog"
-      :loading="controller.actions.starting"
-      @confirm="start"
-    />
     <MailboxImportDialog ref="mailboxImportDialog" @imported="applyImportedMailboxes" />
   </div>
 </template>

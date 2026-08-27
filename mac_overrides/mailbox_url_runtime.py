@@ -396,6 +396,7 @@ class _SameOriginRedirectHandler(urllib.request.HTTPRedirectHandler):
 
 
 FetchFn = Callable[[str], MailboxResponse]
+TimingFn = Callable[[str, int, str], Any]
 
 
 class MailboxUrlClient:
@@ -407,6 +408,8 @@ class MailboxUrlClient:
         proxy: str = "",
         fetcher: FetchFn | None = None,
         now_fn: Callable[[], float] = time.time,
+        monotonic_fn: Callable[[], float] = time.monotonic,
+        timing_fn: TimingFn | None = None,
     ) -> None:
         try:
             parsed = urllib.parse.urlsplit(str(mailbox_url or "").strip())
@@ -419,6 +422,8 @@ class MailboxUrlClient:
         self.proxy = str(proxy or "").strip()
         self.fetcher = fetcher
         self.now_fn = now_fn
+        self.monotonic_fn = monotonic_fn
+        self.timing_fn = timing_fn
         self._detail_cache: dict[str, tuple[MailboxMessage, ...]] = {}
         self._detail_refresh_cursor = 0
         self._client_mailbox_api: _ClientMailboxApi | None = None
@@ -429,6 +434,19 @@ class MailboxUrlClient:
         self._client_mailbox_deep_refresh_done = False
         self._client_mailbox_refresh_error_code = ""
         self._client_mailbox_refresh_http_status: int | None = None
+
+    def _timing(self, code: str, started: float, outcome: str = "success") -> None:
+        callback = self.timing_fn
+        if not callable(callback):
+            return
+        try:
+            callback(
+                str(code or ""),
+                max(0, int((self.monotonic_fn() - started) * 1000.0)),
+                str(outcome or "success"),
+            )
+        except Exception:
+            return
 
     def _request_client_mailbox_refresh(self, *, force: bool = False) -> None:
         self._client_mailbox_refresh_pending = True
@@ -586,6 +604,7 @@ class MailboxUrlClient:
                     )
                     if deep_due:
                         self._client_mailbox_deep_refresh_done = True
+                    refresh_started = self.monotonic_fn()
                     try:
                         refresh_response = self._fetch(refresh_url)
                         refresh_raw = _decode_bytes(
@@ -606,7 +625,9 @@ class MailboxUrlClient:
                         )
                     except MailboxUrlError as exc:
                         self._remember_client_mailbox_refresh_error(exc)
+                        self._timing("mailbox_provider_refresh", refresh_started, "error")
                     else:
+                        self._timing("mailbox_provider_refresh", refresh_started, "success")
                         if refresh_error_code:
                             self._set_client_mailbox_refresh_error(
                                 refresh_error_code,
@@ -641,6 +662,8 @@ class MailboxUrlClient:
             )
 
         refreshed = 0
+        detail_started = self.monotonic_fn()
+        detail_outcome = "success"
         for detail_url in [*uncached_urls, *refresh_urls]:
             try:
                 detail_response = self._fetch(detail_url)
@@ -648,9 +671,12 @@ class MailboxUrlClient:
                 detail_messages, _unused_links = parse_mailbox_payload(detail_raw, detail_response.url)
             except MailboxUrlError:
                 detail_request_errors += 1
+                detail_outcome = "partial"
                 continue
             self._detail_cache[detail_url] = detail_messages
             refreshed += 1
+        if [*uncached_urls, *refresh_urls]:
+            self._timing("mailbox_detail_refresh", detail_started, detail_outcome)
         for detail_url in active_detail_urls:
             combined.extend(self._detail_cache.get(detail_url, ()))
         merged = _merge_messages(combined)
@@ -735,6 +761,7 @@ __all__ = [
     "MailboxSelection",
     "MailboxUrlClient",
     "MailboxUrlError",
+    "TimingFn",
     "MailboxUrlRow",
     "begin_runtime_request",
     "configure_runtime_request",

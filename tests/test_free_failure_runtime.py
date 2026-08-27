@@ -5,7 +5,7 @@ import tempfile
 import time
 import unittest
 
-from mac_overrides.free_failure_runtime import canonical_failure, first_failure
+from mac_overrides.free_failure_runtime import canonical_failure, first_failure, sanitize_failure_text
 from mac_overrides.free_log_runtime import FreeLogStore
 from mac_overrides.free_register_common import (
     FIXED_PASSWORD,
@@ -103,6 +103,38 @@ class FreeFailureRuntimeTests(unittest.TestCase):
             rendered,
             "reader failed token=********; plain token wording remains",
         )
+
+    def test_sanitizer_preserves_generated_incident_id_dates(self) -> None:
+        rendered = sanitize_failure_text(
+            "日志 LOG-20260827-29G56LXV 需要稍后重试，手机号 +15551234567 仍需隐藏",
+        )
+
+        self.assertIn("LOG-20260827-29G56LXV", rendered)
+        self.assertIn("<手机号>", rendered)
+        self.assertNotIn("LOG-<手机号>-29G56LXV", rendered)
+        self.assertEqual(sanitize_failure_text("phone-15551234567"), "phone-<手机号>")
+
+    def test_proxy_bind_explains_quarantined_saved_pool(self) -> None:
+        proxies = FreeProxyPool(self.data_dir)
+        proxies.import_text("proxy.example.test:8000\n")
+        proxy_id = proxies.entries()[0]["proxy_id"]
+        proxies.record_failure(
+            proxy_id,
+            node_code="proxy_connect_failed",
+            message="代理探测请求返回 HTTP 403",
+            threshold=1,
+        )
+
+        with self.assertRaises(FreeRegisterError) as raised:
+            proxies.bind(1, perform_probe=False)
+
+        error = raised.exception
+        self.assertEqual(error.error_code, "free_proxy_pool_empty")
+        self.assertTrue(error.retryable)
+        self.assertIn("有 1 条记录", str(error))
+        self.assertIn("可分配健康代理为 0 条", str(error))
+        self.assertIn("已隔离 1 条", str(error))
+        self.assertIn("proxy_connect_failed", str(error))
 
     def test_safe_page_hides_third_party_paths_and_non_page_addresses(self) -> None:
         hidden = canonical_failure({

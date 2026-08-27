@@ -243,6 +243,43 @@ class MailboxOtpServiceTests(unittest.TestCase):
         self.assertEqual(service.diagnostic()["openai_messages"], 1)
         service.close()
 
+    def test_timing_callback_reports_mailbox_milestones_without_code_contents(self):
+        events = []
+        payloads = iter((
+            MailboxResponse(
+                "https://mail.example.test/inbox",
+                b'{"messages": []}',
+                "application/json",
+                200,
+            ),
+            MailboxResponse(
+                "https://mail.example.test/inbox",
+                b'{"messages":[{"id":"new","sender":"noreply@openai.com","subject":"OpenAI verification code","body":"654321"}]}',
+                "application/json",
+                200,
+            ),
+        ))
+        service = MailboxOtpService(
+            "https://mail.example.test/inbox",
+            timeout_seconds=10,
+            fetcher=lambda _url: next(payloads),
+            timing_fn=lambda stage, code, duration, outcome: events.append(
+                (stage, code, duration, outcome)
+            ),
+        )
+        service.prepare("free_email_otp_wait")
+        self.assertEqual(service.wait_code(stage_code="free_email_otp_wait"), "654321")
+        codes = [event[1] for event in events]
+        self.assertIn("mailbox_baseline", codes)
+        self.assertIn("mailbox_poll_scan", codes)
+        self.assertIn("mailbox_first_listing", codes)
+        self.assertIn("mailbox_first_openai", codes)
+        self.assertIn("mailbox_first_code", codes)
+        self.assertTrue(all(event[0] == "free_email_otp_wait" for event in events))
+        self.assertTrue(all(isinstance(event[2], int) and event[2] >= 0 for event in events))
+        self.assertNotIn("654321", str(events))
+        service.close()
+
     def test_shared_service_extracts_latest_japanese_pickup_code(self):
         old_payload = {
             "data": {

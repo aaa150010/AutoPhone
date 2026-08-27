@@ -112,6 +112,51 @@ class FreeProxyHealthTests(unittest.TestCase):
         )
         self.assertTrue(all(is_proxy_health_failure(failure) for failure in failures))
 
+    def test_http_5xx_is_proxy_health_evidence_but_429_and_business_4xx_are_not(self):
+        for status in (500, 502, 503, 504, 599):
+            with self.subTest(status=status):
+                failure = FreeRegisterError(
+                    "free_proxy_preflight",
+                    "Free 代理预检",
+                    f"代理探测请求返回 HTTP {status}",
+                    provider_status=status,
+                )
+                self.assertTrue(is_proxy_health_failure(failure))
+        for status in (400, 401, 403, 404, 409, 429):
+            with self.subTest(status=status):
+                failure = FreeRegisterError(
+                    "free_proxy_preflight",
+                    "Free 代理预检",
+                    f"代理探测请求返回 HTTP {status}",
+                    provider_status=status,
+                )
+                self.assertFalse(is_proxy_health_failure(failure))
+        auth_failure = FreeRegisterError(
+            "free_proxy_preflight",
+            "Free 代理预检",
+            "代理探测请求返回 HTTP 407",
+            provider_status=407,
+        )
+        self.assertTrue(is_proxy_health_failure(auth_failure))
+
+        # An explicit business status wins over incidental transport wording
+        # that may be present in a provider's diagnostic message.
+        business_failure = FreeRegisterError(
+            "free_proxy_preflight",
+            "Free 代理预检",
+            "业务拒绝（proxy connect policy；HTTP 403）",
+            provider_status=403,
+        )
+        self.assertFalse(is_proxy_health_failure(business_failure))
+
+    def test_localized_http_5xx_text_is_classified_without_status_field(self):
+        failure = FreeRegisterError(
+            "free_proxy_preflight",
+            "Free 代理预检",
+            "代理探测请求返回 HTTP 503",
+        )
+        self.assertTrue(is_proxy_health_failure(failure))
+
     def test_camoufox_context_proxy_retry_is_classified_as_proxy_evidence(self):
         failure = FreeRegisterError(
             "free_camoufox_launch",

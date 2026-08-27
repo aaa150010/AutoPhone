@@ -16,6 +16,7 @@ import {
   stopFreeRebind,
 } from '../api/client'
 import type { FreeRebindMailboxRow, FreeRebindSourceRow, FreeRebindState, FreeRebindTask } from '../api/client'
+import { ACCOUNT_BANNED_DISPLAY_MESSAGE, isCurrentAccountBanned } from '../utils/freeFailure'
 
 const state = ref<FreeRebindState>({ running: false, tasks: [], sources: [], mailboxes: [] })
 const loading = ref(false)
@@ -44,11 +45,24 @@ const metrics = computed(() => {
   }
 })
 
-function statusLabel(status = '') {
+type RebindFailureRow = {
+  status?: unknown
+  failure?: Parameters<typeof isCurrentAccountBanned>[1]
+}
+
+function isAccountBannedRow(row?: RebindFailureRow | null) {
+  return isCurrentAccountBanned(row?.status, row?.failure)
+}
+
+function statusLabel(status = '', row?: RebindFailureRow) {
+  if (isAccountBannedRow(row) || String(status).trim().toLowerCase() === 'account_banned') {
+    return ACCOUNT_BANNED_DISPLAY_MESSAGE
+  }
   return ({ available: '可用', unavailable: '停用', reserved: '已预留', running: '换绑中', success: '已完成', partial_success: '已换绑，待补查', failed: '失败', stopped: '已停止', queued: '排队' } as Record<string, string>)[status] || status || '未知'
 }
 
-function statusType(status = '') {
+function statusType(status = '', row?: RebindFailureRow) {
+  if (isAccountBannedRow(row) || String(status).trim().toLowerCase() === 'account_banned') return 'danger'
   if (status === 'available' || status === 'success') return 'success'
   if (status === 'partial_success') return 'warning'
   if (status === 'failed') return 'danger'
@@ -259,9 +273,9 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
         <el-table class="panel-table" :data="state.mailboxes" height="100%" size="small" @selection-change="handleMailboxSelection">
           <el-table-column type="selection" width="42" />
           <el-table-column prop="email" label="目标邮箱" min-width="220" show-overflow-tooltip />
-          <el-table-column label="状态" width="92" align="center"><template #default="{ row }"><el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag></template></el-table-column>
+          <el-table-column label="状态" width="180" align="center" show-overflow-tooltip><template #default="{ row }"><el-tag :type="statusType(row.status, row)" size="small">{{ statusLabel(row.status, row) }}</el-tag></template></el-table-column>
           <el-table-column label="取件" width="92" align="center"><template #default="{ row }"><el-tooltip content="打开取件地址" placement="top"><el-button link :icon="Link" aria-label="打开取件地址" @click="openMailboxUrl(row)" /></el-tooltip><el-tooltip content="提取并复制最新验证码" placement="top"><el-button link :icon="CopyDocument" :loading="loadingLatestCode.includes(row.row_id)" aria-label="提取并复制最新验证码" @click="copyLatestCode(row)" /></el-tooltip></template></el-table-column>
-          <el-table-column label="错误" min-width="180" show-overflow-tooltip><template #default="{ row }"><span class="muted">{{ row.error || '-' }}</span></template></el-table-column>
+          <el-table-column label="错误" min-width="180" show-overflow-tooltip><template #default="{ row }"><span class="muted">{{ isAccountBannedRow(row) ? ACCOUNT_BANNED_DISPLAY_MESSAGE : (row.error || '-') }}</span></template></el-table-column>
         </el-table>
       </WorkspacePanel>
 
@@ -288,9 +302,9 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
         <el-table-column label="源账号" min-width="190" show-overflow-tooltip><template #default="{ row }"><div>{{ row.source_email }}</div><span class="muted">{{ row.source_row_id?.slice(0, 12) }}</span></template></el-table-column>
         <el-table-column label="目标邮箱" min-width="190" show-overflow-tooltip prop="target_email" />
         <el-table-column label="阶段" min-width="150" show-overflow-tooltip><template #default="{ row }">{{ row.stage_label || row.stage || '-' }}</template></el-table-column>
-        <el-table-column label="状态" width="92" align="center"><template #default="{ row }"><el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag></template></el-table-column>
+        <el-table-column label="状态" width="180" align="center" show-overflow-tooltip><template #default="{ row }"><el-tag :type="statusType(row.status, row)" size="small">{{ statusLabel(row.status, row) }}</el-tag></template></el-table-column>
         <el-table-column label="套餐 / Plus" width="160"><template #default="{ row }"><span>{{ row.plan_type || '-' }}</span><el-tag v-if="row.plus_trial_eligible" size="small" type="success" class="plus-tag">可试用</el-tag></template></el-table-column>
-        <el-table-column label="结果" min-width="220" show-overflow-tooltip><template #default="{ row }"><span v-if="row.status === 'success'" class="success-text">已绑定：{{ row.new_bound_email || row.target_email }}</span><span v-else class="muted">{{ row.error || '-' }}</span></template></el-table-column>
+        <el-table-column label="结果" min-width="220" show-overflow-tooltip><template #default="{ row }"><span v-if="row.status === 'success'" class="success-text">已绑定：{{ row.new_bound_email || row.target_email }}</span><span v-else class="muted">{{ isAccountBannedRow(row) ? ACCOUNT_BANNED_DISPLAY_MESSAGE : (row.error || '-') }}</span></template></el-table-column>
         <el-table-column label="操作" width="82" align="center"><template #default="{ row }"><el-button v-if="['failed', 'stopped'].includes(row.status)" link type="warning" :icon="VideoPlay" aria-label="重试换绑" @click="retry(row)" /></template></el-table-column>
       </el-table>
     </WorkspacePanel>
