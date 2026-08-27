@@ -12,6 +12,9 @@ import type {
   TaskFailure,
   SmsKeyStatus,
   OpenAIConnectivityDiagnostic,
+  MailboxParserSample,
+  MailboxParserSampleHealth,
+  MailboxParserSampleReparse,
 } from '../types/api'
 
 export class ApiError extends Error {
@@ -646,6 +649,24 @@ export const importWebsiteMailboxes = () => (
 export const testMailboxUrl = (value: string) => (
   api<MailboxUrlTestResult>('/api/mailbox-url-test', { value })
 )
+export const getMailboxParserSamples = (query: Record<string, any> = {}) => {
+  const params = new URLSearchParams()
+  Object.entries(query).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') params.set(key, String(value))
+  })
+  const suffix = params.toString() ? `?${params.toString()}` : ''
+  return api<{ ok: true; samples: MailboxParserSample[]; total: number; offset: number; limit: number; health: Record<string, MailboxParserSampleHealth> }>(`/api/mailbox-parser-samples${suffix}`)
+}
+export const getMailboxParserSample = (sampleId: string, scope = '') => api<{ ok: true; sample: MailboxParserSample }>(`/api/mailbox-parser-samples/${encodeURIComponent(sampleId)}${scope ? `?scope=${encodeURIComponent(scope)}` : ''}`)
+export const revealMailboxParserSample = (sampleId: string, scope = '') => api<{ ok: true; sample: MailboxParserSample; raw_access: true }>(`/api/mailbox-parser-samples/${encodeURIComponent(sampleId)}/reveal${scope ? `?scope=${encodeURIComponent(scope)}` : ''}`, { confirm_raw: true })
+export const reparseMailboxParserSample = (sampleId: string, scope = '') => api<{ ok: true; sample_id: string; parser_version: string; reparse: MailboxParserSampleReparse }>(`/api/mailbox-parser-samples/${encodeURIComponent(sampleId)}/reparse${scope ? `?scope=${encodeURIComponent(scope)}` : ''}`, {})
+export const updateMailboxParserSampleStatus = (sampleIds: string[], status: string, scope = '') => api<{ ok: true; updated: number }>('/api/mailbox-parser-samples/status', { sample_ids: sampleIds, status, scope })
+export const deleteMailboxParserSamples = (sampleIds: string[], scope = '') => api<{ ok: true; deleted: number }>('/api/mailbox-parser-samples/delete', { sample_ids: sampleIds, scope })
+export const cleanupMailboxParserSamples = () => api<{ ok: true; deleted: number; health: Record<string, MailboxParserSampleHealth> }>('/api/mailbox-parser-samples/cleanup', {})
+export const exportMailboxParserSample = (sampleId: string, format: 'sanitized' | 'fixture' = 'sanitized', scope = '') => api<{ ok: true; format: string; content: string; redaction_applied: boolean }>(
+  '/api/mailbox-parser-samples/export', { sample_id: sampleId, format, scope, ...(format === 'fixture' ? { confirm_raw: true } : {}) },
+)
+export const getMailboxParserSampleHealth = () => api<{ ok: true; health: Record<string, MailboxParserSampleHealth> }>('/api/mailbox-parser-samples/health')
 export const testEmailNotification = (data: Record<string, any>) => api('/api/notifications/email/test', data)
 export const querySmsBalances = (data: Record<string, any>) => (
   api<{ ok: true; queried_at: number; sms_key_statuses: SmsKeyStatus[] }>('/api/sms/balances', data)

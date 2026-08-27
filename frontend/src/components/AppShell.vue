@@ -14,6 +14,7 @@ import SettingsPage from '../pages/SettingsPage.vue'
 import PaymentToolsPage from '../pages/PaymentToolsPage.vue'
 import NetworkToolsPage from '../pages/NetworkToolsPage.vue'
 import LogCenterPage from '../pages/LogCenterPage.vue'
+import MailboxParserSamplesPage from '../pages/MailboxParserSamplesPage.vue'
 import { appControllerKey, createAppController } from '../composables/useAppController'
 import { buildOpenAIConnectivityView } from '../utils/openAIConnectivity'
 import ReleaseNotesDialog from './ReleaseNotesDialog.vue'
@@ -22,7 +23,7 @@ import OpenAIConnectivityDiagnosticDialog from './OpenAIConnectivityDiagnosticDi
 const controller = createAppController()
 provide(appControllerKey, controller)
 
-const routes = new Set(['/', '/mailboxes', '/free-register', '/free-mailboxes', '/free-rebind', '/splitter', '/url-test', '/settings', '/payment-tools', '/network-tools', '/logs'])
+const routes = new Set(['/', '/mailboxes', '/free-register', '/free-mailboxes', '/free-rebind', '/splitter', '/url-test', '/settings', '/payment-tools', '/network-tools', '/logs', '/mailbox-parser-samples'])
 const pathFromLocation = () => `${routes.has(window.location.pathname) ? window.location.pathname : '/'}${window.location.search}${window.location.hash}`
 const activePath = ref(routes.has(window.location.pathname) ? window.location.pathname : '/')
 const currentLocation = ref(pathFromLocation())
@@ -149,6 +150,7 @@ onUnmounted(() => {
           <el-sub-menu index="diagnostic-workspace">
             <template #title><el-icon><Document /></el-icon><span>诊断与审计</span></template>
             <el-menu-item index="/logs"><el-icon><Document /></el-icon><span>日志中心</span></el-menu-item>
+            <el-menu-item index="/mailbox-parser-samples"><el-icon><Document /></el-icon><span>邮箱解析样本</span></el-menu-item>
           </el-sub-menu>
           <el-sub-menu index="system-settings">
             <template #title><el-icon><Setting /></el-icon><span>系统设置</span></template>
@@ -175,6 +177,7 @@ onUnmounted(() => {
         <PaymentToolsPage v-else-if="activePath === '/payment-tools'" />
         <NetworkToolsPage v-else-if="activePath === '/network-tools'" />
         <LogCenterPage v-else-if="activePath === '/logs'" :location-key="currentLocation" />
+        <MailboxParserSamplesPage v-else-if="activePath === '/mailbox-parser-samples'" />
         <SettingsPage v-else :initial-anchor="settingsAnchor" @navigate="navigate" />
       </el-main>
     </el-container>

@@ -562,7 +562,9 @@ class FreeProtocolMixin:
             return created
         otp_provider = build_free_mailbox_otp_provider(
             str(task["mailbox_url"]), proxy, chain_config,
-            log_fn=log, task_id=task_id, stage_fn=stage,
+            log_fn=log, task_id=task_id,
+            **({"batch_id": str(task.get("batch_id") or "")} if task.get("batch_id") else {}),
+            stage_fn=stage,
         )
 
         transport_ref: dict[str, Any] = {}

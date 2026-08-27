@@ -19,6 +19,7 @@ try:
         TimingFn,
     )
     from .free_timing import TimingCallback, emit_timing
+    from .mailbox_parser_sample_store import MAILBOX_PARSER_REVISION, record_parser_failure, sample_store_for
 except ImportError:
     from mailbox_url_runtime import (  # type: ignore[no-redef]
         BASELINE_FALLBACK_POLL_MILESTONES,
@@ -31,6 +32,7 @@ except ImportError:
         TimingFn,
     )
     from free_timing import TimingCallback, emit_timing  # type: ignore[no-redef]
+    from mailbox_parser_sample_store import MAILBOX_PARSER_REVISION, record_parser_failure, sample_store_for  # type: ignore[no-redef]
 
 
 DEFAULT_FREE_MAILBOX_PROXY = "http://127.0.0.1:7897"
@@ -493,6 +495,8 @@ class MailboxOtpService:
         now_fn: Callable[[], float] = time.time,
         monotonic_fn: Callable[[], float] = time.monotonic,
         timing_fn: TimingCallback | None = None,
+        sample_scope: str = "ordinary",
+        sample_context: Mapping[str, Any] | None = None,
     ) -> None:
         normalized_source = str(source or "url").strip().lower()
         factory = _SOURCE_FACTORIES.get(normalized_source)
@@ -511,6 +515,10 @@ class MailboxOtpService:
         self.sleep_fn = sleep_fn
         self.monotonic_fn = monotonic_fn
         self.timing_fn = timing_fn
+        self.sample_scope = str(sample_scope or "ordinary").strip().lower()
+        self.sample_context = dict(sample_context or {})
+        self.sample_store = sample_store_for(self.sample_scope)
+        self._sample_recorded = False
         self.current_stage = "email_code_waiting"
         # OTP usage is scoped to an authentication phase.  A provider may
         # legitimately reuse the same code for a later re-authentication mail;
@@ -533,6 +541,32 @@ class MailboxOtpService:
             timing_fn=self._client_timing,
         )
         self.state = MailboxRequestState(self.client, now_fn=now_fn)
+
+    def _record_parser_sample(self, reason: str, diagnostic: Mapping[str, Any] | None = None) -> str:
+        if self._sample_recorded or self.sample_store is None:
+            return ""
+        artifacts = tuple(getattr(self.client, "sample_artifacts", lambda: ())() or ())
+        # A parser sample must contain a real successful response. Transport
+        # failures without a body remain ordinary structured diagnostics.
+        if not any(isinstance(item, Mapping) and 200 <= int(item.get("status") or 0) < 300 for item in artifacts):
+            return ""
+        context = dict(self.sample_context)
+        context.update({
+            "scope": self.sample_scope,
+            "mailbox_url": getattr(self.client, "mailbox_url", ""),
+            "stage": self.current_stage,
+            "reason": str(reason or "mailbox_parser_unmatched"),
+            "diagnostics": dict(diagnostic or self.diagnostic()),
+            "parser_version": MAILBOX_PARSER_REVISION,
+        })
+        sample_id = record_parser_failure(context, artifacts)
+        if sample_id:
+            self._sample_recorded = True
+        return sample_id
+
+    def record_parser_sample(self, reason: str = "mailbox_parser_unmatched", diagnostic: Mapping[str, Any] | None = None) -> str:
+        """Commit the current in-memory response capture after a no-code result."""
+        return self._record_parser_sample(reason, diagnostic)
 
     def _timing(self, code: str, elapsed_ms: Any, outcome: str = "success") -> None:
         emit_timing(self.timing_fn, self.current_stage, code, elapsed_ms, outcome)
@@ -643,6 +677,7 @@ class MailboxOtpService:
             self.state.baseline_fallback_attempts = 0
             self.state.baseline_fallback_identities.clear()
             self.state.baseline_fallback_codes.clear()
+        self._sample_recorded = False
         if self.state.last_scan is None:
             baseline_started = self.monotonic_fn()
             try:
@@ -672,6 +707,11 @@ class MailboxOtpService:
                 )
         else:
             self._timing("mailbox_baseline", 0, "skipped")
+        reset_capture = getattr(self.client, "reset_sample_capture", None)
+        if callable(reset_capture):
+            # Baseline responses are intentionally excluded from a later
+            # parser-miss sample; only the request that followed it matters.
+            reset_capture()
         self.state.begin_request()
 
     def mark_sent(self, stage_code: str = "email_code_waiting") -> None:
@@ -756,6 +796,7 @@ class MailboxOtpService:
             except MailboxUrlError as exc:
                 self._timing("mailbox_poll_scan", (self.monotonic_fn() - poll_started) * 1000.0, "error")
                 last_error = mailbox_error_from_url_error(exc, self.diagnostic())
+                self._record_parser_sample(last_error.code, last_error.diagnostic)
                 self.state.finish_request()
                 raise last_error from exc
             self._timing("mailbox_poll_scan", (self.monotonic_fn() - poll_started) * 1000.0, "success")
@@ -878,6 +919,7 @@ class MailboxOtpService:
                 self.state.finish_request()
                 return code
         diagnostic = self.diagnostic()
+        self._record_parser_sample(str(diagnostic.get("reason") or "mailbox_code_timeout"), diagnostic)
         self._log_diagnostic(force=True)
         self.state.finish_request()
         if last_error is not None and not successful_scan:
@@ -923,6 +965,14 @@ def mailbox_error_from_url_error(
 def _runtime_service(provider: Any) -> MailboxOtpService:
     service = getattr(provider, "_gptphone_mailbox_otp_service", None)
     if isinstance(service, MailboxOtpService):
+        service.task_id = str(getattr(provider, "task_id", "") or service.task_id or "")
+        service.sample_context.update({
+            "task_id": service.task_id,
+            "batch_id": str(getattr(provider, "batch_id", "") or service.sample_context.get("batch_id") or ""),
+            "workflow": str(getattr(provider, "workflow", "ordinary_run") or service.sample_context.get("workflow") or "ordinary_run"),
+            "driver": str(getattr(provider, "driver", "sms_oauth") or service.sample_context.get("driver") or "sms_oauth"),
+            "chain": "ordinary" if str(getattr(provider, "sample_scope", "ordinary") or "ordinary") == "ordinary" else service.sample_context.get("chain", "free"),
+        })
         return service
     proxy = str(getattr(provider, "proxy", "") or "").strip()
     policy = normalize_network_policy(
@@ -937,6 +987,15 @@ def _runtime_service(provider: Any) -> MailboxOtpService:
         timeout_seconds=getattr(provider, "timeout", 90),
         network_policy=policy,
         log_fn=getattr(provider, "log_fn", None),
+        task_id=str(getattr(provider, "task_id", "") or ""),
+        sample_scope=str(getattr(provider, "sample_scope", "ordinary") or "ordinary"),
+        sample_context={
+            "task_id": str(getattr(provider, "task_id", "") or ""),
+            "batch_id": str(getattr(provider, "batch_id", "") or ""),
+            "workflow": str(getattr(provider, "workflow", "ordinary_run") or "ordinary_run"),
+            "driver": str(getattr(provider, "driver", "sms_oauth") or "sms_oauth"),
+            "chain": "ordinary",
+        },
     )
     setattr(provider, "_gptphone_mailbox_otp_service", service)
     # Preserve compatibility for callers which inspect the low-level state.

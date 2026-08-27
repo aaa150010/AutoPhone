@@ -203,6 +203,9 @@ class MailboxUrlTester:
                     resend_attempted = True
                     resend_succeeded = _attempt_resend(self.resend_fn)
                 if elapsed >= timeout:
+                    record = getattr(service, "record_parser_sample", None)
+                    if callable(record):
+                        record(str(diagnostics.get("reason") or "mailbox_code_timeout"), diagnostics)
                     return _timeout_result(
                         selection,
                         timeout=timeout,
@@ -215,6 +218,9 @@ class MailboxUrlTester:
                 self.sleep_fn(min(float(interval), max(0.0, timeout - elapsed)))
         except (MailboxOtpError, MailboxUrlError) as exc:
             diagnostic = getattr(exc, "diagnostic", None)
+            record = getattr(service, "record_parser_sample", None)
+            if callable(record):
+                record(str(getattr(exc, "code", "") or "mailbox_parser_unmatched"), diagnostic or _service_diagnostic(service))
             return _failure_result(
                 exc,
                 attempts=attempts,
@@ -279,6 +285,12 @@ class MailboxUrlTester:
                     resend_attempted = True
                     resend_succeeded = _attempt_resend(self.resend_fn)
                 if elapsed >= timeout:
+                    # Legacy injected clients may still expose the same
+                    # in-memory artifact hook even though they bypass the
+                    # shared service wrapper.
+                    record = getattr(client, "record_parser_sample", None)
+                    if callable(record):
+                        record(str(getattr(selection, "reason", "") or "mailbox_code_timeout"), _diagnostics(selection))
                     return _timeout_result(
                         selection,
                         timeout=timeout,

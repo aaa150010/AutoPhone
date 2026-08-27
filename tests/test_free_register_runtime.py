@@ -496,8 +496,8 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             runner=lambda *_args, **_kwargs: {},
             proxy_probe=lambda _proxy, _url: "203.0.113.20",
         )
-        self.assertEqual(manager.public_state()["runtime_version"], "1.6.82")
-        self.assertEqual(manager.preflight({"target_count": 1})["otp_parser_revision"], "pickup-dynamic-v5-manual-fallback-v1-timing-v1-proxy-recheck-v1")
+        self.assertEqual(manager.public_state()["runtime_version"], "1.6.83")
+        self.assertEqual(manager.preflight({"target_count": 1})["otp_parser_revision"], "pickup-dynamic-v6-samples")
 
     def test_manager_preflight_applies_proxy_allocation_mode_from_config(self):
         pool = FreeMailboxPool(self.data_dir)

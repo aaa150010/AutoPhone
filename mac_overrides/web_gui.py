@@ -57,6 +57,7 @@ import mailbox_priority_runtime as _mailbox_priority_runtime_ext
 import mailbox_otp_service as _mailbox_otp_service_ext
 import mailbox_url_runtime as _mailbox_url_runtime_ext
 import mailbox_url_test_runtime as _mailbox_url_test_runtime_ext
+import mailbox_parser_sample_store as _mailbox_parser_sample_store_ext
 import mailbox_retention as _mailbox_retention_ext
 import free_register_runtime as _free_register_runtime_ext
 import free_register_config as _free_register_config_ext
@@ -108,6 +109,17 @@ _RUNTIME_DATA_DIR = Path(
 _FREE_DATA_DIR = _RUNTIME_DATA_DIR / "free_register"
 _FREE_CONFIG_STORE = _free_register_config_ext.FreeConfigStore(_FREE_DATA_DIR)
 _DIAGNOSTIC_STORE = _diagnostic_store_ext.DiagnosticStore(_RUNTIME_DATA_DIR / "diagnostics")
+_MAILBOX_PARSER_SAMPLE_STORE = _mailbox_parser_sample_store_ext.MailboxParserSampleStore(
+    _RUNTIME_DATA_DIR / "mailbox_parser_samples"
+)
+_FREE_MAILBOX_PARSER_SAMPLE_STORE = _mailbox_parser_sample_store_ext.MailboxParserSampleStore(
+    _FREE_DATA_DIR / "mailbox_parser_samples"
+)
+_mailbox_parser_sample_store_ext.configure_sample_stores(
+    ordinary=_MAILBOX_PARSER_SAMPLE_STORE,
+    free=_FREE_MAILBOX_PARSER_SAMPLE_STORE,
+    diagnostic_store=_DIAGNOSTIC_STORE,
+)
 if os.environ.get("GPTPHONE_DATA_DIR"):
     _runtime.DEFAULT_DATA_DIR = _RUNTIME_DATA_DIR
 
@@ -3420,6 +3432,13 @@ def _url_mailbox_mark_sent(self):
         timeout = _int_value(getattr(self, "timeout", 90), 90, minimum=1, maximum=600)
         self._gptphone_email_code_deadline = time.monotonic() + timeout
     provider = self.provider
+    # Give the shared mailbox service stable ordinary-flow context without
+    # changing the recovered provider constructor signature.
+    setattr(provider, "task_id", str(getattr(self, "task_id", "") or _TASK_CONTEXT.get() or ""))
+    setattr(provider, "batch_id", str(getattr(self, "batch_id", "") or ""))
+    setattr(provider, "workflow", "ordinary_run")
+    setattr(provider, "driver", "sms_oauth")
+    setattr(provider, "sample_scope", "ordinary")
     _mailbox_otp_service_ext.configure_runtime_request(
         provider,
         max_poll_attempts=_int_value(getattr(self, "max_attempts", 30), 30, minimum=1, maximum=1000),
@@ -4107,6 +4126,8 @@ _WEB_ROUTE_CONTEXT = _web_routes_ext.WebRouteContext(
     free_config_store=_FREE_CONFIG_STORE,
     free_data_dir=_FREE_DATA_DIR,
     diagnostic_store=_DIAGNOSTIC_STORE,
+    mailbox_parser_sample_store=_MAILBOX_PARSER_SAMPLE_STORE,
+    free_mailbox_parser_sample_store=_FREE_MAILBOX_PARSER_SAMPLE_STORE,
 )
 
 

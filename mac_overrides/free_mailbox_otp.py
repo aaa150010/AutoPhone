@@ -55,6 +55,7 @@ class MailboxUrlOtpProvider:
         manual_broker: ManualVerificationBroker | None = None,
         manual_generation_getter: Callable[[str, str], int] | None = None,
         timing_fn: TimingCallback | None = None,
+        sample_context: Mapping[str, Any] | None = None,
     ) -> None:
         # ``proxy`` is the former registration-proxy argument. It is retained
         # for callable compatibility and deliberately never used for mailbox IO.
@@ -81,6 +82,8 @@ class MailboxUrlOtpProvider:
             now_fn=now_fn,
             monotonic_fn=monotonic_fn,
             timing_fn=timing_fn,
+            sample_scope="free",
+            sample_context=sample_context,
         )
         # Compatibility attributes used by focused tests and older helpers.
         self.client = self.service.client
@@ -211,6 +214,9 @@ def build_free_mailbox_otp_provider(
     log_fn: Callable[..., Any] | None = None,
     task_id: str = "",
     stage_fn: Callable[[str, str], None] | None = None,
+    batch_id: str = "",
+    workflow: str = "free_register",
+    driver: str = "",
 ) -> MailboxUrlOtpProvider:
     """Create a Free provider without ever borrowing the registration proxy."""
     return MailboxUrlOtpProvider(
@@ -227,6 +233,13 @@ def build_free_mailbox_otp_provider(
         manual_broker=config.get("_manual_verification_broker"),
         manual_generation_getter=config.get("_manual_generation_getter"),
         timing_fn=config.get("_timing_substep"),
+        sample_context={
+            "task_id": task_id,
+            "batch_id": batch_id,
+            "workflow": workflow,
+            "driver": driver or config.get("driver") or "unknown",
+            "chain": "free_rebind" if workflow == "free_rebind" else "free",
+        },
     )
 
 

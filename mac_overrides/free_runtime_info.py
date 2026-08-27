@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
-FREE_RUNTIME_VERSION = "1.6.82"
-FREE_OTP_PARSER_REVISION = "pickup-dynamic-v5-manual-fallback-v1-timing-v1-proxy-recheck-v1"
+FREE_RUNTIME_VERSION = "1.6.83"
+try:
+    from .mailbox_parser_sample_store import MAILBOX_PARSER_REVISION
+except ImportError:  # pragma: no cover - top-level runtime loading
+    from mailbox_parser_sample_store import MAILBOX_PARSER_REVISION  # type: ignore[no-redef]
+
+FREE_OTP_PARSER_REVISION = MAILBOX_PARSER_REVISION
 
 
 def runtime_info() -> dict[str, str]:

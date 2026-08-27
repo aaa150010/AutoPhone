@@ -434,6 +434,35 @@ class MailboxUrlClient:
         self._client_mailbox_deep_refresh_done = False
         self._client_mailbox_refresh_error_code = ""
         self._client_mailbox_refresh_http_status: int | None = None
+        # Keep bounded raw responses for the optional parser-miss sample
+        # recorder.  This is memory-only until a complete operation ends
+        # without a code and the caller explicitly commits a sample.
+        self._sample_artifacts: dict[str, dict[str, Any]] = {}
+
+    def reset_sample_capture(self) -> None:
+        self._sample_artifacts.clear()
+
+    def sample_artifacts(self) -> tuple[dict[str, Any], ...]:
+        return tuple(dict(item) for item in self._sample_artifacts.values())
+
+    def _remember_sample_response(self, request_url: str, response: MailboxResponse, role: str) -> None:
+        source_body = bytes(response.body or b"")
+        body = source_body[:MAX_RESPONSE_BYTES]
+        if not body:
+            return
+        body_fingerprint = hashlib.sha256(body).hexdigest()
+        request_value = str(request_url or self.mailbox_url)
+        response_value = str(response.url or request_url or self.mailbox_url)
+        key = hashlib.sha256("|".join((str(role or "request"), request_value, response_value, body_fingerprint)).encode("utf-8", "replace")).hexdigest()
+        self._sample_artifacts[key] = {
+            "request_role": str(role or "request"),
+            "request_url": request_value,
+            "response_url": response_value,
+            "status": int(response.status or 0),
+            "content_type": str(response.content_type or ""),
+            "body": body,
+            "truncated": len(source_body) > len(body),
+        }
 
     def _timing(self, code: str, started: float, outcome: str = "success") -> None:
         callback = self.timing_fn
@@ -492,11 +521,12 @@ class MailboxUrlClient:
         )
         return urllib.request.build_opener(*handlers)
 
-    def _fetch(self, url: str) -> MailboxResponse:
+    def _fetch(self, url: str, *, role: str = "request") -> MailboxResponse:
         if not _same_origin(self.mailbox_url, url):
             raise MailboxUrlError("mailbox_cross_origin_detail", "邮箱详情地址与取码入口来源不一致")
         if self.fetcher is not None:
             response = self.fetcher(url)
+            self._remember_sample_response(url, response, role)
             if len(response.body) > MAX_RESPONSE_BYTES:
                 raise MailboxUrlError("mailbox_response_too_large", "邮箱页面响应超过大小限制")
             if response.status < 200 or response.status >= 300:
@@ -534,6 +564,7 @@ class MailboxUrlClient:
             raise
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             raise MailboxUrlError("mailbox_request_failed", "邮箱取码请求失败或超时") from exc
+        self._remember_sample_response(url, MailboxResponse(final_url, body, content_type, status), role)
         if len(body) > MAX_RESPONSE_BYTES:
             raise MailboxUrlError("mailbox_response_too_large", "邮箱页面响应超过大小限制")
         if status < 200 or status >= 300:
@@ -544,13 +575,16 @@ class MailboxUrlClient:
 
     def scan(self) -> MailboxScan:
         client_api = self._client_mailbox_api
-        response = self._fetch(client_api.cache_url if client_api is not None else self.mailbox_url)
+        response = self._fetch(
+            client_api.cache_url if client_api is not None else self.mailbox_url,
+            role="cache" if client_api is not None else "entry",
+        )
         raw = _decode_bytes(response.body, response.content_type)
         if client_api is None:
             client_api = _client_mailbox_api_from_shell(response.url, raw)
             if client_api is not None:
                 self._client_mailbox_api = client_api
-                response = self._fetch(client_api.cache_url)
+                response = self._fetch(client_api.cache_url, role="cache")
                 raw = _decode_bytes(response.body, response.content_type)
 
         detail_request_errors = 0
@@ -606,7 +640,10 @@ class MailboxUrlClient:
                         self._client_mailbox_deep_refresh_done = True
                     refresh_started = self.monotonic_fn()
                     try:
-                        refresh_response = self._fetch(refresh_url)
+                        refresh_response = self._fetch(
+                            refresh_url,
+                            role="deep_refresh" if deep_due else "refresh",
+                        )
                         refresh_raw = _decode_bytes(
                             refresh_response.body,
                             refresh_response.content_type,
@@ -666,7 +703,7 @@ class MailboxUrlClient:
         detail_outcome = "success"
         for detail_url in [*uncached_urls, *refresh_urls]:
             try:
-                detail_response = self._fetch(detail_url)
+                detail_response = self._fetch(detail_url, role="detail")
                 detail_raw = _decode_bytes(detail_response.body, detail_response.content_type)
                 detail_messages, _unused_links = parse_mailbox_payload(detail_raw, detail_response.url)
             except MailboxUrlError:

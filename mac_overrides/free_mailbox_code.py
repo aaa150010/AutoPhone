@@ -6,8 +6,10 @@ from typing import Any
 
 try:
     from .mailbox_url_runtime import MailboxUrlClient
+    from .mailbox_parser_sample_store import MAILBOX_PARSER_REVISION, record_client_parser_failure
 except ImportError:  # pragma: no cover - top-level runtime loading
     from mailbox_url_runtime import MailboxUrlClient  # type: ignore[no-redef]
+    from mailbox_parser_sample_store import MAILBOX_PARSER_REVISION, record_client_parser_failure  # type: ignore[no-redef]
 
 
 def fetch_latest_code(mailbox_url: str, *, timeout_seconds: int = 5, proxy: str = "") -> dict[str, Any]:
@@ -19,6 +21,18 @@ def fetch_latest_code(mailbox_url: str, *, timeout_seconds: int = 5, proxy: str 
     reader = MailboxUrlClient(str(mailbox_url or ""), timeout_seconds=timeout_seconds, proxy=str(proxy or "").strip())
     selection = reader.latest_code(include_existing=True)
     code = str(getattr(selection, "code", "") or "").strip()
+    if not code:
+        record_client_parser_failure(reader, {
+            "scope": "free",
+            "chain": "free",
+            "workflow": "free_latest_code",
+            "driver": "unknown",
+            "stage": "free_mailbox_latest_code",
+            "mailbox_url": str(mailbox_url or ""),
+            "reason": str(getattr(selection, "reason", "") or "mailbox_code_timeout"),
+            "diagnostics": {},
+            "parser_version": MAILBOX_PARSER_REVISION,
+        })
     return {
         "ok": True,
         "kind": "email",

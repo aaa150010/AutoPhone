@@ -13,11 +13,15 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.82',
-  freeRuntimeVersion: '1.6.82',
-  title: 'Free 代理隔离复检与日志 ID 修复',
+  version: '1.6.83',
+  freeRuntimeVersion: '1.6.83',
+  title: '邮箱解析样本与离线重解析',
   releasedAt: '2026-08-27',
   sections: [
+    {
+      title: '邮箱解析样本与离线重解析',
+      usage: '邮箱验证码最终未识别时，系统会按普通流程和 Free 链路分别保存未命中 URL 的受控响应样本。邮箱解析样本页支持按链路、驱动、状态和关键字检索，查看解析诊断、离线重跑当前策略、复制脱敏夹具并在本机确认后查看或导出原文；样本库自动执行保留期限、数量和容量清理，不会混入任务结果或普通日志。',
+    },
     {
       title: 'Free 代理隔离复检与日志 ID 修复',
       usage: '代理池有记录但全部处于隔离时，错误会区分保存总数、健康候选数、隔离数量和最近失败节点。配置页留空代理内容即可复检已保存代理，只有实际探测成功才解除隔离；诊断日志中的 LOG-日期-短标识不再被手机号脱敏规则破坏。',

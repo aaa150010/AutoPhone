@@ -2500,7 +2500,9 @@ class CamoufoxRegistrationRunner:
         browser_config = dict(config.get("camoufox") or {})
         otp = build_free_mailbox_otp_provider(
             str(task.get("mailbox_url") or ""), str(task.get("proxy") or ""), config,
-            log_fn=log, task_id=task_id, stage_fn=stage,
+            log_fn=log, task_id=task_id,
+            **({"batch_id": str(task.get("batch_id") or "")} if task.get("batch_id") else {}),
+            stage_fn=stage,
         )
         try:
             stage(task_id, "free_camoufox_signup")

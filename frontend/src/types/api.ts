@@ -566,6 +566,82 @@ export interface MailboxUrlTestResult {
   diagnostics: MailboxUrlTestDiagnostics
 }
 
+export type MailboxParserSampleStatus = 'new' | 'in_review' | 'resolved' | 'ignored'
+
+export interface MailboxParserSampleResponse {
+  response_id?: string
+  response_fingerprint: string
+  request_role: string
+  request_url: string
+  response_url: string
+  http_status?: number | null
+  content_type: string
+  charset: string
+  body_bytes: number
+  body_fingerprint?: string
+  first_seen_at: string
+  last_seen_at: string
+  occurrence_count: number
+  body_base64?: string
+  body_text?: string
+}
+
+export interface MailboxParserSample {
+  sample_id: string
+  scope: 'ordinary' | 'free' | string
+  chain: string
+  workflow: string
+  driver: string
+  task_id: string
+  batch_id: string
+  stage: string
+  incident_id: string
+  mailbox_url?: string
+  final_url?: string
+  url_fingerprint: string
+  response_fingerprint: string
+  parser_version: string
+  reason: string
+  diagnostics: Record<string, any>
+  status: MailboxParserSampleStatus | string
+  first_seen_at: string
+  last_seen_at: string
+  occurrence_count: number
+  response_count: number
+  total_bytes: number
+  truncated: boolean
+  responses?: MailboxParserSampleResponse[]
+}
+
+export interface MailboxParserSampleReparse {
+  message_count: number
+  code_message_count: number
+  detail_url_fingerprints: string[]
+  parse_errors: string[]
+  messages: Array<{
+    code_present: boolean
+    code_source: string
+    field_sources: string[]
+    received_at: string
+  }>
+}
+
+export interface MailboxParserSampleHealth {
+  ok: boolean
+  schema_version: number
+  samples: number
+  responses: number
+  bytes: number
+  database_bytes: number
+  retention_days: number
+  max_samples: number
+  max_bytes: number
+  write_failures: number
+  discarded: number
+  storage_status: string
+  path: string
+}
+
 export interface LatestCodeValue {
   code: string
   kind?: string

@@ -610,7 +610,9 @@ class RoxyRegistrationRunner:
 
         otp = build_free_mailbox_otp_provider(
             str(task.get("mailbox_url") or ""), str(task.get("proxy") or ""), config,
-            log_fn=log, task_id=task_id, stage_fn=stage,
+            log_fn=log, task_id=task_id,
+            **({"batch_id": str(task.get("batch_id") or "")} if task.get("batch_id") else {}),
+            stage_fn=stage,
         )
         # Kept as a legacy result field for persisted-record compatibility;
         # registration no longer performs an exit-IP probe.

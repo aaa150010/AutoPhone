@@ -31,11 +31,13 @@ except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
 try:
     from .local_config_routes import LocalConfigRouteController
     from .runtime_info_routes import RuntimeInfoRouteController
+    from .mailbox_parser_sample_routes import MailboxParserSampleRouteController
     from .route_failures import explicit_failure_payload
     from .sms_balance_routes import SmsBalanceRouteController
 except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
     from local_config_routes import LocalConfigRouteController
     from runtime_info_routes import RuntimeInfoRouteController
+    from mailbox_parser_sample_routes import MailboxParserSampleRouteController  # type: ignore[no-redef]
     from route_failures import explicit_failure_payload
     from sms_balance_routes import SmsBalanceRouteController
 
@@ -130,6 +132,8 @@ class WebRouteContext:
     free_config_store: Any | None = None
     free_data_dir: Path | None = None
     diagnostic_store: Any | None = None
+    mailbox_parser_sample_store: Any | None = None
+    free_mailbox_parser_sample_store: Any | None = None
 
 
 def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
@@ -193,6 +197,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             "/payment-tools",
             "/network-tools",
             "/logs",
+            "/mailbox-parser-samples",
         ):
             endpoint = f"spa_deep_link_{path.strip('/').replace('-', '_')}"
             if endpoint not in app.view_functions:
@@ -1168,11 +1173,17 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         except ImportError:  # pragma: no cover
             from diagnostic_routes import DiagnosticRouteController  # type: ignore[no-redef]
         diagnostic_routes = DiagnosticRouteController(module=module, store=diagnostic_store)
+    parser_sample_routes = MailboxParserSampleRouteController(
+        module=module,
+        ordinary_store=context.mailbox_parser_sample_store,
+        free_store=context.free_mailbox_parser_sample_store,
+    )
 
     routes = (
         ("/mailboxes", "mailbox_manager", mailbox_manager, ["GET"]),
         ("/splitter", "mailbox_splitter", mailbox_manager, ["GET"]),
         ("/url-test", "mailbox_url_test_page", mailbox_manager, ["GET"]),
+        ("/mailbox-parser-samples", "mailbox_parser_samples_page", mailbox_manager, ["GET"]),
         # Legacy deep links remain harmless aliases; the account-management menu is gone.
         ("/accounts", "account_manager", mailbox_manager, ["GET"]),
         ("/settings", "settings_page", mailbox_manager, ["GET"]),
@@ -1246,6 +1257,15 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ),
         ("/api/mailboxes/relogin", "api_mailboxes_relogin", api_mailboxes_relogin, ["POST"]),
         ("/api/mailbox-url-test", "api_mailbox_url_test", api_mailbox_url_test, ["POST"]),
+        ("/api/mailbox-parser-samples/status", "api_mailbox_parser_samples_status", parser_sample_routes.status, ["POST"]),
+        ("/api/mailbox-parser-samples/delete", "api_mailbox_parser_samples_delete", parser_sample_routes.delete, ["POST"]),
+        ("/api/mailbox-parser-samples/cleanup", "api_mailbox_parser_samples_cleanup", parser_sample_routes.cleanup, ["POST"]),
+        ("/api/mailbox-parser-samples/export", "api_mailbox_parser_samples_export", parser_sample_routes.export, ["POST"]),
+        ("/api/mailbox-parser-samples/health", "api_mailbox_parser_samples_health", parser_sample_routes.health, ["GET"]),
+        ("/api/mailbox-parser-samples", "api_mailbox_parser_samples", parser_sample_routes.list, ["GET"]),
+        ("/api/mailbox-parser-samples/<sample_id>", "api_mailbox_parser_sample_detail", parser_sample_routes.detail, ["GET"]),
+        ("/api/mailbox-parser-samples/<sample_id>/reveal", "api_mailbox_parser_sample_reveal", parser_sample_routes.reveal, ["POST"]),
+        ("/api/mailbox-parser-samples/<sample_id>/reparse", "api_mailbox_parser_sample_reparse", parser_sample_routes.reparse, ["POST"]),
         ("/api/mailboxes/sub2-test", "api_mailboxes_sub2_test", api_mailboxes_sub2_test, ["POST"]),
         ("/api/mailboxes/openai-test", "api_mailboxes_openai_test", api_mailboxes_openai_test, ["POST"]),
         ("/api/mailboxes/quota", "api_mailboxes_quota", api_mailboxes_quota, ["POST"]),

@@ -32,8 +32,10 @@ except ImportError:  # Loaded as a top-level override module by the Mac launcher
 
 try:
     from .mailbox_url_runtime import MailboxUrlClient
+    from .mailbox_parser_sample_store import MAILBOX_PARSER_REVISION, record_client_parser_failure
 except ImportError:  # Loaded as a top-level override module by the Mac launcher.
     from mailbox_url_runtime import MailboxUrlClient
+    from mailbox_parser_sample_store import MAILBOX_PARSER_REVISION, record_client_parser_failure  # type: ignore[no-redef]
 
 try:
     from .mailbox_row_formats import (
@@ -419,6 +421,19 @@ class MailboxAdminService(MailboxImportMixin, MailboxSourceLockMixin):
                 error = self._format_error(exc, self._row_secrets(row))
                 return {"ok": False, "error": f"邮箱 URL 查询失败: {error}"}
             code = str(getattr(selection, "code", "") or "")
+            if not code:
+                record_client_parser_failure(reader, {
+                    "scope": "ordinary",
+                    "chain": "ordinary",
+                    "workflow": "mailbox_latest_code",
+                    "driver": "sms_oauth",
+                    "stage": "mailbox_latest_code",
+                    "mailbox_url": mailbox_url,
+                    "reason": str(getattr(selection, "reason", "") or "mailbox_code_timeout"),
+                    "diagnostics": {},
+                    "parser_version": MAILBOX_PARSER_REVISION,
+                    "email": email,
+                })
             return {
                 "ok": True,
                 "kind": "email",
