@@ -607,6 +607,15 @@ class CamoufoxRuntimeTests(unittest.TestCase):
             asyncio.run(runtime._goto_with_diagnostics(page, "https://auth.openai.com/authorize", timeout_ms=1000))
         self.assertFalse(getattr(raised.exception, "proxy_retryable", False))
 
+    def test_navigation_cloudflare_403_is_a_stable_challenge(self):
+        page = _NavigationPage(status=403, body="Just a moment... Verify you are human")
+        with self.assertRaises(runtime.CamoufoxBrowserError) as raised:
+            asyncio.run(runtime._goto_with_diagnostics(page, "https://chatgpt.com/auth/login", timeout_ms=1000, proxy_retryable=True))
+        self.assertEqual(raised.exception.node_code, "free_camoufox_challenge")
+        self.assertEqual(raised.exception.error_code, "free_camoufox_security_challenge")
+        self.assertEqual(raised.exception.provider_status, 403)
+        self.assertFalse(getattr(raised.exception, "proxy_retryable", False))
+
     def test_navigation_timeout_keeps_a_usable_login_form(self):
         class Error(Exception):
             pass

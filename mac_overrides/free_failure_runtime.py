@@ -206,6 +206,14 @@ def sanitize_proxy_attempts(value: Any) -> list[dict[str, Any]]:
                 row[key] = max(0, int(raw[key]))
             except (TypeError, ValueError):
                 continue
+        status = raw.get("http_status")
+        if status not in (None, "", False):
+            try:
+                parsed_status = int(status)
+            except (TypeError, ValueError):
+                parsed_status = 0
+            if 100 <= parsed_status <= 599:
+                row["http_status"] = parsed_status
         rows.append(row)
     return rows
 

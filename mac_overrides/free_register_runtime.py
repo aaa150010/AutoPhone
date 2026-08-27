@@ -100,7 +100,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         "roxy_circuit_open",
     })
 
-    def __init__(self, data_dir: str | Path, *, progress: Any = None, log_fn: Callable[[str, str], None] | None = None, runner: Callable[..., Mapping[str, Any]] | None = None, proxy_probe: Callable[[str, str], str] | None = None, proxy_chatgpt_probe: Callable[[str], int] | None = None, diagnostic_store: Any = None, manual_broker: Any = None, notification_config_getter: Callable[[], Any] | None = None) -> None:
+    def __init__(self, data_dir: str | Path, *, progress: Any = None, log_fn: Callable[[str, str], None] | None = None, runner: Callable[..., Mapping[str, Any]] | None = None, proxy_probe: Callable[[str, str], str] | None = None, proxy_chatgpt_probe: Callable[[str], int] | None = None, diagnostic_store: Any = None, manual_broker: Any = None, notification_config_getter: Callable[[], Any] | None = None, config_provider: Callable[[], Mapping[str, Any]] | None = None) -> None:
         self.data_dir = Path(data_dir).expanduser().resolve()
         self.pool = FreeMailboxPool(self.data_dir)
         self.proxies = FreeProxyPool(self.data_dir)
@@ -113,6 +113,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         self.proxy_probe = proxy_probe
         self.proxy_chatgpt_probe = proxy_chatgpt_probe
         self.manual_broker = manual_broker
+        self.config_provider = config_provider
         self._free_notification = FreeBatchNotificationAdapter(notification_config_getter) if callable(notification_config_getter) else None
         self._lock = threading.RLock()
         self._stop = threading.Event()
@@ -156,8 +157,20 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             pool=self.pool,
             task_store=self.task_store,
             log_store=self.log_store,
+            config_provider=self._plan_config,
             task_updater=self._sync_plan_task_snapshot,
         )
+
+    def _plan_config(self) -> Mapping[str, Any]:
+        """Return the normalized Free settings used by post-registration calls."""
+        if callable(self.config_provider):
+            try:
+                value = self.config_provider()
+            except Exception:
+                value = None
+            if isinstance(value, Mapping):
+                return value
+        return self._last_config
 
     def _log(self, message: str, level: str = "info", **fields: Any) -> None:
         if callable(self.log_fn):
@@ -1026,7 +1039,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             health_probe_ttl_seconds=int(config["proxy_health_probe_ttl_seconds"]) if "proxy_health_probe_ttl_seconds" in config else 0,
             tls_verify=bool(config.get("proxy_tls_verify", True)),
             tls_compat_fallback=bool(config.get("proxy_tls_compat_fallback", True)),
-            socks5_dns_mode=str(config.get("proxy_socks5_dns_mode") or "auto"),
+            socks5_dns_mode=str(config.get("proxy_socks5_dns_mode") or "remote"),
             allocation_mode="healthy_random",
         )
         available = self._available_count()
@@ -1171,6 +1184,13 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
     def start(self, config: Mapping[str, Any], *, pool_content: str = "", proxy_content: str = "", row_ids: Sequence[str] = ()) -> dict[str, Any]:
         normalized_config = dict(config)
         normalized_config["auto_set_2fa"] = True
+        # HTTP callers normally pass a FreeConfigStore-normalized snapshot.
+        # Keep direct manager integrations on the same production defaults
+        # without changing explicit protocol or DNS choices.
+        if not str(normalized_config.get("proxy_default_scheme") or "").strip():
+            normalized_config["proxy_default_scheme"] = "socks5"
+        if not str(normalized_config.get("proxy_socks5_dns_mode") or "").strip():
+            normalized_config["proxy_socks5_dns_mode"] = "remote"
         with self._lock:
             # Keep the production manager boundary aligned with the Free
             # contract even for callers that bypass the HTTP config store.
@@ -1221,7 +1241,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             proxy_content = ""
         if proxy_content is not None:
             if proxy_content.strip():
-                self.proxies.import_text(proxy_content, scheme=str(config.get("proxy_default_scheme") or "http"))
+                self.proxies.import_text(proxy_content, scheme=str(config.get("proxy_default_scheme") or "socks5"))
             available_count = self._available_count()
             configured_free_count = config.get("target_count", config.get("free_target_count"))
             try:
@@ -1261,7 +1281,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 health_probe_ttl_seconds=int(config["proxy_health_probe_ttl_seconds"]) if "proxy_health_probe_ttl_seconds" in config else 0,
                 tls_verify=bool(config.get("proxy_tls_verify", True)),
                 tls_compat_fallback=bool(config.get("proxy_tls_compat_fallback", True)),
-                socks5_dns_mode=str(config.get("proxy_socks5_dns_mode") or "auto"),
+                socks5_dns_mode=str(config.get("proxy_socks5_dns_mode") or "remote"),
                 allocation_mode="healthy_random",
             )
             bindings = self.proxies.bind(
@@ -1819,6 +1839,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     "stage": str(getattr(exc, "node_code", "free_proxy")),
                     "retryable": bool(getattr(exc, "retryable", True)),
                     "message": _safe_log_message(exc),
+                    "http_status": getattr(exc, "provider_status", None),
                     "at": int(time.time()),
                 })
                 current["proxy_attempts"] = attempts[-10:]
@@ -2041,6 +2062,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     break
                 except FreeRegisterError as exc:
                     error_node = str(getattr(exc, "node_code", ""))
+                    failed_proxy_id = str(snapshot.get("proxy_id") or "")
                     network_failure = is_proxy_health_failure(exc)
                     pre_profile = error_node in {"free_roxy_create", "free_roxy_open", "free_roxy_connect", "free_roxy_api"}
                     # OAuth bootstrap and the first email-identification POST
@@ -2051,6 +2073,9 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     protocol_pre_email = error_node in {
                         "free_protocol_preflight", "free_oauth_session", "free_email_identifier",
                     }
+                    roxy_pre_email = error_node == "free_roxy_signup_bootstrap" and bool(
+                        getattr(exc, "proxy_retryable", False)
+                    )
                     camoufox_proxy_retryable = bool(getattr(exc, "proxy_retryable", False))
                     camoufox_pre_email = (
                         error_node == "free_camoufox_navigation" and camoufox_proxy_retryable
@@ -2062,6 +2087,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     can_retry_pre_email = (
                         ((pre_profile or protocol_pre_email) and network_failure)
                         or (protocol_pre_email and bool(getattr(exc, "proxy_retryable", False)))
+                        or roxy_pre_email
                         or camoufox_pre_email
                     )
                     if not can_retry_pre_email or attempt >= retry_limit or self._stop.is_set():
@@ -2074,8 +2100,12 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     with self._lock:
                         current = self._tasks.get(task_id)
                         if current is not None:
-                            current.setdefault("proxy_attempts", []).append({"proxy_id": snapshot.get("proxy_id", ""), "stage": exc.node_code, "retryable": True, "message": _safe_log_message(exc), "attempt": attempt, "switched": switched, "at": int(time.time())})
+                            current.setdefault("proxy_attempts", []).append({"proxy_id": failed_proxy_id, "stage": exc.node_code, "retryable": True, "message": _safe_log_message(exc), "http_status": getattr(exc, "provider_status", None), "attempt": attempt, "switched": switched, "at": int(time.time())})
                             self.task_store.save(self._tasks)
+                    if bool(getattr(exc, "proxy_retryable", False)) and not switched:
+                        # A route-level access denial must not replay against
+                        # the same proxy when no healthy replacement exists.
+                        raise
                     self._log(f"[{task_id}/Free 预注册重试/{exc.node_code}] 代理连接异常，{'切换备用代理' if switched else '重试当前代理'}（第 {attempt + 1} 次）", "warn")
             post_registration_failure = None
             verified_exit_ip = ""

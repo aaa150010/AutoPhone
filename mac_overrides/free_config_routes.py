@@ -32,7 +32,7 @@ def save_free_config_bundle(
             scheme=str(
                 data.get("proxy_scheme")
                 or normalized.get("proxy_default_scheme")
-                or "http"
+                or "socks5"
             ).strip().lower() or None,
             source_label=str(data.get("proxy_source_label") or data.get("source_label") or data.get("provider") or "").strip()[:40] or None,
         ))

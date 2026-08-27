@@ -28,6 +28,14 @@ EMAIL_BROWSER_BOOTSTRAP_SECONDS = 5.0
 EMAIL_NON_LOGIN_CLEAR_DEBOUNCE_SECONDS = 5.0
 EMAIL_TRANSITION_TIMEOUT_SECONDS = 20.0
 EMAIL_SUBMIT_ATTEMPTS = 3
+_PLAIN_PROXY_BLOCK_MARKERS = (
+    "access denied", "forbidden", "request blocked", "web proxy blocked",
+    "proxy blocked", "sorry, you have been blocked",
+)
+_SECURITY_CHALLENGE_MARKERS = (
+    "cloudflare", "turnstile", "verify you are human", "captcha",
+    "security challenge", "security check", "just a moment", "安全验证",
+)
 
 
 def safe_page_location(driver: Any) -> str:
@@ -69,6 +77,42 @@ def _is_trusted_auth_page(driver: Any) -> bool:
     ))
 
 
+def is_plain_proxy_blocked(driver: Any) -> bool:
+    """Identify a visible generic 403 block without classifying challenges."""
+    values: list[str] = []
+    try:
+        values.append(str(driver.find_element("tag name", "body").text or ""))
+    except Exception:
+        pass
+    try:
+        values.append(str(getattr(driver, "title", "") or ""))
+    except Exception:
+        pass
+    text = " ".join(values).casefold()
+    if not text or any(marker in text for marker in _SECURITY_CHALLENGE_MARKERS):
+        return False
+    return any(marker in text for marker in _PLAIN_PROXY_BLOCK_MARKERS)
+
+
+def is_security_challenge_page(driver: Any) -> bool:
+    """Identify a visible Cloudflare/Turnstile page without treating it as a proxy block."""
+    values: list[str] = []
+    try:
+        values.append(str(driver.find_element("tag name", "body").text or ""))
+    except Exception:
+        pass
+    try:
+        values.append(str(getattr(driver, "title", "") or ""))
+    except Exception:
+        pass
+    try:
+        values.append(str(getattr(driver, "current_url", "") or ""))
+    except Exception:
+        pass
+    text = " ".join(values).casefold()
+    return bool(text) and any(marker in text for marker in _SECURITY_CHALLENGE_MARKERS)
+
+
 def open_signup_page(driver: Any, _email: str, timeout: int) -> None:
     """Open the normal ChatGPT login UI without a legacy NextAuth bootstrap."""
     driver.set_page_load_timeout(timeout)
@@ -78,24 +122,47 @@ def open_signup_page(driver: Any, _email: str, timeout: int) -> None:
             driver.get(LOGIN_URL)
         except Exception as exc:
             last_error = exc
+            if is_security_challenge_page(driver):
+                break
+            if is_plain_proxy_blocked(driver):
+                break
             if _is_trusted_auth_page(driver):
                 return
             if attempt < 2:
                 time.sleep(0.5)
                 continue
+        if is_security_challenge_page(driver):
+            break
+        if is_plain_proxy_blocked(driver):
+            break
         if _is_trusted_auth_page(driver):
             return
         if attempt < 2:
             time.sleep(0.5)
     error_type = type(last_error).__name__ if last_error is not None else "UnexpectedPage"
-    raise FreeRegisterError(
+    if is_security_challenge_page(driver):
+        raise FreeRegisterError(
+            "free_roxy_challenge", "等待注册页安全验证",
+            f"注册页出现 Cloudflare/Turnstile 安全验证（{safe_page_location(driver)}），已停止自动流程",
+            retryable=False,
+            error_code="free_roxy_security_challenge",
+        ) from last_error
+    blocked = is_plain_proxy_blocked(driver)
+    failure = FreeRegisterError(
         "free_roxy_signup_bootstrap", "打开 RoxyBrowser 注册页",
         f"登录页导航失败（{error_type}，{safe_page_location(driver)}）",
         error_code=(
             "free_roxy_signup_navigation_timeout"
             if error_type == "TimeoutException" else "free_roxy_signup_navigation_failed"
         ),
-    ) from last_error
+        provider_status=403 if blocked else None,
+    )
+    if blocked:
+        # Selenium does not expose the document response status directly. A
+        # visible generic block page is the safe equivalent of a pre-email
+        # route-level 403; security challenge pages were excluded above.
+        setattr(failure, "proxy_retryable", True)
+    raise failure from last_error
 
 
 def warmup_login_page(driver: Any, human: Any | None = None) -> None:
@@ -772,6 +839,6 @@ __all__ = [
     "EMAIL_BROWSER_BOOTSTRAP_SECONDS", "EMAIL_CLEAR_DEBOUNCE_SECONDS", "EMAIL_CLEAR_RECOVERY_SECONDS",
     "EMAIL_NON_LOGIN_CLEAR_DEBOUNCE_SECONDS", "EMAIL_TRANSITION_TIMEOUT_SECONDS",
     "EMAIL_SUBMIT_ATTEMPTS", "LOGIN_URL",
-    "is_email_verification_page", "open_signup_page", "safe_page_location",
+    "is_email_verification_page", "is_plain_proxy_blocked", "is_security_challenge_page", "open_signup_page", "safe_page_location",
     "submit_email_and_wait", "warmup_login_page",
 ]

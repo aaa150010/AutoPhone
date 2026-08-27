@@ -596,7 +596,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             proxy_content = str(data.get("proxy_content") or data.get("free_proxy_pool_content") or "")
             proxy_country = str(data.get("proxy_country") or data.get("country") or "").strip().upper() or None
             proxy_group = str(data.get("proxy_group") or data.get("group") or "").strip() or None
-            proxy_scheme = str(data.get("proxy_scheme") or data.get("scheme") or config.get("proxy_default_scheme") or "http").strip().lower() or "http"
+            proxy_scheme = str(data.get("proxy_scheme") or data.get("scheme") or config.get("proxy_default_scheme") or "socks5").strip().lower() or "socks5"
             if mailbox_content.strip() and hasattr(free_manager, "pool"):
                 free_manager.pool.import_text(mailbox_content)
             if proxy_content.strip() and hasattr(free_manager, "proxies"):

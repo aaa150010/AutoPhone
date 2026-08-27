@@ -13,11 +13,15 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.83',
-  freeRuntimeVersion: '1.6.83',
-  title: '邮箱解析样本与离线重解析',
+  version: '1.6.84',
+  freeRuntimeVersion: '1.6.84',
+  title: 'Free SOCKS5 默认与 403 代理轮换边界',
   releasedAt: '2026-08-27',
   sections: [
+    {
+      title: 'Free SOCKS5 默认与 403 代理轮换边界',
+      usage: 'Free 新配置默认使用 SOCKS5 和代理端 DNS 解析，代理连通性目标仍为 chatgpt.com；旧的 HTTP/自动 DNS 默认会在配置加载时迁移。邮箱提交前的连接失败和非挑战 401/403 可按重试次数切换健康代理，Cloudflare/Turnstile 安全挑战及邮箱提交后的失败不会自动换代理或重放。',
+    },
     {
       title: '邮箱解析样本与离线重解析',
       usage: '邮箱验证码最终未识别时，系统会按普通流程和 Free 链路分别保存未命中 URL 的受控响应样本。邮箱解析样本页支持按链路、驱动、状态和关键字检索，查看解析诊断、离线重跑当前策略、复制脱敏夹具并在本机确认后查看或导出原文；样本库自动执行保留期限、数量和容量清理，不会混入任务结果或普通日志。',

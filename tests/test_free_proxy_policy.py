@@ -32,7 +32,7 @@ class FreeProxyParsingTests(unittest.TestCase):
         )
         self.assertEqual(
             normalize_proxy_value("user%40mail:p%25ss@[::1]:1"),
-            "http://user%40mail:p%25ss@[::1]:1",
+            "socks5://user%40mail:p%25ss@[::1]:1",
         )
         self.assertEqual(
             normalize_proxy_value("http://[fe80::1%25en0]:8080"),
@@ -273,6 +273,8 @@ class FreeProxyHealthTests(unittest.TestCase):
             sorted(row["consecutive_failures"] for row in manager.proxies.public()["rows"]),
             [0, 0],
         )
+        attempts_public = manager.public_tasks()[0]["proxy_attempts"]
+        self.assertTrue(any(item.get("http_status") == 403 for item in attempts_public))
 
     def test_camoufox_context_failure_switches_proxy_before_email_submission(self):
         attempts: list[str] = []

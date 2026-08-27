@@ -299,7 +299,7 @@ class FreePoolRouteController:
                     ),
                     "proxy_socks5_dns_mode": data.get(
                         "proxy_socks5_dns_mode",
-                        current.get("proxy_socks5_dns_mode", "auto"),
+                        current.get("proxy_socks5_dns_mode", "remote"),
                     ),
                 },
                 previous=current,
@@ -313,7 +313,7 @@ class FreePoolRouteController:
                 scheme=str(data.get("scheme") or "").strip().lower() or None,
                 tls_verify=bool(probe_config.get("proxy_tls_verify", True)),
                 tls_compat_fallback=bool(probe_config.get("proxy_tls_compat_fallback", True)),
-                socks5_dns_mode=str(probe_config.get("proxy_socks5_dns_mode") or "auto"),
+                socks5_dns_mode=str(probe_config.get("proxy_socks5_dns_mode") or "remote"),
                 layered_probe=bool(data.get("layered_probe", False)),
             )
             return self.module.jsonify(ok=True, result=result)

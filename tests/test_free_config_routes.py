@@ -11,6 +11,44 @@ from mac_overrides.free_register_config import FreeConfigStore
 
 
 class FreeConfigRouteTests(unittest.TestCase):
+    def test_new_config_defaults_to_socks5_remote_chatgpt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = FreeConfigStore(Path(directory))
+            normalized = store.normalize({})
+            self.assertEqual(normalized["version"], 8)
+            self.assertEqual(normalized["proxy_default_scheme"], "socks5")
+            self.assertEqual(normalized["proxy_socks5_dns_mode"], "remote")
+            self.assertEqual(normalized["proxy_probe_url"], "https://chatgpt.com/")
+
+    def test_v7_legacy_proxy_defaults_migrate_and_persist(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = FreeConfigStore(Path(directory))
+            store.path.write_text(json.dumps({
+                "version": 7,
+                "proxy_default_scheme": "http",
+                "proxy_socks5_dns_mode": "auto",
+                "proxy_probe_url": "https://chatgpt.com/",
+            }), encoding="utf-8")
+            normalized = store.load()
+            self.assertEqual(normalized["version"], 8)
+            self.assertEqual(normalized["proxy_default_scheme"], "socks5")
+            self.assertEqual(normalized["proxy_socks5_dns_mode"], "remote")
+            persisted = json.loads(store.path.read_text(encoding="utf-8"))
+            self.assertEqual(persisted["version"], 8)
+            self.assertEqual(persisted["proxy_default_scheme"], "socks5")
+            self.assertEqual(persisted["proxy_socks5_dns_mode"], "remote")
+
+    def test_current_explicit_proxy_defaults_are_preserved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = FreeConfigStore(Path(directory))
+            normalized = store.normalize({
+                "version": 8,
+                "proxy_default_scheme": "http",
+                "proxy_socks5_dns_mode": "local",
+            })
+            self.assertEqual(normalized["proxy_default_scheme"], "http")
+            self.assertEqual(normalized["proxy_socks5_dns_mode"], "local")
+
     def test_free_config_forces_twofa_enabled(self):
         with tempfile.TemporaryDirectory() as directory:
             store = FreeConfigStore(Path(directory))

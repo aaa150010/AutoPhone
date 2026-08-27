@@ -88,6 +88,29 @@ class FreePlanCheckTests(unittest.TestCase):
         finally:
             service.shutdown()
 
+    def test_queue_transport_honors_configured_socks5_dns_mode(self):
+        self.pool.save_result(self.row.row_id, {"access_token": "token"})
+        service = FreePlanCheckService(
+            self.temp.name,
+            pool=self.pool,
+            workers=1,
+            config_provider=lambda: {"proxy_socks5_dns_mode": "local"},
+        )
+        captured = []
+        try:
+            with patch("mac_overrides.free_plan_check.proxy_transport_value", side_effect=lambda value, **kwargs: captured.append(kwargs) or "socks5://proxy.test:8000"):
+                with patch("curl_cffi.requests.Session") as session_factory:
+                    session = session_factory.return_value
+                    session.get.side_effect = [
+                        type("Response", (), {"status_code": 200, "headers": {}, "json": lambda self: {}})(),
+                        type("Response", (), {"status_code": 200, "headers": {}, "json": lambda self: {"eligible": False}})(),
+                        type("Response", (), {"status_code": 200, "headers": {}, "json": lambda self: {"plan_type": "free"}})(),
+                    ]
+                    service._query(self.row.row_id)
+            self.assertEqual(captured[0]["socks5_dns_mode"], "local")
+        finally:
+            service.shutdown()
+
     def test_success_syncs_result_and_promotes_plan_only_partial(self):
         self.pool.save_result(self.row.row_id, {
             "task_id": "free-task-1",

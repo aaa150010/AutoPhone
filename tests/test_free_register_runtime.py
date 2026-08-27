@@ -496,7 +496,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             runner=lambda *_args, **_kwargs: {},
             proxy_probe=lambda _proxy, _url: "203.0.113.20",
         )
-        self.assertEqual(manager.public_state()["runtime_version"], "1.6.83")
+        self.assertEqual(manager.public_state()["runtime_version"], "1.6.84")
         self.assertEqual(manager.preflight({"target_count": 1})["otp_parser_revision"], "pickup-dynamic-v6-samples")
 
     def test_manager_preflight_applies_proxy_allocation_mode_from_config(self):
@@ -681,7 +681,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
                     probe=lambda proxy, _url: (_ for _ in ()).throw(TimeoutError()) if "proxy-b" in proxy else "203.0.113.10",
                 )
 
-    def test_proxy_binding_keeps_original_protocol_after_socks_tls_failure(self):
+    def test_proxy_binding_uses_socks5_default_after_tls_failure(self):
         proxies = FreeProxyPool(self.data_dir)
         proxies.import_text("proxy.example.test:8000:user-a:pass-a\n")
         calls = []
@@ -696,7 +696,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         with self.assertRaisesRegex(FreeRegisterError, r"第 1 条.*SSLError") as raised:
             proxies.bind(1, probe=probe)
 
-        self.assertEqual(calls, ["http://user-a:pass-a@proxy.example.test:8000"])
+        self.assertEqual(calls, ["socks5://user-a:pass-a@proxy.example.test:8000"])
         self.assertNotIn("pass-a", str(raised.exception))
 
     def test_proxy_pool_accepts_host_port_username_password_rows(self):
@@ -708,7 +708,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
 
         self.assertEqual(imported, 1)
         values = proxies.values()
-        self.assertEqual(values, ["http://user-a:pass-a@proxy.example.test:3000"])
+        self.assertEqual(values, ["socks5://user-a:pass-a@proxy.example.test:3000"])
 
     def test_proxy_pool_accepts_all_supported_auth_layouts(self):
         proxies = FreeProxyPool(self.data_dir)
@@ -723,9 +723,9 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             proxies.values(),
             [
                 "socks5://u:p@proxy-a.test:3000",
-                "http://u:p@proxy-b.test:3001",
-                "http://u:p@proxy-c.test:3002",
-                "http://u:p@proxy-d.test:3003",
+                "socks5://u:p@proxy-b.test:3001",
+                "socks5://u:p@proxy-c.test:3002",
+                "socks5://u:p@proxy-d.test:3003",
             ],
         )
 
@@ -780,7 +780,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertEqual(persisted["version"], 4)
         self.assertEqual({lease["owner"] for lease in row["leases"]}, {"old-task", "new-task"})
 
-    def test_proxy_pool_protocolless_rows_follow_autoregister_http_rule(self):
+    def test_proxy_pool_protocolless_rows_follow_free_socks5_default(self):
         proxies = FreeProxyPool(self.data_dir)
         imported = proxies.import_text(
             "proxy-a.test 3000 user-a pass-a\n"
@@ -789,7 +789,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
 
         self.assertEqual(imported, 2)
         self.assertEqual(proxies.values(), [
-            "http://user-a:pass-a@proxy-a.test:3000",
+            "socks5://user-a:pass-a@proxy-a.test:3000",
             "socks4://user-b:pass-b@proxy-b.test:3001",
         ])
 

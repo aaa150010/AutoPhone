@@ -764,7 +764,7 @@ class FreeRebindService:
             transport_proxy = proxy_transport_value(
                 proxy,
                 driver="protocol",
-                socks5_dns_mode=str(config.get("proxy_socks5_dns_mode") or "auto"),
+                socks5_dns_mode=str(config.get("proxy_socks5_dns_mode") or "remote"),
             )
             if not transport_proxy:
                 raise FreeRegisterError("proxy_connect_failed", "代理连接失败", "换绑协议代理格式无效", retryable=False, error_code="proxy_connect_failed")

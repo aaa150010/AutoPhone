@@ -11,8 +11,8 @@ const defaultConfig: FreeConfig = {
   driver: 'protocol', flow_profile: 'reference_20260823', proxy_allocation_mode: 'healthy_random', target_count: 1, concurrency: 3, email_code_timeout: 90, auto_set_2fa: true,
   mailbox_network_mode: 'local_proxy', mailbox_proxy_url: 'http://127.0.0.1:7897',
   mailbox_request_retries: 3, mailbox_retry_backoff_seconds: 1,
-  proxy_probe_url: 'https://chatgpt.com/', proxy_socks5_dns_mode: 'auto', proxy_tls_verify: true, proxy_tls_compat_fallback: true, protocol: { node_runner: '', sentinel_version: '20260219f9f6', sentinel_timeout: 90, network_timeout: 20, network_preflight_retries: 3, security_challenge_wait_seconds: 60, anonymous_warmup: true, authenticated_warmup: true },
-  proxy_default_scheme: 'http', proxy_failure_threshold: 2, proxy_quarantine_seconds: 600, proxy_health_probe_ttl_seconds: 300, proxy_retry_count: 1,
+  proxy_probe_url: 'https://chatgpt.com/', proxy_socks5_dns_mode: 'remote', proxy_tls_verify: true, proxy_tls_compat_fallback: true, protocol: { node_runner: '', sentinel_version: '20260219f9f6', sentinel_timeout: 90, network_timeout: 20, network_preflight_retries: 3, security_challenge_wait_seconds: 60, anonymous_warmup: true, authenticated_warmup: true },
+  proxy_default_scheme: 'socks5', proxy_failure_threshold: 2, proxy_quarantine_seconds: 600, proxy_health_probe_ttl_seconds: 300, proxy_retry_count: 1,
   roxy_circuit_failure_threshold: 3, roxy_circuit_recovery_seconds: 30,
   roxybrowser: {
     api_base: 'http://127.0.0.1:50000', api_key: '', workspace_id: '', project_id: '',
@@ -35,9 +35,9 @@ const defaultConfig: FreeConfig = {
 const config = reactive<FreeConfig>(structuredClone(defaultConfig))
 const state = ref<FreeState>({ running: false, tasks: [], summary: {}, pool: {} })
 const proxyText = ref('')
-const proxyScheme = ref('http')
+const proxyScheme = ref(defaultConfig.proxy_default_scheme)
 const proxySourceLabel = ref('')
-const layeredProbe = ref(true)
+const layeredProbe = ref(false)
 const proxyCheckRows = ref<Array<{ index: number; masked: string; fingerprint: string; scheme?: string; available?: boolean; http_status?: number | null; local_to_proxy_ms?: number | null; proxy_to_target_ms?: number | null; failure_node?: string; failure_reason?: string }>>([])
 const proxyRows = ref<FreeProxyRow[]>([])
 const workspaces = ref<Array<{ workspace_id: string; workspace_name: string; project_id: string; project_name: string; label: string }>>([])
@@ -56,6 +56,9 @@ function mergeConfig(value: any) {
   Object.assign(config.protocol, value.protocol || {})
   Object.assign(config.roxybrowser, value.roxybrowser || {})
   Object.assign(config.camoufox, value.camoufox || {})
+  if (typeof config.proxy_default_scheme === 'string' && config.proxy_default_scheme.trim()) {
+    proxyScheme.value = config.proxy_default_scheme.trim().toLowerCase()
+  }
   config.proxy_allocation_mode = 'healthy_random'
   config.target_count = Math.min(200, Math.max(1, Number(config.target_count) || 1))
   config.concurrency = Math.min(16, Math.max(1, Number(config.concurrency) || 1))
@@ -110,6 +113,10 @@ async function save() {
   if (!loaded.value) throw new Error('Free 配置仍在加载，请稍后再保存')
   busy.value = 'save'
   try {
+    // The selector is the user-facing editor for the persisted default used
+    // when importing protocol-less proxy rows. Keep the legacy proxy_scheme
+    // request field as well for API compatibility.
+    config.proxy_default_scheme = proxyScheme.value
     const result = await saveFreeConfig({
       ...config,
       proxy_content: proxyText.value,
@@ -262,7 +269,7 @@ defineExpose({ save })
     <div class="subsection">
       <div class="humanize-heading"><h3>代理稳定性策略</h3><FieldHelpLabel label="规则说明" help="这些规则只作用于独立 Free 代理池：控制注册前可否更换备用代理、连续失败隔离，以及 RoxyBrowser 基础设施异常时停止新任务。" /></div>
       <el-row :gutter="10">
-        <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="代理额外重试次数" help="进入注册页面前，原代理连接失败后允许的额外重试次数；进入注册页面后不因观测地址变化更换代理。" /></template><el-input-number v-model="config.proxy_retry_count" :min="0" :max="5" controls-position="right" :disabled="running" /></el-form-item></el-col>
+        <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="代理额外重试次数" help="仅对邮箱提交前的连接失败和非挑战 401/403 访问拒绝切换健康代理；Cloudflare/Turnstile 安全挑战，以及邮箱提交、验证码或账号创建后的失败不会自动换代理或重放。" /></template><el-input-number v-model="config.proxy_retry_count" :min="0" :max="5" controls-position="right" :disabled="running" /></el-form-item></el-col>
         <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="连续失败隔离阈值" help="同一代理连续失败达到此次数后进入隔离，当前批次不再分配它。成功探测会清零连续失败次数。" /></template><el-input-number v-model="config.proxy_failure_threshold" :min="1" :max="10" controls-position="right" :disabled="running" /></el-form-item></el-col>
         <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="代理隔离时间（秒）" help="代理达到失败阈值后的暂停使用时间。到期后可重新参与检测和任务分配。" /></template><el-input-number v-model="config.proxy_quarantine_seconds" :min="30" :max="86400" controls-position="right" :disabled="running" /></el-form-item></el-col>
       </el-row>
@@ -342,7 +349,7 @@ defineExpose({ save })
       <div class="section-heading-row"><div><h3>Free 独立代理池</h3><p class="section-hint">粘贴后可先检测每条代理的连通性和声明协议，再保存到 Free 池。</p></div><span class="muted">已保存 {{ Number(state.pool?.proxies || 0) }} 个</span></div>
       <div class="proxy-import-meta">
         <div class="proxy-import-field"><FieldHelpLabel label="无协议默认协议" help="支持 scheme://用户名:密码@主机:端口、主机:端口:用户名:密码、用户名:密码@主机:端口、主机:端口@用户名:密码；裸格式按当前下拉协议解析，显式协议始终优先。" /><el-select v-model="proxyScheme" placeholder="无协议时默认协议"><el-option label="HTTP" value="http" /><el-option label="HTTPS" value="https" /><el-option label="SOCKS4" value="socks4" /><el-option label="SOCKS5" value="socks5" /><el-option label="SOCKS5H" value="socks5h" /></el-select></div>
-        <div class="proxy-import-field"><FieldHelpLabel label="SOCKS5 DNS" help="只影响 SOCKS5 代理的域名解析位置，不改变保存的协议标签。自动模式检测到 Clash Fake-IP 时使用代理端解析，普通网络保留本机解析。" /><el-select v-model="config.proxy_socks5_dns_mode" :disabled="running"><el-option label="自动适配" value="auto" /><el-option label="本机解析" value="local" /><el-option label="代理端解析" value="remote" /><el-option label="严格声明" value="declared" /></el-select></div>
+        <div class="proxy-import-field"><FieldHelpLabel label="SOCKS5 DNS" help="只影响 SOCKS5 代理的域名解析位置，不改变保存的协议标签。默认使用代理端解析，避免本机 Fake-IP 或 DNS 污染导致连接失败；也可按需选择本机解析或严格声明。" /><el-select v-model="config.proxy_socks5_dns_mode" :disabled="running"><el-option label="自动适配" value="auto" /><el-option label="本机解析" value="local" /><el-option label="代理端解析" value="remote" /><el-option label="严格声明" value="declared" /></el-select></div>
         <div class="proxy-import-field"><FieldHelpLabel label="代理来源（可选）" help="仅用于报表和供应商对比，例如 1024、cliproxy；不会参与代理分配，也不会写入代理凭据。" /><el-input v-model="proxySourceLabel" maxlength="40" show-word-limit placeholder="例如 1024 / cliproxy" /></div>
       </div>
       <el-input v-model="proxyText" type="textarea" :rows="5" :disabled="running" placeholder="每行一个代理，支持 URL、host:port:user:pass 和两种 @ 格式" autocomplete="off" />

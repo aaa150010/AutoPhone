@@ -427,7 +427,7 @@ class FreeProxyPool:
         self.proxy_tls_verify = True
         self.proxy_tls_compat_fallback = True
         # Keep the low-level compatibility default strict. Production Free
-        # config passes ``auto`` explicitly; direct legacy callers and test
+        # config passes ``remote`` explicitly; direct legacy callers and test
         # probes must receive the declared URL unchanged.
         self.socks5_dns_mode = "declared"
         self.allocation_mode = "healthy_random"

@@ -868,7 +868,7 @@ class FreeLiveCheckService:
         transport_proxy = proxy_transport_value(
             context["proxy"],
             driver="protocol",
-            socks5_dns_mode=str(_config.get("proxy_socks5_dns_mode") or "auto"),
+            socks5_dns_mode=str(_config.get("proxy_socks5_dns_mode") or "remote"),
         )
         if not transport_proxy:
             raise FreeRegisterError("free_live_fast", "快速测活", "测活代理格式无效", retryable=False)
@@ -920,7 +920,7 @@ class FreeLiveCheckService:
         proxy = proxy_transport_value(
             str(context["proxy"]),
             driver="protocol",
-            socks5_dns_mode=str(config.get("proxy_socks5_dns_mode") or "auto"),
+            socks5_dns_mode=str(config.get("proxy_socks5_dns_mode") or "remote"),
         )
         if not proxy:
             raise FreeRegisterError("proxy_connect_failed", "代理连接失败", "深度测活代理格式无效", retryable=False, error_code="proxy_connect_failed")

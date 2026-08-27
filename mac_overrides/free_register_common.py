@@ -24,8 +24,8 @@ SECRET_MASK = "********"
 FIXED_PASSWORD = "Aa150010@150010"
 FREE_PROXY_SCHEMES = frozenset({"http", "https", "socks4", "socks5", "socks5h"})
 ROXY_PROXY_SCHEMES = frozenset({"http", "https", "socks5", "socks5h"})
-DEFAULT_FREE_PROXY_SCHEME = "http"
-DEFAULT_SOCKS5_DNS_MODE = "auto"
+DEFAULT_FREE_PROXY_SCHEME = "socks5"
+DEFAULT_SOCKS5_DNS_MODE = "remote"
 TERMINAL_STATUSES = frozenset({"success", "partial_success", "failed", "stopped", "twofa_pending"})
 LOG_SECRET_RE = re.compile(
     r"(?i)(access[_ -]?token|refresh[_ -]?token|id[_ -]?token|token|authorization|"

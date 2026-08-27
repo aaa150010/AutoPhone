@@ -34,7 +34,7 @@ FREE_LEGACY_CONFIG_KEYS = frozenset({
 })
 
 DEFAULT_FREE_CONFIG: dict[str, Any] = {
-    "version": 7,
+    "version": 8,
     "driver": "protocol",
     "flow_profile": "reference_20260823",
     "proxy_allocation_mode": "healthy_random",
@@ -51,8 +51,8 @@ DEFAULT_FREE_CONFIG: dict[str, Any] = {
     # that omit this key retain the historical manual-only behavior.
     "twofa_auto_retry_attempts": 2,
     "proxy_probe_url": DEFAULT_PROXY_PROBE_URL,
-    "proxy_default_scheme": "http",
-    "proxy_socks5_dns_mode": "auto",
+    "proxy_default_scheme": "socks5",
+    "proxy_socks5_dns_mode": "remote",
     "proxy_tls_verify": True,
     "proxy_tls_compat_fallback": True,
     "proxy_failure_threshold": 2,
@@ -183,6 +183,14 @@ class FreeConfigStore:
             0, 0, 10_000,
         )
         incoming = {key: copy.deepcopy(item) for key, item in dict(value or {}).items() if key in DEFAULT_FREE_CONFIG}
+        # v7 and older stores used HTTP plus automatic SOCKS5 DNS selection as
+        # their defaults. Migrate only those exact legacy values; current
+        # stores keep every explicit protocol/DNS choice unchanged.
+        if source_version < 8:
+            if str(incoming.get("proxy_default_scheme") or "").strip().lower() == "http":
+                incoming["proxy_default_scheme"] = "socks5"
+            if str(incoming.get("proxy_socks5_dns_mode") or "").strip().lower() == "auto":
+                incoming["proxy_socks5_dns_mode"] = "remote"
         base = _merge(DEFAULT_FREE_CONFIG, previous or {})
         if incoming.get("roxybrowser", {}).get("api_key") == SECRET_MASK:
             incoming = copy.deepcopy(incoming)
@@ -225,12 +233,12 @@ class FreeConfigStore:
         # as a successful account.
         result["auto_set_2fa"] = True
         result["twofa_auto_retry_attempts"] = _int(result.get("twofa_auto_retry_attempts"), 2, 0, 2)
-        scheme = str(result.get("proxy_default_scheme") or "http").strip().lower()
+        scheme = str(result.get("proxy_default_scheme") or DEFAULT_FREE_CONFIG["proxy_default_scheme"]).strip().lower()
         if scheme not in {"http", "https", "socks4", "socks5", "socks5h"}:
-            scheme = "http"
+            scheme = DEFAULT_FREE_CONFIG["proxy_default_scheme"]
         result["proxy_default_scheme"] = scheme
-        dns_mode = str(result.get("proxy_socks5_dns_mode") or "auto").strip().lower()
-        result["proxy_socks5_dns_mode"] = dns_mode if dns_mode in {"declared", "local", "remote", "auto"} else "auto"
+        dns_mode = str(result.get("proxy_socks5_dns_mode") or DEFAULT_FREE_CONFIG["proxy_socks5_dns_mode"]).strip().lower()
+        result["proxy_socks5_dns_mode"] = dns_mode if dns_mode in {"declared", "local", "remote", "auto"} else DEFAULT_FREE_CONFIG["proxy_socks5_dns_mode"]
         result["proxy_tls_verify"] = _as_bool(result.get("proxy_tls_verify"), True)
         result["proxy_tls_compat_fallback"] = _as_bool(result.get("proxy_tls_compat_fallback"), True)
         result["proxy_failure_threshold"] = _int(result.get("proxy_failure_threshold"), 2, 1, 10)
@@ -341,11 +349,17 @@ class FreeConfigStore:
             "roxybrowser": {"country": "", "group": ""},
             "camoufox": {"country": "", "group": ""},
         }
-        # v5 carried the old classified-proxy policy.  Keep its first
-        # migration marker at v6 so existing stores can be upgraded in two
-        # atomic, observable steps; v6 and newer stores use the v7 Camoufox
-        # schema on the next normalization.
-        result["version"] = 6 if source_version < 6 else 7
+        # Preserve the existing staged schema migrations and add v7 -> v8 for
+        # the SOCKS5/remote proxy defaults. A missing version is a fresh store
+        # and receives the current schema immediately.
+        if not value and not previous:
+            result["version"] = DEFAULT_FREE_CONFIG["version"]
+        elif source_version < 6:
+            result["version"] = 6
+        elif source_version < 7:
+            result["version"] = 7
+        else:
+            result["version"] = DEFAULT_FREE_CONFIG["version"]
         return result
 
     def load(self) -> dict[str, Any]:
@@ -356,8 +370,8 @@ class FreeConfigStore:
                 value = {}
             source = value if isinstance(value, Mapping) else {}
             normalized = self.normalize(source)
-            # Persist one-time schema/policy migrations. v6 files must be
-            # written back as v7 so the normalized Camoufox schema is durable.
+            # Persist one-time schema/policy migrations. Legacy v7 files are
+            # written back as v8 so the SOCKS5/remote defaults are durable.
             try:
                 source_version = int(source.get("version") or 0)
             except (TypeError, ValueError):
@@ -365,7 +379,7 @@ class FreeConfigStore:
             needs_policy_migration = (
                 self.path.exists()
                 and (
-                    source_version < 7
+                    source_version < DEFAULT_FREE_CONFIG["version"]
                     or str(source.get("proxy_allocation_mode") or "").strip().lower() != "healthy_random"
                     or any(
                         isinstance(item, Mapping) and any(str(item.get(key) or "").strip() for key in ("country", "group"))

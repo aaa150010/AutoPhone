@@ -24,8 +24,8 @@ const defaultConfig: FreeConfig = {
   driver: 'protocol', flow_profile: 'reference_20260823', proxy_allocation_mode: 'healthy_random', target_count: 1, concurrency: 3, email_code_timeout: 90, auto_set_2fa: true,
   mailbox_network_mode: 'local_proxy', mailbox_proxy_url: 'http://127.0.0.1:7897',
   mailbox_request_retries: 3, mailbox_retry_backoff_seconds: 1,
-  proxy_probe_url: 'https://chatgpt.com/', protocol: { node_runner: '', sentinel_version: '20260219f9f6', sentinel_timeout: 90, network_timeout: 20, network_preflight_retries: 3, security_challenge_wait_seconds: 60, anonymous_warmup: true, authenticated_warmup: true },
-  proxy_default_scheme: 'http',
+  proxy_probe_url: 'https://chatgpt.com/', proxy_socks5_dns_mode: 'remote', protocol: { node_runner: '', sentinel_version: '20260219f9f6', sentinel_timeout: 90, network_timeout: 20, network_preflight_retries: 3, security_challenge_wait_seconds: 60, anonymous_warmup: true, authenticated_warmup: true },
+  proxy_default_scheme: 'socks5',
   roxybrowser: {
     api_base: 'http://127.0.0.1:50000', api_key: '', workspace_id: '', project_id: '',
     workspace_list_path: '/browser/workspace', create_path: '/browser/create', open_path: '/browser/open',

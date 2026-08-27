@@ -447,7 +447,7 @@ class FreeProtocolMixin:
         proxy = proxy_transport_value(
             str(task["proxy"]),
             driver="protocol",
-            socks5_dns_mode=str(config.get("proxy_socks5_dns_mode") or "auto"),
+            socks5_dns_mode=str(config.get("proxy_socks5_dns_mode") or "remote"),
         )
         if not proxy:
             raise FreeRegisterError(

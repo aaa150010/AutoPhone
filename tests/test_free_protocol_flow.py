@@ -360,6 +360,20 @@ class FreeProtocolFlowTests(unittest.TestCase):
         self.assertEqual(raised.exception.session_rebuilds, 0)
         self.assertEqual(factory_calls, [])
 
+    def test_pre_auth_plain_403_is_proxy_retryable_but_not_security_challenge(self):
+        transport = _Transport(start={
+            "_status": 403,
+            "_content_type": "application/json",
+            "error": {"code": "access_denied"},
+        })
+        with self.assertRaises(FreeRegisterError) as raised:
+            _run(transport)
+        error = raised.exception
+        self.assertEqual(error.node_code, "free_oauth_session")
+        self.assertEqual(error.provider_status, 403)
+        self.assertTrue(getattr(error, "proxy_retryable", False))
+        self.assertNotEqual(error.error_code, "free_oauth_security_challenge")
+
     def test_html_bootstrap_is_rebuilt_once_but_challenge_stops(self):
         html = _Transport(start={"_status": 200, "_content_type": "text/html", "_body_summary": "login"})
         good = _Transport()

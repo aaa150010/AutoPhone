@@ -3871,6 +3871,7 @@ _FREE_REGISTER = _free_register_runtime_ext.FreeRegisterManager(
     _FREE_DATA_DIR,
     diagnostic_store=_DIAGNOSTIC_STORE,
     manual_broker=_MANUAL_VERIFICATION,
+    config_provider=_FREE_CONFIG_STORE.load,
     notification_config_getter=lambda: (_read_local_config() or {}).get("email_notification", {}),
 )
 _SUB2_RUNTIME = _sub2_runtime_ext.Sub2Runtime(

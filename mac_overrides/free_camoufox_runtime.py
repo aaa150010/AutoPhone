@@ -855,6 +855,19 @@ async def _goto_with_diagnostics(
         status = 0
     retry_after = await _response_retry_after(response)
     body = (await _body_text(page)).casefold()
+    # A Cloudflare/Turnstile document may carry HTTP 403. Classify the
+    # security page before the generic proxy-block branch so the manager
+    # never rotates or replays the registration around a challenge.
+    if await _is_cloudflare_challenge(page):
+        raise CamoufoxBrowserError(
+            "free_camoufox_challenge", "等待 Camoufox 安全验证",
+            "Camoufox 页面返回 Cloudflare/Turnstile 安全验证，已停止自动流程",
+            retryable=False, provider_status=status or None,
+            provider_code=f"http_{status}" if status else "security_challenge",
+            error_code="free_camoufox_security_challenge",
+            diagnostic="security challenge page",
+            safe_page=_safe_url(page), page_type="security",
+        )
     blocked = any(marker in body for marker in _PROXY_BLOCK_PAGE_MARKERS)
     if status == 429:
         raise CamoufoxBrowserError(

@@ -277,7 +277,12 @@ class FreePlanCheckService:
             import requests as fallback_requests
             session = fallback_requests.Session()
         session.trust_env = False
-        transport_proxy = proxy_transport_value(proxy, driver="protocol")
+        config = self._config()
+        transport_proxy = proxy_transport_value(
+            proxy,
+            driver="protocol",
+            socks5_dns_mode=str(config.get("proxy_socks5_dns_mode") or "remote"),
+        )
         if transport_proxy:
             session.proxies = {"http": transport_proxy, "https": transport_proxy}
         accounts_url = CHATGPT_ACCOUNTS_URL + f"?timezone_offset_min={timezone_offset_minutes()}"

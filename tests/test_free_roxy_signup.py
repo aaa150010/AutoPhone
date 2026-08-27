@@ -76,6 +76,34 @@ class FreeRoxySignupTests(unittest.TestCase):
         self.assertEqual(driver.visits, ["https://chatgpt.com/auth/login"])
         self.assertEqual(driver.timeout, 30)
 
+    def test_plain_block_page_is_proxy_retryable_but_challenge_is_not(self):
+        class BlockedDriver(_NavigationDriver):
+            title = "Access Denied"
+
+            def find_element(self, *_args):
+                return type("Body", (), {"text": "Access Denied"})()
+
+            def get(self, url: str) -> None:
+                super().get(url)
+                if self.title == "Just a moment":
+                    self.current_url = "https://chatgpt.com/cdn-cgi/challenge-platform"
+
+        blocked = BlockedDriver()
+        with self.assertRaises(FreeRegisterError) as raised:
+            free_roxy_signup.open_signup_page(blocked, "account@example.test", 30)
+        self.assertEqual(raised.exception.provider_status, 403)
+        self.assertTrue(getattr(raised.exception, "proxy_retryable", False))
+
+        challenge = BlockedDriver()
+        challenge.title = "Just a moment"
+        challenge.current_url = "https://chatgpt.com/cdn-cgi/challenge-platform"
+        challenge.find_element = lambda *_args: type("Body", (), {"text": "Verify you are human"})()
+        with self.assertRaises(FreeRegisterError) as raised:
+            free_roxy_signup.open_signup_page(challenge, "account@example.test", 30)
+        self.assertEqual(raised.exception.node_code, "free_roxy_challenge")
+        self.assertEqual(raised.exception.error_code, "free_roxy_security_challenge")
+        self.assertFalse(getattr(raised.exception, "proxy_retryable", False))
+
     def test_email_form_script_uses_native_setter_and_async_enter_click(self):
         driver = _ScriptDriver({"ok": True, "mode": "async_enter_click"})
         result = free_roxy_signup._submit_email_form(driver, "account@example.test")

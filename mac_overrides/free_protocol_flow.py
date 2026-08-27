@@ -132,6 +132,7 @@ _CALLBACK_READY_PAGE_TYPES = frozenset({
     "workspace_select", "external_url", "oauth_callback",
 })
 _MAX_PAGE_TRANSITIONS = 8
+_PRE_AUTH_PROXY_RETRY_NODES = frozenset({"free_oauth_session", "free_email_identifier"})
 
 
 def _chain_helpers() -> tuple[Callable[..., Any], ...]:
@@ -210,6 +211,16 @@ def _pre_auth_html_response(response: Any, node: str) -> bool:
     return status is None or 200 <= int(status) < 400
 
 
+def _pre_auth_access_denied(response: Any, node: str) -> bool:
+    """Allow ordinary pre-email 401/403 responses to rotate the proxy."""
+    if node not in _PRE_AUTH_PROXY_RETRY_NODES or _is_security_challenge_response(response):
+        return False
+    try:
+        return int(_status(response) or 0) in {401, 403}
+    except (TypeError, ValueError):
+        return False
+
+
 def _trusted_html_bootstrap(response: Any, method: str) -> bool:
     return bool(
         method == "initiate_oauth"
@@ -259,7 +270,7 @@ def _raise_response(response: Any, *, node: str, label: str, stage: str) -> None
             error_code="oauth_session_invalid",
             **_response_metadata(response, action_hint="保持当前邮箱、代理和设备上下文，重建一次 OAuth 会话", diagnostic_error=error),
         )
-        if _pre_auth_html_response(response, node):
+        if _pre_auth_html_response(response, node) or _pre_auth_access_denied(response, node):
             # A 200 HTML login/error envelope is a route-level response.  The
             # worker may switch to another healthy pool member after the
             # bounded same-session rebuild, without quarantining this proxy.
@@ -274,13 +285,24 @@ def _raise_response(response: Any, *, node: str, label: str, stage: str) -> None
             error_code="free_oauth_security_challenge",
             **_response_metadata(response, action_hint="保留当前代理与 Profile，人工确认风控状态后再重试", diagnostic_error=error),
         )
-    raise FreeRegisterError(
+    failure = FreeRegisterError(
         node,
         label,
         _response_detail(response, error),
         error_code=f"{stage}_failed",
-        **_response_metadata(response, action_hint=f"检查 {label} 的服务端状态后再重试", diagnostic_error=error),
+        **_response_metadata(
+            response,
+            action_hint=(
+                "邮箱尚未确认提交，切换其他健康代理后重试"
+                if _pre_auth_access_denied(response, node)
+                else f"检查 {label} 的服务端状态后再重试"
+            ),
+            diagnostic_error=error,
+        ),
     )
+    if _pre_auth_access_denied(response, node):
+        setattr(failure, "proxy_retryable", True)
+    raise failure
 
 
 def _password_context(response: Any) -> str:
@@ -611,8 +633,22 @@ def _call_transport(
                 error_code="oauth_session_invalid",
                 **_response_metadata(result, action_hint="保持当前邮箱、代理和设备上下文，重建一次 OAuth 会话", diagnostic_error=error),
             )
-            if _pre_auth_html_response(result, node):
+            if _pre_auth_html_response(result, node) or _pre_auth_access_denied(result, node):
                 setattr(failure, "proxy_retryable", True)
+            raise failure
+        if _pre_auth_access_denied(result, node):
+            failure = FreeRegisterError(
+                node,
+                label,
+                f"{_response_detail(result, error)}；邮箱提交前访问被拒绝",
+                error_code=f"{node}_access_denied",
+                **_response_metadata(
+                    result,
+                    action_hint="邮箱尚未确认提交，切换其他健康代理后重试",
+                    diagnostic_error=error,
+                ),
+            )
+            setattr(failure, "proxy_retryable", True)
             raise failure
         return result
     except FreeRegisterError:

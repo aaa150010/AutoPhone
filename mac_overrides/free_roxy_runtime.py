@@ -35,6 +35,7 @@ try:
     )
     from .free_roxy_signup import (
         is_email_verification_page,
+        is_plain_proxy_blocked,
         open_signup_page,
         safe_page_location,
         warmup_login_page,
@@ -107,6 +108,7 @@ except ImportError:
     )
     from free_roxy_signup import (  # type: ignore[no-redef]
         is_email_verification_page,
+        is_plain_proxy_blocked,
         open_signup_page,
         safe_page_location,
         warmup_login_page,
