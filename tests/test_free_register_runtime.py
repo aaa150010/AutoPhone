@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import copy
 from pathlib import Path
 import sys
 import tempfile
@@ -21,6 +22,8 @@ from mac_overrides.free_register_runtime import (
 from mac_overrides.free_register_config import FreeConfigStore
 from mac_overrides.free_protocol_runtime import FreeProtocolMixin, resolve_auth_impersonates
 from mac_overrides.free_log_runtime import FreeLogStore
+from mac_overrides.diagnostic_store import DiagnosticStore
+from mac_overrides.free_priority_executor import PriorityExecutor
 from mac_overrides.free_proxy_store import FreeProxyPool as StructuredFreeProxyPool
 
 
@@ -496,7 +499,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             runner=lambda *_args, **_kwargs: {},
             proxy_probe=lambda _proxy, _url: "203.0.113.20",
         )
-        self.assertEqual(manager.public_state()["runtime_version"], "1.6.84")
+        self.assertEqual(manager.public_state()["runtime_version"], "1.6.86")
         self.assertEqual(manager.preflight({"target_count": 1})["otp_parser_revision"], "pickup-dynamic-v6-samples")
 
     def test_manager_preflight_applies_proxy_allocation_mode_from_config(self):
@@ -639,6 +642,45 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertEqual(manager.pool.entries(), [])
         self.assertNotIn("https://", str(result))
 
+    def test_proxy_preflight_failures_share_one_redacted_taskless_incident(self):
+        diagnostic_store = DiagnosticStore(self.data_dir / "diagnostics")
+        manager = FreeRegisterManager(
+            self.data_dir,
+            diagnostic_store=diagnostic_store,
+            proxy_probe=lambda _proxy, _url: (_ for _ in ()).throw(
+                TimeoutError("private-user private-password")
+            ),
+        )
+
+        result = manager.preflight_proxies(
+            proxy_content=(
+                "socks5://private-user:private-password@proxy-a.test:8000\n"
+                "socks5://second-user:second-password@proxy-b.test:8000\n"
+            ),
+            probe_url="https://chatgpt.com/",
+            socks5_dns_mode="remote",
+        )
+
+        self.assertEqual(result["proxies"], 0)
+        self.assertEqual(result["failure_count"], 2)
+        self.assertRegex(result["incident_id"], r"^LOG-\d{8}-[A-Z0-9]{8}$")
+        self.assertTrue(all(row["incident_id"] == result["incident_id"] for row in result["rows"]))
+        self.assertTrue(all(row.get("failure", {}).get("node_code") == "proxy_connect_failed" for row in result["rows"]))
+        incidents = diagnostic_store.search({"workflow": "proxy_preflight"})
+        self.assertEqual(len(incidents), 1)
+        detail = diagnostic_store.incident(result["incident_id"])
+        self.assertIsNotNone(detail)
+        serialized = json.dumps({"result": result, "detail": detail}, ensure_ascii=False)
+        for secret in ("private-user", "private-password", "second-user", "second-password"):
+            self.assertNotIn(secret, serialized)
+        event = detail["events"][0]
+        self.assertEqual(event["task_id"], "")
+        self.assertEqual(event["transport"]["failure_count"], 2)
+        self.assertEqual(event["transport"]["target_domain"], "chatgpt.com")
+        self.assertIn("proxy_connect_failed", event["transport"]["nodes"])
+        self.assertEqual(event["transport"]["declared_schemes"], "socks5")
+        self.assertEqual(event["transport"]["effective_schemes"], "socks5h")
+
     def test_saved_proxy_preflight_releases_quarantine_after_successful_recheck(self):
         manager = FreeRegisterManager(
             self.data_dir,
@@ -658,6 +700,61 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertEqual(result["proxies"], 1)
         self.assertEqual(manager.proxies.public()["rows"][0]["status"], "available")
         self.assertEqual(manager.proxies.public()["rows"][0]["consecutive_failures"], 0)
+
+    def test_saved_proxy_preflight_health_success_write_failure_keeps_probe_available(self):
+        manager = FreeRegisterManager(
+            self.data_dir,
+            proxy_probe=lambda _proxy, _url: "203.0.113.20",
+        )
+        manager.proxies.import_text("proxy-a.test:8000\n")
+
+        with patch.object(
+            manager.proxies,
+            "record_success",
+            side_effect=OSError("proxy health store unavailable"),
+        ) as record_success:
+            result = manager.preflight_proxies(
+                proxy_content="",
+                probe_url="https://chatgpt.com/",
+            )
+
+        record_success.assert_called_once()
+        self.assertEqual(result["proxies"], 1)
+        self.assertEqual(result["health_write_failures"], 1)
+        self.assertTrue(result["rows"][0]["available"])
+        self.assertNotIn("failure_count", result)
+
+    def test_saved_proxy_preflight_health_write_failure_does_not_abort_batch(self):
+        diagnostic_store = DiagnosticStore(self.data_dir / "diagnostics")
+        manager = FreeRegisterManager(
+            self.data_dir,
+            diagnostic_store=diagnostic_store,
+            proxy_probe=lambda _proxy, _url: (_ for _ in ()).throw(
+                TimeoutError("probe timeout")
+            ),
+        )
+        manager.proxies.import_text(
+            "proxy-a.test:8000\nproxy-b.test:8000\n"
+        )
+
+        with patch.object(
+            manager.proxies,
+            "record_failure",
+            side_effect=OSError("proxy health store unavailable"),
+        ) as record_failure:
+            result = manager.preflight_proxies(
+                proxy_content="",
+                probe_url="https://chatgpt.com/",
+            )
+
+        self.assertEqual(record_failure.call_count, 2)
+        self.assertEqual(result["failure_count"], 2)
+        self.assertRegex(result["incident_id"], r"^LOG-\d{8}-[A-Z0-9]{8}$")
+        detail = diagnostic_store.incident(result["incident_id"])
+        self.assertIsNotNone(detail)
+        assert detail is not None
+        self.assertEqual(detail["event_count"], 1)
+        self.assertEqual(detail["events"][0]["transport"]["health_write_failures"], 2)
 
     def test_proxy_binding_reports_the_failed_row_without_exposing_credentials(self):
         proxies = FreeProxyPool(self.data_dir)
@@ -1087,6 +1184,57 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertEqual(proxy["consecutive_failures"], 0)
         self.assertEqual(proxy["status"], "unknown")
 
+    def test_proxy_failure_and_lease_cleanup_survive_task_store_errors(self):
+        diagnostic_store = DiagnosticStore(self.data_dir / "diagnostics")
+        manager = FreeRegisterManager(self.data_dir, diagnostic_store=diagnostic_store)
+        manager.proxies.import_text("http://proxy-a.test:8000\n")
+        proxy = manager.proxies.public()["rows"][0]
+        task = {
+            "task_id": "free-persistence-cleanup",
+            "proxy": "http://proxy-a.test:8000",
+            "proxy_id": proxy["proxy_id"],
+            "proxy_masked": proxy["masked"],
+            "proxy_fingerprint": proxy["proxy_id"],
+            "expected_exit_ip": "",
+            "cleanup_status": "pending",
+        }
+        manager._tasks[task["task_id"]] = dict(task)
+
+        with patch.object(manager.task_store, "save", side_effect=OSError("disk full")):
+            manager._record_proxy_failure(
+                task,
+                FreeRegisterError("free_proxy_connect", "代理连接", "连接失败"),
+            )
+            manager._release_task_lease(task)
+
+        self.assertEqual(manager._tasks[task["task_id"]]["cleanup_status"], "released")
+        self.assertEqual(len(manager._tasks[task["task_id"]]["proxy_attempts"]), 1)
+        incidents = diagnostic_store.search({"node_code": "free_task_store"})
+        self.assertGreaterEqual(len(incidents), 1)
+
+    def test_proxy_health_store_failure_does_not_skip_lease_release(self):
+        manager = FreeRegisterManager(self.data_dir)
+        manager.proxies.import_text("http://proxy-a.test:8000\n")
+        proxy = manager.proxies.public()["rows"][0]
+        task = {
+            "task_id": "free-health-write-failure",
+            "proxy": "http://proxy-a.test:8000",
+            "proxy_id": proxy["proxy_id"],
+            "proxy_masked": proxy["masked"],
+            "proxy_fingerprint": proxy["proxy_id"],
+            "expected_exit_ip": "",
+        }
+        manager._tasks[task["task_id"]] = dict(task)
+        with patch.object(manager.proxies, "record_failure", side_effect=OSError("proxy pool unavailable")) as record:
+            manager._record_proxy_failure(
+                task,
+                FreeRegisterError("proxy_connect_timeout", "代理连接", "连接超时", provider_status=503),
+            )
+            manager._release_task_lease(task)
+        record.assert_called_once()
+        self.assertEqual(record.call_args.kwargs["http_status"], 503)
+        self.assertEqual(manager._tasks[task["task_id"]]["cleanup_status"], "released")
+
     def test_start_with_pasted_proxy_persists_exit_ip_before_worker_progress(self):
         worker_entered = threading.Event()
         release_worker = threading.Event()
@@ -1466,6 +1614,116 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
 
         self.assertCountEqual(seen, ["a@example.test", "b@example.test"])
         self.assertIsNone(manager._executor)
+
+    def test_registered_worker_cannot_finish_before_future_ownership(self):
+        manager = FreeRegisterManager(self.data_dir, runner=lambda *_args, **_kwargs: {})
+        manager._batch_id = "free-gate-test"
+        manager._last_config = {"driver": "protocol"}
+        manager._executor = PriorityExecutor(max_workers=1, thread_name_prefix="free-gate-test")
+        observed: list[tuple[int, list[str]]] = []
+
+        def instant_worker() -> None:
+            observed.append((len(manager._futures), list(manager._future_drivers.values())))
+
+        with manager._lock:
+            future = manager._submit_registered_worker(
+                instant_worker,
+                driver="protocol",
+                priority=0,
+            )
+        future.result(timeout=2)
+        deadline = time.time() + 2
+        while manager._executor is not None and time.time() < deadline:
+            time.sleep(0.01)
+
+        self.assertEqual(observed, [(1, ["protocol"])])
+        self.assertFalse(manager._futures)
+        self.assertIsNone(manager._executor)
+
+    def test_worker_persists_running_state_before_invoking_transport(self):
+        FreeMailboxPool(self.data_dir).import_text(
+            "running@example.test----https://mail.example.test/running\n"
+        )
+        FreeProxyPool(self.data_dir).import_text("http://proxy-running.test:8000\n")
+        persisted_statuses = []
+        manager = None
+
+        def runner(task, _config, _stop, _stage, _log, *, twofa_retry=False):
+            self.assertFalse(twofa_retry)
+            assert manager is not None
+            persisted_statuses.append(
+                manager.task_store.load()[str(task["task_id"])]["status"]
+            )
+            return {"access_token": "token", "twofa_status": "enabled"}
+
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=runner,
+            proxy_probe=lambda _proxy, _url: "203.0.113.50",
+        )
+        manager.start({"target_count": 1})
+        deadline = time.time() + 3
+        while manager._executor is not None and time.time() < deadline:
+            time.sleep(0.01)
+
+        self.assertEqual(persisted_statuses, ["running"])
+        self.assertIsNone(manager._executor)
+
+    def test_safe_task_store_failure_creates_taskless_diagnostic(self):
+        diagnostic_store = DiagnosticStore(self.data_dir / "diagnostics")
+        manager = FreeRegisterManager(self.data_dir, diagnostic_store=diagnostic_store)
+        with patch.object(manager.task_store, "save", side_effect=OSError("private path")):
+            self.assertFalse(manager._save_tasks_safely("任务进入运行状态"))
+
+        incidents = diagnostic_store.search({"node_code": "free_task_store"})
+        self.assertEqual(len(incidents), 1)
+        self.assertEqual(incidents[0]["first_error_code"], "free_task_store_write_failed")
+        self.assertEqual(incidents[0]["task_id"], "")
+
+    def test_task_store_save_order_cannot_overwrite_newer_snapshot(self):
+        manager = FreeRegisterManager(self.data_dir)
+        manager._tasks["ordered-save"] = {
+            "task_id": "ordered-save",
+            "status": "old",
+        }
+        first_save_entered = threading.Event()
+        release_first_save = threading.Event()
+        second_save_started = threading.Event()
+        snapshots = []
+
+        def save(snapshot):
+            snapshots.append(copy.deepcopy(snapshot))
+            if len(snapshots) == 1:
+                first_save_entered.set()
+                self.assertTrue(release_first_save.wait(2))
+            else:
+                second_save_started.set()
+
+        with patch.object(manager.task_store, "save", side_effect=save):
+            first = threading.Thread(
+                target=manager._save_tasks_safely,
+                args=("顺序保存旧状态",),
+            )
+            first.start()
+            self.assertTrue(first_save_entered.wait(1))
+
+            def update_and_save_new_state():
+                with manager._lock:
+                    manager._tasks["ordered-save"]["status"] = "new"
+                manager._save_tasks_safely("顺序保存新状态")
+
+            second = threading.Thread(target=update_and_save_new_state)
+            second.start()
+            # The second writer cannot capture a snapshot while the first
+            # save owns the manager lock.
+            self.assertFalse(second_save_started.wait(0.05))
+            release_first_save.set()
+            first.join(2)
+            second.join(2)
+
+        self.assertFalse(first.is_alive())
+        self.assertFalse(second.is_alive())
+        self.assertEqual([item["ordered-save"]["status"] for item in snapshots], ["old", "new"])
 
     def test_free_start_honors_explicit_target_count_and_auto_zero(self):
         pool = FreeMailboxPool(self.data_dir)

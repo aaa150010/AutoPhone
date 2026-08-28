@@ -161,6 +161,7 @@ onMounted(async () => {
           @test-notification="testNotification"
           @query-sms-balances="querySmsBalances"
           @free-dirty-change="freeDirty = $event"
+          @navigate="emit('navigate', $event)"
         />
       </WorkspacePanel>
 

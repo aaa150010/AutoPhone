@@ -659,6 +659,7 @@ class MailboxOtpService:
         stage_code: str = "email_code_waiting",
         *,
         force_snapshot: bool = False,
+        notify_stage: bool = True,
     ) -> None:
         """Start an OTP request, optionally taking a fresh mailbox baseline.
 
@@ -667,7 +668,12 @@ class MailboxOtpService:
         cached ``last_scan`` belongs to the previous attempt and must not be
         used to classify the next message as new or old.
         """
-        self._stage(stage_code)
+        # Keep the internal phase aligned even when the caller wants to defer
+        # the public task-stage transition until the browser has actually
+        # reached the OTP page.
+        self.current_stage = str(stage_code or self.current_stage)
+        if notify_stage:
+            self._stage(stage_code)
         if self.state.active:
             return
         if force_snapshot:

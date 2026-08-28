@@ -9,6 +9,7 @@ from unittest.mock import patch
 from types import SimpleNamespace
 
 from mac_overrides.free_register_common import FreeRegisterError
+from mac_overrides.diagnostic_store import DiagnosticStore
 from mac_overrides.free_proxy_store import FreeProxyPool
 from mac_overrides.free_register_runtime import FreeRegisterManager
 
@@ -44,6 +45,43 @@ class FreeProxyRobustnessTests(unittest.TestCase):
         self.assertEqual(protocol["proxies"], 1)
         self.assertEqual(chatgpt_calls, [])
         self.assertNotIn("private", str(protocol))
+
+    def test_failed_proxy_rows_share_one_credential_safe_preflight_incident(self) -> None:
+        diagnostic_store = DiagnosticStore(self.data_dir / "diagnostics")
+
+        def fail_probe(_proxy: str, _url: str) -> str:
+            raise TimeoutError("proxy password should-not-persist")
+
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=lambda *_args, **_kwargs: {},
+            proxy_probe=fail_probe,
+            diagnostic_store=diagnostic_store,
+        )
+        result = manager.preflight_proxies(
+            proxy_content=(
+                "socks5://user-one:private-one@proxy-a.example.test:3000\n"
+                "socks5://user-two:private-two@proxy-b.example.test:3000\n"
+            ),
+            probe_url="https://chatgpt.com/",
+            socks5_dns_mode="remote",
+        )
+
+        incident_id = str(result.get("incident_id") or "")
+        self.assertRegex(incident_id, r"^LOG-\d{8}-[A-Z0-9]{8}$")
+        self.assertEqual(result["failure_count"], 2)
+        self.assertEqual({row.get("incident_id") for row in result["rows"]}, {incident_id})
+        self.assertTrue(all(isinstance(row.get("failure"), dict) for row in result["rows"]))
+        incident = diagnostic_store.incident(incident_id)
+        assert incident is not None
+        self.assertEqual(incident["task_id"], "")
+        self.assertEqual(incident["event_count"], 1)
+        exported = diagnostic_store.export([incident_id], "json")
+        for secret in ("user-one", "private-one", "user-two", "private-two"):
+            self.assertNotIn(secret, exported)
+        transport = incident["events"][0]["transport"]
+        self.assertEqual(transport["failure_count"], 2)
+        self.assertEqual(transport["target_domain"], "chatgpt.com")
 
     def test_chatgpt_page_is_not_part_of_proxy_preflight(self) -> None:
         pool = FreeProxyPool(self.data_dir, failure_threshold=1)

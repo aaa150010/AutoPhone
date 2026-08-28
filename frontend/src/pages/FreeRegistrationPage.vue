@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleCheck, Connection, CopyDocument, Delete, Refresh, Setting, VideoPause, VideoPlay, View } from '@element-plus/icons-vue'
-import { deleteFreeTasks, freeBatchRetry, getFreeConfig, getFreeMailboxUrl, getFreeSecret, getFreeState, getFreeTaskLatestCode, openManualVerification, preflightFree, rerunFreeTask, retryFreeTwofa, startFree, startFreePlanCheck, stopFree, type FreeConfig, type FreeState } from '../api/client'
+import { closeFreeCamoufoxDebug, deleteFreeTasks, freeBatchRetry, getFreeConfig, getFreeMailboxUrl, getFreeSecret, getFreeState, getFreeTaskLatestCode, openManualVerification, preflightFree, rerunFreeTask, retryFreeTwofa, startFree, startFreePlanCheck, stopFree, type FreeConfig, type FreeState } from '../api/client'
 import PageToolbar from '../components/PageToolbar.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import ContentEmptyState from '../components/ContentEmptyState.vue'
@@ -36,7 +36,7 @@ const defaultConfig: FreeConfig = {
     humanize_browser_actions: true, existing_account_login: true, post_registration_dwell_min: 18, post_registration_dwell_max: 45,
   },
   camoufox: {
-    headless: true, pool_size: 2, max_contexts_per_browser: 3, context_start_interval_ms: 175,
+    debug_mode: true, headless: true, pool_size: 2, max_contexts_per_browser: 3, context_start_interval_ms: 175,
     startup_concurrency: 4, block_images: true, registration_timeout_seconds: 600,
     context_close_timeout_seconds: 15, browser_recycle_timeout_seconds: 45,
     browser_recycle_drain_timeout_seconds: 20, max_registrations_per_browser: 12,
@@ -282,23 +282,24 @@ async function openManualOtp(task: any) {
 }
 
 async function copyIncidentId(value: string) {
-  const incidentId = String(value || '').trim()
-  if (!incidentId) return
-  if (!navigator.clipboard?.writeText) {
-    ElMessage.warning('当前环境不支持复制')
-    return
-  }
-  try {
-    await navigator.clipboard.writeText(incidentId)
-    ElMessage.success('日志 ID 已复制')
-  } catch {
-    ElMessage.error('日志 ID 复制失败')
-  }
+  await copyDebugReference(value, '日志 ID')
 }
 
 function openIncidentCenter(value: string) {
   const incidentId = String(value || '').trim()
   if (incidentId) emit('navigate', `/logs?incident_id=${encodeURIComponent(incidentId)}`)
+}
+
+function taskIncidentId(task: any) {
+  return String(task?.incident_id || task?.failure?.incident_id || '').trim()
+}
+
+function taskDebugSessionId(task: any) {
+  return String(task?.failure?.debug_session_id || task?.debug_session_id || '').trim()
+}
+
+function taskDebugArtifactId(task: any) {
+  return String(task?.failure?.debug_artifact_id || task?.failure?.artifact_id || task?.debug_artifact_id || task?.artifact_id || '').trim()
 }
 
 function taskPlanLabel(task: any) {
@@ -471,6 +472,40 @@ async function refreshPlan(task: any) {
   }
 }
 
+const camoufoxDebug = computed(() => state.value.camoufox_debug || {})
+const camoufoxDebugSessions = computed(() => Array.isArray(camoufoxDebug.value.sessions) ? camoufoxDebug.value.sessions : [])
+const camoufoxDebugCapacity = computed(() => Number(camoufoxDebug.value.capacity || (Number(config.camoufox.pool_size || 0) * Number(config.camoufox.max_contexts_per_browser || 0))))
+const camoufoxDebugUsed = computed(() => Number(camoufoxDebug.value.used ?? camoufoxDebugSessions.value.length))
+const camoufoxDebugAvailable = computed(() => Math.max(0, Number(camoufoxDebug.value.available ?? camoufoxDebugCapacity.value - camoufoxDebugUsed.value)))
+const camoufoxDebugOpenContexts = computed(() => Number(camoufoxDebug.value.open_contexts ?? camoufoxDebugUsed.value))
+const camoufoxDebugHeadless = computed(() => typeof camoufoxDebug.value.headless === 'boolean' ? camoufoxDebug.value.headless : (Boolean(config.camoufox.debug_mode) ? false : Boolean(config.camoufox.headless)))
+
+async function copyDebugReference(value: string, label: string) {
+  const reference = String(value || '').trim()
+  if (!reference) return
+  if (!navigator.clipboard?.writeText) {
+    ElMessage.warning('当前环境不支持复制')
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(reference)
+    ElMessage.success(`${label}已复制`)
+  } catch {
+    ElMessage.error(`${label}复制失败`)
+  }
+}
+
+async function closeCamoufoxDebug(sessionId = '') {
+  try {
+    const result = await closeFreeCamoufoxDebug(sessionId)
+    state.value = result.state || state.value
+    ElMessage.success(sessionId ? '调试窗口已关闭' : '调试窗口已全部关闭')
+    await refresh()
+  } catch (error: any) {
+    ElMessage.error(error?.message || '关闭 Camoufox 调试窗口失败')
+  }
+}
+
 function taskStatusLabel(status: string) {
   return ({ queued: '排队', running: '运行中', success: '成功', partial_success: '部分成功', failed: '失败', pending_rerun: '待重跑', stopped: '已停止', twofa_pending: '2FA 待重试', account_banned: ACCOUNT_BANNED_DISPLAY_MESSAGE } as Record<string, string>)[status] || status || '-'
 }
@@ -538,6 +573,30 @@ onUnmounted(() => window.clearTimeout(timer))
             <el-button size="small" type="primary" :icon="VideoPlay" :loading="busy === 'start'" :disabled="running || !Number(state.pool?.available || 0)" @click="start">开始注册</el-button>
             <el-button size="small" type="danger" plain :icon="VideoPause" :loading="busy === 'stop'" :disabled="!running" @click="stop">停止</el-button>
           </div>
+          <div v-if="config.driver === 'camoufox' || camoufoxDebugSessions.length" class="camoufox-debug-bar">
+            <div class="camoufox-debug-summary">
+              <el-tag type="warning" effect="plain">Camoufox 调试窗口 {{ camoufoxDebugSessions.length }} / {{ camoufoxDebugCapacity || '-' }}</el-tag>
+              <span class="muted">占用 {{ camoufoxDebugUsed }} · 可用 {{ camoufoxDebugAvailable }} · 活动 context {{ camoufoxDebugOpenContexts }}</span>
+              <span v-if="!camoufoxDebugHeadless" class="muted">有头模式</span>
+            </div>
+            <span class="muted">失败页面和安全挑战会保留；超时、取消、成功和浏览器断开会回收。</span>
+            <div v-if="camoufoxDebugSessions.length" class="camoufox-debug-session-list">
+              <div v-for="session in camoufoxDebugSessions" :key="session.session_id" class="camoufox-debug-session">
+                <div class="camoufox-debug-session-info">
+                  <strong>{{ session.task_id || session.session_id }}</strong>
+                  <span>{{ session.node_label || session.error_code || '失败页面' }}<template v-if="session.page_type"> · {{ session.page_type }}</template></span>
+                  <small v-if="session.safe_page" class="task-subline">{{ session.safe_page }}</small>
+                  <small class="task-subline">现场 {{ session.artifact_id || '-' }} · 日志 {{ session.incident_id || '-' }}</small>
+                </div>
+                <div class="camoufox-debug-session-actions">
+                  <el-button v-if="session.artifact_id" text size="small" :icon="CopyDocument" aria-label="复制现场 ID" @click="copyDebugReference(session.artifact_id, '现场 ID')" />
+                  <el-button v-if="session.incident_id" text size="small" :icon="View" aria-label="打开故障日志" @click="openIncidentCenter(session.incident_id)" />
+                  <el-button text size="small" :icon="Delete" aria-label="关闭调试窗口" @click="closeCamoufoxDebug(session.session_id)" />
+                </div>
+              </div>
+            </div>
+            <el-button v-if="camoufoxDebugSessions.length" size="small" type="warning" plain :icon="Delete" @click="closeCamoufoxDebug()">关闭全部调试窗口</el-button>
+          </div>
           <div class="task-filter-bar">
             <el-input v-model="taskSearch" size="small" clearable placeholder="搜索邮箱、任务 ID 或失败节点" />
             <el-radio-group v-model="taskStatusFilter" size="small" class="task-status-filter">
@@ -578,9 +637,11 @@ onUnmounted(() => window.clearTimeout(timer))
                       <strong v-if="taskFailureNode(row).label || taskFailureNode(row).code">{{ taskFailureNode(row).label || taskFailureNode(row).code }}<code v-if="taskFailureNode(row).showCode">{{ taskFailureNode(row).code }}</code></strong>
                       <span>{{ taskFailureCause(row) }}</span>
                     </template>
-                    <small v-if="row.incident_id" class="task-incident">
-                      <el-button text size="small" :icon="CopyDocument" @click.stop="copyIncidentId(row.incident_id)">日志 ID {{ row.incident_id }}</el-button>
-                      <el-button text size="small" :icon="View" aria-label="打开故障详情" @click.stop="openIncidentCenter(row.incident_id)" />
+                    <small v-if="taskIncidentId(row) || taskDebugSessionId(row) || taskDebugArtifactId(row)" class="task-incident">
+                      <el-button v-if="taskIncidentId(row)" text size="small" :icon="CopyDocument" @click.stop="copyIncidentId(taskIncidentId(row))">日志 ID {{ taskIncidentId(row) }}</el-button>
+                      <el-button v-if="taskIncidentId(row)" text size="small" :icon="View" aria-label="打开故障详情" @click.stop="openIncidentCenter(taskIncidentId(row))" />
+                      <el-button v-if="taskDebugSessionId(row)" text size="small" :icon="CopyDocument" @click.stop="copyDebugReference(taskDebugSessionId(row), '调试会话 ID')">窗口 {{ taskDebugSessionId(row) }}</el-button>
+                      <el-button v-if="taskDebugArtifactId(row)" text size="small" :icon="CopyDocument" @click.stop="copyDebugReference(taskDebugArtifactId(row), '现场 ID')">现场 {{ taskDebugArtifactId(row) }}</el-button>
                     </small>
                   </div>
                 </el-tooltip>
@@ -614,6 +675,18 @@ onUnmounted(() => window.clearTimeout(timer))
 .task-start-bar, .task-filter-bar, .task-actions { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .task-start-bar { min-height: 32px; }
 .task-start-bar .muted { margin-right: auto; }
+.camoufox-debug-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; min-width: 0; padding: 6px 8px; border: 1px solid var(--el-color-warning-light-5); background: var(--el-color-warning-light-9); }
+.camoufox-debug-bar > .muted { margin-right: auto; }
+.camoufox-debug-summary { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.camoufox-debug-session-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); flex: 1 1 100%; gap: 4px; min-width: min(100%, 360px); }
+.camoufox-debug-session { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 4px 6px; border: 1px solid var(--el-color-warning-light-7); background: rgb(255 255 255 / 0.55); }
+.camoufox-debug-session-info { display: grid; min-width: 0; margin-right: auto; line-height: 15px; }
+.camoufox-debug-session-info strong, .camoufox-debug-session-info span, .camoufox-debug-session-info small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.camoufox-debug-session-info strong { color: var(--el-text-color-primary); font-size: 11px; }
+.camoufox-debug-session-info span { color: var(--el-color-warning-dark-2); font-size: 11px; }
+.camoufox-debug-session-info .task-subline { max-width: 100%; }
+.camoufox-debug-session-actions { display: inline-flex; align-items: center; flex: 0 0 auto; gap: 2px; }
+.camoufox-debug-session-actions :deep(.el-button) { height: 22px; padding: 0 3px; }
 .quick-run-field { display: inline-flex; align-items: center; gap: 8px; color: var(--el-text-color-regular); font-size: 14px; white-space: nowrap; }
 /* Keep numeric controls compact while preserving Element Plus' native
    keyboard, validation, and spinner behavior. */

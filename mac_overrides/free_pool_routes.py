@@ -316,7 +316,19 @@ class FreePoolRouteController:
                 socks5_dns_mode=str(probe_config.get("proxy_socks5_dns_mode") or "remote"),
                 layered_probe=bool(data.get("layered_probe", False)),
             )
-            return self.module.jsonify(ok=True, result=result)
+            payload: dict[str, Any] = {"ok": True, "result": result}
+            if isinstance(result, Mapping):
+                # A mixed proxy preflight is a successful diagnostic request,
+                # not an HTTP route failure. Expose its batch incident and
+                # canonical aggregate failure alongside the detailed result so
+                # clients can offer Log Center actions without parsing rows.
+                incident_id = str(result.get("incident_id") or "").strip()
+                failure = result.get("failure")
+                if incident_id:
+                    payload["incident_id"] = incident_id
+                if isinstance(failure, Mapping):
+                    payload["failure"] = dict(failure)
+            return self.module.jsonify(**payload)
         except Exception as exc:
             return self.failure_response(
                 exc,

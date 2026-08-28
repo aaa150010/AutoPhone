@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 from mac_overrides.free_failure_runtime import canonical_failure, first_failure, sanitize_failure_text
 from mac_overrides.free_log_runtime import FreeLogStore
@@ -15,6 +17,7 @@ from mac_overrides.free_register_common import (
 )
 from mac_overrides.free_register_runtime import FreeMailboxPool, FreeProxyPool, FreeRegisterManager
 from mac_overrides.free_register_store import FreeTaskStore
+from mac_overrides.diagnostic_store import DiagnosticStore
 
 
 class FreeFailureRuntimeTests(unittest.TestCase):
@@ -103,6 +106,32 @@ class FreeFailureRuntimeTests(unittest.TestCase):
             rendered,
             "reader failed token=********; plain token wording remains",
         )
+
+    def test_safe_log_message_redacts_complete_authorization_header(self) -> None:
+        rendered = safe_log_message(
+            "Authorization: Basic abc123456789==; Authorization: Bearer bearer-secret"
+        )
+        self.assertNotIn("abc123456789", rendered)
+        self.assertNotIn("bearer-secret", rendered)
+        self.assertIn("Authorization:********", rendered)
+
+    def test_sanitizers_redact_quoted_json_and_camel_case_secrets(self) -> None:
+        raw = (
+            '{"accessToken":"access-private", "refreshToken": "refresh-private", '
+            '"idToken":"id-private", "adminToken":"admin-private", '
+            '"csrfToken":"csrf-private", "totpSecret":"totp-private", '
+            '"otpCode":"123456"}'
+        )
+
+        for rendered in (safe_log_message(raw), sanitize_failure_text(raw)):
+            self.assertIn('"accessToken":"********"', rendered)
+            self.assertIn('"refreshToken": "********"', rendered)
+            self.assertIn('"csrfToken":"********"', rendered)
+            for secret in (
+                "access-private", "refresh-private", "id-private", "admin-private",
+                "csrf-private", "totp-private", "123456",
+            ):
+                self.assertNotIn(secret, rendered)
 
     def test_sanitizer_preserves_generated_incident_id_dates(self) -> None:
         rendered = sanitize_failure_text(
@@ -236,6 +265,30 @@ class FreeFailureRuntimeTests(unittest.TestCase):
         self.assertEqual(kept["node_code"], "free_email_otp_wait")
         self.assertEqual(restarted.pool.result(row_id)["failure"], kept)
 
+    def test_task_failure_persistence_outage_does_not_raise_or_skip_result(self) -> None:
+        manager = FreeRegisterManager(self.data_dir)
+        task = {"task_id": "persist-outage", "status": "running"}
+        manager._tasks[task["task_id"]] = dict(task)
+
+        with patch.object(manager.task_store, "save", side_effect=OSError("disk full")):
+            failure, payload = manager._persist_task_failure(
+                task["task_id"],
+                task,
+                status="failed",
+                failure={
+                    "node_code": "free_proxy_connect",
+                    "node_label": "代理连接",
+                    "error_code": "proxy_connect_failed",
+                    "technical_summary": "连接失败",
+                    "public_message": "代理连接失败",
+                    "retryable": True,
+                },
+            )
+
+        self.assertEqual(failure["error_code"], "proxy_connect_failed")
+        self.assertEqual(payload["status"], "failed")
+        self.assertEqual(manager._tasks[task["task_id"]]["status"], "failed")
+
     def test_unexpected_error_keeps_current_stage_and_safe_diagnostic(self) -> None:
         pool = FreeMailboxPool(self.data_dir)
         pool.import_text("a@example.test----https://mail.example.test/pickup\n")
@@ -301,6 +354,109 @@ class FreeFailureRuntimeTests(unittest.TestCase):
         for secret in ("private-value", "user:pass", "123456", "content-secret"):
             self.assertNotIn(secret, persisted)
             self.assertNotIn(secret, task_persisted)
+
+    def test_legacy_phone_incident_ids_are_migrated_in_global_and_task_logs(self) -> None:
+        task_id = "free-legacy-incident"
+        legacy_id = "LOG-13800138000-ABC12345"
+        row = {
+            "time": "2026-08-27T08:30:00Z",
+            "level": "error",
+            "task_id": task_id,
+            "node_code": "free_protocol",
+            "incident_id": legacy_id,
+        }
+        (self.data_dir / "logs.json").write_text(json.dumps([row]), encoding="utf-8")
+        task_dir = self.data_dir / "task_logs"
+        task_dir.mkdir(parents=True)
+        (task_dir / f"{fingerprint(task_id)}.json").write_text(json.dumps([row]), encoding="utf-8")
+
+        store = FreeLogStore(self.data_dir)
+        self.assertEqual(store.snapshot(task_id)[0]["incident_id"], "LOG-20260827-ABC12345")
+        self.assertEqual(store.snapshot()[0]["incident_id"], "LOG-20260827-ABC12345")
+        self.assertNotIn("13800138000", (self.data_dir / "logs.json").read_text(encoding="utf-8"))
+        self.assertNotIn("13800138000", (task_dir / f"{fingerprint(task_id)}.json").read_text(encoding="utf-8"))
+
+    def test_ambiguous_legacy_phone_incident_id_is_cleared(self) -> None:
+        legacy_id = "LOG-13800138000-ABC12345"
+        rows = [
+            {"time": "2026-08-27T08:30:00Z", "level": "error", "task_id": "free-ambiguous", "node_code": "x", "incident_id": legacy_id},
+            {"time": "2026-08-28T08:30:00Z", "level": "error", "task_id": "free-ambiguous", "node_code": "x", "incident_id": legacy_id},
+        ]
+        (self.data_dir / "logs.json").write_text(json.dumps(rows), encoding="utf-8")
+
+        snapshot = FreeLogStore(self.data_dir).snapshot()
+        self.assertEqual([row["incident_id"] for row in snapshot], ["", ""])
+        self.assertNotIn("13800138000", (self.data_dir / "logs.json").read_text(encoding="utf-8"))
+
+    def test_legacy_phone_ids_with_colliding_canonical_suffix_are_cleared(self) -> None:
+        rows = [
+            {"time": "2026-08-27T08:30:00Z", "level": "error", "task_id": "free-a", "node_code": "x", "incident_id": "LOG-13800138000-ABC12345"},
+            {"time": "2026-08-27T08:31:00Z", "level": "error", "task_id": "free-b", "node_code": "x", "incident_id": "LOG-13900139000-ABC12345"},
+        ]
+        (self.data_dir / "logs.json").write_text(json.dumps(rows), encoding="utf-8")
+        snapshot = FreeLogStore(self.data_dir).snapshot()
+        self.assertEqual([row["incident_id"] for row in snapshot], ["", ""])
+
+    def test_legacy_phone_incident_with_missing_timestamp_is_cleared(self) -> None:
+        legacy_id = "LOG-13800138000-ABC12345"
+        rows = [
+            {"level": "error", "task_id": "free-missing-time", "node_code": "x", "incident_id": legacy_id},
+            {"time": "2026-08-27T08:30:00Z", "level": "error", "task_id": "free-missing-time", "node_code": "x", "incident_id": legacy_id},
+        ]
+        (self.data_dir / "logs.json").write_text(json.dumps(rows), encoding="utf-8")
+
+        snapshot = FreeLogStore(self.data_dir).snapshot()
+        self.assertEqual([row["incident_id"] for row in snapshot], ["", ""])
+
+    def test_legacy_phone_id_is_cleared_when_canonical_id_exists_in_diagnostics(self) -> None:
+        diagnostic_store = DiagnosticStore(self.data_dir / "diagnostics")
+        with patch.object(DiagnosticStore, "_incident_id", return_value="LOG-20260827-ABC12345"):
+            existing_id = diagnostic_store.record({
+                "event_id": "diagnostic-canonical-owner",
+                "level": "error", "outcome": "error", "node_code": "existing",
+            })
+        self.assertEqual(existing_id, "LOG-20260827-ABC12345")
+        legacy_id = "LOG-13800138000-ABC12345"
+        (self.data_dir / "logs.json").write_text(json.dumps([{
+            "time": "2026-08-27T08:30:00Z", "level": "error",
+            "task_id": "free-diagnostic-collision", "node_code": "x",
+            "incident_id": legacy_id,
+        }]), encoding="utf-8")
+
+        snapshot = FreeLogStore(self.data_dir, diagnostic_store=diagnostic_store).snapshot()
+        self.assertEqual(snapshot[0]["incident_id"], "")
+        self.assertNotIn("13800138000", (self.data_dir / "logs.json").read_text(encoding="utf-8"))
+
+    def test_legacy_phone_id_is_cleared_when_diagnostic_index_is_unreadable(self) -> None:
+        legacy_id = "LOG-13800138000-ABC12345"
+        (self.data_dir / "logs.json").write_text(json.dumps([{
+            "time": "2026-08-27T08:30:00Z", "level": "error",
+            "task_id": "free-diagnostic-unreadable", "node_code": "x",
+            "incident_id": legacy_id,
+        }]), encoding="utf-8")
+        diagnostic_path = self.data_dir / "diagnostics.sqlite3"
+        diagnostic_path.write_bytes(b"present-but-unreadable")
+        with patch("mac_overrides.free_log_runtime.sqlite3.connect", side_effect=OSError("locked")):
+            snapshot = FreeLogStore(self.data_dir).snapshot()
+        self.assertEqual(snapshot[0]["incident_id"], "")
+        self.assertNotIn("13800138000", (self.data_dir / "logs.json").read_text(encoding="utf-8"))
+
+    def test_legacy_id_migration_retries_after_atomic_write_failure(self) -> None:
+        legacy_id = "LOG-13800138000-ABC12345"
+        (self.data_dir / "logs.json").write_text(json.dumps([{
+            "time": "2026-08-27T08:30:00Z", "level": "error",
+            "task_id": "free-migration-retry", "node_code": "x",
+            "incident_id": legacy_id,
+        }]), encoding="utf-8")
+        store = FreeLogStore(self.data_dir)
+        with patch("mac_overrides.free_log_runtime.atomic_write", side_effect=OSError("disk busy")):
+            first = store.snapshot()
+        self.assertEqual(first[0]["incident_id"], "LOG-20260827-ABC12345")
+        self.assertIn("13800138000", (self.data_dir / "logs.json").read_text(encoding="utf-8"))
+
+        second = store.snapshot()
+        self.assertEqual(second[0]["incident_id"], "LOG-20260827-ABC12345")
+        self.assertNotIn("13800138000", (self.data_dir / "logs.json").read_text(encoding="utf-8"))
 
     def test_clear_logs_removes_global_and_per_task_history(self) -> None:
         store = FreeLogStore(self.data_dir)

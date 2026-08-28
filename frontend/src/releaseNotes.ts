@@ -13,11 +13,19 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.84',
-  freeRuntimeVersion: '1.6.84',
-  title: 'Free SOCKS5 默认与 403 代理轮换边界',
-  releasedAt: '2026-08-27',
+  version: '1.6.86',
+  freeRuntimeVersion: '1.6.86',
+  title: 'Camoufox 调试现场与注册故障诊断',
+  releasedAt: '2026-08-28',
   sections: [
+    {
+      title: 'Camoufox 调试现场与注册故障诊断',
+      usage: 'Camoufox 调试模式默认开启，注册遇到普通业务失败或 Cloudflare/Turnstile 挑战时保留当前有头窗口，并保存脱敏 DOM、截图和有限事件摘要；成功、超时、取消及浏览器进程断开仍会自动回收。Free 注册页可查看调试窗口、现场 ID 和日志 ID，并按会话关闭窗口。现场资料不保存输入值、验证码、Cookie、授权头、响应正文或代理凭据。',
+    },
+    {
+      title: 'Free 注册稳定性与诊断一致性修复',
+      usage: 'Camoufox 邮箱提交改为安全按钮优先并锁定已进入的认证阶段，避免异步跳转、OTP 基线和返回入口竞态造成重复提交；日志中心会保护并回填首个真实业务失败，代理预检失败按一次检测聚合为可复制的日志 ID。Free 调度先登记任务再放行 worker，运行状态即时持久化；启动脚本增加跨进程锁并确认固定端口释放。',
+    },
     {
       title: 'Free SOCKS5 默认与 403 代理轮换边界',
       usage: 'Free 新配置默认使用 SOCKS5 和代理端 DNS 解析，代理连通性目标仍为 chatgpt.com；旧的 HTTP/自动 DNS 默认会在配置加载时迁移。邮箱提交前的连接失败和非挑战 401/403 可按重试次数切换健康代理，Cloudflare/Turnstile 安全挑战及邮箱提交后的失败不会自动换代理或重放。',

@@ -14,6 +14,10 @@ class LaunchAgentScriptTests(unittest.TestCase):
         self.assertIn("<key>LSUIElement</key>", script)
         self.assertIn("<key>StandardOutPath</key>", script)
         self.assertIn("<key>StandardErrorPath</key>", script)
+        self.assertIn("/usr/bin/lockf -t 0", script)
+        self.assertIn("-sTCP:LISTEN", script)
+        self.assertIn("kill -9", script)
+        self.assertNotIn("/usr/bin/pgrep -f", script)
         self.assertNotIn('exec "$VENV_DIR/bin/python"', script)
 
 

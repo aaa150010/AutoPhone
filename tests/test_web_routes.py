@@ -949,6 +949,61 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(old_nv.status_code, 404)
         self.assertEqual(old_pixel.status_code, 404)
 
+    def test_camoufox_debug_close_route_merges_manager_state_without_duplicate_keyword(self):
+        class FreeManager:
+            def __init__(self):
+                self.closed = []
+                self.state = {
+                    "running": False,
+                    "tasks": [],
+                    "summary": {},
+                    "camoufox_debug": {
+                        "enabled": True,
+                        "headless": False,
+                        "capacity": 1,
+                        "used": 1,
+                        "available": 0,
+                        "open_contexts": 1,
+                        "sessions": [{"session_id": "cam-debug-abc123456789"}],
+                    },
+                }
+
+            def public_state(self):
+                return dict(self.state)
+
+            def camoufox_debug_state(self):
+                return dict(self.state["camoufox_debug"])
+
+            def close_camoufox_debug(self, session_id=""):
+                self.closed.append(session_id)
+                self.state["camoufox_debug"] = {
+                    **self.state["camoufox_debug"],
+                    "used": 0,
+                    "available": 1,
+                    "open_contexts": 0,
+                    "sessions": [],
+                }
+                return {
+                    "closed_contexts": 1,
+                    "remaining_contexts": 0,
+                    "state": self.public_state(),
+                }
+
+        manager = FreeManager()
+        app = self._app(replace(self.context, free_register_manager=manager))
+        with app.test_client() as client:
+            response = client.post(
+                "/api/free/camoufox/debug/close",
+                json={"session_id": "cam-debug-abc123456789"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["closed_contexts"], 1)
+        self.assertEqual(payload["state"]["camoufox_debug"]["open_contexts"], 0)
+        self.assertEqual(manager.closed, ["cam-debug-abc123456789"])
+
     def test_free_logs_signature_compatibility_does_not_swallow_internal_typeerror(self):
         class LegacyManager:
             def public_state(self):
@@ -1064,6 +1119,129 @@ class WebRouteTests(unittest.TestCase):
             [("proxy.test:8000", "US", "住宅代理", "socks5h")],
         )
         self.assertNotIn(secret, str(payload))
+
+    def test_free_proxy_preflight_exposes_batch_incident_and_canonical_failure(self):
+        failure = {
+            "node_code": "proxy_connect_timeout",
+            "node_label": "代理连接超时",
+            "error_code": "proxy_connect_timeout",
+            "provider_code": "",
+            "public_message": "代理连接超时：部分代理未能连接探测目标",
+            "technical_summary": "1 of 2 proxy probes failed",
+            "retryable": True,
+            "http_status": None,
+            "action_hint": "检查对应代理的地址、认证和可达性后重试",
+            "diagnostic_action": "",
+        }
+        incident_id = "LOG-20260827-ABCD2345"
+
+        class Manager:
+            def __init__(self):
+                self.calls = []
+
+            def public_state(self):
+                return {"running": False, "tasks": [], "summary": {}}
+
+            def preflight_proxies(self, **kwargs):
+                self.calls.append(dict(kwargs))
+                return {
+                    "proxies": 1,
+                    "rows": [
+                        {
+                            "index": 1,
+                            "masked": "socks5://proxy-a.test:8000",
+                            "fingerprint": "proxy-a",
+                            "available": True,
+                        },
+                        {
+                            "index": 2,
+                            "masked": "socks5://proxy-b.test:8000",
+                            "fingerprint": "proxy-b",
+                            "available": False,
+                            "failure_node": "proxy_connect_timeout",
+                            "failure_reason": "代理连接超时",
+                            "failure": dict(failure),
+                        },
+                    ],
+                    "incident_id": incident_id,
+                    "failure": dict(failure),
+                }
+
+        manager = Manager()
+        config_store = FreeConfigStore(Path(self.tempdir.name) / "free-proxy-preflight")
+        app = self._app(replace(
+            self.context,
+            free_register_manager=manager,
+            free_config_store=config_store,
+        ))
+        with app.test_client() as client:
+            response = client.post(
+                "/api/free/proxies/preflight",
+                json={"proxy_content": "proxy-a.test:8000\nproxy-b.test:8000"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["incident_id"], incident_id)
+        self.assertEqual(payload["failure"], failure)
+        self.assertEqual(payload["result"]["incident_id"], incident_id)
+        self.assertEqual(payload["result"]["failure"], failure)
+        self.assertEqual(payload["result"]["rows"][1]["failure"], failure)
+        self.assertEqual(len(manager.calls), 1)
+
+    def test_free_proxy_preflight_exception_uses_route_failure_response(self):
+        secret = "private-proxy-preflight-detail"
+
+        class Manager:
+            def public_state(self):
+                return {"running": False, "tasks": [], "summary": {}}
+
+            def preflight_proxies(self, **_kwargs):
+                raise RuntimeError(f"proxy preflight failed token={secret}")
+
+        config_store = FreeConfigStore(Path(self.tempdir.name) / "free-proxy-preflight-error")
+        app = self._app(replace(
+            self.context,
+            free_register_manager=Manager(),
+            free_config_store=config_store,
+        ))
+        with app.test_client() as client:
+            response = client.post(
+                "/api/free/proxies/preflight",
+                json={"proxy_content": "proxy-a.test:8000"},
+            )
+
+        payload = response.get_json()
+        self.assertEqual(response.status_code, 502)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["node_code"], "free_proxy_preflight")
+        self.assertEqual(payload["failure"]["node_code"], "free_proxy_preflight")
+        self.assertNotIn(secret, str(payload))
+
+    def test_free_route_validation_failure_is_not_marked_retryable(self):
+        class Manager:
+            def public_state(self):
+                return {"running": False, "tasks": [], "summary": {}}
+
+            def preflight_proxies(self, **_kwargs):
+                raise ValueError("代理预检参数无效")
+
+        config_store = FreeConfigStore(Path(self.tempdir.name) / "free-proxy-preflight-validation")
+        app = self._app(replace(
+            self.context,
+            free_register_manager=Manager(),
+            free_config_store=config_store,
+        ))
+        with app.test_client() as client:
+            response = client.post(
+                "/api/free/proxies/preflight",
+                json={"proxy_content": "proxy-a.test:8000"},
+            )
+
+        payload = response.get_json()
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(payload["failure"]["retryable"])
 
     def test_free_start_signature_compatibility_does_not_retry_internal_typeerror(self):
         class LegacyManager:

@@ -30,8 +30,31 @@ TERMINAL_STATUSES = frozenset({"success", "partial_success", "failed", "stopped"
 LOG_SECRET_RE = re.compile(
     r"(?i)(access[_ -]?token|refresh[_ -]?token|id[_ -]?token|token|authorization|"
     r"password|(?:totp|sms|email)[_ -]?(?:secret|code)?|csrf(?:[_ -]?token)?|"
-    r"code[_ -]?verifier|oauth[_ -]?state|state|client[_ -]?secret|api[_ -]?key|"
+    r"admin[_ -]?token|code[_ -]?verifier|oauth[_ -]?state|state|client[_ -]?secret|api[_ -]?key|"
     r"proxy(?:[_ -]?url)?|mailbox[_ -]?url|cookie|secret)\s*([=:])\s*([^\s,;]+)"
+)
+# Header values are commonly rendered as ``Authorization: Basic <base64>``.
+# The generic assignment rule would otherwise mask only ``Basic`` and leave the
+# credential tail in the diagnostic trace. Treat the complete scheme/value as
+# one secret before applying the narrower rules below.
+LOG_AUTH_HEADER_RE = re.compile(
+    r"(?i)(?P<prefix>\bAuthorization\s*:\s*)(?:Basic|Bearer)\s+[^\s,;]+"
+)
+# JSON and JavaScript object dumps commonly quote both the field name and its
+# value.  The legacy assignment expression above intentionally stays narrow
+# for plain log lines; handle quoted assignments separately before it runs.
+LOG_JSON_SECRET_RE = re.compile(
+    r'''(?ix)
+        (?<![\w])
+        (?P<prefix>[\"']?(?:access[_ -]?token|refresh[_ -]?token|id[_ -]?token|admin[_ -]?token|
+            token|authorization|password|cookie|csrf(?:[_ -]?token)?|pkce|
+            code[_ -]?verifier|code[_ -]?challenge|oauth[_ -]?code|auth[_ -]?code|
+            state|nonce|session(?:[_ -]?token)?|totp[_ -]?secret|
+            (?:sms|email|otp)[_ -]?code|proxy[_ -]?username|proxy[_ -]?password|
+            (?:proxy|mailbox|pickup)[_ -]?url|
+            (?:api|mailbox|pickup|proxy)[_ -]?(?:key|secret|token)|secret)[\"']?\s*:\s*)
+        (?P<value>"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^,}\s]+)
+    '''
 )
 LOG_URL_RE = re.compile(r"(?:https?|socks4|socks5h?)://[^\s\"'<>]+", re.IGNORECASE)
 LOG_PROXY_CREDENTIAL_RE = re.compile(
@@ -78,6 +101,7 @@ FREE_STAGE_LABELS = {
     "free_roxy_challenge": "等待注册页安全验证",
     "free_camoufox_dependency": "检查 Camoufox 依赖",
     "free_camoufox_launch": "启动 Camoufox 浏览器池",
+    "camoufox_pool_shutdown_pending": "等待 Camoufox 浏览器池关闭",
     "free_camoufox_signup": "Camoufox 页面注册",
     "free_camoufox_signup_email": "填写 Camoufox 注册邮箱",
     "free_camoufox_signup_password": "提交 Camoufox 注册密码",
@@ -158,6 +182,9 @@ class FreeRegisterError(RuntimeError):
         request_stage: str | None = None,
         retry_count: int | None = None,
         transport_error_code: str | None = None,
+        debug_session_id: str | None = None,
+        debug_artifact_id: str | None = None,
+        artifact_id: str | None = None,
     ) -> None:
         super().__init__(message)
         self.node_code = node_code
@@ -207,6 +234,9 @@ class FreeRegisterError(RuntimeError):
             str(transport_error_code or "").strip()
             if str(transport_error_code or "").strip() in allowed_transport_errors else ""
         )
+        self.debug_session_id = clean(debug_session_id, 120)
+        self.debug_artifact_id = clean(debug_artifact_id or artifact_id, 120)
+        self.artifact_id = self.debug_artifact_id
 
 
 class FreeTwoFaPending(RuntimeError):
@@ -271,6 +301,14 @@ def clean(value: Any, limit: int = 500) -> str:
 def safe_log_message(value: Any) -> str:
     message = clean(value, 800).replace(FIXED_PASSWORD, SECRET_MASK)
 
+    def redact_json_secret(match: re.Match[str]) -> str:
+        value = match.group("value")
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            masked = f"{value[0]}{SECRET_MASK}{value[-1]}"
+        else:
+            masked = SECRET_MASK
+        return f"{match.group('prefix')}{masked}"
+
     def redact_url(match: re.Match[str]) -> str:
         parsed = urlsplit(match.group(0))
         if not parsed.scheme or not parsed.hostname:
@@ -285,8 +323,13 @@ def safe_log_message(value: Any) -> str:
         netloc = host + (f":{port}" if port else "")
         return urlunsplit((parsed.scheme, netloc, parsed.path, "", ""))
 
+    def redact_auth_header(match: re.Match[str]) -> str:
+        return f"{match.group('prefix')}{SECRET_MASK}"
+
+    message = LOG_AUTH_HEADER_RE.sub(redact_auth_header, message)
     message = LOG_URL_RE.sub(redact_url, message)
     message = LOG_PROXY_CREDENTIAL_RE.sub("[代理凭据已隐藏]", message)
+    message = LOG_JSON_SECRET_RE.sub(redact_json_secret, message)
     message = LOG_SECRET_RE.sub(lambda match: f"{match.group(1)}{match.group(2)}{SECRET_MASK}", message)
     message = LOG_BEARER_RE.sub(f"Bearer {SECRET_MASK}", message)
     message = LOG_JWT_RE.sub(SECRET_MASK, message)

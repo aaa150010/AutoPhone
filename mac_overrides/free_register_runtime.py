@@ -10,6 +10,7 @@ import secrets
 import threading
 import time
 from typing import Any, Callable, Mapping, Sequence
+from urllib.parse import urlsplit
 
 try:
     from .free_failure_runtime import (
@@ -33,6 +34,7 @@ try:
         TERMINAL_STATUSES,
         fingerprint as _fingerprint,
         mask_proxy as _mask_proxy,
+        proxy_transport_value,
         random_birthdate,
         random_display_name,
         safe_log_message as _safe_log_message,
@@ -47,7 +49,13 @@ try:
     from .free_live_check import build_free_live_check_service
     from .free_plan_check import build_free_plan_check_service
     from .free_protocol_runtime import FreeProtocolMixin
-    from .free_camoufox_runtime import CamoufoxRegistrationRunner, shutdown_camoufox_pools
+    from .free_camoufox_runtime import (
+        CamoufoxRegistrationRunner,
+        annotate_camoufox_debug_session,
+        camoufox_debug_state,
+        close_camoufox_debug_browsers,
+        shutdown_camoufox_pools,
+    )
     from .free_notifications import FreeBatchNotificationAdapter
     from .free_priority_executor import PriorityExecutor
 except ImportError:
@@ -66,6 +74,7 @@ except ImportError:
         FREE_STAGE_LABELS, FIXED_PASSWORD, FreeMailbox, FreeRegisterError, FreeTwoFaPending,
         ProxyBinding, TERMINAL_STATUSES,
         fingerprint as _fingerprint, mask_proxy as _mask_proxy,
+        proxy_transport_value,
         random_birthdate, random_display_name, safe_log_message as _safe_log_message,
     )
     from free_runtime_info import runtime_info  # type: ignore[no-redef]
@@ -78,7 +87,13 @@ except ImportError:
     from free_live_check import build_free_live_check_service  # type: ignore[no-redef]
     from free_plan_check import build_free_plan_check_service  # type: ignore[no-redef]
     from free_protocol_runtime import FreeProtocolMixin  # type: ignore[no-redef]
-    from free_camoufox_runtime import CamoufoxRegistrationRunner, shutdown_camoufox_pools  # type: ignore[no-redef]
+    from free_camoufox_runtime import (  # type: ignore[no-redef]
+        CamoufoxRegistrationRunner,
+        annotate_camoufox_debug_session,
+        camoufox_debug_state,
+        close_camoufox_debug_browsers,
+        shutdown_camoufox_pools,
+    )
     from free_notifications import FreeBatchNotificationAdapter  # type: ignore[no-redef]
     from free_priority_executor import PriorityExecutor  # type: ignore[no-redef]
 class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, FreeProtocolMixin):
@@ -96,7 +111,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         "free_roxy_open",
         "free_roxy_connect",
         "free_roxy_signup_bootstrap",
-        "free_roxy_signup_email", "free_roxy_signup_email_submit", "free_camoufox_dependency", "free_camoufox_launch", "free_camoufox_signup", "free_camoufox_browser", "oauth_create_node", "free_proxy_geo", "free_protocol_preflight", "free_protocol_warmup",
+        "free_roxy_signup_email", "free_roxy_signup_email_submit", "free_camoufox_dependency", "oauth_create_node", "free_proxy_geo", "free_protocol_preflight", "free_protocol_warmup",
         "roxy_circuit_open",
     })
 
@@ -432,8 +447,17 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         if slowest:
             timing["slowest_node"] = {"code": slowest.get("code", ""), "label": slowest.get("label", ""), "duration_ms": int(slowest.get("duration_ms") or 0)}
 
-    def _stage(self, task_id: str, code: str) -> None:
+    def _stage(
+        self,
+        task_id: str,
+        code: str,
+        *,
+        previous_outcome: str = "success",
+        previous_failure_code: str = "",
+        previous_retryable: bool | None = None,
+    ) -> None:
         changed = False
+        persist = False
         now_wall = int(time.time())
         now_mono = time.monotonic()
         if self.progress is not None and callable(getattr(self.progress, "set_stage", None)):
@@ -460,8 +484,11 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                         self._tasks[task_id],
                         previous_code,
                         duration_ms,
+                        outcome=previous_outcome,
                         started_at=previous_started or None,
                         finished_at=now_wall,
+                        failure_code=previous_failure_code,
+                        retryable=previous_retryable,
                     )
                 if previous_code != code or task_id not in self._stage_started_mono:
                     self._stage_started_mono[task_id] = now_mono
@@ -483,7 +510,9 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 task_timing["finished_at"] = None
                 task_timing["elapsed_ms"] = int(max(0.0, (now_mono - self._task_started_mono[task_id]) * 1000.0))
                 task_timing["elapsed_seconds"] = round(task_timing["elapsed_ms"] / 1000.0, 3)
-                self.task_store.save(self._tasks)
+                persist = True
+        if persist:
+            self._save_tasks_safely("阶段状态更新")
         if changed:
             if previous_code and previous_code != code:
                 duration_ms = None
@@ -498,12 +527,14 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     duration_ms = max(0, (now_wall - previous_started) * 1000) if previous_started else None
                 self._log(
                     f"[{task_id}/{FREE_STAGE_LABELS.get(previous_code, previous_code)}/{previous_code}] 完成",
-                    "success",
+                    "success" if previous_outcome == "success" else "warn",
                     task_id=task_id, stage=previous_code,
                     stage_label=FREE_STAGE_LABELS.get(previous_code, previous_code),
                     node_code=previous_code,
                     node_label=FREE_STAGE_LABELS.get(previous_code, previous_code),
-                    outcome="success", duration_ms=duration_ms,
+                    outcome=previous_outcome, duration_ms=duration_ms,
+                    failure_code=previous_failure_code,
+                    retryable=previous_retryable,
                 )
             label = FREE_STAGE_LABELS.get(code, code)
             self._log(
@@ -513,6 +544,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             )
 
     def _save_task(self, task_id: str, **values: Any) -> None:
+        changed = False
         with self._lock:
             task = self._tasks.get(task_id)
             if task is None:
@@ -522,7 +554,9 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 values = {key: value for key, value in values.items() if key != "failure"}
             task.update(values)
             task["updated_at"] = int(time.time())
-            self.task_store.save(self._tasks)
+            changed = True
+        if changed:
+            self._save_tasks_safely("任务字段更新")
 
     def _save_tasks_safely(self, context: str = "Free 任务状态") -> bool:
         """Persist task state without allowing storage outages to strand workers.
@@ -532,22 +566,90 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         observable, but it must not prevent Future bookkeeping and executor
         cleanup from running.
         """
-        try:
-            self.task_store.save(self._tasks)
+        save_error: Exception | None = None
+        with self._lock:
+            try:
+                # Keep snapshot creation and the atomic replacement in the
+                # same manager critical section. Otherwise a delayed older
+                # snapshot can finish after a newer worker state and roll the
+                # persisted task table backwards.
+                snapshot = copy.deepcopy(self._tasks)
+                self.task_store.save(snapshot)
+            except Exception as exc:
+                save_error = exc
+        if save_error is None:
             return True
-        except Exception as exc:
-            self._log(
-                f"[Free 任务状态/free_task_store] {context}保存失败（{type(exc).__name__}），继续清理运行资源",
-                "warn",
-                node_code="free_task_store",
-                node_label="保存 Free 任务状态",
-                outcome="storage_warning",
-            )
-            return False
+        self._log(
+            f"[Free 任务状态/free_task_store] {context}保存失败（{type(save_error).__name__}），继续清理运行资源",
+            "error",
+            node_code="free_task_store",
+            node_label="保存 Free 任务状态",
+            outcome="error",
+            failure={
+                "error_code": "free_task_store_write_failed",
+                "technical_summary": f"{context}保存失败（{type(save_error).__name__}）",
+                "retryable": True,
+                "action_hint": "检查 Free 数据目录权限和可用空间；任务仍会继续执行并清理资源",
+            },
+            workflow="storage",
+        )
+        return False
+
+    @staticmethod
+    def _run_after_submission_gate(
+        gate: threading.Event,
+        callback: Callable[..., Any],
+        args: tuple[Any, ...],
+        kwargs: Mapping[str, Any],
+    ) -> Any:
+        gate.wait()
+        return callback(*args, **dict(kwargs))
+
+    def _submit_registered_worker(
+        self,
+        callback: Callable[..., Any],
+        /,
+        *args: Any,
+        driver: str,
+        priority: int,
+        **kwargs: Any,
+    ) -> Future[Any]:
+        """Register all Future ownership before a worker can finish.
+
+        PriorityExecutor workers can start as soon as ``submit`` returns. A
+        short gate keeps an instant worker from firing its done callback until
+        the manager has recorded the Future, its transport, and the callback.
+        Callers already hold ``self._lock`` while mutating batch ownership.
+        """
+        executor = self._executor
+        if executor is None:
+            raise RuntimeError("Free executor is not available")
+        gate = threading.Event()
+        future = executor.submit(
+            self._run_after_submission_gate,
+            gate,
+            callback,
+            tuple(args),
+            dict(kwargs),
+            priority=priority,
+        )
+        try:
+            self._futures.add(future)
+            self._future_drivers[future] = str(driver or "protocol").strip().lower()
+            future.add_done_callback(self._future_done)
+        except Exception:
+            self._futures.discard(future)
+            self._future_drivers.pop(future, None)
+            future.cancel()
+            raise
+        finally:
+            gate.set()
+        return future
 
     def _sync_plan_task_snapshot(self, row_id: str, result: Mapping[str, Any], promoted: bool) -> None:
         """Keep the in-memory public task view aligned with plan queue writes."""
         task_id = str(result.get("task_id") or "")
+        changed = False
         with self._lock:
             task = self._tasks.get(task_id)
             if task is None:
@@ -565,12 +667,15 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             if promoted and str(task.get("status") or "") == "partial_success":
                 task.update({"status": "success", "stage": "free_plan_check", "error": ""})
                 task.pop("failure", None)
-            self.task_store.save(self._tasks)
+            changed = True
+        if changed:
+            self._save_tasks_safely("套餐检查结果同步")
 
     def _finish_progress(self, task_id: str, outcome: str = "success") -> None:
         final_stage = ""
         final_label = ""
         duration_ms: int | None = None
+        persist = False
         with self._lock:
             task = self._tasks.get(task_id)
             if task is not None:
@@ -612,8 +717,10 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                         "retry_updated_at": now_wall,
                         "retry_resolved": child_status in {"success", "partial_success"},
                     })
-                self.task_store.save(self._tasks)
+                persist = True
                 self._timing_checkpoint_mono.pop(task_id, None)
+        if persist:
+            self._save_tasks_safely("阶段进度完成")
         if final_stage:
             self._log(
                 f"[{task_id}/{final_label}/{final_stage}] 完成",
@@ -750,6 +857,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         selected.discard("")
         if not selected:
             raise ValueError("请选择要删除的 Free 任务")
+        persist = False
         with self._lock:
             active = [task_id for task_id in selected if task_id in self._tasks and str(self._tasks[task_id].get("status") or "") not in TERMINAL_STATUSES]
             if active:
@@ -758,7 +866,9 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             for task_id in existing:
                 self._tasks.pop(task_id, None)
             if existing:
-                self.task_store.save(self._tasks)
+                persist = True
+        if persist:
+            self._save_tasks_safely("删除任务状态")
         if existing:
             self.log_store.delete_tasks(existing)
         return len(existing)
@@ -801,6 +911,23 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 candidate = task.get("timing", {}).get("slowest_node") if isinstance(task.get("timing"), Mapping) else None
                 if isinstance(candidate, Mapping) and (slowest_node is None or int(candidate.get("duration_ms") or 0) > int(slowest_node.get("duration_ms") or 0)):
                     slowest_node = copy.deepcopy(dict(candidate))
+            try:
+                # Read the persisted settings for an idle manager as well as
+                # for a running batch.  ``_last_config`` describes the last
+                # batch and can otherwise make the debug bar report stale
+                # headless/debug values after settings are changed.
+                camoufox_debug = self.camoufox_debug_state()
+            except Exception:
+                camoufox_debug = {
+                    "enabled": False,
+                    "headless": True,
+                    "capacity": 0,
+                    "used": 0,
+                    "available": 0,
+                    "open_contexts": 0,
+                    "pool_count": 0,
+                    "sessions": [],
+                }
             return {
                 **runtime_info(),
                 # Keep the batch marked running until every Future callback
@@ -831,6 +958,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     "pending": len(self.roxy_cleanup_store.pending()),
                     "records": len(self.roxy_cleanup_store.records()),
                 },
+                "camoufox_debug": camoufox_debug,
                 "summary": {
                     "total": len(tasks),
                     "active": active,
@@ -843,6 +971,45 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     "first_failure": first_failure,
                 },
             }
+
+    def camoufox_debug_state(self) -> dict[str, Any]:
+        """Return the secret-free state of retained Camoufox debug pages."""
+        config: Mapping[str, Any] = {}
+        if callable(self.config_provider):
+            try:
+                candidate = self.config_provider()
+                if isinstance(candidate, Mapping):
+                    config = candidate
+            except Exception:
+                config = self._last_config
+        if not config:
+            config = self._last_config
+        return camoufox_debug_state(config)
+
+    def close_camoufox_debug(self, session_id: str = "") -> dict[str, Any]:
+        """Close one retained debug session or all retained sessions."""
+        normalized = str(session_id or "").strip()
+        if normalized:
+            # The pool module owns the event-loop objects. Keep the public
+            # manager boundary narrow and use its aggregate close helper for
+            # now; an unknown id is reported without touching running tasks.
+            state = self.camoufox_debug_state()
+            known = {
+                str(item.get("session_id") or "")
+                for item in state.get("sessions", [])
+                if isinstance(item, Mapping)
+            }
+            if normalized not in known:
+                raise FreeRegisterError(
+                    "free_camoufox_debug",
+                    "关闭 Camoufox 调试窗口",
+                    "指定的调试窗口不存在或已经关闭",
+                    retryable=False,
+                    error_code="camoufox_debug_session_not_found",
+                )
+        result = close_camoufox_debug_browsers(normalized, config=config)
+        result["state"] = self.camoufox_debug_state()
+        return result
 
     def _available_count(self) -> int:
         return len(self.pool.available(10_000))
@@ -974,11 +1141,14 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     # fast custom runner can finish before the request thread
                     # reaches its final save, so the completion callback must
                     # never observe an unknown task on disk.
-                    self.task_store.save(self._tasks)
-                    future = self._executor.submit(self._worker, task_id, dict(base_config), priority=10)
-                    self._futures.add(future)
-                    self._future_drivers[future] = driver
-                    future.add_done_callback(self._future_done)
+                    self._save_tasks_safely("运行中导入任务初始状态")
+                    self._submit_registered_worker(
+                        self._worker,
+                        task_id,
+                        dict(base_config),
+                        driver=driver,
+                        priority=10,
+                    )
                     submitted = True
                     result["queued"] += 1
                     result["active_batch_joined"] += 1
@@ -1088,7 +1258,32 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         values = self.proxies.values(proxy_content)
         if not values:
             raise FreeRegisterError("free_proxy_preflight", "Free 代理预检", "请先粘贴或保存至少一个 Free 代理", retryable=False)
+        try:
+            target_domain = str(urlsplit(str(probe_url or "")).hostname or "").lower()
+        except (TypeError, ValueError):
+            target_domain = ""
+        # Probe adapters may include a credential-bearing value from their
+        # transport exception. Keep a request-wide denylist so a stale or
+        # misattributed exception cannot expose another row's credentials.
+        all_proxy_secrets: set[str] = set()
+        for candidate in values:
+            try:
+                parsed_candidate = self.proxies._parse_lines(
+                    candidate,
+                    country="",
+                    group="",
+                    scheme=self.proxies.default_scheme,
+                )
+                if parsed_candidate:
+                    all_proxy_secrets.update(
+                        str(parsed_candidate[0].get(key) or "")
+                        for key in ("username", "password")
+                        if str(parsed_candidate[0].get(key) or "")
+                    )
+            except Exception:
+                continue
         diagnostics: list[dict[str, Any]] = []
+        pool_health_write_errors: list[dict[str, str]] = []
         for index, value in enumerate(values, 1):
             try:
                 layered = None
@@ -1122,6 +1317,13 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 row.setdefault("http_status", 200)
                 row.setdefault("failure_node", "")
                 row.setdefault("failure_reason", "")
+                if row.get("available"):
+                    # Keep successful rows on the same public contract as
+                    # failures, while never attaching a fabricated failure.
+                    row.setdefault("declared_scheme", row.get("scheme") or "")
+                    row.setdefault("effective_scheme", row.get("scheme") or "")
+                    row.setdefault("provider_status", row.get("http_status"))
+                    row.setdefault("provider_code", "")
                 if layered is not None:
                     row["layered_probe"] = layered
                     row["http_status"] = (
@@ -1137,49 +1339,232 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     record = parsed[0] if parsed else {}
                     proxy_id = str(record.get("proxy_id") or "")
                     if proxy_id:
-                        self.proxies.record_success(
-                            proxy_id,
-                            latency_ms=row.get("proxy_to_target_ms"),
-                            probe_mode=str(row.get("probe_mode") or "manual"),
-                            effective_scheme=str(row.get("effective_scheme") or ""),
-                            http_status=row.get("http_status"),
-                        )
+                        try:
+                            self.proxies.record_success(
+                                proxy_id,
+                                latency_ms=row.get("proxy_to_target_ms"),
+                                probe_mode=str(row.get("probe_mode") or "manual"),
+                                effective_scheme=str(row.get("effective_scheme") or ""),
+                                http_status=row.get("http_status"),
+                            )
+                        except Exception as health_exc:
+                            # A successful transport probe remains successful
+                            # even when the optional health snapshot cannot be
+                            # persisted. Keep the row available and continue
+                            # probing the rest of the pool; surface the write
+                            # problem in the aggregate diagnostics instead of
+                            # misclassifying a healthy proxy as unavailable.
+                            pool_health_write_errors.append({
+                                "proxy_id": proxy_id,
+                                "error_type": type(health_exc).__name__,
+                            })
+                            self._log(
+                                "[Free 代理预检/free_proxy_health] 代理健康状态保存失败，保留成功探测结果",
+                                "warn",
+                                node_code="free_proxy_health",
+                                node_label="记录 Free 代理成功",
+                                outcome="cleanup_failed",
+                                failure={
+                                    "error_code": "free_proxy_health_write_failed",
+                                    "technical_summary": f"代理健康状态保存失败（{type(health_exc).__name__}）",
+                                    "retryable": True,
+                                    "action_hint": "检查 Free 代理池存储状态；本次探测结果仍有效。",
+                                },
+                                workflow="cleanup",
+                            )
             except Exception as exc:
                 failure = exception_to_failure(
                     exc,
-                    node_code=str(getattr(exc, "error_code", "") or "proxy_connect_failed"),
+                    node_code=str(
+                        getattr(exc, "node_code", "")
+                        or getattr(exc, "error_code", "")
+                        or "proxy_connect_failed"
+                    ),
                     node_label=str(getattr(exc, "node_label", "") or "代理连接失败"),
                 )
                 parsed = self.proxies._parse_lines(value, country="", group="", scheme=self.proxies.default_scheme)
                 record = parsed[0] if parsed else {}
+                proxy_secrets = sorted(all_proxy_secrets, key=len, reverse=True)
+                for key in ("public_message", "technical_summary", "action_hint", "diagnostic"):
+                    detail = str(failure.get(key) or "")
+                    for secret in proxy_secrets:
+                        detail = detail.replace(secret, "********")
+                    if detail:
+                        failure[key] = sanitize_failure_text(detail, 800 if key != "action_hint" else 300)
+                declared_scheme = str(record.get("scheme") or self.proxies.default_scheme)
+                transport_proxy = proxy_transport_value(
+                    value,
+                    driver=driver,
+                    socks5_dns_mode=socks5_dns_mode,
+                )
+                try:
+                    effective_scheme = str(urlsplit(transport_proxy).scheme or declared_scheme).lower()
+                except (TypeError, ValueError):
+                    effective_scheme = declared_scheme
+                enriched_failure = canonical_failure({
+                    **failure,
+                    "declared_scheme": declared_scheme,
+                    "transport_scheme": effective_scheme,
+                    "target_domain": target_domain,
+                    "request_stage": "manual_proxy_preflight",
+                    "retry_count": 0,
+                    "transport_error_code": (
+                        failure.get("transport_error_code")
+                        if str(failure.get("transport_error_code") or "") in {
+                            "proxy_protocol_mismatch", "proxy_auth_rejected", "proxy_dns_failed",
+                            "proxy_connect_timeout", "proxy_connection_reset",
+                            "proxy_tls_certificate_error", "proxy_connect_failed", "tls_connection_failed",
+                        }
+                        else ""
+                    ),
+                }) or failure
                 row = {
                     "index": index,
                     "masked": _mask_proxy(value),
                     "fingerprint": str(record.get("proxy_id") or ""),
-                    "scheme": str(record.get("scheme") or self.proxies.default_scheme),
+                    "scheme": declared_scheme,
+                    "declared_scheme": declared_scheme,
+                    "effective_scheme": effective_scheme,
                     "available": False,
-                    "http_status": failure.get("http_status"),
+                    "http_status": enriched_failure.get("http_status"),
+                    "provider_status": enriched_failure.get("http_status"),
+                    "provider_code": enriched_failure.get("provider_code") or "",
                     "local_to_proxy_ms": None,
                     "proxy_to_target_ms": None,
-                    "failure_node": failure.get("node_code") or "proxy_connect_failed",
-                    "failure_reason": failure.get("technical_summary") or failure.get("public_message") or "代理请求失败",
+                    "failure_node": enriched_failure.get("node_code") or "proxy_connect_failed",
+                    "failure_reason": enriched_failure.get("technical_summary") or enriched_failure.get("public_message") or "代理请求失败",
+                    "failure": enriched_failure,
                 }
                 if saved_pool and is_proxy_health_failure(exc):
                     proxy_id = str(record.get("proxy_id") or "")
                     if proxy_id:
-                        self.proxies.record_failure(
-                            proxy_id,
-                            node_code=str(failure.get("node_code") or "proxy_connect_failed"),
-                            message=str(failure.get("technical_summary") or failure.get("public_message") or "代理请求失败"),
-                            http_status=failure.get("http_status"),
-                        )
+                        try:
+                            self.proxies.record_failure(
+                                proxy_id,
+                                node_code=str(enriched_failure.get("node_code") or "proxy_connect_failed"),
+                                message=str(enriched_failure.get("technical_summary") or enriched_failure.get("public_message") or "代理请求失败"),
+                                http_status=enriched_failure.get("http_status"),
+                            )
+                        except Exception as health_exc:
+                            # Pool health bookkeeping is advisory. A storage
+                            # outage must not abort the remaining proxy probes
+                            # or prevent their failures from being aggregated
+                            # into the single taskless preflight incident.
+                            pool_health_write_errors.append({
+                                "proxy_id": proxy_id,
+                                "error_type": type(health_exc).__name__,
+                            })
+                            self._log(
+                                "[Free 代理预检/free_proxy_health] 代理健康状态保存失败，继续检测其余代理",
+                                "warn",
+                                node_code="free_proxy_health",
+                                node_label="记录 Free 代理失败",
+                                outcome="cleanup_failed",
+                                failure={
+                                    "error_code": "free_proxy_health_write_failed",
+                                    "technical_summary": f"代理健康状态保存失败（{type(health_exc).__name__}）",
+                                    "retryable": True,
+                                    "action_hint": "检查 Free 代理池存储状态；本次预检结果仍会汇总返回。",
+                                },
+                                workflow="cleanup",
+                            )
             row["index"] = index
             diagnostics.append(row)
-        return {
+        result: dict[str, Any] = {
             **runtime_info(),
             "proxies": len([row for row in diagnostics if row.get("available")]),
             "rows": diagnostics,
         }
+        if pool_health_write_errors:
+            result["health_write_failures"] = len(pool_health_write_errors)
+        failed_rows = [row for row in diagnostics if not row.get("available")]
+        if not failed_rows:
+            return result
+
+        failures = [
+            row.get("failure")
+            for row in failed_rows
+            if isinstance(row.get("failure"), Mapping)
+        ]
+        first_failure = failures[0] if failures else {}
+        nodes = sorted({str(row.get("failure_node") or "") for row in failed_rows if row.get("failure_node")})
+        http_statuses = sorted({
+            int(row["http_status"])
+            for row in failed_rows
+            if isinstance(row.get("http_status"), int)
+        })
+        provider_codes = sorted({str(row.get("provider_code") or "") for row in failed_rows if row.get("provider_code")})
+        declared_schemes = sorted({
+            str(row.get("declared_scheme") or row.get("scheme") or "")
+            for row in failed_rows
+            if row.get("declared_scheme") or row.get("scheme")
+        })
+        effective_schemes = sorted({str(row.get("effective_scheme") or "") for row in failed_rows if row.get("effective_scheme")})
+        proxy_fingerprints = [str(row.get("fingerprint") or "") for row in failed_rows if row.get("fingerprint")]
+        failure_count = len(failed_rows)
+        total_count = len(diagnostics)
+        aggregate_node = str(first_failure.get("node_code") or (nodes[0] if nodes else "free_proxy_preflight"))
+        aggregate_failure = canonical_failure({
+            "node_code": aggregate_node,
+            "node_label": first_failure.get("node_label") or "Free 代理预检",
+            "error_code": first_failure.get("error_code") or "free_proxy_preflight_failed",
+            "provider_code": provider_codes[0] if len(provider_codes) == 1 else "",
+            "public_message": f"Free 代理连通性检测完成：共 {total_count} 条，失败 {failure_count} 条",
+            "technical_summary": (
+                f"代理预检失败 {failure_count}/{total_count}；"
+                f"节点={','.join(nodes) or 'free_proxy_preflight'}；"
+                f"HTTP={','.join(str(value) for value in http_statuses) or '-'}"
+                + (f"；代理健康状态写入失败={len(pool_health_write_errors)}" if pool_health_write_errors else "")
+            ),
+            "retryable": bool(failures) and all(bool(item.get("retryable")) for item in failures),
+            "http_status": http_statuses[0] if len(http_statuses) == 1 else None,
+            "action_hint": first_failure.get("action_hint") or "按失败节点检查代理协议、认证、DNS 和目标站点响应后重试。",
+            "declared_scheme": declared_schemes[0] if len(declared_schemes) == 1 else "",
+            "transport_scheme": effective_schemes[0] if len(effective_schemes) == 1 else "",
+            "target_domain": target_domain,
+            "request_stage": "manual_proxy_preflight",
+            "retry_count": 0,
+            "transport_error_code": first_failure.get("transport_error_code") or "",
+        }, default_node_code="free_proxy_preflight", default_node_label="Free 代理预检")
+        if aggregate_failure is None:  # pragma: no cover - identity is populated above
+            return result
+        result.update({"failure_count": failure_count, "failure": aggregate_failure})
+
+        diagnostic_store = getattr(getattr(self, "log_store", None), "diagnostic_store", None)
+        incident_id = ""
+        if diagnostic_store is not None:
+            try:
+                incident_id = diagnostic_store.record({
+                    "level": "error",
+                    "outcome": "error",
+                    "chain": "free",
+                    "workflow": "proxy_preflight",
+                    "driver": str(driver or "protocol"),
+                    "node_code": aggregate_failure.get("node_code"),
+                    "node_label": aggregate_failure.get("node_label"),
+                    "message": aggregate_failure.get("public_message"),
+                    "failure": aggregate_failure,
+                    "transport": {
+                        "failure_count": failure_count,
+                        "total_count": total_count,
+                        "target_domain": target_domain,
+                        "nodes": ",".join(nodes),
+                        "http_statuses": ",".join(str(value) for value in http_statuses),
+                        "provider_statuses": ",".join(str(row.get("provider_status")) for row in failed_rows if row.get("provider_status") is not None),
+                        "provider_codes": ",".join(provider_codes),
+                        "declared_schemes": ",".join(declared_schemes),
+                        "effective_schemes": ",".join(effective_schemes),
+                        "proxy_fingerprints": ",".join(proxy_fingerprints),
+                        "health_write_failures": len(pool_health_write_errors),
+                    },
+                })
+            except Exception:
+                incident_id = ""
+        if incident_id:
+            result["incident_id"] = incident_id
+            for row in failed_rows:
+                row["incident_id"] = incident_id
+        return result
 
     def start(self, config: Mapping[str, Any], *, pool_content: str = "", proxy_content: str = "", row_ids: Sequence[str] = ()) -> dict[str, Any]:
         normalized_config = dict(config)
@@ -1311,7 +1696,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     self.pool.update(row.row_id, status="queued", batch_id=batch_id, driver=driver, proxy=binding.proxy, proxy_masked=binding.masked, proxy_fingerprint=binding.fingerprint, expected_exit_ip=binding.exit_ip, exit_ip=binding.exit_ip, proxy_id=binding.proxy_id, proxy_country=binding.country, proxy_group=binding.group)
                     # Proxy preflight is an internal transport check; do not
                     # expose a successful validation stage in task logs.
-                self.task_store.save(self._tasks)
+                self._save_tasks_safely("启动任务初始状态")
             except Exception:
                 for index, binding in reversed(list(enumerate(leased_bindings))):
                     try:
@@ -1327,7 +1712,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                             pass
                 for task_id in created_task_ids:
                     self._tasks.pop(task_id, None)
-                self.task_store.save(self._tasks)
+                self._save_tasks_safely("启动失败回滚")
                 raise
             self._batch_id = batch_id
             self._roxy_failures = 0
@@ -1343,10 +1728,13 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             for task_id in list(self._tasks):
                 if self._tasks[task_id].get("batch_id") != batch_id:
                     continue
-                future = self._executor.submit(self._worker, task_id, dict(config), priority=10)
-                self._futures.add(future)
-                self._future_drivers[future] = driver
-                future.add_done_callback(self._future_done)
+                self._submit_registered_worker(
+                    self._worker,
+                    task_id,
+                    dict(config),
+                    driver=driver,
+                    priority=10,
+                )
             self._log(f"[启动 Free 注册/free_run_start] 已准备 {target_count} 个邮箱，{workers} 并发", "success")
             return {
                 "batch_id": batch_id,
@@ -1363,9 +1751,14 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         with self._lock:
             if future not in self._futures:
                 return
-            is_last = len(self._futures) == 1
             executor = self._executor
             driver = str(self._future_drivers.get(future) or self._last_config.get("driver") or "").strip().lower()
+            # Remove the completed Future before deriving the remaining set.
+            # Done callbacks can run concurrently; observing the old set first
+            # lets two final callbacks both skip driver/pool cleanup.
+            self._futures.discard(future)
+            self._future_drivers.pop(future, None)
+            is_last = not self._futures
             # Browser resources are shared by tasks of the same transport,
             # while protocol retries may coexist in the same executor.  A
             # Roxy/Camoufox cleanup must therefore wait only for the final
@@ -1373,7 +1766,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             remaining_drivers = [
                 str(value or "").strip().lower()
                 for candidate, value in self._future_drivers.items()
-                if candidate is not future and candidate in self._futures
+                if candidate in self._futures
             ]
             if not self._custom_runner and driver == "roxybrowser" and "roxybrowser" not in remaining_drivers:
                 cleanup_config = copy.deepcopy(self._last_config)
@@ -1404,8 +1797,6 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             except Exception as exc:
                 self._log(f"[Camoufox/free_camoufox_launch] 批次结束回收浏览器池失败（{type(exc).__name__}）", "warn")
         with self._lock:
-            self._futures.discard(future)
-            self._future_drivers.pop(future, None)
             if not self._futures and self._executor is executor and executor is not None:
                 completed_batch_id = str(self._batch_id or "")
                 executor.shutdown(wait=False, cancel_futures=False)
@@ -1458,7 +1849,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     )
                     self._finish_progress(task_id, "stopped")
                     self._release_task_lease(task)
-            self.task_store.save(self._tasks)
+            self._save_tasks_safely("停止任务状态")
         self._log("[停止 Free 注册/free_stop] 已请求停止，运行中的账号不切换代理", "warn")
 
     def rerun(self, task_id: str, config: Mapping[str, Any]) -> dict[str, Any]:
@@ -1590,7 +1981,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 # Make the retry durable before a worker can complete.  This
                 # is especially important for custom runners that return
                 # synchronously from submit().
-                self.task_store.save(self._tasks)
+                self._save_tasks_safely("重试任务初始状态")
                 if not active_batch:
                     self._last_config = copy.deepcopy(retry_config)
                     self._batch_id = batch_id
@@ -1600,10 +1991,14 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     self._heartbeat_thread = threading.Thread(target=self._heartbeat_loop, args=(batch_id,), name=f"free-proxy-heartbeat-{batch_id[-8:]}", daemon=True)
                     self._heartbeat_thread.start()
                     self._executor = PriorityExecutor(max_workers=workers, thread_name_prefix="free-retry")
-                future = self._executor.submit(self._worker, retry_id, retry_config, twofa_retry, priority=0)
-                self._futures.add(future)
-                self._future_drivers[future] = driver
-                future.add_done_callback(self._future_done)
+                self._submit_registered_worker(
+                    self._worker,
+                    retry_id,
+                    retry_config,
+                    twofa_retry,
+                    driver=driver,
+                    priority=0,
+                )
                 submitted = True
                 self._save_tasks_safely("重试任务提交后")
                 self._log(f"[{retry_id}/Free 重试/{retry_node}] 已排队（第 {task['retry_attempt']} 次）", "info", task_id=retry_id, retry_of=task["retry_of"], retry_node_code=retry_node)
@@ -1814,6 +2209,8 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         _ = task
 
     def _release_task_lease(self, task: Mapping[str, Any]) -> None:
+        task_id = str(task.get("task_id") or "")
+        release_error: Exception | None = None
         try:
             binding = ProxyBinding(
                 str(task.get("proxy") or ""),
@@ -1822,10 +2219,36 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 str(task.get("expected_exit_ip") or task.get("exit_ip") or ""),
                 proxy_id=str(task.get("proxy_id") or ""),
             )
-            self.proxies.release(binding, owner=str(task.get("task_id") or ""))
-            self._save_task(str(task.get("task_id") or ""), cleanup_status="released")
+            self.proxies.release(binding, owner=task_id)
         except Exception as exc:
-            self._save_task(str(task.get("task_id") or ""), cleanup_status=f"release_failed:{type(exc).__name__}")
+            # Lease cleanup is best effort. Preserve the cleanup error in the
+            # task snapshot, but never let it prevent the worker's remaining
+            # failure handling or executor bookkeeping.
+            release_error = exc
+
+        cleanup_status = "released" if release_error is None else f"release_failed:{type(release_error).__name__}"
+        with self._lock:
+            current = self._tasks.get(task_id)
+            if current is not None:
+                current["cleanup_status"] = cleanup_status
+                current["updated_at"] = int(time.time())
+        self._save_tasks_safely("代理租约释放后")
+        if release_error is not None:
+            self._log(
+                f"[{task_id}/释放 Free 代理/free_proxy_release] 代理租约释放失败（{type(release_error).__name__}）",
+                "warn",
+                task_id=task_id,
+                node_code="free_proxy_release",
+                node_label="释放 Free 代理",
+                outcome="cleanup_failed",
+                failure={
+                    "error_code": "free_proxy_release_failed",
+                    "technical_summary": f"代理租约释放失败（{type(release_error).__name__}）",
+                    "retryable": True,
+                    "action_hint": "检查代理池状态，过期租约会自动恢复。",
+                },
+                workflow="cleanup",
+            )
 
     def _record_proxy_failure(self, task: Mapping[str, Any], exc: BaseException) -> None:
         proxy_id = str(task.get("proxy_id") or "")
@@ -1843,10 +2266,36 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     "at": int(time.time()),
                 })
                 current["proxy_attempts"] = attempts[-10:]
-                self.task_store.save(self._tasks)
+                self._save_tasks_safely("记录代理失败")
         node_code = str(getattr(exc, "node_code", "free_proxy"))
         if proxy_id and is_proxy_health_failure(exc):
-            self.proxies.record_failure(proxy_id, node_code=node_code, message=_safe_log_message(exc))
+            try:
+                self.proxies.record_failure(
+                    proxy_id,
+                    node_code=node_code,
+                    message=_safe_log_message(exc),
+                    http_status=getattr(exc, "provider_status", None),
+                )
+            except Exception as record_error:
+                # Proxy health bookkeeping is advisory from the worker's
+                # perspective. A pool write failure must not skip the lease
+                # release that follows this method in the error path.
+                self._log(
+                    f"[{task_id}/记录 Free 代理失败/free_proxy_health] "
+                    f"代理健康状态保存失败（{type(record_error).__name__}）",
+                    "warn",
+                    task_id=task_id,
+                    node_code="free_proxy_health",
+                    node_label="记录 Free 代理失败",
+                    outcome="cleanup_failed",
+                    failure={
+                        "error_code": "free_proxy_health_write_failed",
+                        "technical_summary": f"代理健康状态保存失败（{type(record_error).__name__}）",
+                        "retryable": True,
+                        "action_hint": "检查 Free 代理池存储状态；本次租约仍会继续释放。",
+                    },
+                    workflow="cleanup",
+                )
 
     @classmethod
     def _can_reuse_mailbox_after_failure(
@@ -1857,6 +2306,21 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         normalized = str(node_code or "")
         if normalized in cls._REUSABLE_PRE_REGISTRATION_FAILURES:
             return True
+        # Camoufox uses a few broad legacy node labels for compatibility.  Do
+        # not infer mailbox safety from those labels: a browser process can
+        # disappear after the email/OTP request has already been submitted.
+        # Only errors that are provably raised before a context/page exists may
+        # restore the mailbox automatically.
+        if normalized in {"free_camoufox_launch", "free_camoufox_browser", "free_camoufox_signup"}:
+            error_code = str(getattr(error, "error_code", "") or "").strip().lower()
+            return error_code in {
+                "camoufox_pool_empty",
+                "camoufox_browser_launch_failed",
+                "camoufox_context_create_failed",
+                "camoufox_page_create_failed",
+                "camoufox_browser_recycle_failed",
+                "camoufox_loop_missing",
+            }
         # A 429 from the OAuth bootstrap or first email-identification POST
         # happens before an OTP is dispatched. Return that mailbox to the
         # available pool while retaining the failed task diagnostic. Generic
@@ -1928,8 +2392,10 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 lifecycle_store_path=str(self.data_dir / "roxy_cleanup.json"),
             )
         if str(config.get("driver") or "protocol").strip().lower() == "camoufox":
+            camoufox_artifact_dir = self.data_dir / "camoufox_debug"
             return CamoufoxRegistrationRunner(
                 lifecycle_store_path=str(self.data_dir / "camoufox_cleanup.json"),
+                debug_artifact_dir=str(camoufox_artifact_dir),
             )
         return self._run_protocol
 
@@ -2031,6 +2497,10 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             task["updated_at"] = int(time.time())
             snapshot = dict(task)
             snapshot_driver = str(snapshot.get("driver") or config.get("driver") or "protocol").strip().lower()
+            # Publish the running transition before invoking transport code.
+            # A storage outage is diagnosed by the safe helper but does not
+            # strand the worker or suppress its normal finally/lease cleanup.
+            self._save_tasks_safely("任务进入运行状态")
         task_config = dict(config)
         task_config["driver"] = snapshot_driver
         if self.manual_broker is not None:
@@ -2101,7 +2571,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                         current = self._tasks.get(task_id)
                         if current is not None:
                             current.setdefault("proxy_attempts", []).append({"proxy_id": failed_proxy_id, "stage": exc.node_code, "retryable": True, "message": _safe_log_message(exc), "http_status": getattr(exc, "provider_status", None), "attempt": attempt, "switched": switched, "at": int(time.time())})
-                            self.task_store.save(self._tasks)
+                            self._save_tasks_safely("记录代理切换")
                     if bool(getattr(exc, "proxy_retryable", False)) and not switched:
                         # A route-level access denial must not replay against
                         # the same proxy when no healthy replacement exists.
@@ -2197,6 +2667,12 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             failure, _ = self._persist_task_failure(
                 task_id, snapshot, status=terminal_status, failure=failure,
             )
+            debug_session_id = str(failure.get("debug_session_id") or "")
+            if debug_session_id:
+                with self._lock:
+                    incident_ref = str(self._tasks.get(task_id, {}).get("incident_id") or "")
+                if incident_ref:
+                    annotate_camoufox_debug_session(debug_session_id, incident_ref)
             if self._can_reuse_mailbox_after_failure(exc.node_code, exc):
                 self._restore_mailbox_after_pre_registration_failure(snapshot, failure)
             else:
@@ -2215,7 +2691,13 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             # its own stage transition; recording the failed node here makes
             # the timing row, task table and diagnostic event agree.
             if node_code:
-                self._stage(task_id, node_code)
+                self._stage(
+                    task_id,
+                    node_code,
+                    previous_outcome="failed" if terminal_status == "failed" else "interrupted",
+                    previous_failure_code=str(failure.get("error_code") or node_code),
+                    previous_retryable=failure.get("retryable") if isinstance(failure.get("retryable"), bool) else None,
+                )
             self._finish_progress(task_id, "failed" if terminal_status == "failed" else "stopped")
             self._record_proxy_failure(snapshot, exc)
             self._roxy_failure(snapshot, exc)
@@ -2231,6 +2713,9 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 page_type=failure.get("page_type"), safe_page=failure.get("safe_page"),
                 content_type=failure.get("content_type"),
                 session_rebuilds=failure.get("session_rebuilds"),
+                debug_session_id=failure.get("debug_session_id"),
+                debug_artifact_id=failure.get("debug_artifact_id") or failure.get("artifact_id"),
+                artifact_id=failure.get("artifact_id") or failure.get("debug_artifact_id"),
             )
         except FreeTwoFaPending as pending:
             # A retry can fail after the account and token already exist. Keep
@@ -2255,7 +2740,13 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 task_id, snapshot, status="twofa_pending", failure=failure, result=result,
             )
             self.pool.update(snapshot["row_id"], status="twofa_pending", stage=failure["node_code"], error=failure["public_message"], failure=failure)
-            self._stage(task_id, failure.get("node_code") or "free_twofa_activate")
+            self._stage(
+                task_id,
+                failure.get("node_code") or "free_twofa_activate",
+                previous_outcome="failed",
+                previous_failure_code=str(failure.get("error_code") or "free_twofa_pending"),
+                previous_retryable=failure.get("retryable") if isinstance(failure.get("retryable"), bool) else None,
+            )
             self._finish_progress(task_id, "partial")
             self._release_task_lease(snapshot)
             # The protocol/browser runner commonly signals a recoverable 2FA
@@ -2278,8 +2769,20 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             failure, classified_exc, current_stage, current_label = (
                 self._persist_unexpected_task_failure(task_id, snapshot, exc)
             )
+            debug_session_id = str(failure.get("debug_session_id") or "")
+            if debug_session_id:
+                with self._lock:
+                    incident_ref = str(self._tasks.get(task_id, {}).get("incident_id") or "")
+                if incident_ref:
+                    annotate_camoufox_debug_session(debug_session_id, incident_ref)
             if current_stage:
-                self._stage(task_id, current_stage)
+                self._stage(
+                    task_id,
+                    current_stage,
+                    previous_outcome="failed",
+                    previous_failure_code=str(failure.get("error_code") or current_stage),
+                    previous_retryable=failure.get("retryable") if isinstance(failure.get("retryable"), bool) else None,
+                )
             self._finish_progress(task_id, "failed")
             self._record_proxy_failure(snapshot, classified_exc)
             self._roxy_failure(snapshot, classified_exc)
@@ -2292,6 +2795,9 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 action_hint=failure.get("action_hint"), retryable=failure.get("retryable"),
                 page_type=failure.get("page_type"), safe_page=failure.get("safe_page"),
                 content_type=failure.get("content_type"), session_rebuilds=failure.get("session_rebuilds"),
+                debug_session_id=failure.get("debug_session_id"),
+                debug_artifact_id=failure.get("debug_artifact_id") or failure.get("artifact_id"),
+                artifact_id=failure.get("artifact_id") or failure.get("debug_artifact_id"),
             )
 
 __all__ = ["FIXED_PASSWORD", "FreeMailboxPool", "FreeProxyPool", "FreeRegisterError", "FreeRegisterManager", "MailboxUrlOtpProvider", "ProxyBinding", "random_birthdate", "random_display_name"]

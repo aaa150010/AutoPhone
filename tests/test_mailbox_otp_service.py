@@ -365,6 +365,22 @@ class MailboxOtpServiceTests(unittest.TestCase):
         self.assertEqual(service.wait_code(stage_code="registration_otp"), "241949")
         service.close()
 
+    def test_prepare_can_capture_baseline_without_notifying_public_stage(self):
+        stage_calls = []
+        service = MailboxOtpService(
+            "https://mail.example.test/inbox",
+            task_id="free-task",
+            stage_fn=lambda task_id, stage: stage_calls.append((task_id, stage)),
+            fetcher=lambda url: MailboxResponse(url, b'{"messages":[]}', "application/json", 200),
+        )
+
+        service.prepare("free_email_otp_wait", notify_stage=False)
+        self.assertEqual(service.current_stage, "free_email_otp_wait")
+        self.assertEqual(stage_calls, [])
+        service.prepare("free_email_otp_wait", notify_stage=True)
+        self.assertEqual(stage_calls, [("free-task", "free_email_otp_wait")])
+        service.close()
+
     def test_twofa_stage_never_returns_a_baseline_code(self):
         clock = _Clock()
         payload = json.dumps({

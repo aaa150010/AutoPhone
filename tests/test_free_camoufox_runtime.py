@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
+from pathlib import Path
+import tempfile
 import threading
 import unittest
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import ANY, AsyncMock, Mock, patch
 
 from mac_overrides import free_account_service
 from mac_overrides import free_camoufox_runtime as runtime
 from mac_overrides.free_proxy_bridge import Socks5HttpBridge
+from mac_overrides.free_register_runtime import FreeRegisterManager
 
 
 class _FakeLocator:
@@ -411,6 +415,206 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         self.assertIn("beforeinput", page.script)
         self.assertNotIn("button:has-text('Continue')", page.script)
 
+    def test_entry_submission_prefers_safe_button_and_waits_for_async_navigation(self):
+        stable_result = {
+            "ok": True,
+            "reason": "form_prepared",
+            "form_present": True,
+            "input_selector": "#entry-email",
+            "submit_selector": "form#entry > button[type='submit']",
+        }
+        challenge = runtime.CamoufoxBrowserError(
+            "free_camoufox_challenge", "等待安全验证", "challenge",
+            error_code="challenge",
+        )
+        with (
+            patch.object(runtime.asyncio, "sleep", new=AsyncMock()),
+            patch.object(runtime, "_goto_with_retry", new=AsyncMock()),
+            patch.object(runtime, "_wait_for_any_selector", new=AsyncMock(return_value="#entry-email")),
+            patch.object(runtime, "_submit_email_form_stable", new=AsyncMock(return_value=stable_result)) as stable,
+            patch.object(runtime, "_click_visible_submit", new=AsyncMock(return_value=True)) as click_submit,
+            patch.object(runtime, "_submit_visible_form", new=AsyncMock(return_value=True)) as enter_submit,
+            patch.object(
+                runtime, "_page_state",
+                new=AsyncMock(side_effect=("entry", "entry", "entry", "entry", "security")),
+            ),
+            patch.object(runtime, "_browser_signin_url", new=AsyncMock()) as signin,
+            patch.object(runtime, "_wait_challenge_then_stop", new=AsyncMock(side_effect=challenge)),
+        ):
+            with self.assertRaises(runtime.CamoufoxBrowserError):
+                asyncio.run(
+                    runtime._browser_flow(
+                        _EntryPage(), email="user@example.test", password="password",
+                        otp_callback=lambda: "", config={"registration_timeout_seconds": 60},
+                        log=lambda *_args: None, otp_prepare=Mock(), otp_mark_sent=Mock(),
+                    )
+                )
+
+        stable.assert_awaited_once()
+        click_submit.assert_awaited_once_with(
+            ANY, "form#entry > button[type='submit']",
+        )
+        enter_submit.assert_not_awaited()
+        signin.assert_not_awaited()
+
+    def test_entry_submission_click_failure_relocates_input_before_enter(self):
+        stable_result = {
+            "ok": True,
+            "reason": "form_prepared",
+            "form_present": True,
+            "input_selector": "#stale-email",
+            "submit_selector": "#stale-submit",
+        }
+        wait_selector = AsyncMock(side_effect=("#initial-email", "#fresh-email"))
+        challenge = runtime.CamoufoxBrowserError(
+            "free_camoufox_challenge", "等待安全验证", "challenge",
+            error_code="challenge",
+        )
+        with (
+            patch.object(runtime.asyncio, "sleep", new=AsyncMock()),
+            patch.object(runtime, "_goto_with_retry", new=AsyncMock()),
+            patch.object(runtime, "_wait_for_any_selector", new=wait_selector),
+            patch.object(runtime, "_submit_email_form_stable", new=AsyncMock(return_value=stable_result)),
+            patch.object(runtime, "_click_visible_submit", new=AsyncMock(return_value=False)) as click_submit,
+            patch.object(runtime, "_fill_input_like_user", new=AsyncMock(return_value=True)) as fill,
+            patch.object(runtime, "_submit_visible_form", new=AsyncMock(return_value=True)) as enter_submit,
+            patch.object(runtime, "_page_state", new=AsyncMock(return_value="security")),
+            patch.object(runtime, "_wait_challenge_then_stop", new=AsyncMock(side_effect=challenge)),
+        ):
+            with self.assertRaises(runtime.CamoufoxBrowserError):
+                asyncio.run(
+                    runtime._browser_flow(
+                        _EntryPage(), email="user@example.test", password="password",
+                        otp_callback=lambda: "", config={"registration_timeout_seconds": 60},
+                        log=lambda *_args: None, otp_prepare=Mock(), otp_mark_sent=Mock(),
+                    )
+                )
+
+        click_submit.assert_awaited_once_with(ANY, "#stale-submit")
+        fill.assert_awaited_once_with(ANY, "#fresh-email", "user@example.test")
+        enter_submit.assert_awaited_once_with(ANY, "#fresh-email")
+        self.assertEqual(wait_selector.await_count, 2)
+
+    def test_unknown_shell_is_polled_until_auth_state_after_entry_submit(self):
+        """A transient post-submit shell must not be classified as stuck."""
+        stable_result = {
+            "ok": True,
+            "reason": "form_prepared",
+            "form_present": True,
+            "input_selector": "#entry-email",
+            "submit_selector": "form#entry > button[type='submit']",
+        }
+        challenge = runtime.CamoufoxBrowserError(
+            "free_camoufox_challenge", "等待安全验证", "challenge",
+            error_code="challenge",
+        )
+        with (
+            patch.object(runtime.asyncio, "sleep", new=AsyncMock()) as sleep,
+            patch.object(runtime, "_goto_with_retry", new=AsyncMock()),
+            patch.object(runtime, "_wait_for_any_selector", new=AsyncMock(return_value="#entry-email")),
+            patch.object(runtime, "_submit_email_form_stable", new=AsyncMock(return_value=stable_result)),
+            patch.object(runtime, "_click_visible_submit", new=AsyncMock(return_value=False)),
+            patch.object(runtime, "_submit_visible_form", new=AsyncMock(return_value=True)),
+            patch.object(
+                runtime,
+                "_page_state",
+                new=AsyncMock(side_effect=("unknown", "unknown", "unknown", "unknown", "unknown", "security")),
+            ) as page_state,
+            patch.object(runtime, "_browser_signin_url", new=AsyncMock()) as signin,
+            patch.object(runtime, "_wait_challenge_then_stop", new=AsyncMock(side_effect=challenge)) as stop,
+        ):
+            with self.assertRaises(runtime.CamoufoxBrowserError) as raised:
+                asyncio.run(
+                    runtime._browser_flow(
+                        _EntryPage(), email="user@example.test", password="password",
+                        otp_callback=lambda: "", config={"registration_timeout_seconds": 60},
+                        log=lambda *_args: None, otp_prepare=Mock(), otp_mark_sent=Mock(),
+                    )
+                )
+
+        self.assertEqual(raised.exception.error_code, "challenge")
+        self.assertEqual(page_state.await_count, 6)
+        self.assertGreaterEqual(sleep.await_count, 1)
+        stop.assert_awaited_once()
+        signin.assert_not_awaited()
+
+    def test_entry_submission_falls_back_to_relocated_input_enter(self):
+        stable_result = {
+            "ok": False,
+            "reason": "stale_email_input",
+            "form_present": True,
+            "input_selector": "#stale-email",
+            "submit_selector": "",
+        }
+        wait_selector = AsyncMock(side_effect=("#initial-email", "#fresh-email"))
+        challenge = runtime.CamoufoxBrowserError(
+            "free_camoufox_challenge", "等待安全验证", "challenge",
+            error_code="challenge",
+        )
+        with (
+            patch.object(runtime.asyncio, "sleep", new=AsyncMock()),
+            patch.object(runtime, "_goto_with_retry", new=AsyncMock()),
+            patch.object(runtime, "_wait_for_any_selector", new=wait_selector),
+            patch.object(runtime, "_submit_email_form_stable", new=AsyncMock(return_value=stable_result)),
+            patch.object(runtime, "_fill_input_like_user", new=AsyncMock(return_value=True)) as fill,
+            patch.object(runtime, "_submit_visible_form", new=AsyncMock(return_value=True)) as enter_submit,
+            patch.object(runtime, "_page_state", new=AsyncMock(return_value="security")),
+            patch.object(runtime, "_wait_challenge_then_stop", new=AsyncMock(side_effect=challenge)),
+        ):
+            with self.assertRaises(runtime.CamoufoxBrowserError):
+                asyncio.run(
+                    runtime._browser_flow(
+                        _EntryPage(), email="user@example.test", password="password",
+                        otp_callback=lambda: "", config={"registration_timeout_seconds": 60},
+                        log=lambda *_args: None, otp_prepare=Mock(), otp_mark_sent=Mock(),
+                    )
+                )
+
+        self.assertEqual(wait_selector.await_count, 2)
+        fill.assert_awaited_once_with(ANY, "#fresh-email", "user@example.test")
+        enter_submit.assert_awaited_once_with(ANY, "#fresh-email")
+
+    def test_auth_phase_return_to_entry_is_terminal_and_legacy_prepare_is_supported(self):
+        stable_result = {
+            "ok": True,
+            "reason": "form_prepared",
+            "form_present": True,
+            "input_selector": "#entry-email",
+            "submit_selector": "button[type='submit']",
+        }
+        prepare_calls = []
+
+        def legacy_prepare(stage_code, *, force_snapshot=False):
+            prepare_calls.append((stage_code, force_snapshot))
+
+        with (
+            patch.object(runtime.asyncio, "sleep", new=AsyncMock()),
+            patch.object(runtime, "_goto_with_retry", new=AsyncMock()),
+            patch.object(runtime, "_wait_for_any_selector", new=AsyncMock(return_value="#entry-email")),
+            patch.object(runtime, "_submit_email_form_stable", new=AsyncMock(return_value=stable_result)) as stable,
+            patch.object(runtime, "_click_visible_submit", new=AsyncMock(return_value=True)),
+            patch.object(runtime, "_page_state", new=AsyncMock(side_effect=("login_password", "entry"))),
+            patch.object(runtime, "_click_first", new=AsyncMock(return_value=True)),
+            patch.object(runtime, "_browser_signin_url", new=AsyncMock()) as signin,
+        ):
+            with self.assertRaises(runtime.CamoufoxBrowserError) as raised:
+                asyncio.run(
+                    runtime._browser_flow(
+                        _EntryPage(), email="user@example.test", password="password",
+                        otp_callback=lambda: "", config={"registration_timeout_seconds": 60},
+                        log=lambda *_args: None, otp_prepare=legacy_prepare, otp_mark_sent=Mock(),
+                    )
+                )
+
+        self.assertEqual(raised.exception.error_code, "camoufox_entry_returned_after_otp")
+        self.assertFalse(raised.exception.retryable)
+        self.assertEqual(prepare_calls, [
+            ("free_email_otp_wait", True),
+            ("free_existing_login_otp", True),
+        ])
+        stable.assert_awaited_once()
+        signin.assert_not_awaited()
+
     def test_same_origin_signin_accepts_only_auth_openai_authority(self):
         class Page:
             def __init__(self, url):
@@ -462,11 +666,12 @@ class CamoufoxRuntimeTests(unittest.TestCase):
             patch.object(runtime.time, "monotonic", side_effect=lambda: Clock.now),
             patch.object(runtime.asyncio, "sleep", side_effect=fast_sleep),
             patch.object(runtime, "_goto_with_retry", new=AsyncMock()),
+            patch.object(runtime, "_click_visible_submit", new=AsyncMock(return_value=False)),
             patch.object(runtime, "_submit_visible_form", new=AsyncMock(return_value=True)) as submit,
             patch.object(
                 runtime,
                 "_wait_for_any_selector",
-                new=AsyncMock(side_effect=["input[type='email']", "input[type='email']"]),
+                new=AsyncMock(return_value="input[type='email']"),
             ),
             patch.object(runtime, "_submit_email_form_stable", new=AsyncMock(return_value=stable_result)) as stable,
             patch.object(runtime, "_click_exact_button_text", new=AsyncMock(return_value="continue")),
@@ -501,7 +706,7 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         self.assertEqual(raised.exception.error_code, "camoufox_entry_transition_timeout")
         self.assertFalse(raised.exception.retryable)
         self.assertEqual(stable.await_count, 2)
-        self.assertEqual(submit.await_args_list[0].args[1], "#entry-email")
+        self.assertEqual(submit.await_args_list[0].args[1], "input[type='email']")
         signin.assert_awaited_once_with(page, "user@example.test")
         self.assertIn('"phase": "entry"', raised.exception.diagnostic)
         self.assertIn('"submitted": true', raised.exception.diagnostic)
@@ -531,11 +736,12 @@ class CamoufoxRuntimeTests(unittest.TestCase):
             patch.object(runtime.time, "monotonic", side_effect=lambda: Clock.now),
             patch.object(runtime.asyncio, "sleep", side_effect=fast_sleep),
             patch.object(runtime, "_goto_with_retry", new=AsyncMock()),
+            patch.object(runtime, "_click_visible_submit", new=AsyncMock(return_value=False)),
             patch.object(runtime, "_submit_visible_form", new=AsyncMock(return_value=True)),
             patch.object(
                 runtime,
                 "_wait_for_any_selector",
-                new=AsyncMock(side_effect=["input[type='email']", "input[type='email']"]),
+                new=AsyncMock(return_value="input[type='email']"),
             ),
             patch.object(runtime, "_submit_email_form_stable", new=AsyncMock(return_value=stable_result)),
             patch.object(runtime, "_click_exact_button_text", new=AsyncMock(return_value="continue")),
@@ -756,6 +962,28 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         finally:
             bridge.close()
 
+    def test_pool_rebuilds_when_timeout_policy_changes(self):
+        class FakePool:
+            def __init__(self, config):
+                self.config = dict(config)
+                self._closed = False
+                self.shutdown_called = False
+
+            def shutdown(self):
+                self.shutdown_called = True
+                self._closed = True
+
+        with runtime._POOL_LOCK:
+            runtime._POOLS.clear()
+        with patch.object(runtime, "CamoufoxBrowserPool", FakePool):
+            try:
+                first = runtime._pool_for(self._config())
+                second = runtime._pool_for(self._config(context_close_timeout_seconds=2))
+            finally:
+                runtime.shutdown_camoufox_pools()
+        self.assertIsNot(first, second)
+        self.assertTrue(first.shutdown_called)
+
     def test_pool_closes_context_and_recycles_after_registration_limit(self):
         async def fake_flow(_page, **_kwargs):
             return {"ok": True, "account_flow": "signup"}
@@ -840,6 +1068,169 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         self.assertNotIn("private page detail", raised.exception.diagnostic)
         self.assertEqual(raised.exception.safe_page, "https://chatgpt.com/auth/login")
 
+    def test_generic_camoufox_browser_failure_does_not_restore_mailbox(self):
+        # The broad compatibility node is also used after OTP/profile actions;
+        # only an explicitly pre-context launch error may restore the row.
+        post_email = runtime.FreeRegisterError(
+            "free_camoufox_browser", "Camoufox 注册页面", "流程失败",
+            error_code="camoufox_browser_flow_failed",
+        )
+        disconnected_during_navigation = runtime.FreeRegisterError(
+            "free_camoufox_launch", "启动 Camoufox", "浏览器断开",
+            error_code="camoufox_browser_disconnected",
+        )
+        pre_context = runtime.FreeRegisterError(
+            "free_camoufox_launch", "启动 Camoufox", "context 创建失败",
+            error_code="camoufox_context_create_failed",
+        )
+        self.assertFalse(
+            FreeRegisterManager._can_reuse_mailbox_after_failure(
+                post_email.node_code, post_email,
+            )
+        )
+        self.assertFalse(
+            FreeRegisterManager._can_reuse_mailbox_after_failure(
+                disconnected_during_navigation.node_code,
+                disconnected_during_navigation,
+            )
+        )
+        self.assertTrue(
+            FreeRegisterManager._can_reuse_mailbox_after_failure(
+                pre_context.node_code, pre_context,
+            )
+        )
+
+    def test_debug_helpers_redact_encoded_urls_and_untrusted_paths(self):
+        encoded = "https://chatgpt.com/auth/callback/%75ser%40example.com?code=654321&state=opaque"
+        safe = runtime._safe_event_url(encoded)
+        self.assertNotIn("user@example.com", safe)
+        self.assertNotIn("654321", safe)
+        self.assertIn("<已隐藏>", safe)
+        self.assertEqual(runtime._safe_event_url("https://evil.example/a/opaque-token"), "https://evil.example/[路径已隐藏]")
+
+    def test_debug_helper_redacts_nested_encoded_query_values(self):
+        safe = runtime._safe_event_url(
+            "https://chatgpt.com/x/%2525253Ftoken%2525253Dsecret-value"
+        )
+        self.assertNotIn("secret-value", safe)
+        self.assertNotIn("token", safe.casefold())
+        self.assertIn("<已隐藏>", safe)
+
+    def test_screenshot_safety_scans_the_complete_body_not_short_snapshot(self):
+        class LongBodyPage(_FakePage):
+            def locator(self, selector):
+                if selector == "body":
+                    class BodyLocator:
+                        async def inner_text(self, **_kwargs):
+                            return "x" * 2000 + " hidden@example.com"
+                    return BodyLocator()
+                return _FakeLocator()
+
+        safe, reason = asyncio.run(runtime._screenshot_safety_check(LongBodyPage()))
+        self.assertFalse(safe)
+        self.assertIn("敏感", reason)
+
+    def test_debug_artifact_summary_projects_only_safe_fields(self):
+        class SafePage(_FakePage):
+            async def evaluate(self, _script):
+                return {"title": "ChatGPT", "url": self.url, "elements": []}
+
+        trace = runtime._DebugTrace()
+        trace.add("console", text='{"accessToken":"secret"}')
+        with tempfile.TemporaryDirectory() as artifact_root:
+            result = asyncio.run(runtime._capture_debug_artifact(
+                page=SafePage(),
+                artifact_root=Path(artifact_root),
+                session_id="cam-debug-abcdef123456",
+                artifact_id="cam-artifact-abcdef123456",
+                summary={
+                    "task_id": "task-1",
+                    "node_label": "失败 user@example.com",
+                    "created_at": 1_700_000_000,
+                    "raw_response": "must-not-be-written",
+                },
+                trace=trace,
+            ))
+            payload = json.loads(Path(artifact_root, "cam-debug-abcdef123456", "summary.json").read_text())
+            self.assertEqual(result["artifact_id"], "cam-artifact-abcdef123456")
+            self.assertNotIn("raw_response", payload)
+            self.assertNotIn("user@example.com", json.dumps(payload))
+            self.assertNotIn("secret", json.dumps(payload))
+
+    def test_debug_proxy_fingerprint_accepts_only_fixed_hex(self):
+        self.assertEqual(runtime._safe_proxy_fingerprint("A" * 16, "secret-proxy"), "a" * 16)
+        expected = runtime.fingerprint("secret-proxy")
+        self.assertEqual(runtime._safe_proxy_fingerprint("not-a-fingerprint", "secret-proxy"), expected)
+
+    def test_business_failure_retains_debug_context_and_writes_redacted_artifact(self):
+        class DebugPage(_FakePage):
+            url = "https://chatgpt.com/auth/login?private=1"
+
+            def is_closed(self):
+                return False
+
+            async def evaluate(self, _script):
+                return {
+                    "title": "ChatGPT",
+                    "url": self.url,
+                    "elements": [{
+                        "tag": "input",
+                        "text": "Email",
+                        "href": "https://chatgpt.com/auth/login?private=1",
+                    }],
+                }
+
+            async def screenshot(self, **_kwargs):
+                raise RuntimeError("screenshot unavailable in test double")
+
+        class DebugContext(_FakeContext):
+            async def new_page(self):
+                return DebugPage()
+
+        async def debug_context(_browser, **_kwargs):
+            return DebugContext()
+
+        async def failing_flow(_page, **_kwargs):
+            raise ValueError("private page detail")
+
+        with (
+            tempfile.TemporaryDirectory() as artifact_root,
+            patch.object(runtime, "_load_camoufox_api", return_value=(_FakeManager, debug_context)),
+            patch.object(runtime, "_browser_flow", side_effect=failing_flow),
+        ):
+            pool = runtime.CamoufoxBrowserPool(self._config(_debug_artifact_dir=artifact_root))
+            try:
+                with self.assertRaises(runtime.CamoufoxBrowserError) as raised:
+                    pool.register(email="user@example.test", password="password", proxy="")
+
+                failure = raised.exception
+                session_id = str(getattr(failure, "debug_session_id", ""))
+                artifact_id = str(getattr(failure, "debug_artifact_id", ""))
+                self.assertTrue(session_id)
+                self.assertTrue(artifact_id)
+                state = pool.debug_state()
+                self.assertEqual(state["open_contexts"], 1)
+                self.assertEqual(state["used"], 1)
+                self.assertFalse(state["headless"])
+                self.assertEqual(state["sessions"][0]["session_id"], session_id)
+                self.assertEqual(state["sessions"][0]["artifact_id"], artifact_id)
+
+                artifact_dir = Path(artifact_root) / session_id
+                summary = json.loads((artifact_dir / "summary.json").read_text(encoding="utf-8"))
+                dom = json.loads((artifact_dir / "dom.json").read_text(encoding="utf-8"))
+                self.assertEqual(summary["artifact_id"], artifact_id)
+                self.assertEqual(summary["safe_page"], "https://chatgpt.com/auth/login")
+                self.assertEqual(dom["url"], "https://chatgpt.com/auth/login")
+                self.assertEqual(dom["elements"][0]["href"], "https://chatgpt.com/auth/login")
+                self.assertEqual(summary["screenshot"], "skipped")
+                self.assertNotIn("private=1", json.dumps({"summary": summary, "dom": dom}))
+
+                self.assertEqual(pool.close_debug_sessions(session_id), 1)
+                self.assertEqual(pool.debug_state()["open_contexts"], 0)
+            finally:
+                pool.close_debug_sessions()
+                pool.shutdown(force=True)
+
     def test_registration_timeout_cancels_flow_and_recycles_process(self):
         async def stuck_flow(_page, **_kwargs):
             await asyncio.Event().wait()
@@ -858,6 +1249,332 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         self.assertEqual(raised.exception.error_code, "camoufox_registration_timeout")
         self.assertGreaterEqual(len(_FakeManager.instances), 2)
         self.assertTrue(all(item.exited == 1 for item in _FakeManager.instances))
+
+    def test_home_confirmation_timeout_does_not_retain_debug_context(self):
+        error = runtime.CamoufoxBrowserError(
+            "free_camoufox_page_state", "确认 ChatGPT 登录首页", "timeout",
+            error_code="camoufox_home_not_confirmed",
+        )
+        self.assertFalse(runtime.CamoufoxBrowserPool._debug_retain_allowed(error))
+
+    def test_slot_admission_reserves_capacity_atomically_with_debug_holds(self):
+        """Concurrent waiters cannot overbook capacity released by debug holds."""
+        async def exercise():
+            pool = object.__new__(runtime.CamoufoxBrowserPool)
+            pool.max_contexts = 2
+            pool._admission_lock = asyncio.Lock()
+            slot = runtime._BrowserSlot(
+                manager=None,
+                browser=None,
+                # A retained debug context has already returned the task
+                # semaphore, so its value can exceed the remaining capacity.
+                semaphore=asyncio.Semaphore(2),
+                idle_event=asyncio.Event(),
+                debug_holds=1,
+            )
+            slot.idle_event.set()
+            permits = await asyncio.gather(
+                pool._acquire_slot_permit(slot),
+                pool._acquire_slot_permit(slot),
+            )
+            admitted = [permit for permit in permits if permit is not None]
+            self.assertEqual(len(admitted), 1)
+            self.assertEqual(slot.active_contexts, 1)
+            self.assertEqual(slot.active_contexts + slot.debug_holds, pool.max_contexts)
+            for permit in admitted:
+                await pool._release_active_context(slot, debug_retained=False)
+                await permit.__aexit__(None, None, None)
+            self.assertEqual(slot.active_contexts, 0)
+            self.assertEqual(slot.semaphore._value, 2)
+
+        asyncio.run(exercise())
+
+    def test_browser_disconnect_after_admission_releases_active_context(self):
+        """A disconnect observed after admission must not strand a slot."""
+        class FlappingBrowser:
+            def __init__(self):
+                self.calls = 0
+
+            def is_connected(self):
+                self.calls += 1
+                return self.calls == 1
+
+        async def exercise():
+            pool = object.__new__(runtime.CamoufoxBrowserPool)
+            pool.max_contexts = 1
+            pool._admission_lock = asyncio.Lock()
+            pool._closed = False
+            pool.config = self._config()
+            browser = FlappingBrowser()
+            slot = runtime._BrowserSlot(
+                manager=None,
+                browser=browser,
+                semaphore=asyncio.Semaphore(1),
+                recycle_lock=asyncio.Lock(),
+                idle_event=asyncio.Event(),
+            )
+            slot.idle_event.set()
+            pool._slots = [slot]
+            with patch.object(pool, "_recycle_slot", new=AsyncMock()) as recycle:
+                with self.assertRaises(runtime.CamoufoxBrowserError) as raised:
+                    await pool._register_with_slot_once({"proxy": ""})
+            self.assertEqual(raised.exception.error_code, "camoufox_browser_disconnected")
+            self.assertEqual(slot.active_contexts, 0)
+            self.assertFalse(slot.semaphore.locked())
+            self.assertTrue(slot.idle_event.is_set())
+            recycle.assert_awaited_once()
+
+        asyncio.run(exercise())
+
+    def test_closed_debug_context_removes_session_when_bridge_cleanup_fails(self):
+        """Bridge shutdown errors do not leave a phantom debug capacity hold."""
+        class Bridge:
+            def __init__(self):
+                self.closed = False
+
+            def close(self):
+                self.closed = True
+                raise RuntimeError("bridge thread already stopped")
+
+        async def exercise():
+            pool = object.__new__(runtime.CamoufoxBrowserPool)
+            pool.config = self._config()
+            pool._admission_lock = asyncio.Lock()
+            pool._debug_lock = threading.RLock()
+            pool._debug_sessions = {}
+            pool._debug_closing = set()
+            slot = runtime._BrowserSlot(
+                manager=None,
+                browser=None,
+                semaphore=asyncio.Semaphore(1),
+                debug_holds=1,
+            )
+            context = _FakeContext()
+            bridge = Bridge()
+            session = runtime._DebugSession(
+                session_id="cam-debug-abcdef123456",
+                task_id="task-1",
+                context=context,
+                page=_FakePage(),
+                proxy_bridge=bridge,
+                slot=slot,
+                created_at=1.0,
+                trace=runtime._DebugTrace(),
+            )
+            pool._debug_sessions[session.session_id] = session
+            closed = await pool._close_debug_sessions_async(session.session_id)
+            self.assertEqual(closed, 1)
+            self.assertTrue(context.closed)
+            self.assertTrue(bridge.closed)
+            self.assertEqual(pool._debug_sessions, {})
+            self.assertEqual(slot.debug_holds, 0)
+
+        asyncio.run(exercise())
+
+    def test_close_last_debug_context_recycles_browser_at_registration_limit(self):
+        async def exercise():
+            pool = object.__new__(runtime.CamoufoxBrowserPool)
+            pool.config = self._config(max_registrations_per_browser=1)
+            pool._admission_lock = asyncio.Lock()
+            pool._debug_lock = threading.RLock()
+            pool._debug_sessions = {}
+            pool._debug_closing = set()
+            pool._closed = False
+            slot = runtime._BrowserSlot(
+                manager=None,
+                browser=None,
+                semaphore=asyncio.Semaphore(1),
+                debug_holds=1,
+                completed=1,
+            )
+            session = runtime._DebugSession(
+                session_id="cam-debug-abcdef123456",
+                task_id="task-1",
+                context=_FakeContext(),
+                page=_FakePage(),
+                proxy_bridge=None,
+                slot=slot,
+                created_at=1.0,
+            )
+            pool._debug_sessions[session.session_id] = session
+            with patch.object(pool, "_recycle_slot", new=AsyncMock()) as recycle:
+                closed = await pool._close_debug_sessions_async(session.session_id)
+            self.assertEqual(closed, 1)
+            recycle.assert_awaited_once_with(
+                slot, slot.generation, "关闭最后 Camoufox 调试窗口后回收浏览器",
+            )
+
+        asyncio.run(exercise())
+
+    def test_release_skips_debug_hold_when_close_removed_session_first(self):
+        """Closing a page between retention and release cannot orphan capacity."""
+        async def exercise():
+            pool = object.__new__(runtime.CamoufoxBrowserPool)
+            pool._admission_lock = asyncio.Lock()
+            pool._debug_lock = threading.RLock()
+            pool._debug_sessions = {}
+            pool._debug_closing = set()
+            slot = runtime._BrowserSlot(
+                manager=None,
+                browser=None,
+                semaphore=asyncio.Semaphore(1),
+                idle_event=asyncio.Event(),
+            )
+            context = _FakeContext()
+            # The close coroutine has already removed the session and hold;
+            # the worker's finally block must not add it back.
+            await pool._release_active_context(
+                slot,
+                debug_retained=True,
+                debug_context=context,
+            )
+            self.assertEqual(slot.active_contexts, 0)
+            self.assertEqual(slot.debug_holds, 0)
+
+        asyncio.run(exercise())
+
+    def test_recycle_rechecks_debug_holds_after_drain_wait(self):
+        """A hold created during drain prevents old-browser teardown."""
+        async def exercise():
+            pool = object.__new__(runtime.CamoufoxBrowserPool)
+            pool.config = self._config(browser_recycle_drain_timeout_seconds=1)
+            pool._closed = False
+            pool._admission_lock = asyncio.Lock()
+            pool._slots = []
+
+            class Manager:
+                def __init__(self):
+                    self.exit_calls = 0
+
+                async def __aexit__(self, *_args):
+                    self.exit_calls += 1
+
+            manager = Manager()
+            slot = runtime._BrowserSlot(
+                manager=manager,
+                browser=Mock(),
+                semaphore=asyncio.Semaphore(1),
+                recycle_lock=asyncio.Lock(),
+                idle_event=None,
+                active_contexts=1,
+            )
+            slot.browser.is_connected.return_value = True
+
+            class DrainEvent:
+                async def wait(self):
+                    # Simulate another terminal worker retaining a page while
+                    # the recycler awaits the active context to drain.
+                    slot.debug_holds = 1
+                    slot.active_contexts = 0
+
+            slot.idle_event = DrainEvent()
+            await pool._recycle_slot(slot, slot.generation, "test")
+            self.assertFalse(slot.draining)
+            self.assertEqual(manager.exit_calls, 0)
+
+        asyncio.run(exercise())
+
+    def test_debug_state_uses_current_pool_identity_after_config_change(self):
+        class FakePool:
+            def __init__(self, snapshot, *, debug=False, active=False):
+                self.snapshot = snapshot
+                self.debug = debug
+                self.active = active
+                self.shutdown_calls = 0
+                self._closed = False
+
+            def debug_state(self):
+                return dict(self.snapshot)
+
+            def has_debug_sessions(self):
+                return self.debug
+
+            def has_active_contexts(self):
+                return self.active
+
+            def shutdown(self, *, force=False):
+                self.shutdown_calls += 1
+                self._closed = True
+                return True
+
+        old_config = self._config(debug_mode=True, headless=True)
+        current_config = self._config(debug_mode=False, headless=True)
+        old_key = runtime._camoufox_pool_key(old_config)
+        current_key = runtime._camoufox_pool_key(current_config)
+        old_pool = FakePool(
+            {
+                "enabled": True, "headless": False, "capacity": 1,
+                "used": 1, "open_contexts": 1,
+                "sessions": [{"session_id": "cam-debug-abcdef123456"}],
+            },
+            debug=True,
+        )
+        current_pool = FakePool(
+            {
+                "enabled": False, "headless": True, "capacity": 2,
+                "used": 0, "open_contexts": 0, "sessions": [],
+            }
+        )
+        with runtime._POOL_LOCK:
+            previous = dict(runtime._POOLS)
+            runtime._POOLS.clear()
+            runtime._POOLS[old_key] = old_pool
+            runtime._POOLS[current_key] = current_pool
+        try:
+            state = runtime.camoufox_debug_state(current_config)
+        finally:
+            with runtime._POOL_LOCK:
+                runtime._POOLS.clear()
+                runtime._POOLS.update(previous)
+        self.assertFalse(state["enabled"])
+        self.assertTrue(state["headless"])
+        self.assertEqual(state["capacity"], 3)
+        self.assertEqual(state["used"], 1)
+        self.assertEqual(state["open_contexts"], 1)
+        self.assertEqual(old_pool.shutdown_calls, 0)
+
+    def test_close_debug_helper_keeps_current_config_after_last_pool_is_removed(self):
+        class FakePool:
+            def __init__(self):
+                self._debug = True
+
+            def has_debug_sessions(self):
+                return self._debug
+
+            def close_debug_sessions(self, _session_id=""):
+                self._debug = False
+                return 1
+
+            def shutdown(self, *, force=False):
+                return True
+
+            def debug_state(self):
+                return {
+                    "enabled": True,
+                    "headless": False,
+                    "capacity": 6,
+                    "used": 0,
+                    "open_contexts": 0,
+                    "sessions": [],
+                }
+
+        config = self._config(debug_mode=False, headless=True, pool_size=4, max_contexts_per_browser=2)
+        key = runtime._camoufox_pool_key(config)
+        pool = FakePool()
+        with runtime._POOL_LOCK:
+            previous = dict(runtime._POOLS)
+            runtime._POOLS.clear()
+            runtime._POOLS[key] = pool
+        try:
+            result = runtime.close_camoufox_debug_browsers(config=config)
+        finally:
+            with runtime._POOL_LOCK:
+                runtime._POOLS.clear()
+                runtime._POOLS.update(previous)
+        self.assertEqual(result["closed_contexts"], 1)
+        self.assertEqual(result["retained_contexts"], 0)
+        self.assertEqual(result["remaining_contexts"], 0)
+        self.assertEqual(result["retained_pools"], 0)
 
     def test_runner_uses_the_shared_mailbox_provider_and_normalizes_result(self):
         mailbox = Mock()

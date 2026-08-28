@@ -8,6 +8,19 @@ cd "$APP_DIR"
 PORT="18777"
 VENV_DIR="$APP_DIR/mac_runtime/.venv"
 
+# Serialize the complete prepare/build/bootstrap sequence. A second Finder or
+# Terminal launch exits without racing virtualenv creation, npm output, or the
+# generated LaunchAgent plist.
+if [ "${GPTPHONE_LAUNCH_LOCK_HELD:-}" != "1" ]; then
+  mkdir -p "$APP_DIR/data"
+  LAUNCH_LOCK="$APP_DIR/data/start.command.lock"
+  if ! GPTPHONE_LAUNCH_LOCK_HELD=1 /usr/bin/lockf -t 0 "$LAUNCH_LOCK" "$0" "$@"; then
+    echo "Another gptPhone launcher is already preparing the WebUI."
+    exit 1
+  fi
+  exit 0
+fi
+
 export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"
 
 echo "gptPhone mac launcher"
@@ -229,27 +242,36 @@ mkdir -p "$LAUNCH_AGENT_DIR"
 USER_ID="$(id -u)"
 /bin/launchctl bootout "gui/$USER_ID/$LAUNCH_AGENT_LABEL" >/dev/null 2>&1 || true
 
-OLD_PIDS="$(/usr/bin/pgrep -f "plus_launcher.pyc --no-browser --port $PORT" 2>/dev/null || true)"
-PORT_PIDS="$(/usr/sbin/lsof -ti tcp:"$PORT" 2>/dev/null || true)"
-PIDS_TO_STOP="$(printf "%s\n%s\n" "$OLD_PIDS" "$PORT_PIDS" | awk 'NF && !seen[$0]++')"
+PORT_PIDS="$(/usr/sbin/lsof -nP -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)"
 typeset -a PIDS_TO_STOP_ARRAY
 PIDS_TO_STOP_ARRAY=()
-if [ -n "$PIDS_TO_STOP" ]; then
-  PIDS_TO_STOP_ARRAY=("${(@f)PIDS_TO_STOP}")
+if [ -n "$PORT_PIDS" ]; then
+  PIDS_TO_STOP_ARRAY=("${(@f)PORT_PIDS}")
 fi
 if [ ${#PIDS_TO_STOP_ARRAY[@]} -gt 0 ]; then
   echo "Stopping previous WebUI on port $PORT..."
   kill "${PIDS_TO_STOP_ARRAY[@]}" 2>/dev/null || true
-  sleep 1
-  typeset -a STILL_RUNNING
-  STILL_RUNNING=()
-  for pid in "${PIDS_TO_STOP_ARRAY[@]}"; do
-    if kill -0 "$pid" 2>/dev/null; then
-      STILL_RUNNING+=("$pid")
+  for attempt in {1..20}; do
+    if [ -z "$(/usr/sbin/lsof -nP -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)" ]; then
+      break
     fi
+    sleep 0.1
   done
-  if [ ${#STILL_RUNNING[@]} -gt 0 ]; then
-    kill -9 "${STILL_RUNNING[@]}" 2>/dev/null || true
+  STILL_LISTENING="$(/usr/sbin/lsof -nP -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)"
+  if [ -n "$STILL_LISTENING" ]; then
+    typeset -a STILL_LISTENING_ARRAY
+    STILL_LISTENING_ARRAY=("${(@f)STILL_LISTENING}")
+    kill -9 "${STILL_LISTENING_ARRAY[@]}" 2>/dev/null || true
+    for attempt in {1..50}; do
+      if [ -z "$(/usr/sbin/lsof -nP -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)" ]; then
+        break
+      fi
+      sleep 0.1
+    done
+  fi
+  if [ -n "$(/usr/sbin/lsof -nP -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)" ]; then
+    echo "Port $PORT is still occupied after stopping its listener; LaunchAgent was not started."
+    exit 1
   fi
 fi
 

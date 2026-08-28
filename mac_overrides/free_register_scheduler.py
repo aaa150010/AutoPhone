@@ -50,7 +50,21 @@ class FreeRegisterSchedulerMixin:
             self._finish_progress(task_id, "stopped" if reusable else "failed")
             changed = True
         if changed:
-            self.task_store.save(self._tasks)
+            # The production manager exposes a safe persistence helper so a
+            # disk outage cannot abort recovery of the remaining leases. Keep
+            # the direct fallback for older mixin hosts used by integrations.
+            saver = getattr(self, "_save_task_state_safely", None)
+            if callable(saver):
+                saver("进程恢复任务状态")
+            else:
+                saver = getattr(self, "_save_tasks_safely", None)
+                if callable(saver):
+                    saver("进程恢复任务状态")
+                else:
+                    try:
+                        self.task_store.save(self._tasks)
+                    except Exception:
+                        pass
 
     def _switch_pre_profile_proxy(self, task: dict[str, Any], config: Mapping[str, Any]) -> bool:
         """Replace a failed pre-profile proxy while the account is still uncommitted."""
@@ -66,7 +80,10 @@ class FreeRegisterSchedulerMixin:
                 perform_probe=False,
                 health_probe_ttl_seconds=int(config["proxy_health_probe_ttl_seconds"]) if "proxy_health_probe_ttl_seconds" in config else 0,
             )
-        except FreeRegisterError:
+        except Exception:
+            # A replacement is optional recovery. Any pool/transport error is
+            # reported by the caller's original failure path; do not mask it
+            # with a second exception while attempting the switch.
             return False
         if not bindings:
             return False
@@ -95,13 +112,27 @@ class FreeRegisterSchedulerMixin:
             "proxy_fingerprint": replacement.fingerprint,
             "exit_ip": replacement.exit_ip, "registration_ip": "",
         }
+        persist = False
         with self._lock:
             current = self._tasks.get(task_id)
             if current is not None:
                 current.update(updates)
                 current.setdefault("proxy_attempts", []).append({"proxy_id": replacement.proxy_id, "stage": "free_proxy_binding", "outcome": "switched", "at": int(time.time())})
                 current["proxy_attempts"] = current["proxy_attempts"][-10:]
-                self.task_store.save(self._tasks)
+                persist = True
+        if persist:
+            saver = getattr(self, "_save_task_state_safely", None)
+            if callable(saver):
+                saver("记录代理切换")
+            else:
+                saver = getattr(self, "_save_tasks_safely", None)
+                if callable(saver):
+                    saver("记录代理切换")
+                else:
+                    try:
+                        self.task_store.save(self._tasks)
+                    except Exception:
+                        pass
         task.update(updates)
         self.pool.update(
             str(task.get("row_id") or ""), status="running", proxy=replacement.proxy,

@@ -114,9 +114,14 @@ class MailboxUrlOtpProvider:
         stage_code: str = "free_email_otp_wait",
         *,
         force_snapshot: bool = False,
+        notify_stage: bool = True,
     ) -> None:
         """Capture the baseline before browser/protocol actions can send a code."""
-        self.service.prepare(stage_code, force_snapshot=force_snapshot)
+        self.service.prepare(
+            stage_code,
+            force_snapshot=force_snapshot,
+            notify_stage=notify_stage,
+        )
 
     def wait_code(
         self,

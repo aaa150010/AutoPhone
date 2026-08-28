@@ -34,7 +34,7 @@ FREE_LEGACY_CONFIG_KEYS = frozenset({
 })
 
 DEFAULT_FREE_CONFIG: dict[str, Any] = {
-    "version": 8,
+    "version": 9,
     "driver": "protocol",
     "flow_profile": "reference_20260823",
     "proxy_allocation_mode": "healthy_random",
@@ -111,6 +111,12 @@ DEFAULT_FREE_CONFIG: dict[str, Any] = {
         "recover_cleanup_on_start": True,
     },
     "camoufox": {
+        # Debug mode intentionally defaults on so a failed browser task leaves
+        # a visible page available for diagnosis.  ``headless`` is kept as the
+        # user's persisted preference; the runtime derives an effective headed
+        # value while debug mode is enabled and restores this preference when
+        # debug mode is turned off.
+        "debug_mode": True,
         "headless": True,
         "pool_size": 2,
         "max_contexts_per_browser": 3,
@@ -191,6 +197,20 @@ class FreeConfigStore:
                 incoming["proxy_default_scheme"] = "socks5"
             if str(incoming.get("proxy_socks5_dns_mode") or "").strip().lower() == "auto":
                 incoming["proxy_socks5_dns_mode"] = "remote"
+        # v8 predates the Camoufox debug toggle. Treat a missing toggle as the
+        # new default (enabled), while preserving an explicit value from a
+        # newer or manually edited store. Injecting this into ``incoming`` is
+        # important when a caller supplies ``previous``: an older snapshot
+        # must not allow its stale debug value to override the migration.
+        if source_version < 9:
+            legacy_camoufox = incoming.get("camoufox")
+            if not isinstance(legacy_camoufox, Mapping):
+                legacy_camoufox = {}
+            elif not isinstance(legacy_camoufox, dict):
+                legacy_camoufox = dict(legacy_camoufox)
+            if "debug_mode" not in legacy_camoufox:
+                legacy_camoufox["debug_mode"] = True
+            incoming["camoufox"] = legacy_camoufox
         base = _merge(DEFAULT_FREE_CONFIG, previous or {})
         if incoming.get("roxybrowser", {}).get("api_key") == SECRET_MASK:
             incoming = copy.deepcopy(incoming)
@@ -331,7 +351,7 @@ class FreeConfigStore:
             for key, value in dict(result.get("camoufox") or {}).items()
             if key in camoufox_defaults
         }
-        for key in ("headless", "block_images", "existing_account_login"):
+        for key in ("debug_mode", "headless", "block_images", "existing_account_login"):
             camoufox[key] = _as_bool(camoufox.get(key), bool(camoufox_defaults[key]))
         camoufox["pool_size"] = _int(camoufox.get("pool_size"), 2, 1, 16)
         camoufox["max_contexts_per_browser"] = _int(camoufox.get("max_contexts_per_browser"), 3, 1, 32)
@@ -349,8 +369,8 @@ class FreeConfigStore:
             "roxybrowser": {"country": "", "group": ""},
             "camoufox": {"country": "", "group": ""},
         }
-        # Preserve the existing staged schema migrations and add v7 -> v8 for
-        # the SOCKS5/remote proxy defaults. A missing version is a fresh store
+        # Preserve the existing staged schema migrations and add v8 -> v9 for
+        # the headed Camoufox debug default. A missing version is a fresh store
         # and receives the current schema immediately.
         if not value and not previous:
             result["version"] = DEFAULT_FREE_CONFIG["version"]
@@ -358,6 +378,10 @@ class FreeConfigStore:
             result["version"] = 6
         elif source_version < 7:
             result["version"] = 7
+        elif source_version < 8:
+            # Keep the pre-existing v7 -> v8 proxy-default migration as a
+            # distinct persisted step. The next load performs v8 -> v9.
+            result["version"] = 8
         else:
             result["version"] = DEFAULT_FREE_CONFIG["version"]
         return result
@@ -370,8 +394,9 @@ class FreeConfigStore:
                 value = {}
             source = value if isinstance(value, Mapping) else {}
             normalized = self.normalize(source)
-            # Persist one-time schema/policy migrations. Legacy v7 files are
-            # written back as v8 so the SOCKS5/remote defaults are durable.
+            # Persist one-time schema/policy migrations. Legacy files are
+            # written back as v9 so the SOCKS5/remote and Camoufox debug
+            # defaults are durable.
             try:
                 source_version = int(source.get("version") or 0)
             except (TypeError, ValueError):
@@ -380,6 +405,8 @@ class FreeConfigStore:
                 self.path.exists()
                 and (
                     source_version < DEFAULT_FREE_CONFIG["version"]
+                    or not isinstance(source.get("camoufox"), Mapping)
+                    or "debug_mode" not in source.get("camoufox", {})
                     or str(source.get("proxy_allocation_mode") or "").strip().lower() != "healthy_random"
                     or any(
                         isinstance(item, Mapping) and any(str(item.get(key) or "").strip() for key in ("country", "group"))

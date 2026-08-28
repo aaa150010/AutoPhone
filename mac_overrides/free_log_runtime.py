@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import sqlite3
 import threading
 import re
 from typing import Any, Mapping
@@ -20,7 +21,39 @@ except ImportError:
         atomic_write,
         fingerprint,
         safe_log_message,
-    )
+)
+
+
+_CANONICAL_INCIDENT_RE = re.compile(
+    r"^LOG-(?P<date>\d{8})-(?P<suffix>[A-Z0-9]{8})$",
+    re.IGNORECASE,
+)
+_LEGACY_INCIDENT_RE = re.compile(
+    r"^LOG-(?P<phone>\+?\d{8,15})-(?P<suffix>[A-Z0-9]{8})$",
+    re.IGNORECASE,
+)
+
+
+def _incident_date_from_time(value: Any) -> str:
+    text = str(value or "").strip()
+    if not re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})",
+        text,
+    ):
+        return ""
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        return parsed.astimezone(timezone.utc).strftime("%Y%m%d")
+    except (TypeError, ValueError, OverflowError):
+        return ""
+
+
+def _valid_incident_date(value: str) -> bool:
+    try:
+        datetime.strptime(value, "%Y%m%d")
+    except (TypeError, ValueError):
+        return False
+    return True
 
 
 class FreeLogStore:
@@ -36,6 +69,7 @@ class FreeLogStore:
         "time", "level", "task_id", "node_code", "node_label", "attempt",
         "duration_ms", "page_type", "safe_page", "http_status", "provider_code",
         "outcome", "diagnostic", "action_hint", "result", "incident_id",
+        "debug_session_id", "debug_artifact_id", "artifact_id",
     )
     _KNOWN_FIELDS = frozenset({
         "time", "level", "message", "task_id", "stage", "stage_label",
@@ -45,6 +79,7 @@ class FreeLogStore:
         "technical_summary", "action_hint", "retryable", "result", "incident_id",
         "declared_scheme", "transport_scheme", "target_domain", "request_stage",
         "retry_count", "transport_error_code",
+        "debug_session_id", "debug_artifact_id", "artifact_id",
         "retry_after_seconds",
         "substep_code", "substep_label",
     })
@@ -62,6 +97,8 @@ class FreeLogStore:
         self.task_limit = max(100, int(task_limit))
         self.diagnostic_store = diagnostic_store
         self._lock = threading.RLock()
+        self._legacy_incident_map: dict[str, str] | None = None
+        self._legacy_files_migrated = False
 
     @staticmethod
     def _number(value: Any, *, maximum: int = 1_000_000) -> int | None:
@@ -84,7 +121,41 @@ class FreeLogStore:
         return ""
 
     @classmethod
-    def _normalize_row(cls, value: Mapping[str, Any]) -> dict[str, Any]:
+    def _normalize_incident_id(
+        cls,
+        value: Any,
+        row_time: Any = "",
+        legacy_map: Mapping[str, str] | None = None,
+    ) -> str:
+        """Return only a valid date-based incident ID.
+
+        Very old Free logs used ``LOG-<phone>-<suffix>``. The phone portion
+        must never reach the public log shape. When a legacy ID can be mapped
+        to exactly one UTC date from the row timestamp (and all rows carrying
+        that ID agree), it is rewritten to the current date-based format;
+        ambiguous or malformed IDs are discarded.
+        """
+        text = str(value or "").strip().upper()
+        canonical = _CANONICAL_INCIDENT_RE.fullmatch(text)
+        if canonical and _valid_incident_date(canonical.group("date")):
+            return f"LOG-{canonical.group('date')}-{canonical.group('suffix')}"
+        legacy = _LEGACY_INCIDENT_RE.fullmatch(text)
+        if not legacy:
+            return ""
+        row_date = _incident_date_from_time(row_time)
+        mapped = str((legacy_map or {}).get(text) or "")
+        if not row_date or not mapped or row_date != mapped:
+            return ""
+        suffix = legacy.group("suffix").upper()
+        return f"LOG-{mapped}-{suffix}" if _valid_incident_date(mapped) else ""
+
+    @classmethod
+    def _normalize_row(
+        cls,
+        value: Mapping[str, Any],
+        *,
+        legacy_map: Mapping[str, str] | None = None,
+    ) -> dict[str, Any]:
         raw = dict(value)
         message = sanitize_log_message(raw.get("message"), 800)
         level = sanitize_failure_text(raw.get("level"), 32) or "info"
@@ -111,6 +182,14 @@ class FreeLogStore:
             target_domain = ""
         if not re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]{0,253}[a-z0-9])?", target_domain):
             target_domain = ""
+        debug_fields: dict[str, str] = {}
+        for key in ("debug_session_id", "debug_artifact_id", "artifact_id"):
+            candidate = str(raw.get(key) or "").strip()
+            debug_fields[key] = (
+                candidate
+                if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,119}", candidate)
+                else ""
+            )
         row: dict[str, Any] = {
             "time": cls._safe_time(raw.get("time")),
             "level": level,
@@ -135,7 +214,7 @@ class FreeLogStore:
             "technical_summary": technical_summary,
             "action_hint": sanitize_failure_text(raw.get("action_hint"), 400),
             "result": sanitize_failure_text(raw.get("result"), 800),
-            "incident_id": sanitize_failure_text(raw.get("incident_id"), 80),
+            "incident_id": cls._normalize_incident_id(raw.get("incident_id"), raw.get("time"), legacy_map),
             "declared_scheme": declared_scheme if declared_scheme in cls._SCHEMES else "",
             "transport_scheme": transport_scheme if transport_scheme in cls._SCHEMES else "",
             "target_domain": target_domain,
@@ -143,6 +222,7 @@ class FreeLogStore:
             "retry_count": cls._number(raw.get("retry_count"), maximum=100),
             "retry_after_seconds": cls._number(raw.get("retry_after_seconds"), maximum=86400),
             "transport_error_code": transport_error_code if transport_error_code in cls._TRANSPORT_CODES else "",
+            **debug_fields,
             "substep_code": sanitize_failure_text(raw.get("substep_code"), 120),
             "substep_label": sanitize_failure_text(raw.get("substep_label"), 160),
         }
@@ -156,30 +236,183 @@ class FreeLogStore:
         return {key: item for key, item in row.items() if key in cls._KNOWN_FIELDS}
 
     @classmethod
-    def _load(cls, path: Path) -> list[dict[str, Any]]:
+    def _load(
+        cls,
+        path: Path,
+        *,
+        legacy_map: Mapping[str, str] | None = None,
+        migration_state: dict[str, bool] | None = None,
+    ) -> list[dict[str, Any]]:
         try:
             value = json.loads(path.read_text(encoding="utf-8"))
         except (FileNotFoundError, OSError, UnicodeError, json.JSONDecodeError):
             return []
         if not isinstance(value, list):
             return []
-        rows = [cls._normalize_row(item) for item in value if isinstance(item, dict)]
+        rows = [cls._normalize_row(item, legacy_map=legacy_map) for item in value if isinstance(item, dict)]
         # Migrate old rows on read so the persisted file and the API have the
         # same complete shape.  A failed best-effort migration must not make
         # log viewing fail.
         if rows != [item for item in value if isinstance(item, dict)]:
             try:
                 atomic_write(path, rows)
-            except OSError:
-                pass
+            except Exception:
+                if migration_state is not None:
+                    migration_state["write_failed"] = True
         return rows
 
     def _task_path(self, task_id: str) -> Path:
         return self.task_dir / f"{fingerprint(task_id)}.json"
 
+    def _legacy_incident_mapping(self) -> dict[str, str]:
+        """Build a deterministic mapping for legacy IDs across all log files."""
+        if self._legacy_incident_map is not None:
+            return self._legacy_incident_map
+        candidates: dict[str, set[str]] = {}
+        canonical_ids: set[str] = set()
+        diagnostic_index_unavailable = False
+        paths = [self.path]
+        try:
+            paths.extend(sorted(self.task_dir.glob("*.json")))
+        except OSError:
+            pass
+        for path in paths:
+            try:
+                raw = json.loads(path.read_text(encoding="utf-8"))
+            except (FileNotFoundError, OSError, UnicodeError, json.JSONDecodeError):
+                continue
+            if not isinstance(raw, list):
+                continue
+            for item in raw:
+                if not isinstance(item, Mapping):
+                    continue
+                incident = str(item.get("incident_id") or "").strip().upper()
+                canonical = _CANONICAL_INCIDENT_RE.fullmatch(incident)
+                if canonical and _valid_incident_date(canonical.group("date")):
+                    canonical_ids.add(f"LOG-{canonical.group('date')}-{canonical.group('suffix')}")
+                legacy = _LEGACY_INCIDENT_RE.fullmatch(incident)
+                if not legacy:
+                    continue
+                date = _incident_date_from_time(item.get("time"))
+                if date and _valid_incident_date(date):
+                    candidates.setdefault(incident, set()).add(date)
+                else:
+                    # A malformed or missing timestamp makes the legacy ID
+                    # impossible to map safely. Keep an explicit sentinel so
+                    # another valid row cannot accidentally authorize a
+                    # partial migration.
+                    candidates.setdefault(incident, set()).add("")
+        # A legacy row must not be rewritten to an ID already owned by the
+        # structured diagnostic index.  Otherwise a phone-bearing log could
+        # silently alias an unrelated incident (or merge two histories).
+        diagnostic_paths: list[Path] = []
+        store_path = getattr(self.diagnostic_store, "path", None)
+        if store_path:
+            diagnostic_paths.append(Path(store_path).expanduser())
+        diagnostic_paths.extend(edited for edited in (
+            self.path.parent / "diagnostics.sqlite3",
+            self.path.parent / "diagnostics" / "diagnostics.sqlite3",
+            self.path.parent.parent / "diagnostics" / "diagnostics.sqlite3",
+        ))
+        seen_diagnostic_paths: set[str] = set()
+        for diagnostic_path in diagnostic_paths:
+            try:
+                resolved = diagnostic_path.resolve()
+            except OSError:
+                continue
+            key = str(resolved)
+            if key in seen_diagnostic_paths or not resolved.is_file():
+                continue
+            seen_diagnostic_paths.add(key)
+            connection: sqlite3.Connection | None = None
+            try:
+                connection = sqlite3.connect(
+                    f"file:{resolved.as_posix()}?mode=ro",
+                    uri=True,
+                    timeout=0.2,
+                )
+                readable_tables = 0
+                for table in ("diagnostic_incidents", "diagnostic_events", "diagnostic_incident_ids"):
+                    try:
+                        rows = connection.execute(f"SELECT incident_id FROM {table}").fetchall()
+                    except sqlite3.Error:
+                        continue
+                    readable_tables += 1
+                    for row in rows:
+                        value = str(row[0] or "").strip().upper()
+                        match = _CANONICAL_INCIDENT_RE.fullmatch(value)
+                        if match and _valid_incident_date(match.group("date")):
+                            canonical_ids.add(f"LOG-{match.group('date')}-{match.group('suffix')}")
+                if readable_tables == 0:
+                    diagnostic_index_unavailable = True
+            except (OSError, sqlite3.Error):
+                # Legacy migration remains best effort. If the independent
+                # diagnostic index cannot be read, do not guess a mapping from
+                # a potentially conflicting ID.
+                diagnostic_index_unavailable = True
+            finally:
+                if connection is not None:
+                    try:
+                        connection.close()
+                    except sqlite3.Error:
+                        pass
+        if diagnostic_index_unavailable:
+            # A legacy phone-bearing ID is never safe to correlate while an
+            # existing diagnostic index is unreadable. Returning no mappings
+            # causes the normalizer to clear the ID instead of guessing.
+            self._legacy_incident_map = {}
+            return self._legacy_incident_map
+        proposed = {
+            incident: next(iter(dates))
+            for incident, dates in candidates.items()
+            if len(dates) == 1 and next(iter(dates))
+        }
+        # Two distinct phone-bearing legacy IDs can share a suffix. Mapping
+        # both to one canonical ID would merge unrelated history, so reject
+        # every colliding target instead of guessing.
+        targets: dict[str, list[str]] = {}
+        for incident, date in proposed.items():
+            suffix = incident.rsplit("-", 1)[-1]
+            targets.setdefault(f"LOG-{date}-{suffix}", []).append(incident)
+        colliding = {
+            target
+            for target, incidents in targets.items()
+            if len(incidents) > 1
+        }
+        colliding.update(target for target in targets if target in canonical_ids)
+        self._legacy_incident_map = {
+            incident: date
+            for incident, date in proposed.items()
+            if f"LOG-{date}-{incident.rsplit('-', 1)[-1]}" not in colliding
+        }
+        return self._legacy_incident_map
+
+    def _migrate_legacy_files(self) -> None:
+        """Normalize both the global file and every task log in one pass."""
+        if self._legacy_files_migrated:
+            return
+        mapping = self._legacy_incident_mapping()
+        migration_state = {"write_failed": False}
+        paths = [self.path]
+        try:
+            paths.extend(sorted(self.task_dir.glob("*.json")))
+        except OSError:
+            pass
+        for path in paths:
+            self._load(path, legacy_map=mapping, migration_state=migration_state)
+        self._legacy_files_migrated = not migration_state["write_failed"]
+        if migration_state["write_failed"]:
+            # Re-scan the files on the next access in case the diagnostic
+            # index or another external dependency became available.
+            self._legacy_incident_map = None
+
+    def _load_for_store(self, path: Path) -> list[dict[str, Any]]:
+        self._migrate_legacy_files()
+        return self._load(path, legacy_map=self._legacy_incident_mapping())
+
     def add(self, message: Any, level: str = "info", **fields: Any) -> None:
         with self._lock:
-            rows = self._load(self.path)
+            rows = self._load_for_store(self.path)
             source_text = safe_log_message(message)
             text = sanitize_log_message(source_text)
             match = re.search(r"\[([^\]/]{1,160})/([^\]/]{1,160})(?:/([^\]]{1,160}))?\]", source_text)
@@ -198,6 +431,7 @@ class FreeLogStore:
                 "declared_scheme", "transport_scheme", "target_domain", "request_stage",
                 "retry_count", "transport_error_code",
                 "retry_after_seconds",
+                "debug_session_id", "debug_artifact_id", "artifact_id",
                 "substep_code", "substep_label",
             ):
                 value = fields.get(key)
@@ -265,7 +499,11 @@ class FreeLogStore:
             structured_failure: dict[str, Any] = {}
             raw_failure = fields.get("failure")
             if isinstance(raw_failure, Mapping):
-                for key in ("error_code", "provider_code", "public_message", "technical_summary", "diagnostic", "action_hint", "retryable", "http_status", "page_type", "safe_page"):
+                for key in (
+                    "error_code", "provider_code", "public_message", "technical_summary",
+                    "diagnostic", "action_hint", "retryable", "http_status", "page_type",
+                    "safe_page", "debug_session_id", "debug_artifact_id", "artifact_id",
+                ):
                     value = raw_failure.get(key)
                     if value in (None, ""):
                         continue
@@ -280,7 +518,11 @@ class FreeLogStore:
                     failure_payload = dict(structured_failure)
                     failure_payload.update({
                         key: row.get(key)
-                        for key in ("error_code", "provider_code", "technical_summary", "diagnostic", "action_hint", "retryable", "http_status")
+                        for key in (
+                            "error_code", "provider_code", "technical_summary", "diagnostic",
+                            "action_hint", "retryable", "http_status", "debug_session_id",
+                            "debug_artifact_id", "artifact_id",
+                        )
                         if row.get(key) not in (None, "")
                     })
                     incident_id = self.diagnostic_store.record({
@@ -304,15 +546,28 @@ class FreeLogStore:
                         "attempt": row.get("attempt"),
                     })
                     if incident_id:
-                        row["incident_id"] = incident_id
-                except Exception:
+                        row["incident_id"] = self._normalize_incident_id(
+                            incident_id,
+                            row.get("time"),
+                            self._legacy_incident_mapping(),
+                        )
+                except Exception as exc:
                     # Diagnostics must never stop the registration worker.
-                    pass
+                    # DiagnosticStore records this failure in its health
+                    # counters; keep compatibility with injected legacy
+                    # stores that do not expose that hook.
+                    diagnostic_note = getattr(self.diagnostic_store, "note_write_failure", None)
+                    if callable(diagnostic_note):
+                        try:
+                            if not getattr(exc, "_diagnostic_store_noted", False):
+                                diagnostic_note("free_log_record", exc)
+                        except Exception:
+                            pass
             rows.append(row)
             atomic_write(self.path, rows[-self.limit:])
             if task_id:
                 task_path = self._task_path(task_id)
-                task_rows = self._load(task_path)
+                task_rows = self._load_for_store(task_path)
                 task_rows.append(row)
                 atomic_write(task_path, task_rows[-self.task_limit:])
 
@@ -320,11 +575,11 @@ class FreeLogStore:
         with self._lock:
             normalized = str(task_id or "").strip()
             if normalized:
-                rows = self._load(self._task_path(normalized))
+                rows = self._load_for_store(self._task_path(normalized))
                 if rows:
                     return rows[-self.task_limit:]
-                return [row for row in self._load(self.path) if row.get("task_id") == normalized][-self.task_limit:]
-            return self._load(self.path)[-self.limit:]
+                return [row for row in self._load_for_store(self.path) if row.get("task_id") == normalized][-self.task_limit:]
+            return self._load_for_store(self.path)[-self.limit:]
 
     def delete_tasks(self, task_ids: list[str]) -> int:
         normalized = {str(task_id or "").strip() for task_id in task_ids}
@@ -332,7 +587,7 @@ class FreeLogStore:
         if not normalized:
             return 0
         with self._lock:
-            rows = [row for row in self._load(self.path) if str(row.get("task_id") or "") not in normalized]
+            rows = [row for row in self._load_for_store(self.path) if str(row.get("task_id") or "") not in normalized]
             atomic_write(self.path, rows[-self.limit:])
             deleted = 0
             for task_id in normalized:
@@ -345,10 +600,15 @@ class FreeLogStore:
             if self.diagnostic_store is not None:
                 try:
                     self.diagnostic_store.delete_by_tasks(sorted(normalized))
-                except Exception:
+                except Exception as exc:
                     # Business task deletion remains successful even if the
                     # independent diagnostic index is temporarily unavailable.
-                    pass
+                    diagnostic_note = getattr(self.diagnostic_store, "note_write_failure", None)
+                    if callable(diagnostic_note):
+                        try:
+                            diagnostic_note("free_log_delete", exc)
+                        except Exception:
+                            pass
         return deleted
 
     def clear(self) -> None:

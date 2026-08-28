@@ -135,6 +135,7 @@ export interface FreeConfig {
     post_registration_dwell_max: number
   }
   camoufox: {
+    debug_mode?: boolean
     headless: boolean
     pool_size: number
     max_contexts_per_browser: number
@@ -160,7 +161,31 @@ export interface FreeState {
   pool?: { total?: number; available?: number; proxies?: number }
   scheduler?: { concurrency?: number; active_slots?: number; queued_slots?: number; roxy_circuit_open?: boolean; roxy_failures?: number; roxy_circuit_opened_at?: number | null }
   roxy_cleanup?: { pending?: number; records?: number }
+  camoufox_debug?: FreeCamoufoxDebugState
   summary?: { total?: number; active?: number; success?: number; failed?: number; stopped?: number }
+}
+export interface FreeCamoufoxDebugSession {
+  session_id: string
+  task_id?: string
+  node_code?: string
+  node_label?: string
+  error_code?: string
+  page_type?: string
+  safe_page?: string
+  proxy_fingerprint?: string
+  artifact_id?: string
+  incident_id?: string
+  created_at?: number | string
+}
+export interface FreeCamoufoxDebugState {
+  enabled?: boolean
+  headless?: boolean
+  capacity?: number
+  used?: number
+  available?: number
+  open_contexts?: number
+  pool_count?: number
+  sessions?: FreeCamoufoxDebugSession[]
 }
 export interface FreeProxyRow {
   proxy_id: string
@@ -208,7 +233,28 @@ export type FreeConfigSavePayload = Partial<FreeConfig> & {
 }
 export const saveFreeConfig = (config: FreeConfigSavePayload) => api<{ ok: true; config: FreeConfig; state: FreeState; proxies?: any }>('/api/free/config', config)
 export const getFreeState = () => api<{ ok: true; state: FreeState; config: FreeConfig }>('/api/free/state')
-export const preflightFree = (config?: Partial<FreeConfig> & { proxy_content?: string }) => api<{ ok: true; result: any; state: FreeState; config: FreeConfig }>('/api/free/preflight', config || {})
+export const getFreeCamoufoxDebugState = () => api<{ ok: true; camoufox_debug: FreeCamoufoxDebugState; state: FreeState }>('/api/free/camoufox/debug')
+export interface FreeCamoufoxDebugCloseResult {
+  ok: true
+  session_id?: string
+  closed_pools?: number
+  closed_contexts?: number
+  closed_sessions?: number
+  retained_contexts?: number
+  remaining_contexts?: number
+  remaining_sessions?: number
+  state: FreeState
+  camoufox_debug?: FreeCamoufoxDebugState
+}
+export const closeFreeCamoufoxDebug = (sessionId = '') => api<FreeCamoufoxDebugCloseResult>('/api/free/camoufox/debug/close', { session_id: sessionId })
+export const preflightFree = (config?: Partial<FreeConfig> & { proxy_content?: string }) => api<{
+  ok: true
+  result: any
+  state: FreeState
+  config: FreeConfig
+  incident_id?: string
+  failure?: TaskFailure | null
+}>('/api/free/preflight', config || {})
 export const startFree = (config?: Partial<FreeConfig> & { proxy_content?: string; row_ids?: string[] }) => api<{ ok: true; batch_id: string; batch?: any; state: FreeState }>('/api/free/start', config || {})
 export const rerunFreeTask = (taskId: string) => api<{ ok: true; batch_id: string; task?: any; batch?: any; state: FreeState }>('/api/free/rerun', { task_id: taskId })
 export const stopFree = () => api<{ ok: true; state: FreeState }>('/api/free/stop', {})
@@ -413,9 +459,40 @@ export const importFreeProxies = (proxyContent: string, _country?: string, _grou
   '/api/free/proxies/import',
   { proxy_content: proxyContent, scheme },
 )
+export interface FreeProxyPreflightRow {
+  index: number
+  masked: string
+  fingerprint: string
+  scheme?: string
+  declared_scheme?: string
+  effective_scheme?: string
+  available?: boolean
+  http_status?: number | null
+  provider_status?: number | null
+  provider_code?: string
+  local_to_proxy_ms?: number | null
+  proxy_to_target_ms?: number | null
+  failure_node?: string
+  failure_reason?: string
+  failure?: TaskFailure | null
+  incident_id?: string
+  layered_probe?: Record<string, any>
+}
+
+export interface FreeProxyPreflightResult {
+  proxies: number
+  rows: FreeProxyPreflightRow[]
+  failure_count?: number
+  health_write_failures?: number
+  incident_id?: string
+  failure?: TaskFailure | null
+}
+
 export const preflightFreeProxies = (proxyContent: string, proxyProbeUrl?: string, options: { driver?: string; scheme?: string; proxy_tls_verify?: boolean; proxy_tls_compat_fallback?: boolean; proxy_socks5_dns_mode?: string; layered_probe?: boolean } = {}) => api<{
   ok: true
-  result: { proxies: number; rows: Array<{ index: number; masked: string; fingerprint: string; scheme?: string; available?: boolean; http_status?: number | null; local_to_proxy_ms?: number | null; proxy_to_target_ms?: number | null; failure_node?: string; failure_reason?: string; layered_probe?: Record<string, any> }> }
+  result: FreeProxyPreflightResult
+  incident_id?: string
+  failure?: TaskFailure | null
 }>('/api/free/proxies/preflight', { proxy_content: proxyContent, proxy_probe_url: proxyProbeUrl, ...options })
 export const getFreeProxies = () => api<{ ok: true; proxies: { count: number; rows: FreeProxyRow[]; groups: FreeProxySummary[]; countries: FreeProxySummary[] } }>('/api/free/proxies')
 export const updateFreeProxyGroup = (payload: { country: string; group: string; new_country?: string; new_group?: string; enabled?: boolean }) => api<{ ok: true; result: any; proxies: any }>('/api/free/proxies/group', payload)

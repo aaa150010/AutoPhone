@@ -118,6 +118,16 @@ export interface TaskFailure {
   safe_page?: string
   content_type?: string
   session_rebuilds?: number
+  retry_after_seconds?: number
+  declared_scheme?: string
+  transport_scheme?: string
+  target_domain?: string
+  request_stage?: string
+  retry_count?: number
+  transport_error_code?: string
+  debug_session_id?: string
+  debug_artifact_id?: string
+  artifact_id?: string
 }
 
 export interface FreeLogEntry {
@@ -146,6 +156,9 @@ export interface FreeLogEntry {
   retryable?: boolean
   result?: string
   incident_id?: string
+  debug_session_id?: string
+  debug_artifact_id?: string
+  artifact_id?: string
   substep_code?: string
   substep_label?: string
 }

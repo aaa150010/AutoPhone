@@ -16,12 +16,17 @@ from datetime import date
 import inspect
 import json
 import os
+from pathlib import Path
 import random
+import re
+import shutil
+import tempfile
 import threading
 import time
 import traceback
-from typing import Any, Callable, Mapping
-from urllib.parse import urlsplit, urlencode
+from collections import deque
+from typing import Any, Callable, Deque, Mapping
+from urllib.parse import unquote, urlsplit, urlencode
 import uuid
 
 try:
@@ -39,6 +44,7 @@ try:
         FIXED_PASSWORD,
         FreeRegisterError,
         clean,
+        fingerprint,
         random_birthdate,
         random_display_name,
         proxy_transport_config,
@@ -56,7 +62,7 @@ except ImportError:  # pragma: no cover - top-level recovery import
     )
     from free_register_common import (  # type: ignore[no-redef]
         FIXED_PASSWORD, FreeRegisterError, clean, random_birthdate, random_display_name,
-        proxy_transport_config,
+        fingerprint, proxy_transport_config,
         safe_log_message,
     )
     from free_failure_runtime import sanitize_failure_text  # type: ignore[no-redef]
@@ -329,7 +335,7 @@ def _safe_url(page: Any) -> str:
     try:
         parsed = urlsplit(str(getattr(page, "url", "") or ""))
         if parsed.scheme and parsed.hostname:
-            return f"{parsed.scheme}://{parsed.hostname}{parsed.path or '/'}"
+            return _safe_event_url(parsed.geturl()) or "页面地址未知"
     except Exception:
         pass
     return "页面地址未知"
@@ -342,6 +348,33 @@ async def _body_text(page: Any) -> str:
         return ""
 
 
+_SENSITIVE_BODY_RE = re.compile(
+    r"(?i)[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|"
+    r"(?<!\d)\+?\d{8,15}(?!\d)|(?<!\d)\d{6}(?!\d)"
+)
+_SCREENSHOT_SCAN_LIMIT = 100_000
+
+
+async def _screenshot_safety_check(page: Any) -> tuple[bool, str]:
+    """Verify the complete readable body before allowing a screenshot.
+
+    A short diagnostic snapshot is useful for state classification, but it is
+    not sufficient to prove that a later part of the page is safe to capture.
+    If the body cannot be read in full (or exceeds the bounded scan size), we
+    skip the screenshot instead of guessing that masking was complete.
+    """
+    try:
+        value = await page.locator("body").inner_text(timeout=1500)
+        body = str(value or "")
+    except Exception as exc:
+        return False, f"无法读取页面正文（{type(exc).__name__}）"
+    if len(body) > _SCREENSHOT_SCAN_LIMIT:
+        return False, "页面正文过长，无法可靠脱敏"
+    if _SENSITIVE_BODY_RE.search(body):
+        return False, "页面正文疑似含敏感值，未保存截图"
+    return True, ""
+
+
 async def _snapshot(page: Any) -> dict[str, Any]:
     body = await _body_text(page)
     try:
@@ -349,6 +382,484 @@ async def _snapshot(page: Any) -> dict[str, Any]:
     except Exception:
         title = ""
     return {"url": _safe_url(page), "title": title, "body": body}
+
+
+def _safe_event_url(value: Any) -> str:
+    """Keep only a request host/path for the bounded debug event trace."""
+    try:
+        parsed = urlsplit(str(value or ""))
+        if not parsed.hostname:
+            return ""
+        host = parsed.hostname
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        path = parsed.path or "/"
+        # Decode nested percent-encoding before applying the redaction rules.
+        # A bounded loop handles values encoded by browser/router layers while
+        # avoiding unbounded work on malformed input.
+        for _ in range(8):
+            decoded = unquote(path)
+            if decoded == path:
+                break
+            path = decoded
+        trusted_host = (
+            host.casefold() == "chatgpt.com"
+            or host.casefold().endswith(".chatgpt.com")
+            or host.casefold() == "openai.com"
+            or host.casefold().endswith(".openai.com")
+        )
+        if not trusted_host:
+            path = "/[路径已隐藏]"
+        # Opaque authorization/callback routes and encoded values are not
+        # useful for diagnosis. Keep known ChatGPT routes readable, but hide
+        # tokens, mailbox addresses, phone numbers and long opaque segments.
+        path = re.sub(r"(?i)[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", "<邮箱>", path)
+        path = re.sub(r"(?<!\d)\+?\d{8,15}(?!\d)", "<手机号>", path)
+        path = re.sub(r"(?<!\d)\d{6}(?!\d)", "<验证码>", path)
+        path = re.sub(r"(?i)((?:token|code|state|nonce|session|key|secret|credential|assertion))(?:/|=)[^/?#&]+", r"\1/<已隐藏>", path)
+        path = re.sub(
+            r"(?i)(/(?:authorize|callback|oauth|continue|session))(?:/[^/?#]*)?",
+            r"\1/<已隐藏>",
+            path,
+        )
+        # Encoded query strings can become a literal ``?`` only after the
+        # repeated decode above.  Drop that suffix even when it does not use a
+        # recognized key, because it may contain an opaque authorization value.
+        if "?" in path or "#" in path:
+            path = re.split(r"[?#]", path, maxsplit=1)[0].rstrip("/") or "/"
+            path = f"{path}/<已隐藏>" if path != "/" else "/<已隐藏>"
+        elif re.search(r"[&=]", path):
+            path = path.split("&", 1)[0].split("=", 1)[0].rstrip("/") or "/"
+            path = f"{path}/<已隐藏>" if path != "/" else "/<已隐藏>"
+        # Leave no partially encoded token-looking value in the public trace.
+        if "%" in path:
+            path = "/[路径已隐藏]"
+        path = "/".join(
+            "<已隐藏>" if len(segment) > 96 and re.fullmatch(r"[A-Za-z0-9._~-]+", segment) else segment
+            for segment in path.split("/")
+        )
+        return f"{parsed.scheme.lower()}://{host}{path}"[:500]
+    except Exception:
+        return ""
+
+
+def _safe_incident_id(value: Any) -> str:
+    candidate = str(value or "").strip().upper()
+    if re.fullmatch(r"LOG-\d{8}-[A-Z0-9]{8}", candidate):
+        return candidate
+    return ""
+
+
+def _safe_debug_task_id(value: Any) -> str:
+    """Project a task identifier without allowing email/phone-like input.
+
+    Production Free IDs use a stable ``free-*``/``task-*`` namespace.  Keep
+    those identifiers useful for correlation, while hashing arbitrary direct
+    caller values (which may accidentally be an email, phone, or URL).
+    """
+    candidate = str(value or "").strip()
+    if not candidate:
+        return ""
+    candidate = candidate[:160]
+    internal = re.fullmatch(
+        r"(?i)(?:free|task|batch|camoufox|roxy)(?:[-_.:][A-Za-z0-9][A-Za-z0-9_.:-]{0,150})?",
+        candidate,
+    )
+    if internal and not re.search(
+        r"(?i)(?:@|https?://|socks5?h?://|\+?\d{8,15})", candidate,
+    ):
+        return candidate
+    return f"task-{fingerprint(candidate)}"
+
+
+def _runtime_bool(value: Any, default: bool = False) -> bool:
+    """Parse booleans at low-level compatibility boundaries.
+
+    Production config is normalized before it reaches the pool, but direct
+    callers and older integrations can still pass strings such as ``"false"``.
+    Python's plain ``bool("false")`` would incorrectly enable the option.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    normalized = str(value or "").strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return bool(default)
+
+
+def _effective_camoufox_headless(config: Mapping[str, Any] | None) -> tuple[bool, bool]:
+    """Return ``(debug_enabled, effective_headless)`` for a browser config."""
+    values = config if isinstance(config, Mapping) else {}
+    # Public callers commonly pass the full Free config while low-level pool
+    # callers pass the nested ``camoufox`` section.  Normalize both shapes at
+    # this boundary so a direct compatibility call cannot silently re-enable
+    # the wrong window mode.
+    nested = values.get("camoufox")
+    if isinstance(nested, Mapping):
+        values = nested
+    debug_mode = _runtime_bool(values.get("debug_mode"), True)
+    persisted_headless = _runtime_bool(values.get("headless"), True)
+    return debug_mode, (False if debug_mode else persisted_headless)
+
+
+def _safe_body_markers(value: Any) -> list[str]:
+    """Report only sensitivity classes, never page/response text."""
+    text = str(value or "")
+    markers: list[str] = []
+    if re.search(r"(?i)[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", text):
+        markers.append("<邮箱>")
+    if re.search(r"(?<!\d)\+?\d{8,15}(?!\d)", text):
+        markers.append("<手机号>")
+    if re.search(r"(?<!\d)\d{6}(?!\d)", text):
+        markers.append("<验证码>")
+    return markers
+
+
+def _safe_proxy_fingerprint(provided: Any, proxy: Any = "") -> str:
+    """Accept only the runtime's fixed-size hexadecimal proxy fingerprint."""
+    candidate = str(provided or "").strip().lower()
+    if re.fullmatch(r"[0-9a-f]{16}", candidate):
+        return candidate
+    raw_proxy = str(proxy or "").strip()
+    return fingerprint(raw_proxy) if raw_proxy else ""
+
+
+class _DebugTrace:
+    """Small, credential-free page event ring buffer."""
+
+    def __init__(self, limit: int = 100) -> None:
+        self.events: Deque[dict[str, Any]] = deque(maxlen=max(10, int(limit)))
+        self.lock = threading.Lock()
+
+    def add(self, kind: str, **fields: Any) -> None:
+        event: dict[str, Any] = {
+            "kind": clean(kind, 40),
+            "at": round(time.time(), 3),
+        }
+        for key, value in fields.items():
+            if value in (None, ""):
+                continue
+            if key in {"url", "safe_page"}:
+                value = _safe_event_url(value) or ("" if not value else "页面地址未知")
+            elif key in {"status"}:
+                try:
+                    value = max(0, min(599, int(value)))
+                except (TypeError, ValueError):
+                    continue
+            elif key in {"method", "type", "name", "failure", "message", "text", "error"}:
+                value = sanitize_failure_text(value, 300)
+            else:
+                value = sanitize_failure_text(value, 300)
+            if value not in (None, ""):
+                event[clean(key, 40)] = value
+        with self.lock:
+            self.events.append(event)
+
+    def snapshot(self) -> list[dict[str, Any]]:
+        with self.lock:
+            return [dict(item) for item in self.events]
+
+
+def _page_debug_trace(page: Any) -> _DebugTrace:
+    trace = getattr(page, "_gptphone_debug_trace", None)
+    if isinstance(trace, _DebugTrace):
+        return trace
+    trace = _DebugTrace()
+    try:
+        setattr(page, "_gptphone_debug_trace", trace)
+    except Exception:
+        pass
+    # Playwright event callbacks are synchronous even for async pages. Keep
+    # each callback tiny and sanitize before the event can enter the buffer.
+    on = getattr(page, "on", None)
+    if callable(on):
+        try:
+            on("console", lambda message: trace.add(
+                "console", type=getattr(message, "type", ""),
+                text=getattr(message, "text", ""),
+            ))
+            on("pageerror", lambda error: trace.add(
+                "page_error", error=str(error or ""),
+            ))
+            on("requestfailed", lambda request: trace.add(
+                "request_failed", method=getattr(request, "method", ""),
+                url=getattr(request, "url", ""),
+                failure=(request.failure() if callable(getattr(request, "failure", None)) else ""),
+            ))
+            on("response", lambda response: trace.add(
+                "response", method=(getattr(getattr(response, "request", None), "method", "") or ""),
+                url=getattr(response, "url", ""), status=getattr(response, "status", 0),
+            ))
+            on("framenavigated", lambda frame: trace.add(
+                "navigation", url=getattr(frame, "url", ""),
+            ))
+        except Exception:
+            trace.add("trace_setup", message="页面事件监听器安装失败")
+    return trace
+
+
+async def _capture_debug_dom(page: Any) -> dict[str, Any]:
+    """Dump a small DOM projection without values, scripts or full URLs."""
+    script = """
+    () => {
+      const visible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
+        && getComputedStyle(el).visibility !== 'hidden'
+        && getComputedStyle(el).display !== 'none';
+      const allowed = new Set(['a','button','input','textarea','select','option','label','form','main','h1','h2','h3','p']);
+      const elements = [];
+      for (const el of document.querySelectorAll('body *')) {
+        if (elements.length >= 240 || !allowed.has(el.tagName.toLowerCase()) || !visible(el)) continue;
+        // Never serialize a control's current value. Textareas can expose
+        // their value through innerText/textContent, and select/option nodes
+        // may contain an email or one-time code in their visible text.
+        const tag = el.tagName.toLowerCase();
+        const isValueControl = ['input','textarea','select','option'].includes(tag);
+        const text = isValueControl ? '' : String(el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 240);
+        const href = el.getAttribute('href') || '';
+        let safeHref = '';
+        try { const parsed = new URL(href, location.href); safeHref = parsed.origin + (parsed.pathname || '/'); } catch (_) {}
+        elements.push({
+          tag, role: el.getAttribute('role') || '',
+          type: el.getAttribute('type') || '',
+          aria_label: el.getAttribute('aria-label') || '',
+          text, href: safeHref,
+        });
+      }
+      return {title: String(document.title || '').slice(0, 160), url: location.origin + (location.pathname || '/'), elements};
+    }
+    """
+    try:
+        evaluation = page.evaluate(script)
+        if inspect.isawaitable(evaluation):
+            # A detached or stalled page must never prevent the failure
+            # cleanup path from closing its context. Playwright's page-level
+            # default timeout does not consistently cover evaluate callbacks.
+            raw = await asyncio.wait_for(evaluation, timeout=3.0)
+        else:
+            raw = evaluation
+    except Exception as exc:
+        return {"error": f"DOM 采集失败（{type(exc).__name__}）", "elements": []}
+    if not isinstance(raw, Mapping):
+        return {"error": "DOM 采集返回格式无效", "elements": []}
+    elements: list[dict[str, Any]] = []
+    for item in raw.get("elements", []) if isinstance(raw.get("elements"), list) else []:
+        if not isinstance(item, Mapping):
+            continue
+        row: dict[str, Any] = {"tag": clean(item.get("tag"), 20)}
+        for key in ("role", "type", "aria_label", "text"):
+            value = sanitize_failure_text(item.get(key), 240)
+            if value:
+                row[key] = value
+        href = _safe_event_url(item.get("href"))
+        if href:
+            row["href"] = href
+        elements.append(row)
+    return {
+        "title": sanitize_failure_text(raw.get("title"), 160),
+        "url": _safe_event_url(raw.get("url")),
+        "elements": elements,
+    }
+
+
+_ARTIFACT_LOCK = threading.RLock()
+_ARTIFACT_PROTECTED_SESSIONS: set[str] = set()
+_ARTIFACT_SESSION_RE = re.compile(r"^cam-debug-[0-9a-f]{12}$")
+
+
+def _atomic_artifact_write(path: Path, payload: Any) -> None:
+    """Write one debug artifact atomically inside its target directory."""
+    text = json.dumps(payload, ensure_ascii=False, indent=2)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=str(path.parent),
+        prefix=f".{path.name}.", suffix=".tmp", delete=False,
+    )
+    temporary_path = Path(temporary.name)
+    try:
+        with temporary:
+            temporary.write(text)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+        os.replace(temporary_path, path)
+    finally:
+        try:
+            temporary_path.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _trim_debug_artifacts(artifact_root: Path, *, current_session: str = "") -> None:
+    """Keep at most 50 generated scenes without deleting active sessions."""
+    with _ARTIFACT_LOCK:
+        protected = set(_ARTIFACT_PROTECTED_SESSIONS)
+        if current_session:
+            protected.add(current_session)
+        try:
+            directories = sorted(
+                (
+                    item for item in artifact_root.iterdir()
+                    if item.is_dir() and _ARTIFACT_SESSION_RE.fullmatch(item.name)
+                ),
+                key=lambda item: item.stat().st_mtime,
+            )
+            excess = max(0, len(directories) - 50)
+            for old in directories:
+                if excess <= 0:
+                    break
+                if old.name in protected:
+                    continue
+                try:
+                    shutil.rmtree(old)
+                    excess -= 1
+                except OSError:
+                    continue
+        except (FileNotFoundError, OSError):
+            return
+
+
+async def _capture_debug_artifact(
+    *,
+    page: Any,
+    artifact_root: Path | None,
+    session_id: str,
+    artifact_id: str,
+    summary: Mapping[str, Any],
+    trace: _DebugTrace,
+) -> dict[str, Any]:
+    """Persist bounded debug evidence, degrading safely when an API is absent."""
+    result = {"artifact_id": artifact_id, "artifact_path": "", "screenshot": "skipped", "screenshot_reason": ""}
+    if artifact_root is None:
+        result["screenshot_reason"] = "未配置现场目录"
+        return result
+    directory = artifact_root / session_id
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        dom = await _capture_debug_dom(page)
+        _atomic_artifact_write(directory / "dom.json", dom)
+        # Keep the on-disk summary a strict projection even if a compatibility
+        # caller passes extra fields.  In particular, never let raw kwargs,
+        # exception objects or response payloads become an artifact channel.
+        payload: dict[str, Any] = {}
+        for key in (
+            "task_id", "incident_id", "node_code", "node_label", "error_code",
+            "page_type", "safe_page", "proxy_fingerprint", "created_at",
+        ):
+            if key not in summary:
+                continue
+            value = summary.get(key)
+            if key == "created_at":
+                try:
+                    parsed_time = float(value)
+                    if not (0 <= parsed_time <= 4_102_444_800):
+                        continue
+                    payload[key] = parsed_time
+                except (TypeError, ValueError, OverflowError):
+                    continue
+            elif key in {"incident_id", "proxy_fingerprint"}:
+                text = str(value or "").strip()
+                if key == "incident_id":
+                    text = _safe_incident_id(text)
+                else:
+                    text = _safe_proxy_fingerprint(text)
+                if text:
+                    payload[key] = text
+            elif key == "task_id":
+                text = _safe_debug_task_id(value)
+                if text:
+                    payload[key] = text
+            elif key == "safe_page":
+                # ``safe_page`` has already been reduced to an origin/path by
+                # ``_safe_event_url``.  Running it through the generic failure
+                # sanitizer would redact the entire URL again and discard the
+                # useful route needed to identify the failed page.
+                text = _safe_event_url(value)
+                if text:
+                    payload[key] = text
+            else:
+                text = sanitize_failure_text(value, 240)
+                if text:
+                    payload[key] = text
+        payload["artifact_id"] = artifact_id
+        payload["dom_file"] = "dom.json"
+        payload["events"] = trace.snapshot()
+        # Mask every user-editable control. If the browser implementation does
+        # not support Playwright's mask option, skip instead of risking an
+        # unredacted screenshot.
+        screenshot = directory / "screenshot.png"
+        screenshot_safe, screenshot_reason = await _screenshot_safety_check(page)
+        if not screenshot_safe:
+            result["screenshot_reason"] = screenshot_reason
+        else:
+            try:
+                controls = [page.locator(selector) for selector in (
+                    "input", "textarea", "select", "[contenteditable='true']", "iframe",
+                    "[role='textbox']", "[aria-label*='email' i]", "[aria-label*='code' i]",
+                    "[aria-label*='otp' i]", "[autocomplete*='email' i]", "[autocomplete*='one-time-code' i]",
+                    "[name*='email' i]", "[name*='code' i]", "[name*='otp' i]", "[type='password']",
+                )]
+                await page.screenshot(path=str(screenshot), mask=controls, mask_color="#000000", timeout=5000)
+                result["screenshot"] = "saved"
+            except Exception as exc:
+                result["screenshot_reason"] = f"截图未保存（{type(exc).__name__}）"
+                try:
+                    screenshot.unlink()
+                except FileNotFoundError:
+                    pass
+        payload["screenshot"] = result["screenshot"]
+        payload["screenshot_reason"] = result["screenshot_reason"]
+        _atomic_artifact_write(directory / "summary.json", payload)
+        result["artifact_path"] = str(directory)
+    except Exception as exc:
+        result["screenshot_reason"] = f"现场写入失败（{type(exc).__name__}）"
+    # Direct pool callers may intentionally omit an artifact directory.  The
+    # live headed context is still useful in that case; artifact retention is
+    # simply skipped instead of dereferencing a missing root during cleanup.
+    if artifact_root is not None:
+        _trim_debug_artifacts(artifact_root, current_session=session_id)
+    return result
+
+
+async def _close_context_safely(context: Any, timeout: float) -> bool:
+    """Close a context even when the owning registration task was cancelled."""
+    close = getattr(context, "close", None)
+    if not callable(close):
+        return True
+    try:
+        result = close()
+    except Exception:
+        return False
+    if not inspect.isawaitable(result):
+        return True
+    task = asyncio.create_task(result)
+    try:
+        await asyncio.wait_for(asyncio.shield(task), timeout=max(0.1, float(timeout)))
+        return True
+    except asyncio.TimeoutError:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        return False
+    except asyncio.CancelledError:
+        # ``wait_for`` cancellation is expected for registration timeouts. Do
+        # not let it skip context cleanup or browser recycling in ``finally``.
+        try:
+            await asyncio.wait_for(asyncio.shield(task), timeout=max(0.1, float(timeout)))
+            return True
+        except asyncio.TimeoutError:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            return False
+        except asyncio.CancelledError:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            return False
+        except Exception:
+            return False
+    except Exception:
+        return False
 
 
 async def _page_visible_text(page: Any) -> str:
@@ -534,10 +1045,10 @@ async def _submit_email_form_stable(page: Any, email: str) -> dict[str, Any]:
       input.blur();
       input.focus();
 
-      const label = (submit.getAttribute('data-testid') || submit.getAttribute('type')
-        || submit.tagName || 'form-submit').toLowerCase();
+      const submitSelector = cssPath(submit);
       return {ok: true, reason: 'form_prepared_for_enter', form_present: true,
-        input_selector: cssPath(input) || inputSelector, submit_selector: label};
+        input_selector: cssPath(input) || inputSelector,
+        submit_selector: submitSelector || ''};
     }
     """
     try:
@@ -563,7 +1074,7 @@ async def _submit_email_form_stable(page: Any, email: str) -> dict[str, Any]:
         "reason": clean(result.get("reason"), 80),
         "form_present": bool(result.get("form_present")),
         "input_selector": clean(result.get("input_selector"), 500),
-        "submit_selector": clean(result.get("submit_selector"), 120),
+        "submit_selector": clean(result.get("submit_selector"), 500),
     }
 
 
@@ -632,6 +1143,25 @@ async def _wait_for_submit_enabled(page: Any, selectors: tuple[str, ...], *, tim
 async def _submit_visible_form(page: Any, selector: str) -> bool:
     try:
         await page.locator(selector).first.press("Enter")
+        return True
+    except Exception:
+        return False
+
+
+async def _click_visible_submit(page: Any, selector: str) -> bool:
+    """Click a previously identified safe submit control.
+
+    The DOM can be replaced between the JS preparation pass and the click, so
+    the locator is deliberately created afresh for every call.
+    """
+    if not selector:
+        return False
+    try:
+        locator = page.locator(selector).first
+        await locator.wait_for(state="visible", timeout=1500)
+        if hasattr(locator, "is_enabled") and not await locator.is_enabled(timeout=500):
+            return False
+        await locator.click(timeout=3000)
         return True
     except Exception:
         return False
@@ -1227,6 +1757,10 @@ async def _browser_flow(
     entry_recovery = "none"
     entry_form_present = False
     entry_submit_selector = ""
+    # Once an OTP/password/profile/auth page is observed, returning to the
+    # email entry shell is a terminal navigation inconsistency. Re-submitting
+    # the address could consume another OTP or duplicate account creation.
+    auth_phase_locked = False
     seen: dict[str, int] = {}
     step_count = 0
     entry_otp_stage = "free_existing_login_otp" if force_existing_login else "free_email_otp_wait"
@@ -1244,21 +1778,37 @@ async def _browser_flow(
         if callable(stage_fn):
             stage_fn(str(config.get("task_id") or ""), code)
 
-    async def prepare_otp(stage_code: str) -> None:
+    async def prepare_otp(stage_code: str, *, notify_stage: bool = True) -> None:
         if not callable(otp_prepare):
             return
+        # Resolve compatibility from the callable signature before invoking
+        # it. Catching a TypeError raised by provider code would otherwise
+        # replay a side-effecting baseline operation and hide the real bug.
         try:
-            await asyncio.to_thread(otp_prepare, stage_code, force_snapshot=True)
-        except TypeError as exc:
-            # Only retry a provider signature mismatch. A TypeError raised by
-            # the provider itself must remain visible to the stage classifier.
+            signature = inspect.signature(otp_prepare)
+        except (TypeError, ValueError):
+            # Opaque C-extension callables are rare; preserve the newest
+            # contract and let any implementation error propagate once.
+            await asyncio.to_thread(
+                otp_prepare, stage_code, force_snapshot=True, notify_stage=notify_stage,
+            )
+            return
+        candidates = (
+            {"force_snapshot": True, "notify_stage": notify_stage},
+            {"force_snapshot": True},
+            {},
+        )
+        for kwargs in candidates:
             try:
-                await asyncio.to_thread(otp_prepare, stage_code)
+                signature.bind(stage_code, **kwargs)
             except TypeError:
-                raise CamoufoxBrowserError(
-                    stage_code, "准备 Free 邮箱验证码", "邮箱 provider 准备阶段失败",
-                    error_code=f"{stage_code}_prepare_failed", diagnostic=type(exc).__name__,
-                ) from exc
+                continue
+            await asyncio.to_thread(otp_prepare, stage_code, **kwargs)
+            return
+        raise CamoufoxBrowserError(
+            stage_code, "准备 Free 邮箱验证码", "邮箱 provider 准备阶段失败",
+            error_code=f"{stage_code}_prepare_failed", diagnostic="unsupported_signature",
+        )
 
     async def mark_otp_sent(stage_code: str) -> None:
         if callable(otp_mark_sent):
@@ -1346,10 +1896,26 @@ async def _browser_flow(
         entry_form_present = bool(result.get("form_present"))
         prepared_input_selector = str(result.get("input_selector") or selector).strip()
         entry_submit_selector = clean(
-            result.get("submit_selector") or result.get("input_selector"), 120,
+            result.get("submit_selector"), 500,
         )
         if result.get("ok"):
-            if not await _submit_visible_form(page, prepared_input_selector):
+            clicked = await _click_visible_submit(page, entry_submit_selector)
+            fallback_input_selector = prepared_input_selector
+            if not clicked:
+                # The submit control can go stale while React hydrates the
+                # form. Re-scan the live DOM before falling back to Enter;
+                # using the selector returned by the preparation pass can
+                # otherwise target a detached input or the wrong form.
+                fresh_selector = await _wait_for_any_selector(
+                    page, EMAIL_SELECTORS, timeout=2,
+                )
+                if fresh_selector:
+                    fallback_input_selector = fresh_selector
+                    # Re-apply the value when a new input node replaced the
+                    # one used by the preparation script. This also restores
+                    # the framework input state before pressing Enter.
+                    await _fill_input_like_user(page, fallback_input_selector, email)
+            if not clicked and not await _submit_visible_form(page, fallback_input_selector):
                 raise CamoufoxBrowserError(
                     "free_camoufox_signup_email", "填写 Camoufox 注册邮箱",
                     "邮箱表单未能提交", error_code="camoufox_email_submit_failed",
@@ -1357,10 +1923,12 @@ async def _browser_flow(
                         "phase": "entry",
                         "reason": "prepared_but_enter_failed",
                         "form_present": entry_form_present,
-                        "input_selector": clean(prepared_input_selector, 120),
+                        "input_selector": clean(fallback_input_selector, 120),
                     }, ensure_ascii=False),
                     safe_page=_safe_url(page), page_type="entry",
                 )
+            if not clicked:
+                entry_submit_selector = clean(fallback_input_selector, 120)
             entry_recovery = "form_resubmit" if recovery else entry_recovery
             log(
                 "Camoufox 邮箱表单已提交"
@@ -1370,6 +1938,10 @@ async def _browser_flow(
             )
             return result
 
+        # Re-locate before the fallback path as the initial selector may have
+        # become detached while the page hydrated.
+        fresh_selector = await _wait_for_any_selector(page, EMAIL_SELECTORS, timeout=2)
+        selector = fresh_selector or selector
         if not await _fill_input_like_user(page, selector, email):
             raise CamoufoxBrowserError(
                 "free_camoufox_signup_email", "填写 Camoufox 注册邮箱",
@@ -1413,10 +1985,8 @@ async def _browser_flow(
             "page_type": state,
             "form_present": bool(entry_form_present),
             "submit_selector": clean(entry_submit_selector, 120),
-            # Page text can contain the submitted address or provider payloads;
-            # redact before this diagnostic is attached to the exception.
             "title": sanitize_failure_text(snapshot.get("title"), 160),
-            "body": sanitize_failure_text(snapshot.get("body"), 220),
+            "sensitive_markers": _safe_body_markers(snapshot.get("body")),
         }, ensure_ascii=False)[:500]
 
     async def wait_for_state(*states: str, seconds: float = 45.0) -> str:
@@ -1492,7 +2062,9 @@ async def _browser_flow(
         # Establish the mailbox baseline before the first request that may
         # send an OTP. The provider itself remains AutoPhone's strategy mode.
         if force_existing_login:
-            await prepare_otp("free_existing_login_otp")
+            # Capture the pre-login mailbox baseline without announcing an OTP
+            # stage before the page has actually requested authentication.
+            await prepare_otp("free_existing_login_otp", notify_stage=False)
         await _goto_with_retry(
             page, CHATGPT_LOGIN_URL, timeout_ms=min(timeout * 1000, 90_000),
             proxy_retryable=not force_existing_login, log=log,
@@ -1500,9 +2072,9 @@ async def _browser_flow(
         await asyncio.sleep(1.5)
         email_selector = await _wait_for_any_selector(page, EMAIL_SELECTORS, timeout=12)
         if email_selector:
-            set_stage("free_existing_login_otp" if force_existing_login else "free_camoufox_signup_email")
+            set_stage("free_existing_login" if force_existing_login else "free_camoufox_signup_email")
             if not force_existing_login:
-                await prepare_otp(entry_otp_stage)
+                await prepare_otp(entry_otp_stage, notify_stage=False)
             await submit_entry_email(email_selector)
             entry_submitted = True
             entry_transition_deadline = time.monotonic() + 45.0
@@ -1511,7 +2083,7 @@ async def _browser_flow(
         # Keep the same-origin NextAuth fallback from the reference flow for a
         # delayed shell, but never invent an external provider URL.
         if not force_existing_login:
-            await prepare_otp(entry_otp_stage)
+            await prepare_otp(entry_otp_stage, notify_stage=False)
         authorize_url = await _browser_signin_url(page, email)
         if authorize_url:
             entry_recovery = "same_origin_signin"
@@ -1529,7 +2101,11 @@ async def _browser_flow(
             "free_camoufox_navigation", "打开 Camoufox 注册页面",
             "登录页未找到邮箱输入框，当前代理返回了不可用页面",
             retryable=True, error_code="camoufox_entry_form_missing",
-            diagnostic=json.dumps(snapshot, ensure_ascii=False)[:500],
+            diagnostic=json.dumps({
+                "safe_page": snapshot.get("url"),
+                "title": sanitize_failure_text(snapshot.get("title"), 160),
+                "page_type": "entry",
+            }, ensure_ascii=False)[:500],
             safe_page=snapshot.get("url"), page_type="entry",
         )
 
@@ -1551,6 +2127,21 @@ async def _browser_flow(
                 safe_page=_safe_url(page), page_type="state_machine",
             )
         state = await _page_state(page)
+        auth_states = {
+            "otp", "otp_wait", "email_verification", "signup_password",
+            "login_password", "profile", "oauth_callback", "home", "security",
+        }
+        if state in auth_states:
+            auth_phase_locked = True
+        elif state == "entry" and auth_phase_locked:
+            raise CamoufoxBrowserError(
+                "free_camoufox_navigation", "推进 Camoufox 注册页面",
+                "邮箱验证已开始后页面返回邮箱入口，拒绝重复提交",
+                retryable=False,
+                error_code="camoufox_entry_returned_after_otp",
+                diagnostic=await entry_diagnostic(state),
+                safe_page=_safe_url(page), page_type="entry",
+            )
         if (
             otp_submitted
             and not otp_transition_recorded
@@ -1578,13 +2169,18 @@ async def _browser_flow(
             and seen[state] > 4
         ):
             now = time.monotonic()
-            if state == "entry" and entry_submitted and now < entry_transition_deadline:
+            # React navigation can briefly expose an unclassified shell after
+            # the submit click. Keep polling both ``entry`` and ``unknown``
+            # until the same bounded transition window; otherwise five fast
+            # DOM polls (about two seconds) can misclassify an asynchronous
+            # navigation as a stuck registration.
+            if state in {"entry", "unknown"} and entry_submitted and now < entry_transition_deadline:
                 await asyncio.sleep(1.0)
                 continue
-            if state == "entry" and entry_submitted and not entry_retry_used:
+            if state == "entry" and entry_submitted and not entry_retry_used and not auth_phase_locked:
                 entry_retry_used = True
                 entry_recovery = "form_resubmit"
-                await prepare_otp(entry_otp_stage)
+                await prepare_otp(entry_otp_stage, notify_stage=False)
                 reopened = await _click_exact_button_text(
                     page, ("Continue", "继续"), timeout=3,
                 )
@@ -1598,10 +2194,10 @@ async def _browser_flow(
                     await asyncio.sleep(1.0)
                     continue
                 log("Camoufox 登录壳未重新显示邮箱表单，准备同源 signin 兜底", "warn")
-            if state == "entry" and entry_submitted and not entry_signin_fallback_used:
+            if state == "entry" and entry_submitted and not entry_signin_fallback_used and not auth_phase_locked:
                 entry_signin_fallback_used = True
                 entry_recovery = "same_origin_signin"
-                await prepare_otp(entry_otp_stage)
+                await prepare_otp(entry_otp_stage, notify_stage=False)
                 authorize_url = await _browser_signin_url(page, email)
                 if not authorize_url:
                     raise CamoufoxBrowserError(
@@ -1645,7 +2241,7 @@ async def _browser_flow(
                 selector = await _wait_for_any_selector(page, EMAIL_SELECTORS, timeout=8)
                 if selector:
                     set_stage("free_camoufox_signup_email")
-                    await prepare_otp(entry_otp_stage)
+                    await prepare_otp(entry_otp_stage, notify_stage=False)
                     await submit_entry_email(selector)
                     entry_submitted = True
                     entry_transition_deadline = time.monotonic() + 45.0
@@ -1812,7 +2408,6 @@ async def _browser_flow(
                                 "safe_page": snapshot.get("url"),
                                 "page_type": await _page_state(page),
                                 "title": sanitize_failure_text(snapshot.get("title"), 160),
-                                "body": sanitize_failure_text(snapshot.get("body"), 600),
                             },
                             ensure_ascii=False,
                         )[:1000],
@@ -1951,15 +2546,26 @@ async def _browser_flow(
                 "free_camoufox_navigation", "打开 Camoufox 注册页面",
                 "注册入口误进入外部 OAuth 登录页；已停止自动操作",
                 retryable=False, error_code="camoufox_unexpected_external_auth",
-                diagnostic=json.dumps(snapshot, ensure_ascii=False)[:500],
+                diagnostic=json.dumps({
+                    "safe_page": snapshot.get("url"),
+                    "title": sanitize_failure_text(snapshot.get("title"), 160),
+                    "page_type": "external_auth",
+                }, ensure_ascii=False)[:500],
                 safe_page=snapshot.get("url"), page_type="external_auth",
             )
 
         if state == "security":
+            snapshot = await _snapshot(page)
             raise CamoufoxBrowserError(
                 "free_camoufox_challenge", "等待 Camoufox 安全验证",
                 "注册流程进入安全验证，已停止自动操作", retryable=False,
                 error_code="free_camoufox_security_challenge",
+                diagnostic=json.dumps({
+                    "safe_page": snapshot.get("url"),
+                    "page_type": "security",
+                    "sensitive_markers": _safe_body_markers(snapshot.get("body")),
+                }, ensure_ascii=False)[:500],
+                safe_page=snapshot.get("url"), page_type="security",
             )
         error_text = await _auth_error_text(page)
         if error_text:
@@ -1993,6 +2599,53 @@ class _BrowserSlot:
     active_contexts: int = 0
     draining: bool = False
     recycle_error: str = ""
+    # Contexts retained by the optional debug mode remain attached to the
+    # browser until the operator explicitly closes them. They count against
+    # the slot's effective capacity even though the task semaphore is released.
+    debug_holds: int = 0
+
+
+@dataclass
+class _DebugSession:
+    """A failed headed context kept available for manual inspection."""
+
+    session_id: str
+    task_id: str
+    context: Any
+    page: Any
+    proxy_bridge: Any | None
+    slot: _BrowserSlot
+    created_at: float
+    artifact_id: str = ""
+    incident_id: str = ""
+    node_code: str = ""
+    node_label: str = ""
+    error_code: str = ""
+    page_type: str = ""
+    safe_page: str = ""
+    proxy_fingerprint: str = ""
+    trace: _DebugTrace | None = None
+    artifact_path: str = ""
+
+
+class _HeldSemaphore:
+    """Async context wrapper for a permit acquired by an admission helper."""
+
+    def __init__(self, semaphore: asyncio.Semaphore) -> None:
+        self.semaphore = semaphore
+        self.released = False
+
+    async def __aenter__(self) -> "_HeldSemaphore":
+        return self
+
+    async def __aexit__(self, *_args: Any) -> None:
+        if not self.released:
+            self.released = True
+            self.semaphore.release()
+
+
+class _SlotAdmissionRace(Exception):
+    """Internal signal to rescan the pool after a capacity race."""
 
 
 class CamoufoxBrowserPool:
@@ -2000,7 +2653,10 @@ class CamoufoxBrowserPool:
 
     def __init__(self, config: Mapping[str, Any]) -> None:
         self.config = dict(config)
-        self.headless = bool(self.config.get("headless", True))
+        # Debug mode is deliberately enabled by the normalized production
+        # config. A retained page must be headed even if an older caller still
+        # supplies ``headless=True``.
+        self.debug_mode, self.headless = _effective_camoufox_headless(self.config)
         self.pool_size = max(1, int(self.config.get("pool_size") or 2))
         self.max_contexts = max(1, int(self.config.get("max_contexts_per_browser") or 3))
         self.context_start_interval = max(0, int(self.config.get("context_start_interval_ms") or 0)) / 1000.0
@@ -2008,39 +2664,451 @@ class CamoufoxBrowserPool:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._ready = threading.Event()
+        self._shutdown_complete = threading.Event()
         self._closed = False
         self._init_error: BaseException | None = None
         self._slots: list[_BrowserSlot] = []
         self._global_semaphore: asyncio.Semaphore | None = None
         self._startup_semaphore: asyncio.Semaphore | None = None
         self._context_start_lock: asyncio.Lock | None = None
+        self._admission_lock: asyncio.Lock | None = None
         self._next_context_start = 0.0
         self._lock = threading.Lock()
+        self._debug_lock = threading.RLock()
+        self._debug_sessions: dict[str, _DebugSession] = {}
+        self._debug_closing: set[str] = set()
         self._start()
+
+    @staticmethod
+    def _task_id_from_kwargs(kwargs: Mapping[str, Any]) -> str:
+        nested = kwargs.get("config")
+        if isinstance(nested, Mapping):
+            value = nested.get("task_id")
+            if value:
+                return _safe_debug_task_id(value)
+        value = kwargs.get("task_id")
+        return _safe_debug_task_id(value)
+
+    @staticmethod
+    def _page_is_open(page: Any) -> bool:
+        if page is None:
+            return False
+        try:
+            checker = getattr(page, "is_closed", None)
+            return not bool(checker()) if callable(checker) else True
+        except Exception:
+            # A page whose state cannot be read is not safe to retain: it is
+            # usually already detached from a dead browser process.
+            return False
+
+    @staticmethod
+    def _debug_retain_allowed(error: BaseException | None) -> bool:
+        """Classify terminal errors whose live page is useful to inspect."""
+        if error is None:
+            return False
+        code = str(getattr(error, "error_code", "") or "").strip().lower()
+        node = str(getattr(error, "node_code", "") or "").strip().lower()
+        page_type = str(getattr(error, "page_type", "") or "").strip().lower()
+        if node == "free_run_stop" or code in {
+            "free_run_stop", "camoufox_registration_timeout", "camoufox_pool_closed",
+            "camoufox_browser_disconnected", "camoufox_context_create_failed",
+            "camoufox_page_create_failed", "camoufox_browser_launch_failed",
+            "camoufox_home_not_confirmed",
+        }:
+            return False
+        if any(marker in code for marker in ("timeout", "timed_out", "page_state_limit", "page_state_stuck")):
+            return False
+        if any(marker in code for marker in ("cancel", "stopped", "interrupted")):
+            return False
+        if code in {
+            "free_camoufox_security_challenge",
+            "free_oauth_security_challenge",
+        } or page_type == "security":
+            return True
+        return True
+
+    async def _retain_debug_context(
+        self,
+        *,
+        context: Any,
+        page: Any,
+        proxy_bridge: Any | None,
+        slot: _BrowserSlot,
+        kwargs: Mapping[str, Any],
+        error: BaseException | None = None,
+    ) -> bool:
+        if not self.debug_mode or not self._page_is_open(page):
+            return False
+        session_id = f"cam-debug-{uuid.uuid4().hex[:12]}"
+        artifact_id = f"cam-artifact-{uuid.uuid4().hex[:12]}"
+        nested = kwargs.get("config") if isinstance(kwargs.get("config"), Mapping) else {}
+        task_id = self._task_id_from_kwargs(kwargs)
+        incident_id = _safe_incident_id(
+            getattr(error, "incident_id", "") or nested.get("incident_id")
+            or kwargs.get("incident_id")
+        )
+        node_code = sanitize_failure_text(
+            getattr(error, "node_code", "") or nested.get("node_code") or "free_camoufox_browser",
+            120,
+        )
+        node_label = sanitize_failure_text(
+            getattr(error, "node_label", "") or nested.get("node_label") or "Camoufox 注册页面",
+            160,
+        )
+        error_code = sanitize_failure_text(
+            getattr(error, "error_code", "") or "camoufox_debug_failure", 160,
+        )
+        page_type = sanitize_failure_text(
+            getattr(error, "page_type", "") or "unknown", 80,
+        )
+        safe_page = _safe_event_url(getattr(error, "safe_page", "") or _safe_url(page)) or "页面地址未知"
+        proxy_value = str(kwargs.get("proxy") or nested.get("proxy") or "")
+        supplied_fingerprint = nested.get("proxy_fingerprint") or kwargs.get("proxy_fingerprint")
+        proxy_fingerprint = _safe_proxy_fingerprint(supplied_fingerprint, proxy_value)
+        trace = _page_debug_trace(page)
+        artifact_root: Path | None = None
+        raw_artifact_root = nested.get("_debug_artifact_dir") or self.config.get("_debug_artifact_dir")
+        if raw_artifact_root:
+            try:
+                artifact_root = Path(str(raw_artifact_root)).expanduser()
+            except (TypeError, ValueError, OSError):
+                artifact_root = None
+        artifact_summary = {
+            "task_id": task_id,
+            "incident_id": incident_id,
+            "node_code": node_code,
+            "node_label": node_label,
+            "error_code": error_code,
+            "page_type": page_type,
+            "safe_page": safe_page,
+            "proxy_fingerprint": proxy_fingerprint,
+            "created_at": time.time(),
+        }
+        if artifact_root is not None:
+            with _ARTIFACT_LOCK:
+                _ARTIFACT_PROTECTED_SESSIONS.add(session_id)
+        registered = False
+        try:
+            artifact = await _capture_debug_artifact(
+                page=page,
+                artifact_root=artifact_root,
+                session_id=session_id,
+                artifact_id=artifact_id,
+                summary=artifact_summary,
+                trace=trace,
+            )
+            session = _DebugSession(
+                session_id=session_id,
+                task_id=task_id,
+                context=context,
+                page=page,
+                proxy_bridge=proxy_bridge,
+                slot=slot,
+                created_at=time.time(),
+                artifact_id=artifact_id,
+                incident_id=incident_id,
+                node_code=node_code,
+                node_label=node_label,
+                error_code=error_code,
+                page_type=page_type,
+                safe_page=safe_page,
+                proxy_fingerprint=proxy_fingerprint,
+                trace=trace,
+                artifact_path=str(artifact.get("artifact_path") or ""),
+            )
+            # Register the session and replace the active-context reservation
+            # under one admission lock.  The close endpoint and the recycler
+            # use this same lock, so neither can observe a session without its
+            # capacity hold (or a hold without an owned session).
+            if self._admission_lock is not None:
+                async with self._admission_lock:
+                    if not self._page_is_open(page) or self._closed:
+                        return False
+                    with self._debug_lock:
+                        if session_id not in self._debug_sessions:
+                            self._debug_sessions[session_id] = session
+                            slot.debug_holds += 1
+                            registered = True
+            else:
+                if not self._page_is_open(page) or self._closed:
+                    return False
+                with self._debug_lock:
+                    if session_id not in self._debug_sessions:
+                        self._debug_sessions[session_id] = session
+                        slot.debug_holds += 1
+                        registered = True
+        finally:
+            if not registered or artifact_root is None:
+                with _ARTIFACT_LOCK:
+                    _ARTIFACT_PROTECTED_SESSIONS.discard(session_id)
+        if error is not None:
+            for name, value in (
+                ("debug_session_id", session_id),
+                ("debug_artifact_id", artifact_id),
+                ("artifact_id", artifact_id),
+            ):
+                try:
+                    setattr(error, name, value)
+                except Exception:
+                    pass
+        return True
+
+    async def _close_debug_sessions_async(self, session_id: str = "") -> int:
+        normalized = str(session_id or "").strip()
+        with self._debug_lock:
+            if normalized:
+                selected = self._debug_sessions.get(normalized)
+                sessions = [selected] if selected is not None and normalized not in self._debug_closing else []
+            else:
+                sessions = [item for key, item in self._debug_sessions.items() if key not in self._debug_closing]
+            self._debug_closing.update(item.session_id for item in sessions if item is not None)
+        closed = 0
+        slots_to_recycle: list[_BrowserSlot] = []
+        timeout = float(self.config.get("context_close_timeout_seconds") or 15)
+        try:
+            for session in sessions:
+                if session is None:
+                    continue
+                context_closed = False
+                try:
+                    context_closed = await _close_context_safely(session.context, timeout)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    context_closed = False
+                bridge_error = ""
+                bridge = session.proxy_bridge
+                if bridge is not None and context_closed:
+                    try:
+                        bridge.close()
+                    except Exception as exc:
+                        # The context is already gone. Do not retain a phantom
+                        # capacity hold solely because the local bridge failed
+                        # to stop; keep a bounded marker for postmortem.
+                        bridge_error = clean(type(exc).__name__, 120)
+                with self._debug_lock:
+                    self._debug_closing.discard(session.session_id)
+                    if context_closed:
+                        self._debug_sessions.pop(session.session_id, None)
+                if context_closed:
+                    if self._admission_lock is not None:
+                        async with self._admission_lock:
+                            session.slot.debug_holds = max(0, session.slot.debug_holds - 1)
+                    else:
+                        session.slot.debug_holds = max(0, session.slot.debug_holds - 1)
+                    with _ARTIFACT_LOCK:
+                        _ARTIFACT_PROTECTED_SESSIONS.discard(session.session_id)
+                    if bridge_error and session.artifact_path:
+                        # Incident annotation and bridge cleanup both update
+                        # the same summary projection. Serialize the complete
+                        # read/modify/write cycle so neither field can be lost
+                        # when task failure persistence races window cleanup.
+                        with _ARTIFACT_LOCK:
+                            try:
+                                summary_path = Path(session.artifact_path) / "summary.json"
+                                payload = json.loads(summary_path.read_text(encoding="utf-8"))
+                                if isinstance(payload, dict):
+                                    payload["bridge_cleanup_error"] = bridge_error
+                                    _atomic_artifact_write(summary_path, payload)
+                            except Exception:
+                                pass
+                    # A retained context can postpone the normal
+                    # max-registrations recycle. Once the final hold on an
+                    # otherwise idle slot is released, perform that recycle
+                    # before another task is admitted to the old browser.
+                    try:
+                        max_registrations = max(
+                            1, int(self.config.get("max_registrations_per_browser") or 12),
+                        )
+                    except (TypeError, ValueError):
+                        max_registrations = 12
+                    if (
+                        session.slot.debug_holds == 0
+                        and session.slot.active_contexts == 0
+                        and (
+                            session.slot.completed >= max_registrations
+                            or bool(session.slot.recycle_error)
+                            or bool(session.slot.draining)
+                        )
+                        and all(existing is not session.slot for existing in slots_to_recycle)
+                    ):
+                        slots_to_recycle.append(session.slot)
+                    closed += 1
+        finally:
+            with self._debug_lock:
+                self._debug_closing.difference_update(
+                    item.session_id for item in sessions if item is not None
+                )
+        # Run recycling only after all selected sessions have been removed and
+        # their capacity holds released. This keeps an all-sessions close
+        # request atomic from the pool's admission perspective.
+        if not getattr(self, "_closed", False):
+            for slot in slots_to_recycle:
+                try:
+                    await self._recycle_slot(
+                        slot,
+                        slot.generation,
+                        "关闭最后 Camoufox 调试窗口后回收浏览器",
+                    )
+                except Exception:
+                    # Closing a debug window must still report the successful
+                    # context close even if a best-effort browser recycle
+                    # fails; the next registration will surface recycle_error.
+                    continue
+        return closed
+
+    async def _discard_debug_sessions_for_slot(self, slot: _BrowserSlot) -> int:
+        """Forget unusable sessions after their owning browser disappeared."""
+        with self._debug_lock:
+            sessions = [
+                item for item in self._debug_sessions.values()
+                if item.slot is slot
+            ]
+            for item in sessions:
+                self._debug_sessions.pop(item.session_id, None)
+                self._debug_closing.discard(item.session_id)
+        for session in sessions:
+            try:
+                await _close_context_safely(session.context, 1.0)
+            except Exception:
+                pass
+            if session.proxy_bridge is not None:
+                try:
+                    session.proxy_bridge.close()
+                except Exception:
+                    pass
+            with _ARTIFACT_LOCK:
+                _ARTIFACT_PROTECTED_SESSIONS.discard(session.session_id)
+        if sessions:
+            if self._admission_lock is not None:
+                async with self._admission_lock:
+                    slot.debug_holds = max(0, slot.debug_holds - len(sessions))
+            else:
+                slot.debug_holds = max(0, slot.debug_holds - len(sessions))
+        return len(sessions)
+
+    def close_debug_sessions(self, session_id: str = "") -> int:
+        """Close retained contexts on the pool's asyncio thread.
+
+        The manager and HTTP route run on ordinary worker threads, while page
+        and context objects belong to this pool loop.  Always marshal the
+        close operation instead of touching Playwright objects cross-thread.
+        """
+        if self._loop is None or not self._ready.is_set():
+            return 0
+        try:
+            future = asyncio.run_coroutine_threadsafe(
+                self._close_debug_sessions_async(session_id), self._loop,
+            )
+            return int(future.result(timeout=float(self.config.get("context_close_timeout_seconds") or 15) + 5))
+        except FutureTimeoutError:
+            try:
+                future.cancel()
+            except Exception:
+                pass
+            return 0
+        except Exception:
+            return 0
+
+    def debug_state(self) -> dict[str, Any]:
+        """Return a secret-free snapshot suitable for the public Free state."""
+        with self._debug_lock:
+            sessions = list(self._debug_sessions.values())
+        capacity = max(0, len(self._slots) * self.max_contexts)
+        used = sum(max(0, int(slot.active_contexts) + int(slot.debug_holds)) for slot in self._slots)
+        return {
+            "enabled": bool(self.debug_mode),
+            "headless": bool(self.headless),
+            "capacity": capacity,
+            "used": used,
+            "available": max(0, capacity - used),
+            "open_contexts": len(sessions),
+            "pool_count": 1,
+            "sessions": [
+                {
+                    "session_id": item.session_id,
+                    "task_id": item.task_id,
+                    "node_code": item.node_code,
+                    "node_label": item.node_label,
+                    "error_code": item.error_code,
+                    "page_type": item.page_type,
+                    "safe_page": item.safe_page,
+                    "proxy_fingerprint": item.proxy_fingerprint,
+                    "artifact_id": item.artifact_id,
+                    "incident_id": item.incident_id,
+                    "created_at": item.created_at,
+                }
+                for item in sessions
+            ],
+        }
+
+    def has_active_contexts(self) -> bool:
+        return any(int(slot.active_contexts) > 0 for slot in self._slots)
+
+    def is_idle(self) -> bool:
+        return not self.has_active_contexts() and not self.has_debug_sessions()
+
+    def annotate_debug_session(self, session_id: str, incident_id: str) -> bool:
+        """Attach the manager-created incident to a retained debug session."""
+        normalized_session = str(session_id or "").strip()
+        normalized_incident = _safe_incident_id(incident_id)
+        if not normalized_session or not normalized_incident:
+            return False
+        with self._debug_lock:
+            session = self._debug_sessions.get(normalized_session)
+            if session is None:
+                return False
+            session.incident_id = normalized_incident
+            artifact_path = session.artifact_path
+        if artifact_path:
+            # Keep the lock around both read and atomic replace.  Locking only
+            # the final write still permits a stale payload to overwrite a
+            # bridge-cleanup marker written by the concurrent close path.
+            with _ARTIFACT_LOCK:
+                try:
+                    summary_path = Path(artifact_path) / "summary.json"
+                    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+                    if isinstance(payload, dict):
+                        payload["incident_id"] = normalized_incident
+                        _atomic_artifact_write(summary_path, payload)
+                except Exception:
+                    pass
+        return True
+
+    def has_debug_sessions(self) -> bool:
+        with self._debug_lock:
+            return bool(self._debug_sessions)
 
     def _start(self) -> None:
         def target() -> None:
             self._loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self._loop)
             try:
-                self._loop.run_until_complete(self._init_async())
-            except BaseException as exc:
-                self._init_error = exc
-            finally:
-                self._ready.set()
-            if self._init_error is None:
                 try:
-                    self._loop.run_forever()
+                    self._loop.run_until_complete(self._init_async())
+                except BaseException as exc:
+                    self._init_error = exc
                 finally:
+                    self._ready.set()
+                if self._init_error is None:
+                    try:
+                        self._loop.run_forever()
+                    finally:
+                        self._loop.run_until_complete(self._shutdown_async())
+                        self._cancel_pending_tasks()
+                else:
+                    # Initialization may have opened some managers before a later
+                    # slot failed. Reclaim those partial resources before the
+                    # dependency/startup error reaches the caller.
                     self._loop.run_until_complete(self._shutdown_async())
                     self._cancel_pending_tasks()
-            else:
-                # Initialization may have opened some managers before a later
-                # slot failed. Reclaim those partial resources before the
-                # dependency/startup error reaches the caller.
-                self._loop.run_until_complete(self._shutdown_async())
-                self._cancel_pending_tasks()
-            self._loop.close()
+            finally:
+                try:
+                    self._loop.close()
+                finally:
+                    # Even an unexpected cleanup exception must make the pool's
+                    # completion state observable to the registry.
+                    self._shutdown_complete.set()
         self._thread = threading.Thread(target=target, name="gptphone-camoufox", daemon=True)
         self._thread.start()
         self._ready.wait(timeout=90)
@@ -2059,13 +3127,42 @@ class CamoufoxBrowserPool:
         self._global_semaphore = asyncio.Semaphore(self.pool_size * self.max_contexts)
         self._startup_semaphore = asyncio.Semaphore(min(self.startup_concurrency, self.pool_size * self.max_contexts))
         self._context_start_lock = asyncio.Lock()
+        self._admission_lock = asyncio.Lock()
         for _index in range(self.pool_size):
             manager, browser = await self._launch_browser()
-            self._slots.append(_BrowserSlot(
+            slot = _BrowserSlot(
                 manager, browser, asyncio.Semaphore(self.max_contexts),
                 recycle_lock=asyncio.Lock(), idle_event=asyncio.Event(),
-            ))
-            self._slots[-1].idle_event.set()
+            )
+            self._slots.append(slot)
+            self._attach_browser_disconnect(slot)
+            slot.idle_event.set()
+
+    def _attach_browser_disconnect(self, slot: _BrowserSlot) -> None:
+        """Schedule pool recovery when Playwright reports a dead browser."""
+        browser = slot.browser
+        on = getattr(browser, "on", None)
+        if not callable(on):
+            return
+        generation = slot.generation
+
+        def disconnected(*_args: Any, **_kwargs: Any) -> None:
+            loop = self._loop
+            if loop is None or self._closed:
+                return
+            try:
+                loop.call_soon_threadsafe(
+                    lambda: asyncio.create_task(
+                        self._recycle_slot(slot, generation, "Camoufox 浏览器断开事件"),
+                    )
+                )
+            except Exception:
+                pass
+
+        try:
+            on("disconnected", disconnected)
+        except Exception:
+            pass
 
     async def _launch_browser(self) -> tuple[Any, Any]:
         AsyncCamoufox, _ = _load_camoufox_api()
@@ -2107,6 +3204,15 @@ class CamoufoxBrowserPool:
         ) from last_error
 
     async def _shutdown_async(self) -> None:
+        # Debug sessions own live contexts and proxy bridges. Close them before
+        # their browser managers so no bridge/thread survives pool shutdown.
+        await self._close_debug_sessions_async()
+        # A disconnected context may refuse close; once the pool itself is
+        # shutting down there is no live window to preserve, so clear the
+        # registry and holds rather than leaving stale capacity in state.
+        for slot in list(self._slots):
+            if slot.debug_holds:
+                await self._discard_debug_sessions_for_slot(slot)
         slots, self._slots = self._slots, []
         for slot in slots:
             try:
@@ -2119,7 +3225,12 @@ class CamoufoxBrowserPool:
             except Exception:
                 try:
                     if slot.browser is not None:
-                        await slot.browser.close()
+                        close_result = slot.browser.close()
+                        if inspect.isawaitable(close_result):
+                            await asyncio.wait_for(
+                                close_result,
+                                timeout=float(self.config.get("context_close_timeout_seconds") or 15),
+                            )
                 except Exception:
                     pass
 
@@ -2178,12 +3289,124 @@ class CamoufoxBrowserPool:
                 await asyncio.sleep(self._next_context_start - now)
             self._next_context_start = asyncio.get_running_loop().time() + self.context_start_interval
 
+    async def _release_active_context(
+        self,
+        slot: _BrowserSlot,
+        *,
+        debug_retained: bool,
+        debug_context: Any | None = None,
+        debug_hold_registered: bool = False,
+    ) -> None:
+        """Release the admission reservation after task cleanup completes.
+
+        Closing a retained context is marshalled onto this same asyncio loop,
+        but it can still run between the retention coroutine and this final
+        bookkeeping step.  Only add a debug hold while the context is still
+        registered; otherwise a close that already removed the session would
+        leave an unowned capacity reservation behind.
+        """
+        # New retention calls atomically install their hold before this method
+        # runs.  ``debug_hold_registered`` prevents a concurrent close from
+        # being undone by the worker's final bookkeeping.  The fallback path
+        # remains for older direct callers that only registered a session.
+        retain_hold = bool(debug_retained) and not debug_hold_registered
+        if retain_hold:
+            sessions = getattr(self, "_debug_sessions", None)
+            if isinstance(sessions, dict):
+                debug_lock = getattr(self, "_debug_lock", None)
+                if debug_lock is not None:
+                    with debug_lock:
+                        retain_hold = any(
+                            item is not None
+                            and (debug_context is None or getattr(item, "context", None) is debug_context)
+                            for item in sessions.values()
+                        )
+                else:
+                    retain_hold = any(
+                        item is not None
+                        and (debug_context is None or getattr(item, "context", None) is debug_context)
+                        for item in sessions.values()
+                    )
+        if self._admission_lock is not None:
+            async with self._admission_lock:
+                slot.active_contexts = max(0, slot.active_contexts - 1)
+                if retain_hold:
+                    slot.debug_holds += 1
+                if slot.active_contexts == 0 and slot.idle_event is not None:
+                    slot.idle_event.set()
+        else:
+            slot.active_contexts = max(0, slot.active_contexts - 1)
+            if retain_hold:
+                slot.debug_holds += 1
+            if slot.active_contexts == 0 and slot.idle_event is not None:
+                slot.idle_event.set()
+
+    async def _acquire_slot_permit(self, slot: _BrowserSlot) -> _HeldSemaphore | None:
+        """Atomically reserve one active context and its semaphore permit.
+
+        Debug contexts release the task semaphore while remaining attached to
+        the browser.  The active-context reservation therefore has to happen
+        under the same admission lock as the debug-hold check; otherwise two
+        waiters can both observe the same free capacity and overbook a slot.
+        """
+        await slot.semaphore.acquire()
+        reserved = False
+        try:
+            if self._admission_lock is not None:
+                async with self._admission_lock:
+                    available = slot.active_contexts + slot.debug_holds < self.max_contexts
+                    if available:
+                        slot.active_contexts += 1
+                        reserved = True
+                        if slot.idle_event is not None:
+                            slot.idle_event.clear()
+            else:
+                available = slot.active_contexts + slot.debug_holds < self.max_contexts
+                if available:
+                    slot.active_contexts += 1
+                    reserved = True
+                    if slot.idle_event is not None:
+                        slot.idle_event.clear()
+            if available:
+                return _HeldSemaphore(slot.semaphore)
+        except BaseException:
+            if reserved:
+                await self._release_active_context(slot, debug_retained=False)
+            slot.semaphore.release()
+            raise
+        slot.semaphore.release()
+        return None
+
     async def _register_with_slot(self, kwargs: Mapping[str, Any]) -> dict[str, Any]:
+        while True:
+            try:
+                return await self._register_with_slot_once(kwargs)
+            except _SlotAdmissionRace:
+                await asyncio.sleep(0)
+
+    async def _register_with_slot_once(self, kwargs: Mapping[str, Any]) -> dict[str, Any]:
         recovery_attempted = False
         while True:
             available = [slot for slot in self._slots if not slot.draining and self._browser_connected(slot.browser)]
             if available:
-                break
+                # Retained debug contexts stay open and consume a real browser
+                # context slot even after their task Future has completed.
+                idle = [
+                    item for item in available
+                    if not item.semaphore.locked()
+                    and item.active_contexts + item.debug_holds < self.max_contexts
+                ]
+                if idle:
+                    slot = min(
+                        idle,
+                        key=lambda item: (
+                            item.active_contexts + item.debug_holds,
+                            item.completed,
+                        ),
+                    )
+                    break
+                await asyncio.sleep(0.05)
+                continue
             # A browser can disappear between the health check and context
             # creation.  Rebuild one disconnected slot before reporting that
             # the pool is empty; this mirrors the reference pool's admission
@@ -2219,27 +3442,32 @@ class CamoufoxBrowserPool:
             )
             setattr(failure, "safe_restart", True)
             raise failure
-        idle = [item for item in available if not item.semaphore.locked()]
-        slot = min(idle or available, key=lambda item: (item.active_contexts, item.completed))
-        async with slot.semaphore:
+        permit = await self._acquire_slot_permit(slot)
+        if permit is None:
+            # A debug context may have been retained after the slot selection;
+            # return to the pool scan so another browser can admit this task.
+            raise _SlotAdmissionRace()
+        async with permit:
             recycle_required = False
-            if slot.draining or not self._browser_connected(slot.browser):
-                generation = slot.generation
-                await self._recycle_slot(slot, generation, "浏览器在 context 启动前断开")
-                failure = CamoufoxBrowserError(
-                    "free_camoufox_launch", "启动 Camoufox",
-                    "浏览器进程已断开", error_code="camoufox_browser_disconnected",
-                    retryable=True,
-                )
-                setattr(failure, "safe_restart", True)
-                raise failure
-            slot.active_contexts += 1
-            if slot.idle_event is not None:
-                slot.idle_event.clear()
             generation = slot.generation
             context = None
+            page = None
             proxy_bridge: Socks5HttpBridge | None = None
+            debug_failure = False
+            debug_retain_allowed = True
+            debug_retained = False
+            debug_error: BaseException | None = None
+            trace: _DebugTrace | None = None
             try:
+                if slot.draining or not self._browser_connected(slot.browser):
+                    recycle_required = True
+                    failure = CamoufoxBrowserError(
+                        "free_camoufox_launch", "启动 Camoufox",
+                        "浏览器进程已断开", error_code="camoufox_browser_disconnected",
+                        retryable=True,
+                    )
+                    setattr(failure, "safe_restart", True)
+                    raise failure
                 await self._wait_context_start_slot()
                 try:
                     context_proxy = _proxy_config(str(kwargs.get("proxy") or ""))
@@ -2258,6 +3486,7 @@ class CamoufoxBrowserPool:
                 except CamoufoxBrowserError:
                     raise
                 except Exception as exc:
+                    recycle_required = True
                     if _browser_process_lost(exc):
                         recycle_required = True
                         failure = CamoufoxBrowserError(
@@ -2289,6 +3518,7 @@ class CamoufoxBrowserPool:
                 try:
                     page = await context.new_page()
                 except Exception as exc:
+                    recycle_required = True
                     if _browser_process_lost(exc):
                         recycle_required = True
                         failure = CamoufoxBrowserError(
@@ -2305,6 +3535,7 @@ class CamoufoxBrowserPool:
                         error_code="camoufox_page_create_failed",
                         diagnostic=type(exc).__name__,
                     ) from exc
+                trace = _page_debug_trace(page)
                 flow_kwargs = dict(kwargs)
                 flow_kwargs.setdefault("startup_gate", self._startup_semaphore)
                 result = await _browser_flow(page, **flow_kwargs)
@@ -2316,55 +3547,120 @@ class CamoufoxBrowserPool:
                 # the process even when context.close() itself succeeds: the
                 # page may have left unfinished navigation callbacks behind.
                 recycle_required = True
+                debug_failure = True
+                debug_retain_allowed = False
+                debug_error = None
                 raise
             except CamoufoxBrowserError as exc:
+                debug_failure = True
+                debug_error = exc
                 if getattr(exc, "recycle_required", False) or exc.error_code in {
                     "camoufox_browser_disconnected",
                     "camoufox_context_create_failed",
                     "camoufox_page_create_failed",
                 }:
                     recycle_required = True
+                    debug_retain_allowed = False
+                elif not self._debug_retain_allowed(exc):
+                    debug_retain_allowed = False
                 raise
-            except FreeRegisterError:
+            except FreeRegisterError as exc:
+                debug_failure = True
+                debug_error = exc
+                if not self._debug_retain_allowed(exc):
+                    debug_retain_allowed = False
                 raise
             except Exception as exc:
-                snapshot = await _snapshot(page) if "page" in locals() else {"url": "", "title": "", "body": ""}
+                debug_failure = True
+                debug_error = exc
+                safe_page = _safe_url(page) if page is not None else ""
+                page_type = "unknown"
+                if page is not None:
+                    try:
+                        page_type = await _page_state(page)
+                    except Exception:
+                        page_type = "unknown"
+                if isinstance(exc, (asyncio.TimeoutError, TimeoutError, FutureTimeoutError)):
+                    recycle_required = True
+                    debug_retain_allowed = False
+                    failure = CamoufoxBrowserError(
+                        "free_camoufox_page_state", "Camoufox 注册页面",
+                        "Camoufox 浏览器流程超时，已回收当前 context",
+                        retryable=True,
+                        error_code="camoufox_browser_flow_timeout",
+                        diagnostic=f"exception_type={type(exc).__name__}; safe_page={safe_page}; page_type={page_type}",
+                        safe_page=safe_page,
+                        page_type=page_type,
+                    )
+                    _mark_recycle_required(failure, "generic flow timeout")
+                    debug_error = failure
+                    raise failure from exc
                 if _browser_process_lost(exc):
                     recycle_required = True
+                    debug_retain_allowed = False
                     failure = CamoufoxBrowserError(
                         "free_camoufox_launch", "启动 Camoufox 浏览器池",
                         "Camoufox 浏览器进程已断开",
                         error_code="camoufox_browser_disconnected",
                         diagnostic="browser process lost",
-                        safe_page=snapshot.get("url"), page_type="unknown",
+                        safe_page=safe_page, page_type=page_type,
                     )
                     setattr(failure, "safe_restart", False)
+                    debug_error = failure
                     raise failure from exc
-                raise CamoufoxBrowserError(
+                failure = CamoufoxBrowserError(
                     "free_camoufox_browser", "Camoufox 注册页面", f"浏览器流程异常（{type(exc).__name__}）",
                     error_code="camoufox_browser_flow_failed",
                     diagnostic=json.dumps({
                         "exception": type(exc).__name__,
                         "detail": _camoufox_error_detail(exc),
                         "kwargs": sorted(str(key) for key in kwargs.keys()),
-                        "snapshot": snapshot,
+                        "safe_page": safe_page,
+                        "page_type": page_type,
                     }, ensure_ascii=False)[:500],
-                    safe_page=snapshot.get("url"), page_type="unknown",
-                ) from exc
+                    safe_page=safe_page, page_type=page_type,
+                )
+                debug_error = failure
+                raise failure from exc
             finally:
-                if context is not None:
+                if context is not None and debug_failure and debug_retain_allowed:
                     try:
-                        await asyncio.wait_for(context.close(), timeout=float(self.config.get("context_close_timeout_seconds") or 15))
+                        debug_retained = await self._retain_debug_context(
+                            context=context,
+                            page=page,
+                            proxy_bridge=proxy_bridge,
+                            slot=slot,
+                            kwargs=kwargs,
+                            error=debug_error,
+                        )
                     except Exception:
+                        # Retention is diagnostic-only; never mask the actual
+                        # registration failure if a fake/old Playwright API
+                        # rejects the inspection hook.
+                        debug_retained = False
+                if context is not None and not debug_retained:
+                    closed = await _close_context_safely(
+                        context,
+                        float(self.config.get("context_close_timeout_seconds") or 15),
+                    )
+                    if not closed:
                         recycle_required = True
-                if proxy_bridge is not None:
+                if proxy_bridge is not None and not debug_retained:
                     try:
                         proxy_bridge.close()
                     except Exception:
                         recycle_required = True
-                slot.active_contexts = max(0, slot.active_contexts - 1)
-                if slot.active_contexts == 0 and slot.idle_event is not None:
-                    slot.idle_event.set()
+                if debug_retained:
+                    # Keep the browser process and its page available for the
+                    # operator; ordinary per-task cleanup must not trigger a
+                    # recycle behind the scenes.
+                    recycle_required = False
+                await self._release_active_context(
+                    slot,
+                    debug_retained=debug_retained,
+                    debug_context=context,
+                    debug_hold_registered=debug_retained,
+                )
                 if recycle_required and generation == slot.generation and not self._closed:
                     await self._recycle_slot(slot, generation, "达到单进程注册上限或 context 关闭异常")
 
@@ -2375,12 +3671,40 @@ class CamoufoxBrowserPool:
         async with lock:
             if slot.generation != generation or self._closed:
                 return
+            if slot.browser is None or not self._browser_connected(slot.browser):
+                # A dead browser cannot keep a headed inspection window alive.
+                # Remove those holds before recycling so the slot cannot remain
+                # permanently full after a process disconnect.
+                await self._discard_debug_sessions_for_slot(slot)
+            # A debug page is intentionally the last live artifact of a failed
+            # task. Do not tear down its browser behind the operator's back;
+            # the explicit close endpoint will release the hold and perform
+            # the normal pool shutdown.
+            if slot.debug_holds:
+                slot.draining = False
+                slot.recycle_error = ""
+                return
             slot.draining = True
             if slot.active_contexts and slot.idle_event is not None:
                 try:
                     await asyncio.wait_for(slot.idle_event.wait(), timeout=float(self.config.get("browser_recycle_drain_timeout_seconds") or 20))
                 except asyncio.TimeoutError:
                     pass
+            # A task that was already in its terminal cleanup can retain a
+            # debug page while the drain event is being awaited.  Re-check
+            # after the await, immediately before touching the old browser;
+            # otherwise the newly retained page would be closed behind the
+            # operator's back and its hold would point at a dead process.
+            if self._admission_lock is not None:
+                async with self._admission_lock:
+                    if slot.debug_holds:
+                        slot.draining = False
+                        slot.recycle_error = ""
+                        return
+            elif slot.debug_holds:
+                slot.draining = False
+                slot.recycle_error = ""
+                return
             old_manager, old_browser = slot.manager, slot.browser
             slot.manager = None
             slot.browser = None
@@ -2406,12 +3730,18 @@ class CamoufoxBrowserPool:
                 slot.recycle_error = clean(f"{error_code}: {type(exc).__name__}", 240)
                 return
             slot.manager, slot.browser, slot.draining, slot.recycle_error = manager, browser, False, ""
+            self._attach_browser_disconnect(slot)
 
     def register(self, **kwargs: Any) -> dict[str, Any]:
         if self._closed:
             raise CamoufoxBrowserError("free_camoufox_launch", "启动 Camoufox", "浏览器池已关闭", error_code="camoufox_pool_closed")
         if not self._ready.is_set():
-            self._ready.wait(timeout=90)
+            if not self._ready.wait(timeout=90):
+                raise CamoufoxBrowserError(
+                    "free_camoufox_launch", "启动 Camoufox 浏览器池",
+                    "Camoufox 浏览器池仍在初始化，请稍后重试",
+                    retryable=True, error_code="camoufox_pool_init_pending",
+                )
         if self._init_error:
             if isinstance(self._init_error, (CamoufoxDependencyError, CamoufoxBrowserError)):
                 raise self._init_error
@@ -2432,15 +3762,42 @@ class CamoufoxBrowserPool:
             future.cancel()
             raise CamoufoxBrowserError("free_camoufox_browser", "Camoufox 注册页面", "浏览器注册超时", error_code="camoufox_registration_timeout") from exc
 
-    def shutdown(self) -> None:
+    def shutdown(self, *, force: bool = False) -> bool:
+        completion = getattr(self, "_shutdown_complete", None)
+        if completion is None:
+            completion = threading.Event()
+            self._shutdown_complete = completion
+            if getattr(self, "_closed", False) and not getattr(self, "_thread", None):
+                completion.set()
         with self._lock:
-            if self._closed:
-                return
+            if completion.is_set():
+                return True
+            if not force and (self.has_debug_sessions() or self.has_active_contexts()):
+                # Batch completion must leave opted-in diagnostic pages and
+                # active task contexts visible. They are closed only after the
+                # operator releases the debug session or at process exit.
+                return False
             self._closed = True
-            if self._loop is not None:
-                self._loop.call_soon_threadsafe(self._loop.stop)
-        if self._thread is not None:
-            self._thread.join(timeout=float(self.config.get("browser_recycle_timeout_seconds") or 45) + 5)
+            loop = self._loop
+            if loop is not None:
+                try:
+                    loop.call_soon_threadsafe(loop.stop)
+                except RuntimeError:
+                    # The loop may already be in its final close phase. The
+                    # completion event below determines whether cleanup really
+                    # finished before the pool is removed from the registry.
+                    pass
+        thread = self._thread
+        if thread is None:
+            completion.set()
+            return True
+        if thread is threading.current_thread():
+            return completion.is_set()
+        thread.join(timeout=float(self.config.get("browser_recycle_timeout_seconds") or 45) + 5)
+        if thread.is_alive():
+            return False
+        completion.set()
+        return True
 
 
 def _proxy_config(proxy: str) -> dict[str, Any] | None:
@@ -2458,52 +3815,305 @@ _POOL_LOCK = threading.RLock()
 _POOLS: dict[tuple[Any, ...], CamoufoxBrowserPool] = {}
 
 
-def _pool_for(config: Mapping[str, Any]) -> CamoufoxBrowserPool:
-    key = (
-        bool(config.get("headless", True)), int(config.get("pool_size") or 2),
+def _pool_timeout(config: Mapping[str, Any], key: str, default: float) -> float:
+    """Normalize timeout values used to decide whether a pool is reusable."""
+    try:
+        value = float(config.get(key) or default)
+    except (TypeError, ValueError, OverflowError):
+        value = float(default)
+    return max(0.001, value)
+
+
+def _camoufox_pool_key(config: Mapping[str, Any]) -> tuple[Any, ...]:
+    """Build the identity used to reuse a compatible browser pool."""
+    debug_mode, effective_headless = _effective_camoufox_headless(config)
+    return (
+        debug_mode, effective_headless, int(config.get("pool_size") or 2),
         int(config.get("max_contexts_per_browser") or 3), bool(config.get("block_images", True)),
         int(config.get("context_start_interval_ms") or 175),
         int(config.get("startup_concurrency") or 4),
         int(config.get("max_registrations_per_browser") or 12),
         int(config.get("browser_launch_attempts") or 3),
+        _pool_timeout(config, "registration_timeout_seconds", 600),
+        _pool_timeout(config, "context_close_timeout_seconds", 15),
+        _pool_timeout(config, "browser_recycle_timeout_seconds", 45),
+        _pool_timeout(config, "browser_recycle_drain_timeout_seconds", 20),
+        str(config.get("_debug_artifact_dir") or ""),
     )
+
+
+def _retire_idle_camoufox_pools(
+    *, current_key: tuple[Any, ...] | None = None,
+) -> dict[str, int]:
+    """Close pools made obsolete by a config change once they are idle.
+
+    A pool with an active task or an operator-held debug context is deliberately
+    left registered.  This makes a settings change non-destructive while still
+    preventing an idle old browser process from accumulating forever.
+    """
     with _POOL_LOCK:
-        pool = _POOLS.get(key)
-        if pool is None or pool._closed:
-            if pool is not None:
-                pool.shutdown()
-            pool = CamoufoxBrowserPool(config)
-            _POOLS[key] = pool
-        return pool
+        candidates = list(_POOLS.items())
+    closed = 0
+    retained = 0
+    for key, pool in candidates:
+        if current_key is not None and key == current_key:
+            continue
+        try:
+            has_debug = bool(getattr(pool, "has_debug_sessions", lambda: False)())
+            has_active = bool(getattr(pool, "has_active_contexts", lambda: False)())
+        except Exception:
+            retained += 1
+            continue
+        if has_debug or has_active:
+            retained += 1
+            continue
+        try:
+            try:
+                result = pool.shutdown(force=False)
+            except TypeError:
+                result = pool.shutdown()
+            if result is False:
+                retained += 1
+                continue
+            with _POOL_LOCK:
+                if _POOLS.get(key) is pool:
+                    _POOLS.pop(key, None)
+                    closed += 1
+        except Exception:
+            retained += 1
+    return {"closed_pools": closed, "retained_pools": retained}
 
 
-def shutdown_camoufox_pools() -> None:
+def _pool_for(config: Mapping[str, Any]) -> CamoufoxBrowserPool:
+    key = _camoufox_pool_key(config)
+    # Reconcile pools from a previous settings identity before admitting a new
+    # one.  Held debug windows and active tasks are retained by design.
+    _retire_idle_camoufox_pools(current_key=key)
+    while True:
+        with _POOL_LOCK:
+            pool = _POOLS.get(key)
+            if pool is None:
+                pool = CamoufoxBrowserPool(config)
+                _POOLS[key] = pool
+                return pool
+            if not bool(getattr(pool, "_closed", False)):
+                return pool
+        # A previous caller may have requested shutdown but timed out while
+        # Camoufox was closing. Keep that pool registered until its thread is
+        # actually gone; creating a replacement here would leak a browser
+        # process and make two pools compete for the same capacity.
+        try:
+            closed = pool.shutdown(force=False)
+        except TypeError:
+            closed = pool.shutdown()
+        # ``None`` is the historical shutdown return value used by a few
+        # compatibility adapters; only an explicit ``False`` means the pool
+        # thread is still alive and must remain registered.
+        if closed is False:
+            raise CamoufoxBrowserError(
+                "free_camoufox_launch", "启动 Camoufox 浏览器池",
+                "旧 Camoufox 浏览器池仍在关闭，请稍后重试",
+                retryable=True, error_code="camoufox_pool_shutdown_pending",
+            )
+        with _POOL_LOCK:
+            if _POOLS.get(key) is pool:
+                _POOLS.pop(key, None)
+
+
+def shutdown_camoufox_pools(*, force: bool = False) -> dict[str, int]:
+    """Shutdown idle Camoufox pools, preserving opted-in debug sessions.
+
+    ``force=True`` is reserved for process exit. The default keeps active
+    tasks and retained debug windows alive during batch completion.
+    """
+    with _POOL_LOCK:
+        pools = list(_POOLS.items())
+    closed = 0
+    retained = 0
+    for key, pool in pools:
+        has_debug = bool(getattr(pool, "has_debug_sessions", lambda: False)())
+        has_active = bool(getattr(pool, "has_active_contexts", lambda: False)())
+        if not force and (has_debug or has_active):
+            retained += 1
+            continue
+        try:
+            try:
+                result = pool.shutdown(force=force)
+            except TypeError:
+                # Keep lightweight test doubles and older integration adapters
+                # compatible with the no-argument shutdown contract.
+                result = pool.shutdown()
+            if result is not False:
+                closed += 1
+                with _POOL_LOCK:
+                    if _POOLS.get(key) is pool:
+                        _POOLS.pop(key, None)
+            else:
+                retained += 1
+        except Exception:
+            retained += 1
+    with _POOL_LOCK:
+        retained = max(retained, len(_POOLS))
+    return {"closed_pools": closed, "retained_pools": retained}
+
+
+def camoufox_debug_state(config: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Return a secret-free aggregate of retained headed debug contexts.
+
+    Before the first browser pool is created there is no slot object from
+    which to derive capacity.  Use the normalized config in that case so the
+    public state still reflects the configured debug/headless mode and pool
+    capacity instead of briefly reporting a misleading disabled/zero state.
+    """
+    nested_config = config.get("camoufox") if isinstance(config, Mapping) else None
+    # Accept both the public Free config shape and the low-level nested
+    # Camoufox mapping used by direct pool callers.  A flat mapping without a
+    # ``camoufox`` key must not silently fall back to the default debug mode.
+    browser_config = (
+        nested_config if isinstance(nested_config, Mapping)
+        else (config if isinstance(config, Mapping) else {})
+    )
+    current_key: tuple[Any, ...] | None = None
+    if browser_config:
+        try:
+            current_key = _camoufox_pool_key(browser_config)
+        except (TypeError, ValueError, OverflowError):
+            current_key = None
+    # Settings can change while no new batch is running. Reap obsolete idle
+    # pools during the next state read, while retaining old pools that still
+    # own a visible debug window or an active task.
+    if current_key is not None:
+        _retire_idle_camoufox_pools(current_key=current_key)
+    with _POOL_LOCK:
+        pool_items = list(_POOLS.items())
+    snapshots: list[tuple[tuple[Any, ...], Mapping[str, Any]]] = []
+    for key, pool in pool_items:
+        getter = getattr(pool, "debug_state", None)
+        if not callable(getter):
+            continue
+        try:
+            snapshot = getter()
+        except Exception:
+            continue
+        if isinstance(snapshot, Mapping):
+            snapshots.append((key, snapshot))
+    snapshot_values = [snapshot for _key, snapshot in snapshots]
+    sessions = [item for snapshot in snapshot_values for item in snapshot.get("sessions", [])]
+    capacity = sum(max(0, int(snapshot.get("capacity") or 0)) for snapshot in snapshot_values)
+    used = sum(max(0, int(snapshot.get("used") or snapshot.get("open_contexts") or 0)) for snapshot in snapshot_values)
+    current_snapshot = next(
+        (snapshot for key, snapshot in snapshots if current_key is not None and key == current_key),
+        None,
+    )
+    if current_snapshot is not None:
+        # ``enabled`` and ``headless`` describe the current settings identity;
+        # legacy pools may intentionally have the opposite window mode while
+        # their retained pages remain visible to the operator.
+        enabled = bool(current_snapshot.get("enabled"))
+        headless = bool(current_snapshot.get("headless", True))
+    elif snapshot_values:
+        # No current pool has been created yet. Use the persisted config for
+        # mode flags and keep the legacy pool capacity/occupancy in the totals.
+        enabled, headless = _effective_camoufox_headless(browser_config)
+    else:
+        enabled, headless = _effective_camoufox_headless(browser_config)
+        try:
+            pool_size = max(1, int(browser_config.get("pool_size") or 2))
+            max_contexts = max(1, int(browser_config.get("max_contexts_per_browser") or 3))
+            capacity = pool_size * max_contexts
+        except (TypeError, ValueError):
+            capacity = 0
+    return {
+        "enabled": enabled,
+        "headless": headless,
+        "capacity": capacity,
+        "used": used,
+        "available": max(0, capacity - used),
+        "open_contexts": len(sessions),
+        "pool_count": len(snapshots),
+        "sessions": sessions,
+    }
+
+
+def annotate_camoufox_debug_session(session_id: str, incident_id: str) -> bool:
+    """Best-effort incident association for a retained page."""
+    normalized_session = str(session_id or "").strip()
+    if not normalized_session:
+        return False
     with _POOL_LOCK:
         pools = list(_POOLS.values())
-        _POOLS.clear()
     for pool in pools:
-        pool.shutdown()
+        annotator = getattr(pool, "annotate_debug_session", None)
+        if callable(annotator):
+            try:
+                if annotator(normalized_session, incident_id):
+                    return True
+            except Exception:
+                continue
+    return False
 
 
-atexit.register(shutdown_camoufox_pools)
+def close_camoufox_debug_browsers(
+    session_id: str = "",
+    *,
+    config: Mapping[str, Any] | None = None,
+) -> dict[str, int]:
+    """Close one/all retained contexts, then safely reap idle pools.
+
+    ``config`` keeps the aggregate state accurate after the last pool is
+    removed.  The manager passes the current normalized settings; direct
+    compatibility callers can omit it and retain the historical defaults.
+    """
+    normalized = str(session_id or "").strip()
+    with _POOL_LOCK:
+        pools = list(_POOLS.values())
+    requested = 0
+    closed_contexts = 0
+    for pool in pools:
+        has_debug = bool(getattr(pool, "has_debug_sessions", lambda: False)())
+        if has_debug:
+            requested += 1
+        closer = getattr(pool, "close_debug_sessions", None)
+        if callable(closer):
+            try:
+                closed_contexts += int(closer(normalized))
+            except Exception:
+                continue
+    result = shutdown_camoufox_pools(force=False)
+    result["closed_contexts"] = closed_contexts
+    remaining = camoufox_debug_state(config)
+    result["retained_contexts"] = int(remaining.get("open_contexts") or 0)
+    result["remaining_contexts"] = int(remaining.get("open_contexts") or 0)
+    result["remaining_sessions"] = int(remaining.get("open_contexts") or 0)
+    result["requested_pools"] = requested
+    return result
+
+
+atexit.register(lambda: shutdown_camoufox_pools(force=True))
 
 
 class CamoufoxRegistrationRunner:
     """Manager-compatible synchronous facade for the async browser pool."""
 
-    def __init__(self, *, lifecycle_store_path: str = "") -> None:
+    def __init__(self, *, lifecycle_store_path: str = "", debug_artifact_dir: str = "") -> None:
         self.lifecycle_store_path = lifecycle_store_path
+        self.debug_artifact_dir = debug_artifact_dir or (
+            str(Path(lifecycle_store_path).expanduser().resolve().parent / "camoufox_debug")
+            if lifecycle_store_path else ""
+        )
 
     @staticmethod
     def preflight(config: Mapping[str, Any]) -> dict[str, Any]:
         _load_camoufox_api()
         runtime_version = _check_camoufox_runtime()
         browser = dict(config.get("camoufox") or {})
+        debug_mode, effective_headless = _effective_camoufox_headless(browser)
         return {
             "driver": "camoufox",
             "dependency": "available",
             "runtime_version": runtime_version,
-            "headless": bool(browser.get("headless", True)),
+            "debug_mode": debug_mode,
+            "headless": effective_headless,
             "pool_size": int(browser.get("pool_size") or 2),
             "max_contexts_per_browser": int(browser.get("max_contexts_per_browser") or 3),
         }
@@ -2511,6 +4121,8 @@ class CamoufoxRegistrationRunner:
     def __call__(self, task: Mapping[str, Any], config: Mapping[str, Any], stop_event: Any, stage: Callable[[str, str], None], log: Callable[[str, str], None], *, twofa_retry: bool = False) -> Mapping[str, Any]:
         task_id = str(task.get("task_id") or "")
         browser_config = dict(config.get("camoufox") or {})
+        if self.debug_artifact_dir:
+            browser_config["_debug_artifact_dir"] = self.debug_artifact_dir
         otp = build_free_mailbox_otp_provider(
             str(task.get("mailbox_url") or ""), str(task.get("proxy") or ""), config,
             log_fn=log, task_id=task_id,
@@ -2527,7 +4139,11 @@ class CamoufoxRegistrationRunner:
                 email=str(task.get("email") or ""), password=FIXED_PASSWORD,
                 proxy=str(task.get("proxy") or ""), otp_callback=callback,
                 otp_prepare=otp.prepare, otp_mark_sent=otp.mark_sent,
-                config={**config, **browser_config, "task_id": task_id}, log=log,
+                config={
+                    **config, **browser_config, "task_id": task_id,
+                    "incident_id": str(task.get("incident_id") or ""),
+                    "proxy_fingerprint": str(task.get("proxy_fingerprint") or ""),
+                }, log=log,
                 stage_fn=stage,
                 timing_fn=config.get("_timing_substep"),
                 force_existing_login=twofa_retry,
@@ -2548,5 +4164,5 @@ class CamoufoxRegistrationRunner:
 
 __all__ = [
     "CamoufoxBrowserError", "CamoufoxDependencyError", "CamoufoxRegistrationRunner",
-    "CamoufoxBrowserPool", "shutdown_camoufox_pools",
+    "CamoufoxBrowserPool", "annotate_camoufox_debug_session", "shutdown_camoufox_pools",
 ]

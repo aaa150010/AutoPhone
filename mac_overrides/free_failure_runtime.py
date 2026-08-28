@@ -23,12 +23,25 @@ _FAILURE_URL_RE = re.compile(
 )
 _FAILURE_SECRET_RE = re.compile(
     r"(?i)\b(?:token|access[_ -]?token|refresh[_ -]?token|id[_ -]?token|"
-    r"authorization|password|cookie|csrf|pkce|code[_ -]?verifier|"
+    r"admin[_ -]?token|authorization|password|cookie|csrf|pkce|code[_ -]?verifier|"
     r"code[_ -]?challenge|oauth[_ -]?code|auth[_ -]?code|state|"
     r"totp[_ -]?secret|(?:sms|email|otp)[_ -]?code|"
     r"proxy[_ -]?username|proxy[_ -]?password|"
     r"(?:api|mailbox|pickup|proxy)[_ -]?(?:key|secret|token))"
     r"\s*([=:])\s*([^\s,;]+)"
+)
+_FAILURE_JSON_SECRET_RE = re.compile(
+    r'''(?ix)
+        (?<![\w])
+        (?P<prefix>[\"']?(?:access[_ -]?token|refresh[_ -]?token|id[_ -]?token|admin[_ -]?token|
+            token|authorization|password|cookie|csrf(?:[_ -]?token)?|pkce|
+            code[_ -]?verifier|code[_ -]?challenge|oauth[_ -]?code|auth[_ -]?code|
+            state|nonce|session(?:[_ -]?token)?|totp[_ -]?secret|
+            (?:sms|email|otp)[_ -]?code|proxy[_ -]?username|proxy[_ -]?password|
+            (?:proxy|mailbox|pickup)[_ -]?url|
+            (?:api|mailbox|pickup|proxy)[_ -]?(?:key|secret|token)|secret)[\"']?\s*:\s*)
+        (?P<value>"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^,}\s]+)
+    '''
 )
 _FAILURE_EMAIL_RE = re.compile(
     r"(?<![\w.+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}(?![\w.-])",
@@ -52,6 +65,7 @@ _TRANSPORT_ERROR_CODES = frozenset({
     "proxy_tls_certificate_error", "proxy_connect_failed", "tls_connection_failed",
 })
 _ACTION_HINTS = {
+    "camoufox_pool_shutdown_pending": "等待旧 Camoufox 窗口关闭完成后再重试",
     "free_process_recovery": "确认中断账号的邮箱状态后重新创建任务",
     "free_run_stop": "可重新选择该邮箱启动 Free 注册",
     "roxy_circuit_open": "检查 RoxyBrowser API 和遗留 Profile 清理状态后重试",
@@ -91,6 +105,9 @@ FAILURE_KEYS = (
     "request_stage",
     "retry_count",
     "transport_error_code",
+    "debug_session_id",
+    "debug_artifact_id",
+    "artifact_id",
 )
 
 
@@ -114,6 +131,15 @@ def _redact_secret(match: re.Match[str]) -> str:
     return f"{match.group(0)[:-len(value)]}********"
 
 
+def _redact_json_secret(match: re.Match[str]) -> str:
+    value = match.group("value")
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        masked = f"{value[0]}********{value[-1]}"
+    else:
+        masked = "********"
+    return f"{match.group('prefix')}{masked}"
+
+
 def sanitize_failure_text(value: Any, limit: int = 800) -> str:
     """Return diagnostic text without transport or account credentials."""
     text = safe_log_message(value)
@@ -127,6 +153,7 @@ def sanitize_failure_text(value: Any, limit: int = 800) -> str:
 
     text = _FAILURE_INCIDENT_RE.sub(protect_incident, text)
     text = _FAILURE_URL_RE.sub(_redact_url, text)
+    text = _FAILURE_JSON_SECRET_RE.sub(_redact_json_secret, text)
     text = _FAILURE_SECRET_RE.sub(_redact_secret, text)
     text = _FAILURE_EMAIL_RE.sub("<邮箱>", text)
     text = _FAILURE_PHONE_RE.sub("<手机号>", text)
@@ -266,6 +293,12 @@ def exception_failure_context(error: BaseException) -> dict[str, Any]:
     transport_error_code = str(getattr(error, "transport_error_code", "") or "").strip()
     if transport_error_code in _TRANSPORT_ERROR_CODES:
         context["transport_error_code"] = transport_error_code
+    for key in ("debug_session_id", "debug_artifact_id", "artifact_id"):
+        candidate = str(getattr(error, key, "") or "").strip()
+        # Debug IDs are opaque local references. Reject paths, URLs and other
+        # free-form values before they can reach the public failure payload.
+        if candidate and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,119}", candidate):
+            context[key] = candidate
     return context
 
 
@@ -422,6 +455,10 @@ def canonical_failure(
     transport_error_code = str(value.get("transport_error_code") or "").strip()
     if transport_error_code in _TRANSPORT_ERROR_CODES:
         output["transport_error_code"] = transport_error_code
+    for key in ("debug_session_id", "debug_artifact_id", "artifact_id"):
+        candidate = str(value.get(key) or "").strip()
+        if candidate and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,119}", candidate):
+            output[key] = candidate
     return output
 
 
@@ -552,6 +589,37 @@ def failure_result_payload(
 class FreeFailureRuntimeMixin:
     """Persist one failure identity across task and mailbox result stores."""
 
+    def _save_task_state_safely(self, context: str = "Free 任务状态") -> bool:
+        """Persist task state without turning a storage outage into a new failure.
+
+        ``FreeRegisterManager`` supplies the richer diagnostic-aware helper.
+        The fallback keeps this mixin compatible with older integration hosts
+        that only expose ``task_store``.
+        """
+        saver = getattr(self, "_save_tasks_safely", None)
+        if callable(saver):
+            try:
+                return bool(saver(context))
+            except Exception:
+                return False
+        try:
+            self.task_store.save(self._tasks)
+            return True
+        except Exception as exc:
+            logger = getattr(self, "_log", None)
+            if callable(logger):
+                try:
+                    logger(
+                        f"[Free 任务状态/free_task_store] {context}保存失败（{type(exc).__name__}）",
+                        "warn",
+                        node_code="free_task_store",
+                        node_label="保存 Free 任务状态",
+                        outcome="storage_warning",
+                    )
+                except Exception:
+                    pass
+            return False
+
     def _persist_task_failure(
         self,
         task_id: str,
@@ -561,6 +629,7 @@ class FreeFailureRuntimeMixin:
         failure: Mapping[str, Any],
         result: Mapping[str, Any] | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
+        persist = False
         with self._lock:
             current = self._tasks.get(task_id, {})
             existing = current.get("failure") if isinstance(current.get("failure"), Mapping) else None
@@ -603,7 +672,9 @@ class FreeFailureRuntimeMixin:
                 })
                 if incident_id:
                     current["incident_id"] = incident_id
-                self.task_store.save(self._tasks)
+                persist = True
+        if persist:
+            self._save_task_state_safely("记录任务失败")
         row_id = str(context.get("row_id") or "")
         if row_id:
             self.pool.save_result(row_id, payload)

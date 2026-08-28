@@ -43,6 +43,7 @@ except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
 
 try:
     from .free_register_common import safe_log_message as _safe_free_message
+    from .free_failure_runtime import canonical_failure as _canonical_free_failure, exception_to_failure as _free_exception_to_failure
     from .free_config_routes import FreeControlRouteController
     from .free_pool_routes import (
         FreePoolRouteController,
@@ -51,6 +52,7 @@ try:
     )
 except ImportError:
     from free_register_common import safe_log_message as _safe_free_message  # type: ignore[no-redef]
+    from free_failure_runtime import canonical_failure as _canonical_free_failure, exception_to_failure as _free_exception_to_failure  # type: ignore[no-redef]
     from free_config_routes import FreeControlRouteController  # type: ignore[no-redef]
     from free_pool_routes import (  # type: ignore[no-redef]
         FreePoolRouteController,
@@ -529,21 +531,70 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         code = str(getattr(exc, "node_code", "") or default_code)
         label = str(getattr(exc, "node_label", "") or default_label)
         cause = _free_error_detail(exc, code)
-        payload = explicit_failure_payload(
+        failure = _free_exception_to_failure(
+            exc,
             node_code=code,
             node_label=label,
-            error_code=str(getattr(exc, "error_code", "") or code),
-            cause=cause,
-            retryable=bool(getattr(exc, "retryable", status >= 500)),
-            http_status=status,
-            state=current_state,
+            detail=cause,
         )
+        # The canonical failure carries the HTTP status exposed by this route.
+        # An explicitly reported upstream/provider status takes precedence;
+        # otherwise retain the local API status (for example, read failures
+        # are consistently represented as 503).
         provider_status = getattr(exc, "provider_status", None)
+        failure["http_status"] = provider_status if provider_status is not None else status
+        # ``exception_to_failure`` keeps generic runtime exceptions retryable
+        # for worker recovery.  Route validation errors have no explicit
+        # retry policy, however, so their HTTP status must determine the
+        # public retryable flag instead of inheriting that worker default.
+        if not hasattr(exc, "retryable"):
+            failure["retryable"] = status >= 500
+        failure = _canonical_free_failure(
+            failure,
+            default_node_code=code,
+            default_node_label=label,
+            default_retryable=status >= 500,
+        ) or failure
+        payload: dict[str, Any] = {
+            "ok": False,
+            "code": failure.get("error_code") or code,
+            "node_code": failure.get("node_code") or code,
+            "node_label": failure.get("node_label") or label,
+            "error_code": failure.get("error_code") or code,
+            "error": failure.get("public_message") or cause,
+            "failure": failure,
+            "state": current_state,
+        }
         if provider_status is not None:
             payload["provider_status"] = provider_status
+        incident_id = ""
+        if diagnostic_store is not None:
+            try:
+                incident_id = diagnostic_store.record({
+                    "level": "error",
+                    "outcome": "error",
+                    "chain": "free",
+                    "workflow": "route",
+                    "driver": "free",
+                    "node_code": failure.get("node_code") or code,
+                    "node_label": failure.get("node_label") or label,
+                    "message": failure.get("public_message") or cause,
+                    "failure": failure,
+                })
+            except Exception:
+                incident_id = ""
+        if incident_id:
+            payload["incident_id"] = incident_id
         try:
             if free_manager is not None and callable(getattr(free_manager, "_log", None)):
-                free_manager._log(f"[{label}/{code}] {payload['error']}", "error")
+                # The explicit write above owns this taskless incident. Keep
+                # the Free activity log visible without creating a second
+                # unrelated diagnostic for the same route exception.
+                free_manager._log(
+                    f"[{label}/{code}] {payload['error']}"
+                    + (f" incident_id={incident_id}" if incident_id else ""),
+                    "warn" if incident_id else "error",
+                )
         except Exception:
             pass
         return module.jsonify(payload), status
@@ -644,6 +695,46 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                 status=503,
             )
         return module.jsonify(ok=True, state=current_state, config=current_config)
+
+    def api_free_camoufox_debug_state():
+        if free_manager is None:
+            return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        try:
+            getter = getattr(free_manager, "camoufox_debug_state", None)
+            debug = getter() if callable(getter) else {}
+            return module.jsonify(ok=True, camoufox_debug=debug, state=free_state())
+        except Exception as exc:
+            return free_failure_response(
+                exc,
+                default_code="free_camoufox_debug_state",
+                default_label="读取 Camoufox 调试状态",
+                status=503,
+            )
+
+    def api_free_camoufox_debug_close():
+        if free_manager is None:
+            return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        try:
+            data = module.request.get_json(silent=True) or {}
+            if not isinstance(data, Mapping):
+                data = {}
+            close = getattr(free_manager, "close_camoufox_debug", None)
+            if not callable(close):
+                raise RuntimeError("Camoufox 调试关闭接口不可用")
+            result = close(str(data.get("session_id") or ""))
+            # The manager includes a freshly-read state for direct callers.
+            # Pop it before merging the route-level snapshot so a duplicate
+            # ``state`` keyword cannot turn a successful close into a 500.
+            payload = dict(result) if isinstance(result, Mapping) else {}
+            payload.pop("state", None)
+            return module.jsonify(ok=True, **payload, state=free_state())
+        except Exception as exc:
+            return free_failure_response(
+                exc,
+                default_code="free_camoufox_debug_close",
+                default_label="关闭 Camoufox 调试窗口",
+                status=400,
+            )
 
     def api_free_preflight():
         if free_manager is None or free_config_store is None:
@@ -1191,6 +1282,8 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/api/free/config", "api_free_config", free_control_routes.config, ["GET", "POST"]),
         ("/api/free/config/secret", "api_free_config_secret", free_control_routes.config_secret, ["POST"]),
         ("/api/free/state", "api_free_state", api_free_state, ["GET"]),
+        ("/api/free/camoufox/debug", "api_free_camoufox_debug_state", api_free_camoufox_debug_state, ["GET"]),
+        ("/api/free/camoufox/debug/close", "api_free_camoufox_debug_close", api_free_camoufox_debug_close, ["POST"]),
         ("/api/free/preflight", "api_free_preflight", api_free_preflight, ["POST"]),
         ("/api/free/start", "api_free_start", api_free_start, ["POST"]),
         ("/api/free/stop", "api_free_stop", api_free_stop, ["POST"]),

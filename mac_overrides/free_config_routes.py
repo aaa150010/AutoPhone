@@ -10,7 +10,6 @@ try:
 except ImportError:
     from free_pool_routes import import_free_proxies  # type: ignore[no-redef]
 
-
 def save_free_config_bundle(
     config_store: Any,
     manager: Any,

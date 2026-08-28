@@ -27,6 +27,7 @@ const emit = defineEmits<{
   testNotification: []
   querySmsBalances: []
   freeDirtyChange: [boolean]
+  navigate: [string]
 }>()
 const freeSettings = ref<InstanceType<typeof FreeRegisterSettingsSection>>()
 
@@ -132,7 +133,7 @@ watch(() => props.initialAnchor, (anchor) => {
           />
         </section>
         <section data-settings-anchor="free-register" class="settings-anchor">
-          <FreeRegisterSettingsSection ref="freeSettings" @dirty-change="value => emit('freeDirtyChange', value)" />
+          <FreeRegisterSettingsSection ref="freeSettings" @dirty-change="value => emit('freeDirtyChange', value)" @navigate="emit('navigate', $event)" />
         </section>
         <section data-settings-anchor="sms" class="settings-anchor">
           <SmsSettingsSection

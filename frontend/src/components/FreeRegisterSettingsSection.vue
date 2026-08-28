@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { CircleCheck, Connection, Refresh } from '@element-plus/icons-vue'
-import { getFreeConfig, getFreeProxies, getFreeRoxyWorkspaces, preflightFree, preflightFreeProxies, saveFreeConfig, type FreeConfig, type FreeState, type FreeProxyRow } from '../api/client'
+import { CircleCheck, Connection, CopyDocument, Refresh, View } from '@element-plus/icons-vue'
+import { getFreeConfig, getFreeProxies, getFreeRoxyWorkspaces, preflightFree, preflightFreeProxies, saveFreeConfig, type FreeConfig, type FreeState, type FreeProxyPreflightRow, type FreeProxyRow } from '../api/client'
+import type { TaskFailure } from '../types/api'
 import FieldHelpLabel from './FieldHelpLabel.vue'
 
-const emit = defineEmits<{ dirtyChange: [boolean] }>()
+const emit = defineEmits<{ dirtyChange: [boolean]; navigate: [string] }>()
 
 const defaultConfig: FreeConfig = {
   driver: 'protocol', flow_profile: 'reference_20260823', proxy_allocation_mode: 'healthy_random', target_count: 1, concurrency: 3, email_code_timeout: 90, auto_set_2fa: true,
@@ -24,7 +25,7 @@ const defaultConfig: FreeConfig = {
     humanize_browser_actions: true, existing_account_login: true, post_registration_dwell_min: 18, post_registration_dwell_max: 45,
   },
   camoufox: {
-    headless: true, pool_size: 2, max_contexts_per_browser: 3, context_start_interval_ms: 175,
+    debug_mode: true, headless: true, pool_size: 2, max_contexts_per_browser: 3, context_start_interval_ms: 175,
     startup_concurrency: 4, block_images: true, registration_timeout_seconds: 600,
     context_close_timeout_seconds: 15, browser_recycle_timeout_seconds: 45,
     browser_recycle_drain_timeout_seconds: 20, max_registrations_per_browser: 12,
@@ -38,13 +39,16 @@ const proxyText = ref('')
 const proxyScheme = ref(defaultConfig.proxy_default_scheme)
 const proxySourceLabel = ref('')
 const layeredProbe = ref(false)
-const proxyCheckRows = ref<Array<{ index: number; masked: string; fingerprint: string; scheme?: string; available?: boolean; http_status?: number | null; local_to_proxy_ms?: number | null; proxy_to_target_ms?: number | null; failure_node?: string; failure_reason?: string }>>([])
+const proxyCheckRows = ref<FreeProxyPreflightRow[]>([])
+const proxyCheckIncidentId = ref('')
+const proxyCheckFailure = ref<TaskFailure | null>(null)
 const proxyRows = ref<FreeProxyRow[]>([])
 const workspaces = ref<Array<{ workspace_id: string; workspace_name: string; project_id: string; project_name: string; label: string }>>([])
 const busy = ref<'load' | 'save' | 'preflight' | 'proxy-preflight' | 'workspace' | ''>('')
 const loaded = ref(false)
 const savedSignature = ref('')
 const running = computed(() => Boolean(state.value.running))
+const camoufoxEffectiveHeadless = computed(() => Boolean(config.camoufox.debug_mode) ? false : Boolean(config.camoufox.headless))
 const pendingRoxyCleanup = computed(() => Math.max(0, Number(state.value.roxy_cleanup?.pending || 0)))
 const roxy = computed(() => config.roxybrowser)
 const savedProxyAvailable = computed(() => proxyRows.value.filter(row => row.status === 'available').length)
@@ -62,6 +66,12 @@ function mergeConfig(value: any) {
   config.proxy_allocation_mode = 'healthy_random'
   config.target_count = Math.min(200, Math.max(1, Number(config.target_count) || 1))
   config.concurrency = Math.min(16, Math.max(1, Number(config.concurrency) || 1))
+}
+
+function updateCamoufoxHeadless(value: boolean) {
+  // Keep the user's preference in the persisted config. Debug mode exposes a
+  // headed browser regardless of that preference and the control is disabled.
+  if (!config.camoufox.debug_mode) config.camoufox.headless = Boolean(value)
 }
 
 const proxyStatusLabel = (status: string) => ({ unknown: '未检测', available: '可用', quarantined: '已隔离' }[status] || status || '-')
@@ -154,6 +164,8 @@ async function preflightProxyPool() {
   try {
     const result = await preflightFreeProxies(proxyText.value, config.proxy_probe_url, { driver: config.driver, scheme: proxyScheme.value, proxy_socks5_dns_mode: config.proxy_socks5_dns_mode, proxy_tls_verify: config.proxy_tls_verify, proxy_tls_compat_fallback: config.proxy_tls_compat_fallback, layered_probe: layeredProbe.value })
     proxyCheckRows.value = result.result?.rows || []
+    proxyCheckIncidentId.value = String(result.result?.incident_id || result.incident_id || '').trim()
+    proxyCheckFailure.value = result.result?.failure || result.failure || null
     const checkedRows = proxyCheckRows.value
     const available = checkedRows.filter(row => row.available).length
     const failed = checkedRows.length - available
@@ -162,9 +174,32 @@ async function preflightProxyPool() {
     else ElMessage.success(`代理连通性检测通过：${available} 个`)
   } catch (error: any) {
     proxyCheckRows.value = []
+    const payload = error?.payload && typeof error.payload === 'object' ? error.payload : {}
+    proxyCheckIncidentId.value = String(payload.incident_id || '').trim()
+    proxyCheckFailure.value = payload.failure && typeof payload.failure === 'object' ? payload.failure : null
     ElMessage.error(error?.message || 'Free 代理连通性检测失败')
   } finally {
     busy.value = ''
+  }
+}
+
+async function copyProxyCheckIncident() {
+  if (!proxyCheckIncidentId.value) return
+  if (!navigator.clipboard?.writeText) {
+    ElMessage.warning('当前环境不支持复制')
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(proxyCheckIncidentId.value)
+    ElMessage.success('日志 ID 已复制')
+  } catch {
+    ElMessage.error('日志 ID 复制失败')
+  }
+}
+
+function openProxyCheckIncident() {
+  if (proxyCheckIncidentId.value) {
+    emit('navigate', `/logs?incident_id=${encodeURIComponent(proxyCheckIncidentId.value)}`)
   }
 }
 
@@ -298,7 +333,8 @@ defineExpose({ save })
     <div v-if="config.driver === 'camoufox'" class="subsection">
       <h3>Camoufox 浏览器池</h3>
       <el-row :gutter="10">
-        <el-col :span="6"><el-form-item label="模式"><el-switch v-model="config.camoufox.headless" active-text="无头" inactive-text="有头" :disabled="running" /></el-form-item></el-col>
+        <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="失败后保留窗口" help="默认开启调试模式：普通业务失败和 Cloudflare/Turnstile 挑战会保留当前窗口，并生成脱敏截图、DOM 和事件摘要；成功、超时、取消及浏览器进程断开会正常回收。" /></template><el-switch v-model="config.camoufox.debug_mode" active-text="开启" inactive-text="关闭" :disabled="running" /></el-form-item></el-col>
+        <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="窗口模式" help="调试模式开启时必须使用有头模式才能查看失败页面；关闭调试模式后才可切换无头或有头。" /></template><el-switch :model-value="camoufoxEffectiveHeadless" active-text="无头" inactive-text="有头" :disabled="running || Boolean(config.camoufox.debug_mode)" @update:model-value="updateCamoufoxHeadless" /><small v-if="config.camoufox.debug_mode" class="field-note">调试模式实际运行：有头（关闭调试后恢复已保存偏好）</small></el-form-item></el-col>
         <el-col :span="6"><el-form-item label="浏览器进程"><el-input-number v-model="config.camoufox.pool_size" :min="1" :max="16" controls-position="right" :disabled="running" /></el-form-item></el-col>
         <el-col :span="6"><el-form-item label="每进程 context"><el-input-number v-model="config.camoufox.max_contexts_per_browser" :min="1" :max="32" controls-position="right" :disabled="running" /></el-form-item></el-col>
         <el-col :span="6"><el-form-item label="注册超时"><el-input-number v-model="config.camoufox.registration_timeout_seconds" :min="60" :max="3600" controls-position="right" :disabled="running" /></el-form-item></el-col>
@@ -309,7 +345,7 @@ defineExpose({ save })
         <el-col :span="8"><el-form-item label="单进程最大注册数"><el-input-number v-model="config.camoufox.max_registrations_per_browser" :min="1" :max="1000" controls-position="right" :disabled="running" /></el-form-item></el-col>
       </el-row>
       <div class="check-row"><el-checkbox v-model="config.camoufox.block_images" :disabled="running">无头模式阻止图片加载</el-checkbox><el-checkbox v-model="config.camoufox.existing_account_login" :disabled="running">允许已有账号邮箱验证码登录</el-checkbox></div>
-      <p class="section-hint">Camoufox 是可选依赖；未安装时预检会明确提示，不影响全协议和 RoxyBrowser。</p>
+      <p class="section-hint">Camoufox 是可选依赖；未安装时预检会明确提示，不影响全协议和 RoxyBrowser。调试窗口会占用现有 context 容量，完成排查后请在 Free 注册页手动关闭。</p>
     </div>
 
     <div v-if="config.driver === 'roxybrowser'" class="subsection">
@@ -354,7 +390,12 @@ defineExpose({ save })
       </div>
       <el-input v-model="proxyText" type="textarea" :rows="5" :disabled="running" placeholder="每行一个代理，支持 URL、host:port:user:pass 和两种 @ 格式" autocomplete="off" />
       <div class="inline-actions"><el-button size="small" :icon="CircleCheck" :loading="busy === 'proxy-preflight'" :disabled="running || (!proxyText.trim() && !proxyRows.length)" @click="preflightProxyPool">{{ proxyText.trim() ? '检测代理连通性' : '复检已保存代理' }}</el-button><el-checkbox v-model="layeredProbe" :disabled="running">分层诊断</el-checkbox><span class="muted">留空时复检已保存代理，成功会解除隔离；分层诊断会额外记录 TCP、HTTPS 和 ChatGPT 登录页耗时，不保存响应正文。</span></div>
-      <template v-if="proxyCheckRows.length"><div class="proxy-table-heading"><FieldHelpLabel label="本次检测结果" help="仅展示声明协议、脱敏地址、响应状态和耗时；检测不解析、保存或比较出口 IP。" /></div><el-table :data="proxyCheckRows" size="small" height="180" class="proxy-check-table"><el-table-column type="index" label="序号" width="58" align="center" fixed="left" /><el-table-column prop="masked" label="代理掩码" min-width="220" /><el-table-column prop="scheme" label="协议" width="85" /><el-table-column label="状态" width="75"><template #default="{ row }"><el-tag size="small" :type="row.available ? 'success' : 'danger'">{{ row.available ? '可用' : '失败' }}</el-tag></template></el-table-column><el-table-column prop="http_status" label="HTTP" width="70" /><el-table-column label="耗时" width="170"><template #default="{ row }"><span v-if="row.layered_probe">TCP {{ row.layered_probe.tcp_connect_ms ?? '-' }} ms · HTTPS {{ row.layered_probe.https_request_ms ?? '-' }} ms · 登录 {{ row.layered_probe.chatgpt_request_ms ?? '-' }} ms</span><span v-else>{{ row.proxy_to_target_ms != null ? `${row.proxy_to_target_ms} ms` : '-' }}</span></template></el-table-column><el-table-column prop="failure_node" label="故障节点" min-width="150" /><el-table-column prop="fingerprint" label="指纹" min-width="120" /></el-table></template>
+      <div v-if="proxyCheckIncidentId" class="proxy-check-incident">
+        <div><span>本次检测故障日志</span><code>{{ proxyCheckIncidentId }}</code><small>{{ proxyCheckFailure?.public_message || '部分代理检测失败，详细证据已写入日志中心。' }}</small></div>
+        <el-button text size="small" :icon="CopyDocument" @click="copyProxyCheckIncident">复制日志 ID</el-button>
+        <el-button text size="small" :icon="View" @click="openProxyCheckIncident">查看详情</el-button>
+      </div>
+      <template v-if="proxyCheckRows.length"><div class="proxy-table-heading"><FieldHelpLabel label="本次检测结果" help="仅展示声明协议、脱敏地址、响应状态和耗时；检测不解析、保存或比较出口 IP。" /></div><el-table :data="proxyCheckRows" size="small" height="180" class="proxy-check-table"><el-table-column type="index" label="序号" width="58" align="center" fixed="left" /><el-table-column prop="masked" label="代理掩码" min-width="220" /><el-table-column prop="scheme" label="协议" width="85" /><el-table-column label="状态" width="75"><template #default="{ row }"><el-tag size="small" :type="row.available ? 'success' : 'danger'">{{ row.available ? '可用' : '失败' }}</el-tag></template></el-table-column><el-table-column prop="http_status" label="HTTP" width="70" /><el-table-column label="耗时" width="170"><template #default="{ row }"><span v-if="row.layered_probe">TCP {{ row.layered_probe.tcp_connect_ms ?? '-' }} ms · HTTPS {{ row.layered_probe.https_request_ms ?? '-' }} ms · 登录 {{ row.layered_probe.chatgpt_request_ms ?? '-' }} ms</span><span v-else>{{ row.proxy_to_target_ms != null ? `${row.proxy_to_target_ms} ms` : '-' }}</span></template></el-table-column><el-table-column label="故障节点" min-width="170"><template #default="{ row }"><span>{{ row.failure?.node_label || row.failure_node || '-' }}</span><small v-if="row.failure?.error_code" class="table-subline">{{ row.failure.error_code }}</small></template></el-table-column><el-table-column prop="fingerprint" label="指纹" min-width="120" /></el-table></template>
       <template v-if="proxyRows.length"><div class="proxy-table-heading"><FieldHelpLabel label="代理明细" help="已保存共享 Free 代理池的逐条记录。用于查看来源、声明/有效协议、健康状态、成功率和延迟；认证信息始终隐藏。" /></div><el-table :data="proxyRows" size="small" height="180" class="proxy-check-table"><el-table-column type="index" label="序号" width="58" align="center" fixed="left" /><el-table-column prop="source_label" label="来源" width="100" show-overflow-tooltip /><el-table-column label="协议" width="125"><template #default="{ row }">{{ row.declared_scheme || row.scheme || '-' }}<small class="table-subline">有效 {{ row.effective_scheme || row.scheme || '-' }}</small></template></el-table-column><el-table-column prop="masked" label="代理" min-width="210" show-overflow-tooltip /><el-table-column width="85"><template #header><FieldHelpLabel label="状态" help="未检测表示尚无成功探测；可用表示最近探测成功；已隔离表示连续失败达到阈值，隔离期内不会分配。" /></template><template #default="{ row }">{{ proxyStatusLabel(row.status) }}</template></el-table-column><el-table-column label="成功率" width="90"><template #default="{ row }">{{ row.probe_success_rate == null ? '-' : `${(Number(row.probe_success_rate) * 100).toFixed(1)}%` }}</template></el-table-column><el-table-column label="p50 / p95" width="105"><template #default="{ row }">{{ row.p50_latency_ms == null ? '-' : `${row.p50_latency_ms} / ${row.p95_latency_ms ?? '-'} ms` }}</template></el-table-column><el-table-column prop="last_probe_mode" label="探测模式" width="90"><template #default="{ row }">{{ row.last_probe_mode === 'compat' ? '兼容重试' : row.last_probe_mode === 'strict' ? '严格校验' : '-' }}</template></el-table-column><el-table-column prop="consecutive_failures" label="连续失败" width="85" /></el-table></template>
     </div>
 
@@ -388,6 +429,11 @@ defineExpose({ save })
 .proxy-import-meta { display: grid; grid-template-columns: 180px minmax(180px, 1fr) minmax(180px, 1fr); gap: 8px; margin-bottom: 8px; }
 .proxy-import-field { display: grid; gap: 5px; min-width: 0; }
 .proxy-table-heading { display: flex; align-items: center; margin: 12px 0 -2px; color: var(--el-text-color-regular); font-size: 12px; font-weight: 650; }
+.proxy-check-incident { display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: 8px; padding: 7px 0; border-top: 1px solid var(--el-color-danger-light-7); border-bottom: 1px solid var(--el-color-danger-light-7); }
+.proxy-check-incident > div { display: grid; grid-template-columns: auto auto; align-items: baseline; gap: 2px 8px; min-width: 0; margin-right: auto; overflow: hidden; }
+.proxy-check-incident span { color: var(--el-color-danger); font-size: 12px; font-weight: 650; }
+.proxy-check-incident code { color: var(--el-text-color-primary); font-size: 12px; }
+.proxy-check-incident small { grid-column: 1 / -1; min-width: 0; overflow: hidden; color: var(--el-text-color-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .table-subline { display: block; color: var(--el-text-color-secondary); font-size: 10px; line-height: 14px; }
 .free-settings-section :deep(.el-input-number), .free-settings-section :deep(.el-select) { width: 100%; }
 .free-settings-section :deep(.free-scale-number) { width: 132px; max-width: 100%; }
