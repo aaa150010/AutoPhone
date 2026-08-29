@@ -2184,6 +2184,19 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             previous_batch_id = self._batch_id
             previous_last_config = copy.deepcopy(self._last_config)
             try:
+                # Retry tasks may be created without passing through
+                # ``start``/``preflight``.  Apply the same transport policy
+                # before binding so a production ``remote`` SOCKS5 DNS mode
+                # is not accidentally downgraded to local resolution.
+                self.proxies.configure_policy(
+                    failure_threshold=int(config.get("proxy_failure_threshold") or 2),
+                    quarantine_seconds=int(config.get("proxy_quarantine_seconds") or 600),
+                    health_probe_ttl_seconds=int(config["proxy_health_probe_ttl_seconds"]) if "proxy_health_probe_ttl_seconds" in config else 0,
+                    tls_verify=bool(config.get("proxy_tls_verify", True)),
+                    tls_compat_fallback=bool(config.get("proxy_tls_compat_fallback", True)),
+                    socks5_dns_mode=str(config.get("proxy_socks5_dns_mode") or "remote"),
+                    allocation_mode="healthy_random",
+                )
                 bindings = self.proxies.bind(
                     1,
                     content=proxy_content,

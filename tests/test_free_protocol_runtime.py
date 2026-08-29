@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import threading
 from types import ModuleType, SimpleNamespace
+from urllib.parse import parse_qs, urlsplit
 import unittest
 from unittest.mock import patch
 
@@ -750,8 +751,17 @@ class FreeProtocolRuntimeTests(unittest.TestCase):
         self.assertEqual(transport.post_auth_calls[0][1], {"code": "123456"})
         self.assertEqual(transport.session.events[0][0:2], ("get", "https://chatgpt.com/api/auth/csrf"))
         self.assertIn("reauth=password", transport.session.events[1][1])
+        signin_query = parse_qs(urlsplit(transport.session.events[1][1]).query)
+        self.assertEqual(signin_query["ext-oai-did"], ["device"])
         self.assertEqual(transport.session.events[2][1], "https://auth.openai.com/authorize/private")
         self.assertEqual(transport.session.events[3][1], "https://auth.openai.com/callback/private")
+        for event in transport.session.events[2:4]:
+            navigation_headers = event[2]["headers"]
+            self.assertEqual(navigation_headers["sec-fetch-mode"], "navigate")
+            self.assertEqual(navigation_headers["sec-fetch-dest"], "document")
+            self.assertIn("text/html", navigation_headers["accept"])
+            self.assertNotIn("origin", {str(key).casefold() for key in navigation_headers})
+            self.assertNotIn("authorization", {str(key).casefold() for key in navigation_headers})
         self.assertEqual(transport.session.events[-2][2]["headers"]["authorization"], "Bearer fresh-session-token")
 
     def test_twofa_retry_clears_stale_failure_without_inventing_password(self):

@@ -30,6 +30,7 @@ try:
         network_preflight as _network_preflight,
         prepare_reference_bootstrap as _prepare_reference_bootstrap,
         prepare_reference_session as _prepare_reference_session,
+        _reference_navigation_headers,
     )
     from .free_protocol_flow import run_free_protocol_flow
     from .free_protocol_reference import (
@@ -63,6 +64,7 @@ except ImportError:
         network_preflight as _network_preflight,
         prepare_reference_bootstrap as _prepare_reference_bootstrap,
         prepare_reference_session as _prepare_reference_session,
+        _reference_navigation_headers,
     )
     from free_protocol_flow import run_free_protocol_flow  # type: ignore[no-redef]
     from free_protocol_reference import (  # type: ignore[no-redef]
@@ -984,7 +986,13 @@ class FreeProtocolMixin:
                 chatgpt_origin = "https://chatgpt.com"
                 auth_origin = "https://auth.openai.com"
 
-                def _reauth_headers(referer: str, *, form: bool = False) -> dict[str, str]:
+                def _reauth_headers(
+                    referer: str,
+                    *,
+                    form: bool = False,
+                    navigate: bool = False,
+                    url: str = "",
+                ) -> dict[str, str]:
                     headers: dict[str, str] = {}
                     maker = getattr(transport, "_headers", None)
                     if callable(maker):
@@ -994,6 +1002,23 @@ class FreeProtocolMixin:
                                 headers.update({str(k): str(v) for k, v in candidate.items()})
                         except Exception:
                             pass
+                    if navigate:
+                        # Auth authorize/callback GETs are top-level document
+                        # navigations.  Sending the JSON/CORS envelope here
+                        # can leave NextAuth in an incomplete re-auth state,
+                        # so mirror AutoRegister's browser navigation headers.
+                        headers = _reference_navigation_headers(
+                            transport,
+                            url or referer,
+                            referer,
+                            headers,
+                        )
+                        # A document navigation does not carry the API
+                        # origin/body headers (and must never forward a Bearer
+                        # token to auth.openai.com).
+                        for key in ("origin", "content-type", "authorization"):
+                            headers.pop(key, None)
+                        return headers
                     headers.update({
                         "accept": "application/json",
                         "origin": chatgpt_origin,
@@ -1029,6 +1054,7 @@ class FreeProtocolMixin:
                     "login_hint": str(task.get("email") or ""),
                     "reauth": "password",
                     "max_age": "0",
+                    "ext-oai-did": str(getattr(transport, "device_id", "") or ""),
                 })
                 signin_body = urlencode({
                     "callbackUrl": f"{chatgpt_origin}/?action=enable&factor=totp",
@@ -1059,7 +1085,11 @@ class FreeProtocolMixin:
                 try:
                     session.get(
                         auth_url,
-                        headers=_reauth_headers(f"{chatgpt_origin}/"),
+                        headers=_reauth_headers(
+                            f"{chatgpt_origin}/",
+                            navigate=True,
+                            url=auth_url,
+                        ),
                         allow_redirects=True,
                         timeout=45,
                     )
@@ -1095,7 +1125,11 @@ class FreeProtocolMixin:
                     try:
                         session.get(
                             continue_url,
-                            headers=_reauth_headers(f"{auth_origin}/email-verification"),
+                            headers=_reauth_headers(
+                                f"{auth_origin}/email-verification",
+                                navigate=True,
+                                url=continue_url,
+                            ),
                             allow_redirects=True,
                             timeout=45,
                         )

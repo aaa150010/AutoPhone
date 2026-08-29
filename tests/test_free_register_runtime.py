@@ -1888,6 +1888,51 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             time.sleep(0.01)
         self.assertEqual(manager.public_tasks()[0]["driver"], "protocol")
 
+    def test_twofa_retry_applies_remote_socks5_dns_policy_before_binding(self):
+        pool = FreeMailboxPool(self.data_dir)
+        pool.import_text("a@example.test----https://mail.example.test/a\n")
+        row_id = pool.entries()[0].row_id
+        pool.update(row_id, status="twofa_pending")
+        pool.save_result(row_id, {"access_token": "token-private", "twofa_status": "pending"})
+        proxies = FreeProxyPool(self.data_dir)
+        proxies.import_text("socks5://user:pass@proxy-a.test:8000\n")
+        probed = []
+
+        def probe(proxy, _url):
+            probed.append(proxy)
+            return "203.0.113.22"
+
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=lambda _task, _config, _stop, _stage, _log, **_kwargs: {
+                "access_token": "token-private", "twofa_status": "enabled",
+            },
+            proxy_probe=probe,
+        )
+        manager._tasks = {
+            "camoufox-pending": {
+                "task_id": "camoufox-pending",
+                "row_id": row_id,
+                "email": "a@example.test",
+                "driver": "camoufox",
+                "status": "twofa_pending",
+                "result": {"access_token": "token-private", "twofa_status": "pending"},
+            },
+        }
+        config = {
+            "driver": "camoufox",
+            "proxy_socks5_dns_mode": "remote",
+            "proxy_health_probe_ttl_seconds": 300,
+            "proxy_tls_verify": True,
+            "proxy_tls_compat_fallback": True,
+        }
+        manager.retry_twofa("camoufox-pending", config)
+        deadline = time.time() + 3
+        while manager.public_state()["running"] and time.time() < deadline:
+            time.sleep(0.01)
+        self.assertTrue(probed)
+        self.assertTrue(probed[0].startswith("socks5h://"))
+
     def test_twofa_result_failure_is_persisted_as_structured_task_failure(self):
         pool = FreeMailboxPool(self.data_dir)
         pool.import_text("a@example.test----https://mail.example.test/a\n")
