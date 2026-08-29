@@ -13,7 +13,11 @@ import time
 from typing import Any, Callable, Mapping, Sequence
 
 try:
-    from .free_failure_runtime import canonical_failure, sanitize_failure_text
+    from .free_failure_runtime import (
+        canonical_failure,
+        merge_account_result_fields,
+        sanitize_failure_text,
+    )
     from .free_register_common import (
         DEFAULT_FREE_PROXY_SCHEME,
         FREE_PROXY_SCHEMES,
@@ -32,6 +36,7 @@ try:
 except ImportError:
     from free_failure_runtime import (  # type: ignore[no-redef]
         canonical_failure,
+        merge_account_result_fields,
         sanitize_failure_text,
     )
     from free_register_common import (  # type: ignore[no-redef]
@@ -271,7 +276,20 @@ class FreeMailboxPool:
 
     def save_result(self, row_id: str, result: Mapping[str, Any]) -> None:
         with self._lock:
-            payload = copy.deepcopy(dict(result))
+            # A registration failure can arrive after a previous attempt has
+            # already produced an account/token.  Keep the latest status and
+            # diagnostic fields, but fill missing credential fields from the
+            # durable record so a late failure cannot erase the account.
+            try:
+                existing = json.loads(
+                    (self.results_dir / f"{fingerprint(row_id)}.json").read_text(encoding="utf-8")
+                )
+            except (FileNotFoundError, OSError, UnicodeError, json.JSONDecodeError):
+                existing = {}
+            payload = merge_account_result_fields(
+                existing if isinstance(existing, Mapping) else {},
+                result,
+            )
             for key in ("failure", "plan_failure", "twofa_failure", "live_check_failure"):
                 if key in payload:
                     normalized = canonical_failure(payload.get(key) if isinstance(payload.get(key), Mapping) else None)
@@ -282,13 +300,22 @@ class FreeMailboxPool:
             atomic_write(self.results_dir / f"{fingerprint(row_id)}.json", payload)
 
     def result(self, row_id: str) -> dict[str, Any]:
+        payload, readable = self.result_with_status(row_id)
+        return payload if readable else {}
+
+    def result_with_status(self, row_id: str) -> tuple[dict[str, Any], bool]:
+        """Read one private result and distinguish absence from corruption."""
         try:
             current = json.loads(
                 (self.results_dir / f"{fingerprint(row_id)}.json").read_text(encoding="utf-8")
             )
-        except (FileNotFoundError, OSError, UnicodeError, json.JSONDecodeError):
-            return {}
-        return dict(current) if isinstance(current, dict) else {}
+        except FileNotFoundError:
+            return {}, True
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return {}, False
+        if not isinstance(current, dict):
+            return {}, False
+        return dict(current), True
 
     def reveal_mailbox_url(self, row_id: str) -> str:
         row = self.entry(row_id)
@@ -875,4 +902,9 @@ class FreeTaskStore:
 # structured Free-only resource store.
 FreeProxyPool = StructuredFreeProxyPool
 
-__all__ = ["FreeMailboxPool", "FreeProxyPool", "FreeTaskStore"]
+__all__ = [
+    "FreeMailboxPool",
+    "FreeProxyPool",
+    "FreeTaskStore",
+    "merge_account_result_fields",
+]

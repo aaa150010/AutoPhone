@@ -18,6 +18,66 @@ except ImportError:
     )
 
 
+# Only these private fields carry evidence that a Free account/session was
+# already created.  Mutable status and diagnostic fields intentionally stay
+# under the authority of the latest task attempt.
+PRIVATE_ACCOUNT_RESULT_KEYS = frozenset({
+    "access_token",
+    "accessToken",
+    "refresh_token",
+    "refreshToken",
+    "id_token",
+    "idToken",
+    "token",
+    "session_token",
+    "account_id",
+    "user_id",
+    "password",
+    "totp_secret",
+    "totp",
+    "credential_line",
+})
+
+
+def _result_value_present(value: Any) -> bool:
+    """Return whether a private result field contains usable data."""
+    if value is None or value is False:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (bytes, bytearray)):
+        return bool(value)
+    if isinstance(value, (Mapping, list, tuple, set)):
+        return bool(value)
+    return True
+
+
+def has_account_result(result: Mapping[str, Any] | None) -> bool:
+    """Identify a result that already contains account/session credentials."""
+    if not isinstance(result, Mapping):
+        return False
+    return any(
+        _result_value_present(result.get(key))
+        for key in PRIVATE_ACCOUNT_RESULT_KEYS
+    )
+
+
+def merge_account_result_fields(
+    existing: Mapping[str, Any] | None,
+    incoming: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Fill missing private account fields without changing current outcome."""
+    merged = copy.deepcopy(dict(incoming))
+    if not isinstance(existing, Mapping):
+        return merged
+    for key in PRIVATE_ACCOUNT_RESULT_KEYS:
+        if _result_value_present(merged.get(key)):
+            continue
+        if _result_value_present(existing.get(key)):
+            merged[key] = copy.deepcopy(existing[key])
+    return merged
+
+
 _FAILURE_URL_RE = re.compile(
     r"(?i)\b(?:https?|socks4|socks5h?|wss?)://[^\s\"'<>]+"
 )
@@ -630,6 +690,18 @@ class FreeFailureRuntimeMixin:
         result: Mapping[str, Any] | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         persist = False
+        # Read the durable result before taking the manager lock.  Other
+        # maintenance paths may briefly hold the mailbox-store lock before
+        # publishing a task update; keeping this order avoids a lock cycle.
+        durable_result: Mapping[str, Any] = {}
+        initial_row_id = str((task or {}).get("row_id") or "").strip()
+        if initial_row_id:
+            try:
+                stored = self.pool.result(initial_row_id)
+                if isinstance(stored, Mapping):
+                    durable_result = stored
+            except Exception:
+                durable_result = {}
         with self._lock:
             current = self._tasks.get(task_id, {})
             existing = current.get("failure") if isinstance(current.get("failure"), Mapping) else None
@@ -639,6 +711,13 @@ class FreeFailureRuntimeMixin:
             context = dict(task or current)
             context.update({key: value for key, value in current.items() if key not in context})
             payload = failure_result_payload(context, status=status, failure=normalized, result=result)
+            # Keep private account evidence in the task snapshot as well as
+            # the mailbox result file.  This matters after restart, when the
+            # task store may be the only source available to the rerun guard.
+            task_result = current.get("result") if isinstance(current.get("result"), Mapping) else {}
+            row_id = str(context.get("row_id") or "").strip()
+            prior_result = merge_account_result_fields(task_result, durable_result)
+            payload = merge_account_result_fields(prior_result, payload)
             incident_id = ""
             diagnostic_store = getattr(getattr(self, "log_store", None), "diagnostic_store", None)
             if diagnostic_store is not None:

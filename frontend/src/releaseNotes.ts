@@ -13,11 +13,15 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.86',
-  freeRuntimeVersion: '1.6.86',
-  title: 'Camoufox 调试现场与注册故障诊断',
-  releasedAt: '2026-08-28',
+  version: '1.6.87',
+  freeRuntimeVersion: '1.6.87',
+  title: 'Free 账号结果保护与重复注册拦截',
+  releasedAt: '2026-08-29',
   sections: [
+    {
+      title: 'Free 账号结果保护与重复注册拦截',
+      usage: '注册流程发生后续失败时不会清除已经保存的账号凭据；服务重启会从历史任务补回缺失的私有结果。启动或重跑前会检查结果文件和历史任务，已确认创建过账号的邮箱不会再次提交整条 signup；结果文件损坏时会先停止并给出可引用的诊断，避免误注册。',
+    },
     {
       title: 'Camoufox 调试现场与注册故障诊断',
       usage: 'Camoufox 调试模式默认开启，注册遇到普通业务失败或 Cloudflare/Turnstile 挑战时保留当前有头窗口，并保存脱敏 DOM、截图和有限事件摘要；成功、超时、取消及浏览器进程断开仍会自动回收。Free 注册页可查看调试窗口、现场 ID 和日志 ID，并按会话关闭窗口。现场资料不保存输入值、验证码、Cookie、授权头、响应正文或代理凭据。',

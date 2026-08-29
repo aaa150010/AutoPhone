@@ -15,9 +15,12 @@ from urllib.parse import urlsplit
 try:
     from .free_failure_runtime import (
         FreeFailureRuntimeMixin,
+        PRIVATE_ACCOUNT_RESULT_KEYS,
         canonical_failure,
         completed_result_state,
         exception_to_failure,
+        has_account_result,
+        merge_account_result_fields,
         sanitize_failure_text,
         sanitize_log_message,
         sanitize_proxy_attempts,
@@ -61,9 +64,12 @@ try:
 except ImportError:
     from free_failure_runtime import (  # type: ignore[no-redef]
         FreeFailureRuntimeMixin,
+        PRIVATE_ACCOUNT_RESULT_KEYS,
         canonical_failure,
         completed_result_state,
         exception_to_failure,
+        has_account_result,
+        merge_account_result_fields,
         sanitize_failure_text,
         sanitize_log_message,
         sanitize_proxy_attempts,
@@ -158,6 +164,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         self.roxy_cleanup_store = RoxyCleanupStore(self.data_dir / "roxy_cleanup.json")
         self._heartbeat_stop = threading.Event()
         self._heartbeat_thread: threading.Thread | None = None
+        self._reconcile_account_results_from_history()
         self._recover_interrupted_tasks()
         for existing_id, existing_task in self._tasks.items():
             if str(existing_task.get("status") or "") in {"queued", "running"} and existing_task.get("retry_key"):
@@ -186,6 +193,86 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             if isinstance(value, Mapping):
                 return value
         return self._last_config
+
+    def _reconcile_account_results_from_history(self) -> int:
+        """Restore missing private result fields from immutable task history.
+
+        Older runtimes could replace a successful result with a later failure
+        envelope.  Task snapshots still contain the account evidence, so fill
+        only missing private fields in the durable row.  Status and diagnostic
+        fields remain owned by the latest result and are never rewritten here.
+        """
+        grouped: dict[str, list[tuple[float, int, Mapping[str, Any]]]] = {}
+        for index, task in enumerate(self._tasks.values()):
+            if not isinstance(task, Mapping):
+                continue
+            row_id = str(task.get("row_id") or "").strip()
+            if not row_id:
+                continue
+            candidates: list[Mapping[str, Any]] = []
+            result = task.get("result")
+            if isinstance(result, Mapping):
+                candidates.append(result)
+            # A few pre-1.6 snapshots stored result fields at task level.
+            candidates.append(task)
+            for candidate in candidates:
+                if not has_account_result(candidate):
+                    continue
+                try:
+                    order = float(candidate.get("updated_at") or task.get("updated_at") or task.get("created_at") or 0)
+                except (TypeError, ValueError):
+                    order = 0.0
+                grouped.setdefault(row_id, []).append((order, index, candidate))
+
+        repaired_count = 0
+        for row_id, candidates in grouped.items():
+            reader = getattr(self.pool, "result_with_status", None)
+            if callable(reader):
+                try:
+                    durable, readable = reader(row_id)
+                except Exception:
+                    readable = False
+                    durable = {}
+                if not readable:
+                    self._log(
+                        "Free 账号结果历史回填跳过：结果文件暂时无法读取",
+                        "warn",
+                        node_code="free_result_store",
+                        node_label="读取 Free 账号结果",
+                        outcome="storage_warning",
+                    )
+                    continue
+            else:
+                try:
+                    durable = self.pool.result(row_id)
+                except Exception:
+                    continue
+            if not isinstance(durable, Mapping):
+                durable = {}
+            history_fields: dict[str, Any] = {}
+            for _order, _index, candidate in sorted(candidates, key=lambda item: (item[0], item[1])):
+                for key in PRIVATE_ACCOUNT_RESULT_KEYS:
+                    value = candidate.get(key)
+                    if value is None or value is False or (isinstance(value, str) and not value.strip()):
+                        continue
+                    history_fields[key] = copy.deepcopy(value)
+            if not history_fields:
+                continue
+            repaired = merge_account_result_fields(history_fields, durable)
+            if repaired == dict(durable):
+                continue
+            try:
+                self.pool.save_result(row_id, repaired)
+                repaired_count += 1
+            except Exception:
+                self._log(
+                    "Free 账号结果历史回填写入失败，保留现有结果",
+                    "warn",
+                    node_code="free_result_store",
+                    node_label="保存 Free 账号结果",
+                    outcome="storage_warning",
+                )
+        return repaired_count
 
     def _log(self, message: str, level: str = "info", **fields: Any) -> None:
         if callable(self.log_fn):
@@ -1639,9 +1726,23 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         if proxy_content is None:
             proxy_content = ""
         if proxy_content is not None:
-            if proxy_content.strip():
-                self.proxies.import_text(proxy_content, scheme=str(config.get("proxy_default_scheme") or "socks5"))
-            available_count = self._available_count()
+            # An available pool row is not automatically a new-registration
+            # candidate: an operator may have restored a previously completed
+            # account to ``available`` by hand.  Check durable and historical
+            # account evidence before calculating the batch or touching a
+            # proxy lease.  This keeps the guard effective for both explicit
+            # selections and automatic pool dispatch.
+            available_rows = self.pool.available(10_000)
+            protected_rows = [
+                row for row in available_rows
+                if self._registration_account_exists(row.row_id)
+            ]
+            protected_ids = {row.row_id for row in protected_rows}
+            registration_rows = [
+                row for row in available_rows
+                if row.row_id not in protected_ids
+            ]
+            available_count = len(registration_rows)
             configured_free_count = config.get("target_count", config.get("free_target_count"))
             try:
                 configured_free_count_value = int(configured_free_count)
@@ -1658,13 +1759,48 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                         "单批次最多选择 200 个 Free 邮箱",
                         retryable=False,
                     )
-                all_available = self.pool.available(10_000)
-                rows = [row for row in all_available if row.row_id in requested_row_ids]
+                # Check explicitly selected rows even when their pool status
+                # is currently pending/unavailable; otherwise a completed
+                # account could be hidden behind a generic availability error
+                # and later replayed after a manual status change.
+                requested_protected = {
+                    row_id for row_id in requested_row_ids
+                    if row_id not in protected_ids
+                    and self._registration_account_exists(row_id)
+                }
+                requested_protected.update(requested_row_ids & protected_ids)
+                if requested_protected:
+                    raise FreeRegisterError(
+                        "free_run_account_result_exists",
+                        "启动 Free 注册",
+                        "所选邮箱已有已保存的 Free 账号结果，不能再次走整条注册流程；请使用已有账号登录、2FA 重试或测活",
+                        retryable=False,
+                        error_code="free_run_account_result_exists",
+                        action_hint="移除已完成账号，或使用已有账号登录、2FA 重试和测活入口",
+                    )
+                rows = [row for row in registration_rows if row.row_id in requested_row_ids]
                 if len(rows) != len(requested_row_ids):
                     raise FreeRegisterError("free_pool_preflight", "Free 邮箱池预检", "快捷运行所选邮箱中有记录不存在或当前不可用", retryable=False)
                 target_count = len(rows)
             else:
-                rows = self.pool.available(target_count)
+                rows = registration_rows[:target_count]
+            if not rows:
+                if protected_rows and not requested_row_ids:
+                    raise FreeRegisterError(
+                        "free_run_account_result_exists",
+                        "启动 Free 注册",
+                        "可用邮箱均已有已保存的 Free 账号结果，不能再次走整条注册流程；请使用已有账号登录、2FA 重试或测活",
+                        retryable=False,
+                        error_code="free_run_account_result_exists",
+                        action_hint="使用已有账号登录、2FA 重试或测活入口，或导入尚未注册的邮箱",
+                    )
+                raise FreeRegisterError(
+                    "free_pool_preflight",
+                    "Free 邮箱池预检",
+                    "Free 邮箱池没有可用于新注册的邮箱",
+                    retryable=False,
+                    error_code="free_pool_empty",
+                )
             if len(rows) < target_count:
                 raise FreeRegisterError("free_pool_preflight", "Free 邮箱池预检", f"Free 邮箱数量不足：需要 {target_count} 条，当前只有 {len(rows)} 条", retryable=False)
             driver = str(config.get("driver") or "protocol").strip().lower()
@@ -1674,6 +1810,11 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 RoxyRegistrationRunner.preflight(config)
             if driver == "camoufox" and not self._custom_runner:
                 CamoufoxRegistrationRunner.preflight(config)
+            # Import pasted proxies only after mailbox/result guards pass.  A
+            # rejected duplicate-registration attempt must not mutate the
+            # shared proxy pool or its health history.
+            if proxy_content.strip():
+                self.proxies.import_text(proxy_content, scheme=str(config.get("proxy_default_scheme") or "socks5"))
             self.proxies.configure_policy(
                 failure_threshold=int(config.get("proxy_failure_threshold") or 2),
                 quarantine_seconds=int(config.get("proxy_quarantine_seconds") or 600),
@@ -1879,6 +2020,97 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         node_code = str(failure.get("node_code") or original.get("stage") or "free_rerun")
         return self._enqueue_retry(original, config, retry_node=node_code, twofa_retry=False)
 
+    @staticmethod
+    def _result_marker_true(value: Any) -> bool:
+        """Parse persisted capability markers without ``bool('false')`` bugs."""
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return value != 0
+        return str(value or "").strip().lower() in {
+            "1", "true", "yes", "on", "enabled", "complete", "completed", "success",
+        }
+
+    @staticmethod
+    def _has_existing_account_result(*results: Mapping[str, Any] | None) -> bool:
+        """Recognize account evidence without treating failure-only rows as accounts."""
+        for result in results:
+            if not isinstance(result, Mapping):
+                continue
+            if has_account_result(result):
+                return True
+            status = str(result.get("status") or "").strip().lower()
+            if status in {"success", "partial_success", "twofa_pending"}:
+                return True
+            if any(
+                FreeRegisterManager._result_marker_true(result.get(key))
+                for key in (
+                    "has_access_token",
+                    "has_password",
+                    "has_totp",
+                    "has_credential",
+                    "registration_completed",
+                    "oauth_callback_completed",
+                    "account_created",
+                )
+            ):
+                return True
+        return False
+
+    def _registration_account_exists(
+        self,
+        row_id: str,
+        *snapshots: Mapping[str, Any] | None,
+    ) -> bool:
+        """Check durable and historical task snapshots before a new signup."""
+        candidates: list[Mapping[str, Any] | None] = list(snapshots)
+        reader = getattr(self.pool, "result_with_status", None)
+        if callable(reader):
+            try:
+                durable, readable = reader(str(row_id or ""))
+            except Exception as exc:
+                raise FreeRegisterError(
+                    "free_result_store",
+                    "读取 Free 账号结果",
+                    "Free 账号结果暂时无法确认，为避免重复注册已停止本次操作",
+                    retryable=True,
+                    error_code="free_result_read_failed",
+                    action_hint="检查 Free 结果文件和数据目录权限后重试",
+                    provider_code=type(exc).__name__,
+                ) from exc
+            if not readable:
+                raise FreeRegisterError(
+                    "free_result_store",
+                    "读取 Free 账号结果",
+                    "Free 账号结果暂时无法确认，为避免重复注册已停止本次操作",
+                    retryable=True,
+                    error_code="free_result_read_failed",
+                    action_hint="检查 Free 结果文件和数据目录权限后重试",
+                )
+        else:
+            try:
+                durable = self.pool.result(str(row_id or ""))
+            except Exception as exc:
+                raise FreeRegisterError(
+                    "free_result_store",
+                    "读取 Free 账号结果",
+                    "Free 账号结果暂时无法确认，为避免重复注册已停止本次操作",
+                    retryable=True,
+                    error_code="free_result_read_failed",
+                    action_hint="检查 Free 结果文件和数据目录权限后重试",
+                    provider_code=type(exc).__name__,
+                ) from exc
+        candidates.append(durable if isinstance(durable, Mapping) else None)
+        # A previous successful task can outlive a later failure task.  Keep
+        # that account evidence even when a legacy result file was truncated.
+        for task in self._tasks.values():
+            if str(task.get("row_id") or "") != str(row_id or ""):
+                continue
+            candidates.append(task)
+            result = task.get("result")
+            candidates.append(result if isinstance(result, Mapping) else None)
+        return self._has_existing_account_result(*candidates)
+
     def _enqueue_retry(
         self,
         original: Mapping[str, Any],
@@ -1900,6 +2132,18 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 self._retry_leases.pop(retry_key, None)
             row_state = self.pool._row_state(row_id)
             pool_status = str(row_state.get("status") or "")
+            # This must run before changing a pending row back to available or
+            # reserving it again.  Two-factor retries are continuations of an
+            # existing account and intentionally bypass this registration guard.
+            if not twofa_retry and self._registration_account_exists(row_id, original):
+                raise FreeRegisterError(
+                    "free_rerun",
+                    "重跑 Free 账号",
+                    "该邮箱已有已保存的 Free 账号结果，不能再次走整条注册流程；请使用 2FA 重试、已有账号登录或测活",
+                    retryable=False,
+                    error_code="free_rerun_account_result_exists",
+                    action_hint="使用“重试 2FA”、已有账号登录或测活；不要重复提交注册邮箱",
+                )
             if not twofa_retry:
                 if pool_status == "pending_rerun":
                     self.pool.update(row_id, status="available", batch_id="", stage="", error="", reusable_after_failure=False)
@@ -1913,7 +2157,12 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             active_batch = bool(self._executor and self._futures)
             batch_id = str(self._batch_id or "") if active_batch else f"free-retry-{int(time.time())}-{secrets.token_hex(4)}"
             driver = str(original.get("driver") or config.get("driver") or "protocol").strip().lower()
-            if twofa_retry and driver == "roxybrowser":
+            # 2FA is a continuation of an already-created account.  Keep it
+            # on the AutoRegister-aligned protocol path for both browser
+            # origins: passwordless registrations have a token but no saved
+            # signup password, and reopening a Camoufox/Roxy signup page
+            # would either require a nonexistent password or replay signup.
+            if twofa_retry and driver in {"camoufox", "roxybrowser"}:
                 driver = "protocol"
             if driver not in {"protocol", "roxybrowser", "camoufox"}:
                 raise FreeRegisterError("free_rerun", "重跑 Free 账号", "Free 注册链路无效", retryable=False)

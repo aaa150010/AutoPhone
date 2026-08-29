@@ -499,7 +499,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             runner=lambda *_args, **_kwargs: {},
             proxy_probe=lambda _proxy, _url: "203.0.113.20",
         )
-        self.assertEqual(manager.public_state()["runtime_version"], "1.6.86")
+        self.assertEqual(manager.public_state()["runtime_version"], "1.6.87")
         self.assertEqual(manager.preflight({"target_count": 1})["otp_parser_revision"], "pickup-dynamic-v6-samples")
 
     def test_close_camoufox_debug_passes_current_config_to_pool_helper(self):
@@ -1855,6 +1855,34 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             time.sleep(0.01)
         pending = manager.public_tasks()[0]
         manager.retry_twofa(pending["task_id"], {"driver": "roxybrowser"})
+        deadline = time.time() + 3
+        while manager.public_state()["running"] and time.time() < deadline:
+            time.sleep(0.01)
+        self.assertEqual(manager.public_tasks()[0]["driver"], "protocol")
+
+    def test_camoufox_twofa_retry_switches_to_protocol_for_passwordless_account(self):
+        pool = FreeMailboxPool(self.data_dir)
+        pool.import_text("a@example.test----https://mail.example.test/a\n")
+        proxies = FreeProxyPool(self.data_dir)
+        proxies.import_text("http://proxy-a.test:8000\n")
+
+        def runner(task, _config, _stop, _stage, _log, *, twofa_retry=False):
+            if not twofa_retry:
+                return {"access_token": "token-private", "twofa_status": "pending"}
+            self.assertEqual(task["driver"], "protocol")
+            return {"access_token": "token-private", "twofa_status": "enabled"}
+
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=runner,
+            proxy_probe=lambda _proxy, _url: "203.0.113.21",
+        )
+        manager.start({"target_count": 1, "driver": "camoufox"})
+        deadline = time.time() + 3
+        while manager.public_state()["running"] and time.time() < deadline:
+            time.sleep(0.01)
+        pending = manager.public_tasks()[0]
+        manager.retry_twofa(pending["task_id"], {"driver": "camoufox"})
         deadline = time.time() + 3
         while manager.public_state()["running"] and time.time() < deadline:
             time.sleep(0.01)

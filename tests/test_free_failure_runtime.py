@@ -866,6 +866,216 @@ class FreeFailureRuntimeTests(unittest.TestCase):
         self.assertIsNone(mailbox["failure"])
         self.assertEqual(mailbox["error"], "")
 
+    def test_failure_only_result_save_preserves_account_credentials(self) -> None:
+        pool = FreeMailboxPool(self.data_dir)
+        pool.import_text("a@example.test----https://mail.example.test/pickup\n")
+        row_id = pool.entries()[0].row_id
+        previous = {
+            "access_token": "old-access",
+            "refresh_token": "old-refresh",
+            "id_token": "old-id",
+            "password": "old-password",
+            "totp_secret": "old-totp",
+            "credential_line": "old-credential",
+            "status": "success",
+        }
+        pool.save_result(row_id, previous)
+
+        failure = {
+            "node_code": "free_email_otp_wait",
+            "node_label": "等待 Free 邮箱验证码",
+            "error_code": "free_email_otp_wait_failed",
+            "public_message": "等待验证码失败",
+            "technical_summary": "邮箱取件超时",
+            "retryable": True,
+        }
+        pool.save_result(row_id, {"status": "failed", "failure": failure})
+
+        saved = pool.result(row_id)
+        self.assertEqual(saved["status"], "failed")
+        self.assertEqual(saved["failure"]["error_code"], "free_email_otp_wait_failed")
+        for key, value in previous.items():
+            if key != "status":
+                self.assertEqual(saved[key], value)
+
+        pool.save_result(row_id, {"access_token": "new-access", "status": "success"})
+        self.assertEqual(pool.result(row_id)["access_token"], "new-access")
+        self.assertEqual(pool.result(row_id)["refresh_token"], "old-refresh")
+
+    def test_task_failure_snapshot_preserves_durable_account_fields(self) -> None:
+        pool = FreeMailboxPool(self.data_dir)
+        pool.import_text("a@example.test----https://mail.example.test/pickup\n")
+        row_id = pool.entries()[0].row_id
+        pool.save_result(row_id, {
+            "access_token": "durable-access",
+            "password": "durable-password",
+            "totp_secret": "durable-totp",
+            "status": "twofa_pending",
+        })
+        manager = FreeRegisterManager(self.data_dir, runner=lambda *_args, **_kwargs: {})
+        manager._tasks = {
+            "failed-task": {
+                "task_id": "failed-task",
+                "row_id": row_id,
+                "status": "running",
+                "stage": "free_email_otp_wait",
+                "result": {"status": "running"},
+            },
+        }
+        failure = {
+            "node_code": "free_email_otp_wait",
+            "node_label": "等待 Free 邮箱验证码",
+            "error_code": "free_email_otp_wait_failed",
+            "public_message": "等待验证码失败",
+            "technical_summary": "邮箱取件超时",
+            "retryable": True,
+        }
+        manager._persist_task_failure(
+            "failed-task",
+            manager._tasks["failed-task"],
+            status="failed",
+            failure=failure,
+        )
+        snapshot = manager._tasks["failed-task"]["result"]
+        self.assertEqual(snapshot["access_token"], "durable-access")
+        self.assertEqual(snapshot["password"], "durable-password")
+        self.assertEqual(snapshot["totp_secret"], "durable-totp")
+        self.assertEqual(snapshot["status"], "failed")
+        self.assertEqual(snapshot["failure"]["error_code"], "free_email_otp_wait_failed")
+
+    def test_rerun_rejects_durable_account_before_any_pool_side_effect(self) -> None:
+        pool = FreeMailboxPool(self.data_dir)
+        pool.import_text("a@example.test----https://mail.example.test/pickup\n")
+        row_id = pool.entries()[0].row_id
+        pool.update(row_id, status="pending_rerun", batch_id="old-batch")
+        pool.save_result(row_id, {"access_token": "existing-access", "status": "failed"})
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=lambda *_args, **_kwargs: self.fail("runner must not be called"),
+            proxy_probe=lambda _proxy, _url: "203.0.113.90",
+        )
+        manager._tasks = {
+            "failed-task": {
+                "task_id": "failed-task",
+                "row_id": row_id,
+                "status": "failed",
+                "stage": "free_email_otp_wait",
+                "result": {"status": "failed"},
+            },
+        }
+        with patch.object(manager.pool, "reserve") as reserve, patch.object(manager.proxies, "bind") as bind:
+            with self.assertRaisesRegex(FreeRegisterError, "已有已保存") as raised:
+                manager.rerun("failed-task", {})
+        reserve.assert_not_called()
+        bind.assert_not_called()
+        self.assertEqual(raised.exception.error_code, "free_rerun_account_result_exists")
+        self.assertEqual(pool._row_state(row_id)["status"], "pending_rerun")
+
+    def test_rerun_checks_historical_success_task_when_result_file_is_missing(self) -> None:
+        pool = FreeMailboxPool(self.data_dir)
+        pool.import_text("a@example.test----https://mail.example.test/pickup\n")
+        row_id = pool.entries()[0].row_id
+        pool.update(row_id, status="pending_rerun")
+        FreeTaskStore(self.data_dir).save({
+            "old-success": {
+                "task_id": "old-success",
+                "row_id": row_id,
+                "status": "success",
+                "result": {"status": "success", "account_flow": "signup"},
+            },
+            "failed-task": {
+                "task_id": "failed-task",
+                "row_id": row_id,
+                "status": "failed",
+                "result": {"status": "failed"},
+            },
+        })
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=lambda *_args, **_kwargs: self.fail("runner must not be called"),
+            proxy_probe=lambda _proxy, _url: "203.0.113.91",
+        )
+        with self.assertRaisesRegex(FreeRegisterError, "已有已保存"):
+            manager.rerun("failed-task", {})
+
+    def test_start_rejects_manually_restored_account_before_pool_side_effects(self) -> None:
+        pool = FreeMailboxPool(self.data_dir)
+        pool.import_text("a@example.test----https://mail.example.test/pickup\n")
+        row_id = pool.entries()[0].row_id
+        pool.save_result(row_id, {
+            "access_token": "existing-access",
+            "registration_completed": True,
+            "status": "success",
+        })
+        # Simulate an operator manually restoring a completed row to available.
+        pool.set_status([row_id], "available")
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=lambda *_args, **_kwargs: self.fail("runner must not be called"),
+        )
+        with patch.object(manager.pool, "reserve") as reserve, patch.object(manager.proxies, "bind") as bind, patch.object(manager.proxies, "import_text") as import_text:
+            with self.assertRaisesRegex(FreeRegisterError, "已有已保存") as raised:
+                manager.start(
+                    {"target_count": 1},
+                    proxy_content="http://proxy-a.test:8000\n",
+                )
+        reserve.assert_not_called()
+        bind.assert_not_called()
+        import_text.assert_not_called()
+        self.assertEqual(raised.exception.error_code, "free_run_account_result_exists")
+        self.assertEqual(manager.pool._row_state(row_id)["status"], "available")
+
+    def test_account_completion_guard_requires_strong_evidence(self) -> None:
+        manager = FreeRegisterManager(self.data_dir, runner=lambda *_args, **_kwargs: {})
+        self.assertFalse(manager._has_existing_account_result({"account_flow": "signup"}))
+        self.assertFalse(manager._has_existing_account_result({"registration_password_used": True}))
+        self.assertTrue(manager._has_existing_account_result({"registration_completed": True}))
+        self.assertTrue(manager._has_existing_account_result({"has_access_token": "true"}))
+
+    def test_corrupt_result_fails_closed_before_start_side_effects(self) -> None:
+        pool = FreeMailboxPool(self.data_dir)
+        pool.import_text("a@example.test----https://mail.example.test/pickup\n")
+        row_id = pool.entries()[0].row_id
+        pool.set_status([row_id], "available")
+        result_path = pool.results_dir / f"{fingerprint(row_id)}.json"
+        result_path.parent.mkdir(parents=True, exist_ok=True)
+        result_path.write_text("{not-json", encoding="utf-8")
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=lambda *_args, **_kwargs: self.fail("runner must not be called"),
+        )
+        with patch.object(manager.pool, "reserve") as reserve, patch.object(manager.proxies, "bind") as bind:
+            with self.assertRaises(FreeRegisterError) as raised:
+                manager.start(
+                    {"target_count": 1},
+                    proxy_content="http://proxy-a.test:8000\n",
+                )
+        reserve.assert_not_called()
+        bind.assert_not_called()
+        self.assertEqual(raised.exception.error_code, "free_result_read_failed")
+
+    def test_startup_reconciles_missing_durable_credentials_from_task_history(self) -> None:
+        pool = FreeMailboxPool(self.data_dir)
+        pool.import_text("a@example.test----https://mail.example.test/pickup\n")
+        row_id = pool.entries()[0].row_id
+        FreeTaskStore(self.data_dir).save({
+            "old-success": {
+                "task_id": "old-success",
+                "row_id": row_id,
+                "status": "twofa_pending",
+                "updated_at": 20,
+                "result": {
+                    "status": "twofa_pending",
+                    "access_token": "restored-access",
+                    "password": "restored-password",
+                },
+            },
+        })
+        manager = FreeRegisterManager(self.data_dir, runner=lambda *_args, **_kwargs: {})
+        saved = manager.pool.result(row_id)
+        self.assertEqual(saved["access_token"], "restored-access")
+        self.assertEqual(saved["password"], "restored-password")
+
 
 if __name__ == "__main__":
     unittest.main()
