@@ -1327,6 +1327,55 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         self.assertGreaterEqual(len(_FakeManager.instances), 2)
         self.assertTrue(all(item.exited == 1 for item in _FakeManager.instances))
 
+    def test_browser_disconnect_cancellation_is_structured_and_not_a_proxy_failure(self):
+        """A Playwright cancellation after process exit keeps its browser node."""
+        pool_holder = {}
+
+        async def disconnected_flow(_page, **_kwargs):
+            pool = pool_holder["pool"]
+            slot = pool._slots[0]
+            slot.disconnect_requested = True
+            slot.browser.closed = True
+            raise asyncio.CancelledError()
+
+        with (
+            patch.object(runtime, "_load_camoufox_api", return_value=(_FakeManager, _fake_context)),
+            patch.object(runtime, "_browser_flow", side_effect=disconnected_flow),
+        ):
+            pool = runtime.CamoufoxBrowserPool(self._config())
+            pool_holder["pool"] = pool
+            try:
+                with self.assertRaises(runtime.CamoufoxBrowserError) as raised:
+                    pool.register(email="user@example.test", password="password", proxy="")
+            finally:
+                pool.shutdown(force=True)
+
+        self.assertEqual(raised.exception.error_code, "camoufox_browser_disconnected")
+        self.assertEqual(raised.exception.node_code, "free_camoufox_launch")
+        self.assertEqual(raised.exception.diagnostic.split("; ")[0], "cancellation_source=browser_disconnect")
+        self.assertFalse(getattr(raised.exception, "safe_restart", True))
+
+    def test_unclassified_async_cancellation_is_structured_at_sync_boundary(self):
+        """A caller cancellation is not exposed as concurrent.futures.CancelledError."""
+        async def cancelled_flow(_page, **_kwargs):
+            raise asyncio.CancelledError()
+
+        with (
+            patch.object(runtime, "_load_camoufox_api", return_value=(_FakeManager, _fake_context)),
+            patch.object(runtime, "_browser_flow", side_effect=cancelled_flow),
+        ):
+            pool = runtime.CamoufoxBrowserPool(self._config())
+            try:
+                with self.assertRaises(runtime.CamoufoxBrowserError) as raised:
+                    pool.register(email="user@example.test", password="password", proxy="")
+            finally:
+                pool.shutdown(force=True)
+
+        self.assertEqual(raised.exception.error_code, "camoufox_registration_cancelled")
+        self.assertEqual(raised.exception.node_code, "free_camoufox_browser")
+        self.assertEqual(raised.exception.diagnostic, "cancellation_source=registration_future")
+        self.assertFalse(getattr(raised.exception, "safe_restart", True))
+
     def test_home_confirmation_timeout_does_not_retain_debug_context(self):
         error = runtime.CamoufoxBrowserError(
             "free_camoufox_page_state", "确认 ChatGPT 登录首页", "timeout",

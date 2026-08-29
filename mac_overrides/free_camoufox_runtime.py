@@ -10,7 +10,10 @@ from __future__ import annotations
 
 import asyncio
 import atexit
-from concurrent.futures import TimeoutError as FutureTimeoutError
+from concurrent.futures import (
+    CancelledError as FutureCancelledError,
+    TimeoutError as FutureTimeoutError,
+)
 from dataclasses import dataclass
 from datetime import date
 import inspect
@@ -2862,6 +2865,11 @@ class _BrowserSlot:
     # browser until the operator explicitly closes them. They count against
     # the slot's effective capacity even though the task semaphore is released.
     debug_holds: int = 0
+    # Playwright may cancel a page coroutine as soon as the browser process
+    # disappears, without raising its usual "browser has been closed" error.
+    # Keep that signal on the slot so the worker can classify the cancellation
+    # instead of exposing a bare concurrent.futures.CancelledError.
+    disconnect_requested: bool = False
 
 
 @dataclass
@@ -3497,12 +3505,27 @@ class CamoufoxBrowserPool:
             loop = self._loop
             if loop is None or self._closed:
                 return
-            try:
-                loop.call_soon_threadsafe(
-                    lambda: asyncio.create_task(
-                        self._recycle_slot(slot, generation, "Camoufox 浏览器断开事件"),
+
+            def schedule_recycle() -> None:
+                # A stale listener from a retired browser can fire after the
+                # slot has already been replaced.  Do not mark the new browser
+                # as disconnected in that case.
+                if (
+                    self._closed
+                    or slot.generation != generation
+                    or slot.browser is not browser
+                ):
+                    return
+                slot.disconnect_requested = True
+                try:
+                    asyncio.create_task(
+                        self._recycle_slot(slot, generation, "Camoufox 浏览器断开事件")
                     )
-                )
+                except Exception:
+                    pass
+
+            try:
+                loop.call_soon_threadsafe(schedule_recycle)
             except Exception:
                 pass
 
@@ -3895,13 +3918,54 @@ class CamoufoxBrowserPool:
                 slot.completed += 1
                 recycle_required = slot.completed >= max(1, int(self.config.get("max_registrations_per_browser") or 12))
                 return result
-            except asyncio.CancelledError:
-                # A registration timeout cancels the page coroutine. Recycle
-                # the process even when context.close() itself succeeds: the
-                # page may have left unfinished navigation callbacks behind.
+            except asyncio.CancelledError as exc:
+                # ``asyncio.wait_for`` cancels this coroutine for a normal
+                # registration timeout, but Playwright can also cancel it when
+                # the Firefox process disappears.  The latter has an empty
+                # exception message, so relying on ``_browser_process_lost``
+                # alone turns into a bare concurrent.futures.CancelledError
+                # at the synchronous pool boundary.  Use the slot health and
+                # disconnect callback marker to preserve a stable node.
                 recycle_required = True
                 debug_failure = True
                 debug_retain_allowed = False
+                if self._closed:
+                    failure = CamoufoxBrowserError(
+                        "free_camoufox_launch", "启动 Camoufox 浏览器池",
+                        "Camoufox 浏览器池已关闭，当前注册被取消",
+                        retryable=False,
+                        error_code="camoufox_pool_closed",
+                        diagnostic="cancellation_source=pool_shutdown",
+                        safe_page=_safe_url(page) if page is not None else "",
+                        page_type="unknown",
+                    )
+                    _mark_recycle_required(failure, "pool closed during registration")
+                    debug_error = failure
+                    raise failure from exc
+                browser_disconnected = bool(
+                    getattr(slot, "disconnect_requested", False)
+                ) or not self._browser_connected(getattr(slot, "browser", None))
+                if browser_disconnected:
+                    failure = CamoufoxBrowserError(
+                        "free_camoufox_launch", "启动 Camoufox 浏览器池",
+                        "Camoufox 浏览器进程在注册过程中退出",
+                        retryable=True,
+                        error_code="camoufox_browser_disconnected",
+                        diagnostic="cancellation_source=browser_disconnect; browser_process_lost=true",
+                        safe_page=_safe_url(page) if page is not None else "",
+                        page_type="unknown",
+                    )
+                    # The page may already have submitted an email/OTP when
+                    # the process vanished.  Never replay the whole flow from
+                    # this path, even though the browser pool itself is
+                    # recycled for the next task.
+                    setattr(failure, "safe_restart", False)
+                    _mark_recycle_required(failure, "browser process lost during registration")
+                    debug_error = failure
+                    raise failure from exc
+                # Leave an ordinary timeout/external cancellation untouched so
+                # the surrounding wait_for (or caller) can classify it as a
+                # timeout/stop rather than incorrectly blaming the browser.
                 debug_error = None
                 raise
             except CamoufoxBrowserError as exc:
@@ -4156,6 +4220,11 @@ class CamoufoxBrowserPool:
                     slot.recycle_error = clean(f"{error_code}: {type(exc).__name__}", 240)
                     return
                 slot.manager, slot.browser, slot.draining, slot.recycle_error = manager, browser, False, ""
+                # The disconnect marker belongs to the old browser generation;
+                # clear it only after a replacement is fully attached so a
+                # cancellation during the launch window still reports the
+                # unavailable slot accurately.
+                slot.disconnect_requested = False
                 replacement_ready = True
                 self._attach_browser_disconnect(slot)
             finally:
@@ -4168,6 +4237,11 @@ class CamoufoxBrowserPool:
                     # Cancellation during the drain wait leaves the original
                     # browser usable; make that fact visible to admission.
                     slot.draining = False
+                    if self._browser_connected(old_browser):
+                        # A stale/duplicate disconnect callback must not make
+                        # a later, unrelated task cancellation look like a
+                        # browser crash after the old slot is restored.
+                        slot.disconnect_requested = False
                 elif (
                     replacement_committed
                     and not replacement_ready
@@ -4213,6 +4287,28 @@ class CamoufoxBrowserPool:
                 timeout=registration_timeout + cleanup_budget + recycle_budget
                 + drain_budget + 30,
             ))
+        except FutureCancelledError as exc:
+            # ``run_coroutine_threadsafe`` translates an async
+            # ``CancelledError`` into ``concurrent.futures.CancelledError``.
+            # Do not let that low-level type escape to FreeRegisterManager's
+            # generic exception path; preserve a stable, non-proxy
+            # cancellation node for task diagnostics and mailbox safety.
+            if self._closed:
+                error_code = "camoufox_pool_closed"
+                message = "Camoufox 浏览器池已关闭，当前注册被取消"
+                source = "pool_shutdown"
+            else:
+                error_code = "camoufox_registration_cancelled"
+                message = "Camoufox 注册任务被取消"
+                source = "registration_future"
+            failure = CamoufoxBrowserError(
+                "free_camoufox_browser", "Camoufox 注册页面", message,
+                retryable=False,
+                error_code=error_code,
+                diagnostic=f"cancellation_source={source}",
+            )
+            setattr(failure, "safe_restart", False)
+            raise failure from exc
         except FutureTimeoutError as exc:
             # The async registration path already bounds page/context cleanup
             # and browser replacement.  Give those operations one final,
