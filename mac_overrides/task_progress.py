@@ -53,6 +53,7 @@ STAGES = {
         _stage("free_email_identifier", "识别 Free 注册邮箱", "free"),
         _stage("free_email_password", "验证 Free 注册密码", "free"),
         _stage("free_email_otp_wait", "等待 Free 邮箱验证码", "free"),
+        _stage("free_existing_login_password", "验证已有 Free 账号密码", "free"),
         _stage("free_existing_login_otp", "等待已有 Free 账号登录验证码", "free"),
         _stage("free_email_otp_validate", "验证 Free 邮箱验证码", "free"),
         _stage("free_account_create", "创建 Free 账号", "free"),

@@ -86,6 +86,10 @@ PASSWORD_SELECTORS = (
     "input[type='password']", "input[name='password']", "input[name*='password' i]",
     "input[autocomplete='new-password']",
 )
+LOGIN_PASSWORD_SELECTORS = (
+    "input[autocomplete='current-password']", "input[type='password']",
+    "input[name='password']", "input[name*='password' i]",
+)
 NAME_SELECTORS = (
     "input[name='name']", "input[name='full_name']", "input[autocomplete='name']",
     "input[id*='name' i]", "input[placeholder*='name' i]",
@@ -115,6 +119,14 @@ PASSWORDLESS_SELECTORS = (
     "a[href*='passwordless']", "button:has-text('email code')",
     "button:has-text('Email code')", "button:has-text('Use email')",
     "a:has-text('Use email')", "button:has-text('邮箱验证码')",
+)
+LOGIN_PASSWORD_SUBMIT_SELECTORS = (
+    "button[type='submit']", "input[type='submit']",
+    "button[data-testid='continue-button']",
+    "button:has-text('Continue')", "button:has-text('continue')",
+    "button:has-text('Sign in')", "button:has-text('sign in')",
+    "button:has-text('Log in')", "button:has-text('log in')",
+    "button:has-text('登录')", "button:has-text('登入')",
 )
 RESEND_SELECTORS = (
     "button:has-text('Resend')", "button:has-text('resend')",
@@ -348,11 +360,187 @@ async def _body_text(page: Any) -> str:
         return ""
 
 
+# Debug artifacts have a stricter redaction boundary than ordinary business
+# diagnostics.  The latter intentionally keeps short numeric identifiers and
+# route labels useful; a retained browser page, however, can contain an OTP in
+# visible text or a console error.  Keep this policy local to the Camoufox
+# scene dump so changing it cannot alter normal task/log semantics.
+_DEBUG_OTP_CONTEXT_RE = re.compile(
+    r"(?ix)"
+    r"(?:\b(?:one[\s_-]?time(?:[\s_-]?password)?|otp|"
+    r"verification(?:[\s_-]?code)?|verify(?:[\s_-]?code)?|"
+    r"authentication(?:[\s_-]?code)?|auth(?:[\s_-]?code)?|"
+    r"security[\s_-]?(?:code|pin|passcode|token)|pass[\s_-]?code|"
+    r"pin|code|(?:access|login|email|sms)[\s_-]?code"
+    r")\b|验证码|校验码|动态码|一次性密码|認証(?:コード)?|確認コード|検証コード)"
+ )
+_DEBUG_NUMERIC_OTP_RE = re.compile(r"(?<![A-Za-z0-9])\d{4,7}(?![A-Za-z0-9])")
+# Require both letters and digits so ordinary words ("security", "Cloudflare")
+# are never treated as an OTP.  A context label is still required before this
+# candidate is masked; this avoids destroying browser/version identifiers such
+# as ``HTTP403`` in otherwise useful diagnostics.
+_DEBUG_ALNUM_OTP_RE = re.compile(
+    r"(?<![A-Za-z0-9])(?=[A-Za-z0-9]{4,12}(?![A-Za-z0-9]))"
+    r"(?=[A-Za-z0-9]*[A-Za-z])(?=[A-Za-z0-9]*\d)[A-Za-z0-9]{4,12}(?![A-Za-z0-9])"
+)
+# Verification codes are also commonly rendered as short groups, for example
+# ``A1-B2-C3`` or ``12 34 56``.  A contiguous-token pass cannot see those
+# values, so inspect bounded groups separately and apply the same conservative
+# status/version allow-list below.
+_DEBUG_GROUPED_ALNUM_RE = re.compile(
+    r"(?<![A-Za-z0-9])[A-Za-z0-9]{1,8}(?:[\s-][A-Za-z0-9]{1,8}){1,7}(?![A-Za-z0-9])"
+)
+# Grouped-code matching can include the label immediately before the value
+# (for example, ``code A1-B2-C3``).  Keep those labels in the scene dump while
+# masking only the value itself.
+_DEBUG_GROUP_LABELS = {
+    "one", "time", "password", "otp", "verification", "verify",
+    "authentication", "auth", "security", "code", "pin", "passcode",
+    "token", "access", "login", "email", "sms",
+}
+# A few unambiguous protocol/status spellings are useful diagnostics rather
+# than OTPs.  Version-like values need an explicit version/build/release
+# label; a bare ``v2024`` is still treated as a possible code.
+_DEBUG_ALNUM_STATUS_RE = re.compile(r"(?i)^(?:https?|http|err|ns|tls|ssl)\d{3}$")
+_DEBUG_VERSION_CONTEXT_RE = re.compile(r"(?i)\b(?:version|build|release)\b")
+_DEBUG_EMAIL_RE = re.compile(r"(?i)(?<![\w.+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}(?![\w.-])")
+_DEBUG_PHONE_RE = re.compile(r"(?<![\w])\+?\d{8,15}(?![\w])")
 _SENSITIVE_BODY_RE = re.compile(
     r"(?i)[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|"
-    r"(?<!\d)\+?\d{8,15}(?!\d)|(?<!\d)\d{6}(?!\d)"
+    r"(?<![A-Za-z0-9])\+?\d{8,15}(?![A-Za-z0-9])|"
+    r"(?<![A-Za-z0-9])\d{4,7}(?![A-Za-z0-9])"
 )
 _SCREENSHOT_SCAN_LIMIT = 100_000
+
+
+def _debug_otp_context(text: str, start: int, end: int, *, radius: int = 72) -> bool:
+    """Return whether a candidate is near an OTP/verification label."""
+    window = text[max(0, start - radius):min(len(text), end + radius)]
+    return bool(_DEBUG_OTP_CONTEXT_RE.search(window))
+
+
+def _debug_alnum_is_safe_identifier(text: str, start: int, end: int, candidate: str) -> bool:
+    """Keep protocol/version labels while rejecting code-shaped tokens."""
+    if _DEBUG_ALNUM_STATUS_RE.fullmatch(candidate):
+        # HTTP/NS/TLS status tokens are diagnostics, never credentials. Keep
+        # them readable even when the surrounding message also mentions a
+        # verification code.
+        return True
+    if re.fullmatch(r"(?i)v\d{1,4}", candidate):
+        window = text[max(0, start - 32):min(len(text), end + 32)]
+        return bool(_DEBUG_VERSION_CONTEXT_RE.search(window))
+    return False
+
+
+def _debug_grouped_is_candidate(text: str, start: int, end: int, candidate: str) -> bool:
+    """Recognize grouped code-shaped values without masking normal prose."""
+    chunks = [item for item in re.split(r"[\s-]+", candidate) if item]
+    compact = "".join(chunks)
+    if len(compact) < 4 or not any(char.isdigit() for char in compact):
+        return False
+    # ``Version v2024`` (and the equivalent build/release labels) is a
+    # diagnostic identifier, not an OTP.  The broad context window may also
+    # contain a real ``code`` label elsewhere in the same message, so check
+    # the version token before applying that context.
+    if len(chunks) == 2 and re.fullmatch(r"(?i)v\d{1,4}", chunks[1]):
+        window = text[max(0, start - 32):min(len(text), end + 32)]
+        if _DEBUG_VERSION_CONTEXT_RE.search(window):
+            return False
+    if _debug_alnum_is_safe_identifier(text, start, end, compact):
+        return False
+    # An OTP label makes even uneven groups (``AB-1234``) unambiguous.  In an
+    # unlabeled string require several short code-like groups so phrases such
+    # as ``Version v2024`` are not swallowed as a single secret.
+    if _debug_otp_context(text, start, end):
+        return True
+    return (
+        len(chunks) >= 2
+        and all(len(chunk) <= 4 for chunk in chunks)
+        and sum(any(char.isdigit() for char in chunk) for chunk in chunks) >= 2
+    )
+
+
+def _debug_grouped_secret_start(text: str, start: int, end: int) -> int:
+    """Return the first character of a grouped secret, after its label."""
+    candidate = text[start:end]
+    tokens = list(re.finditer(r"[A-Za-z0-9]+", candidate))
+    secret_start = start
+    for token in tokens:
+        word = token.group(0).casefold()
+        if word not in _DEBUG_GROUP_LABELS:
+            break
+        secret_start = start + token.end()
+    while secret_start < end and text[secret_start] in " \\t-":
+        secret_start += 1
+    return secret_start
+
+
+def _sanitize_debug_text(value: Any, limit: int = 800, *, mask_bare_numeric: bool = True) -> str:
+    """Redact credentials and likely OTPs before writing a debug artifact.
+
+    Numeric 4--7 digit values are masked even without a nearby label.  This
+    is deliberately fail-closed for retained browser scenes because a page
+    may render a code by itself (for example, a single ``<p>1234</p>``).  Mixed
+    alphanumeric candidates are masked when they have an OTP context or match
+    a code-like standalone token.  A small protocol/status allowlist keeps
+    values such as ``HTTP403`` readable; version values are retained only
+    beside an explicit ``version``/``build``/``release`` label.
+    """
+    text = sanitize_failure_text(value, max(0, int(limit)))
+    if not text:
+        return ""
+    replacements: list[tuple[int, int, str]] = []
+    occupied_until = -1
+    for match in _DEBUG_GROUPED_ALNUM_RE.finditer(text):
+        if match.start() < occupied_until:
+            continue
+        if _debug_grouped_is_candidate(text, match.start(), match.end(), match.group(0)):
+            secret_start = _debug_grouped_secret_start(text, match.start(), match.end())
+            if secret_start < match.end():
+                replacements.append((secret_start, match.end(), "<验证码>"))
+            occupied_until = match.end()
+    for matcher, is_numeric in ((_DEBUG_NUMERIC_OTP_RE, True), (_DEBUG_ALNUM_OTP_RE, False)):
+        for match in matcher.finditer(text):
+            if match.start() < occupied_until:
+                continue
+            if is_numeric:
+                should_mask = mask_bare_numeric or _debug_otp_context(text, match.start(), match.end())
+            else:
+                candidate = match.group(0)
+                should_mask = _debug_otp_context(text, match.start(), match.end())
+                if _debug_alnum_is_safe_identifier(text, match.start(), match.end(), candidate):
+                    # Keep unambiguous protocol/version forms readable when
+                    # they are not part of an OTP-labelled message.
+                    should_mask = False
+                elif not should_mask:
+                    # Mixed alpha/numeric values are a common OTP format even
+                    # when a page renders the value without its label. Keep
+                    # ordinary protocol/status identifiers above readable.
+                    should_mask = True
+            if should_mask:
+                replacements.append((match.start(), match.end(), "<验证码>"))
+                occupied_until = match.end()
+    for start, end, replacement in reversed(replacements):
+        text = text[:start] + replacement + text[end:]
+    return text[: max(0, int(limit))]
+
+
+def _debug_body_has_sensitive_token(value: Any) -> bool:
+    """Check raw page text before screenshot capture, without returning it."""
+    text = str(value or "")
+    if _SENSITIVE_BODY_RE.search(text) or _DEBUG_EMAIL_RE.search(text) or _DEBUG_PHONE_RE.search(text):
+        return True
+    for match in _DEBUG_NUMERIC_OTP_RE.finditer(text):
+        # A bare code is unsafe to capture; labels are not required here.
+        if _debug_otp_context(text, match.start(), match.end()) or len(match.group(0)) in {4, 5, 6, 7}:
+            return True
+    for match in _DEBUG_ALNUM_OTP_RE.finditer(text):
+        if not _debug_alnum_is_safe_identifier(text, match.start(), match.end(), match.group(0)):
+            return True
+    for match in _DEBUG_GROUPED_ALNUM_RE.finditer(text):
+        if _debug_grouped_is_candidate(text, match.start(), match.end(), match.group(0)):
+            return True
+    return False
 
 
 async def _screenshot_safety_check(page: Any) -> tuple[bool, str]:
@@ -370,7 +558,7 @@ async def _screenshot_safety_check(page: Any) -> tuple[bool, str]:
         return False, f"无法读取页面正文（{type(exc).__name__}）"
     if len(body) > _SCREENSHOT_SCAN_LIMIT:
         return False, "页面正文过长，无法可靠脱敏"
-    if _SENSITIVE_BODY_RE.search(body):
+    if _debug_body_has_sensitive_token(body):
         return False, "页面正文疑似含敏感值，未保存截图"
     return True, ""
 
@@ -415,7 +603,10 @@ def _safe_event_url(value: Any) -> str:
         # tokens, mailbox addresses, phone numbers and long opaque segments.
         path = re.sub(r"(?i)[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", "<邮箱>", path)
         path = re.sub(r"(?<!\d)\+?\d{8,15}(?!\d)", "<手机号>", path)
-        path = re.sub(r"(?<!\d)\d{6}(?!\d)", "<验证码>", path)
+        # URL query strings are discarded below, but short OTPs can also be
+        # embedded in a verification route path.  Apply the debug-only text
+        # policy here after decoding nested percent escapes.
+        path = _sanitize_debug_text(path, 500)
         path = re.sub(r"(?i)((?:token|code|state|nonce|session|key|secret|credential|assertion))(?:/|=)[^/?#&]+", r"\1/<已隐藏>", path)
         path = re.sub(
             r"(?i)(/(?:authorize|callback|oauth|continue|session))(?:/[^/?#]*)?",
@@ -514,7 +705,14 @@ def _safe_body_markers(value: Any) -> list[str]:
         markers.append("<邮箱>")
     if re.search(r"(?<!\d)\+?\d{8,15}(?!\d)", text):
         markers.append("<手机号>")
-    if re.search(r"(?<!\d)\d{6}(?!\d)", text):
+    if _DEBUG_NUMERIC_OTP_RE.search(text) or any(
+        _debug_otp_context(text, match.start(), match.end())
+        or not _DEBUG_ALNUM_STATUS_RE.fullmatch(match.group(0))
+        for match in _DEBUG_ALNUM_OTP_RE.finditer(text)
+    ) or any(
+        _debug_grouped_is_candidate(text, match.start(), match.end(), match.group(0))
+        for match in _DEBUG_GROUPED_ALNUM_RE.finditer(text)
+    ):
         markers.append("<验证码>")
     return markers
 
@@ -551,9 +749,9 @@ class _DebugTrace:
                 except (TypeError, ValueError):
                     continue
             elif key in {"method", "type", "name", "failure", "message", "text", "error"}:
-                value = sanitize_failure_text(value, 300)
+                value = _sanitize_debug_text(value, 300)
             else:
-                value = sanitize_failure_text(value, 300)
+                value = _sanitize_debug_text(value, 300)
             if value not in (None, ""):
                 event[clean(key, 40)] = value
         with self.lock:
@@ -651,7 +849,7 @@ async def _capture_debug_dom(page: Any) -> dict[str, Any]:
             continue
         row: dict[str, Any] = {"tag": clean(item.get("tag"), 20)}
         for key in ("role", "type", "aria_label", "text"):
-            value = sanitize_failure_text(item.get(key), 240)
+            value = _sanitize_debug_text(item.get(key), 240)
             if value:
                 row[key] = value
         href = _safe_event_url(item.get("href"))
@@ -659,7 +857,7 @@ async def _capture_debug_dom(page: Any) -> dict[str, Any]:
             row["href"] = href
         elements.append(row)
     return {
-        "title": sanitize_failure_text(raw.get("title"), 160),
+        "title": _sanitize_debug_text(raw.get("title"), 160),
         "url": _safe_event_url(raw.get("url")),
         "elements": elements,
     }
@@ -780,7 +978,7 @@ async def _capture_debug_artifact(
                 if text:
                     payload[key] = text
             else:
-                text = sanitize_failure_text(value, 240)
+                text = _sanitize_debug_text(value, 240)
                 if text:
                     payload[key] = text
         payload["artifact_id"] = artifact_id
@@ -1707,6 +1905,28 @@ async def _complete_profile(page: Any, log: Callable[[str, str], None]) -> None:
     log("Camoufox 资料页已提交", "info")
 
 
+async def _submit_existing_login_password(page: Any, password: str) -> bool:
+    """Fill and submit a password for an already-existing Free account.
+
+    Existing-account authentication must use the account's saved password;
+    the fixed registration password is intentionally never accepted here.
+    Resolve the live locator on every call because auth.openai.com can replace
+    the form while React hydrates or after a failed click.
+    """
+    value = str(password or "")
+    if not value:
+        return False
+    selector = await _wait_for_any_selector(page, LOGIN_PASSWORD_SELECTORS, timeout=15)
+    if not selector or not await _fill_input_like_user(page, selector, value):
+        return False
+    if await _click_first(page, LOGIN_PASSWORD_SUBMIT_SELECTORS, timeout=6):
+        return True
+    # A submit button can disappear while the password input remains attached;
+    # use the freshly resolved input as the final, same-form fallback.
+    fresh_selector = await _find_visible_selector(page, LOGIN_PASSWORD_SELECTORS)
+    return bool(fresh_selector and await _submit_visible_form(page, fresh_selector))
+
+
 async def _browser_flow(
     page: Any,
     *,
@@ -1721,6 +1941,7 @@ async def _browser_flow(
     stage_fn: Callable[[str, str], None] | None = None,
     timing_fn: TimingCallback | None = None,
     force_existing_login: bool = False,
+    existing_password: str = "",
     startup_gate: asyncio.Semaphore | None = None,
 ) -> dict[str, Any]:
     timeout = max(60, int(config.get("registration_timeout_seconds") or 600))
@@ -1740,6 +1961,9 @@ async def _browser_flow(
     password_stage_started_at = 0.0
     password_submitted_at = 0.0
     password_submit_retried = False
+    login_password_submitted = False
+    login_password_submitted_at = 0.0
+    login_password_submit_retried = False
     email_verification_started_at = 0.0
     email_verification_retried = False
     profile_submitted = False
@@ -1764,6 +1988,16 @@ async def _browser_flow(
     seen: dict[str, int] = {}
     step_count = 0
     entry_otp_stage = "free_existing_login_otp" if force_existing_login else "free_email_otp_wait"
+
+    # A 2FA retry is unambiguously an existing-account login. Reject it before
+    # navigation so a missing saved credential cannot consume an OTP or leave a
+    # headed debug window open for an impossible flow.
+    if force_existing_login and not str(existing_password or "").strip():
+        raise CamoufoxBrowserError(
+            "free_existing_login", "已有 Free 账号登录",
+            "已有账号登录缺少已保存密码，拒绝使用固定注册密码",
+            retryable=False, error_code="free_existing_login_password_missing",
+        )
 
     def timing_mark(stage_code: str, code: str, started: float, outcome: str = "success") -> None:
         emit_timing(
@@ -2262,14 +2496,39 @@ async def _browser_flow(
                     retryable=False, error_code="free_existing_login_disabled",
                 )
             account_flow = "existing_login"
-            set_stage("free_existing_login_otp")
-            await prepare_otp("free_existing_login_otp")
-            if not await _click_first(page, PASSWORDLESS_SELECTORS, timeout=8):
+            saved_password = str(existing_password or "").strip()
+            if not saved_password:
                 raise CamoufoxBrowserError(
                     "free_existing_login", "已有 Free 账号登录",
-                    "登录密码页未找到邮箱验证码入口", retryable=False,
-                    error_code="free_camoufox_login_password_page",
+                    "已有账号登录缺少已保存密码，拒绝使用固定注册密码",
+                    retryable=False, error_code="free_existing_login_password_missing",
+                    safe_page=_safe_url(page), page_type="login_password",
                 )
+            set_stage("free_existing_login_password")
+            now = time.monotonic()
+            if not login_password_submitted:
+                if not await _submit_existing_login_password(page, saved_password):
+                    raise CamoufoxBrowserError(
+                        "free_existing_login", "已有 Free 账号登录",
+                        "登录密码页输入或提交失败", retryable=False,
+                        error_code="free_camoufox_login_password_page",
+                        safe_page=_safe_url(page), page_type="login_password",
+                    )
+                login_password_submitted = True
+                login_password_submitted_at = time.monotonic()
+            else:
+                elapsed = now - (login_password_submitted_at or now)
+                if elapsed >= 45:
+                    raise CamoufoxBrowserError(
+                        "free_existing_login", "已有 Free 账号登录",
+                        "登录密码提交后页面未继续", retryable=False,
+                        error_code="free_camoufox_login_password_transition_timeout",
+                        safe_page=_safe_url(page), page_type="login_password",
+                    )
+                if elapsed >= 12 and not login_password_submit_retried:
+                    await _submit_existing_login_password(page, saved_password)
+                    login_password_submit_retried = True
+                    log("已有账号登录密码页未跳转，已使用同一密码重试提交", "warn")
             await asyncio.sleep(1.0)
             continue
 
@@ -2739,6 +2998,11 @@ class CamoufoxBrowserPool:
     ) -> bool:
         if not self.debug_mode or not self._page_is_open(page):
             return False
+        # The artifact capture below can take several seconds.  During that
+        # window the slot may have been disconnected or moved to a replacement
+        # browser.  Keep the generation observed for this context and validate
+        # it again immediately before installing the debug hold.
+        retention_generation = getattr(slot, "generation", 0)
         session_id = f"cam-debug-{uuid.uuid4().hex[:12]}"
         artifact_id = f"cam-artifact-{uuid.uuid4().hex[:12]}"
         nested = kwargs.get("config") if isinstance(kwargs.get("config"), Mapping) else {}
@@ -2822,7 +3086,19 @@ class CamoufoxBrowserPool:
             # capacity hold (or a hold without an owned session).
             if self._admission_lock is not None:
                 async with self._admission_lock:
-                    if not self._page_is_open(page) or self._closed:
+                    slots = getattr(self, "_slots", None)
+                    slot_registered = (
+                        slots is None
+                        or any(candidate is slot for candidate in slots)
+                    )
+                    if (
+                        not self._page_is_open(page)
+                        or getattr(self, "_closed", False)
+                        or not slot_registered
+                        or getattr(slot, "generation", None) != retention_generation
+                        or bool(getattr(slot, "draining", False))
+                        or not self._browser_connected(getattr(slot, "browser", None))
+                    ):
                         return False
                     with self._debug_lock:
                         if session_id not in self._debug_sessions:
@@ -2830,7 +3106,19 @@ class CamoufoxBrowserPool:
                             slot.debug_holds += 1
                             registered = True
             else:
-                if not self._page_is_open(page) or self._closed:
+                slots = getattr(self, "_slots", None)
+                slot_registered = (
+                    slots is None
+                    or any(candidate is slot for candidate in slots)
+                )
+                if (
+                    not self._page_is_open(page)
+                    or getattr(self, "_closed", False)
+                    or not slot_registered
+                    or getattr(slot, "generation", None) != retention_generation
+                    or bool(getattr(slot, "draining", False))
+                    or not self._browser_connected(getattr(slot, "browser", None))
+                ):
                     return False
                 with self._debug_lock:
                     if session_id not in self._debug_sessions:
@@ -2987,6 +3275,48 @@ class CamoufoxBrowserPool:
                 slot.debug_holds = max(0, slot.debug_holds - len(sessions))
         return len(sessions)
 
+    def _debug_close_timeout_budget(self, session_id: str = "") -> float:
+        """Return a bounded wait budget for a synchronous debug close request.
+
+        Contexts are closed serially on the pool loop.  Closing the last hold
+        on a slot can then drain active work, tear down the old browser and
+        launch a replacement.  A single-context timeout is therefore not a
+        sufficient bound for ``close-all`` and can make an otherwise completed
+        request look as though it failed while cleanup is still in flight.
+        """
+        context_timeout = _pool_timeout(self.config, "context_close_timeout_seconds", 15)
+        browser_timeout = _pool_timeout(self.config, "browser_recycle_timeout_seconds", 45)
+        drain_timeout = _pool_timeout(self.config, "browser_recycle_drain_timeout_seconds", 20)
+        normalized = str(session_id or "").strip()
+        with self._debug_lock:
+            if normalized:
+                candidate = self._debug_sessions.get(normalized)
+                sessions = (
+                    [candidate]
+                    if candidate is not None and normalized not in self._debug_closing
+                    else []
+                )
+            else:
+                sessions = [
+                    item for key, item in self._debug_sessions.items()
+                    if key not in self._debug_closing
+                ]
+        sessions = [item for item in sessions if item is not None]
+        if not sessions:
+            return max(5.0, context_timeout + 5.0)
+        # One slot can only be recycled once after its final retained context
+        # closes.  Include both manager teardown and the fallback browser close
+        # plus the bounded replacement launch, then add a small scheduling
+        # margin for the cross-thread Future handoff.
+        slots = {id(item.slot) for item in sessions}
+        per_slot_recycle = drain_timeout + (browser_timeout * 2.0) + context_timeout
+        return max(
+            5.0,
+            (len(sessions) * context_timeout)
+            + (len(slots) * per_slot_recycle)
+            + 5.0,
+        )
+
     def close_debug_sessions(self, session_id: str = "") -> int:
         """Close retained contexts on the pool's asyncio thread.
 
@@ -2996,14 +3326,25 @@ class CamoufoxBrowserPool:
         """
         if self._loop is None or not self._ready.is_set():
             return 0
+        timeout = self._debug_close_timeout_budget(session_id)
         try:
             future = asyncio.run_coroutine_threadsafe(
                 self._close_debug_sessions_async(session_id), self._loop,
             )
-            return int(future.result(timeout=float(self.config.get("context_close_timeout_seconds") or 15) + 5))
+            return int(future.result(timeout=timeout))
         except FutureTimeoutError:
+            # The async close path has its own per-resource bounds.  Give it a
+            # second, smaller drain window before cancellation so contexts
+            # already detached from the task can finish and update debug_state.
+            # This keeps a timed-out HTTP request observable instead of
+            # leaving a half-closed session with an eagerly cancelled task.
             try:
-                future.cancel()
+                return int(future.result(timeout=max(5.0, min(timeout, 30.0))))
+            except FutureTimeoutError:
+                try:
+                    future.cancel()
+                except Exception:
+                    pass
             except Exception:
                 pass
             return 0
@@ -3014,6 +3355,10 @@ class CamoufoxBrowserPool:
         """Return a secret-free snapshot suitable for the public Free state."""
         with self._debug_lock:
             sessions = list(self._debug_sessions.values())
+            closing_sessions = {
+                item.session_id for item in sessions
+                if item.session_id in self._debug_closing
+            }
         capacity = max(0, len(self._slots) * self.max_contexts)
         used = sum(max(0, int(slot.active_contexts) + int(slot.debug_holds)) for slot in self._slots)
         return {
@@ -3023,6 +3368,8 @@ class CamoufoxBrowserPool:
             "used": used,
             "available": max(0, capacity - used),
             "open_contexts": len(sessions),
+            "closing_contexts": len(closing_sessions),
+            "closing_sessions": sorted(closing_sessions),
             "pool_count": 1,
             "sessions": [
                 {
@@ -3354,14 +3701,20 @@ class CamoufoxBrowserPool:
         try:
             if self._admission_lock is not None:
                 async with self._admission_lock:
-                    available = slot.active_contexts + slot.debug_holds < self.max_contexts
+                    available = (
+                        not slot.draining
+                        and slot.active_contexts + slot.debug_holds < self.max_contexts
+                    )
                     if available:
                         slot.active_contexts += 1
                         reserved = True
                         if slot.idle_event is not None:
                             slot.idle_event.clear()
             else:
-                available = slot.active_contexts + slot.debug_holds < self.max_contexts
+                available = (
+                    not slot.draining
+                    and slot.active_contexts + slot.debug_holds < self.max_contexts
+                )
                 if available:
                     slot.active_contexts += 1
                     reserved = True
@@ -3671,66 +4024,164 @@ class CamoufoxBrowserPool:
         async with lock:
             if slot.generation != generation or self._closed:
                 return
-            if slot.browser is None or not self._browser_connected(slot.browser):
-                # A dead browser cannot keep a headed inspection window alive.
-                # Remove those holds before recycling so the slot cannot remain
-                # permanently full after a process disconnect.
-                await self._discard_debug_sessions_for_slot(slot)
-            # A debug page is intentionally the last live artifact of a failed
-            # task. Do not tear down its browser behind the operator's back;
-            # the explicit close endpoint will release the hold and perform
-            # the normal pool shutdown.
-            if slot.debug_holds:
-                slot.draining = False
-                slot.recycle_error = ""
-                return
-            slot.draining = True
-            if slot.active_contexts and slot.idle_event is not None:
-                try:
-                    await asyncio.wait_for(slot.idle_event.wait(), timeout=float(self.config.get("browser_recycle_drain_timeout_seconds") or 20))
-                except asyncio.TimeoutError:
-                    pass
-            # A task that was already in its terminal cleanup can retain a
-            # debug page while the drain event is being awaited.  Re-check
-            # after the await, immediately before touching the old browser;
-            # otherwise the newly retained page would be closed behind the
-            # operator's back and its hold would point at a dead process.
+            old_manager, old_browser = slot.manager, slot.browser
+            replacement_committed = False
+            replacement_ready = False
+            # Mark the slot as draining before any await.  Retention checks the
+            # same admission lock, so a disconnect/recycle cannot admit a new
+            # debug hold after the dead-browser check but before teardown.
             if self._admission_lock is not None:
                 async with self._admission_lock:
-                    if slot.debug_holds:
-                        slot.draining = False
-                        slot.recycle_error = ""
+                    if slot.generation != generation or self._closed:
                         return
-            elif slot.debug_holds:
-                slot.draining = False
-                slot.recycle_error = ""
-                return
-            old_manager, old_browser = slot.manager, slot.browser
-            slot.manager = None
-            slot.browser = None
-            slot.generation += 1
-            slot.completed = 0
-            try:
-                if old_manager is not None:
-                    await asyncio.wait_for(old_manager.__aexit__(None, None, None), timeout=float(self.config.get("browser_recycle_timeout_seconds") or 45))
-                elif old_browser is not None:
-                    await asyncio.wait_for(old_browser.close(), timeout=float(self.config.get("context_close_timeout_seconds") or 15))
-            except Exception:
-                try:
-                    await asyncio.wait_for(old_browser.close(), timeout=float(self.config.get("context_close_timeout_seconds") or 15))
-                except Exception:
-                    pass
-            if self._closed:
-                return
-            try:
-                manager, browser = await asyncio.wait_for(self._launch_browser(), timeout=float(self.config.get("browser_recycle_timeout_seconds") or 45))
-            except Exception as exc:
+                    slot.draining = True
+            else:
                 slot.draining = True
-                error_code = str(getattr(exc, "error_code", "") or type(exc).__name__)
-                slot.recycle_error = clean(f"{error_code}: {type(exc).__name__}", 240)
-                return
-            slot.manager, slot.browser, slot.draining, slot.recycle_error = manager, browser, False, ""
-            self._attach_browser_disconnect(slot)
+
+            async def close_resource(
+                close_fn: Callable[[], Any], timeout: float,
+            ) -> tuple[bool, bool]:
+                """Close one async browser resource and report cancellation.
+
+                ``asyncio.wait_for`` normally cancels its child when the
+                surrounding recycle task is cancelled.  Keep that child in a
+                task and shield it so we can finish (or explicitly cancel) the
+                manager close before propagating cancellation; otherwise the
+                slot has already detached its only reference to the old
+                browser.
+                """
+                try:
+                    result = close_fn()
+                except asyncio.CancelledError:
+                    return False, True
+                except BaseException:
+                    return False, False
+                if not inspect.isawaitable(result):
+                    return True, False
+                task = asyncio.create_task(result)
+                budget = max(0.1, float(timeout))
+                try:
+                    await asyncio.wait_for(asyncio.shield(task), timeout=budget)
+                    return True, False
+                except asyncio.TimeoutError:
+                    task.cancel()
+                    await asyncio.gather(task, return_exceptions=True)
+                    return False, False
+                except asyncio.CancelledError:
+                    # The caller's cancellation is intentionally deferred
+                    # until the child has had a bounded chance to finish.
+                    try:
+                        await asyncio.wait_for(asyncio.shield(task), timeout=budget)
+                    except asyncio.TimeoutError:
+                        task.cancel()
+                        await asyncio.gather(task, return_exceptions=True)
+                    except BaseException:
+                        task.cancel()
+                        await asyncio.gather(task, return_exceptions=True)
+                    return False, True
+                except BaseException:
+                    return False, False
+
+            try:
+                if slot.browser is None or not self._browser_connected(slot.browser):
+                    # A dead browser cannot keep a headed inspection window
+                    # alive. Remove those holds before recycling so the slot
+                    # cannot remain permanently full after a process exit.
+                    await self._discard_debug_sessions_for_slot(slot)
+                # A debug page is intentionally the last live artifact of a
+                # failed task. Do not tear down its browser behind the
+                # operator's back; the explicit close endpoint will release
+                # the hold and perform the normal pool shutdown.
+                if slot.debug_holds:
+                    slot.draining = False
+                    slot.recycle_error = ""
+                    return
+                if slot.active_contexts and slot.idle_event is not None:
+                    try:
+                        await asyncio.wait_for(
+                            slot.idle_event.wait(),
+                            timeout=float(self.config.get("browser_recycle_drain_timeout_seconds") or 20),
+                        )
+                    except asyncio.TimeoutError:
+                        pass
+                # A task that was already in its terminal cleanup can retain a
+                # debug page while the drain event is being awaited. Re-check
+                # immediately before touching the old browser; otherwise the
+                # newly retained page could be closed behind the operator.
+                if self._admission_lock is not None:
+                    async with self._admission_lock:
+                        if slot.debug_holds:
+                            slot.draining = False
+                            slot.recycle_error = ""
+                            return
+                elif slot.debug_holds:
+                    slot.draining = False
+                    slot.recycle_error = ""
+                    return
+                # Mark the slot as replaced only after the drain check. If
+                # cancellation arrives during the wait, the finally block
+                # restores draining=False on the still-usable old browser.
+                slot.manager = None
+                slot.browser = None
+                slot.generation += 1
+                slot.completed = 0
+                replacement_committed = True
+                close_cancelled = False
+                resource_closed = False
+                close_timeout = float(self.config.get("browser_recycle_timeout_seconds") or 45)
+                if old_manager is not None:
+                    resource_closed, close_cancelled = await close_resource(
+                        lambda: old_manager.__aexit__(None, None, None),
+                        close_timeout,
+                    )
+                if old_browser is not None and (not resource_closed or old_manager is None):
+                    _browser_closed, browser_cancelled = await close_resource(
+                        old_browser.close,
+                        float(self.config.get("context_close_timeout_seconds") or 15),
+                    )
+                    resource_closed = bool(resource_closed or _browser_closed)
+                    close_cancelled = bool(close_cancelled or browser_cancelled)
+                if close_cancelled:
+                    raise asyncio.CancelledError
+                if self._closed:
+                    return
+                try:
+                    manager, browser = await asyncio.wait_for(
+                        self._launch_browser(),
+                        timeout=float(self.config.get("browser_recycle_timeout_seconds") or 45),
+                    )
+                except Exception as exc:
+                    slot.draining = True
+                    error_code = str(getattr(exc, "error_code", "") or type(exc).__name__)
+                    slot.recycle_error = clean(f"{error_code}: {type(exc).__name__}", 240)
+                    return
+                slot.manager, slot.browser, slot.draining, slot.recycle_error = manager, browser, False, ""
+                replacement_ready = True
+                self._attach_browser_disconnect(slot)
+            finally:
+                if (
+                    not replacement_committed
+                    and slot.generation == generation
+                    and slot.browser is old_browser
+                    and not self._closed
+                ):
+                    # Cancellation during the drain wait leaves the original
+                    # browser usable; make that fact visible to admission.
+                    slot.draining = False
+                elif (
+                    replacement_committed
+                    and not replacement_ready
+                    and slot.generation == generation + 1
+                    and not self._closed
+                    and slot.browser is None
+                ):
+                    # The old browser was detached but replacement did not
+                    # finish. Keep the slot blocked and expose a stable error
+                    # for the next registration instead of accepting work on
+                    # a half-recycled slot.
+                    slot.draining = True
+                    if not slot.recycle_error:
+                        slot.recycle_error = "browser_recycle_incomplete"
 
     def register(self, **kwargs: Any) -> dict[str, Any]:
         if self._closed:
@@ -3756,10 +4207,28 @@ class CamoufoxBrowserPool:
         registration_timeout = float(self.config.get("registration_timeout_seconds") or 600)
         cleanup_budget = float(self.config.get("context_close_timeout_seconds") or 15)
         recycle_budget = float(self.config.get("browser_recycle_timeout_seconds") or 45)
+        drain_budget = float(self.config.get("browser_recycle_drain_timeout_seconds") or 20)
         try:
-            return dict(future.result(timeout=registration_timeout + cleanup_budget + recycle_budget + 30))
+            return dict(future.result(
+                timeout=registration_timeout + cleanup_budget + recycle_budget
+                + drain_budget + 30,
+            ))
         except FutureTimeoutError as exc:
-            future.cancel()
+            # The async registration path already bounds page/context cleanup
+            # and browser replacement.  Give those operations one final,
+            # bounded drain window before cancelling the cross-thread Future;
+            # cancelling immediately can interrupt the recycler after it has
+            # detached the old browser and leave the caller with no observable
+            # completion state.
+            try:
+                future.result(timeout=max(5.0, min(cleanup_budget + drain_budget + recycle_budget + 5, 30.0)))
+            except FutureTimeoutError:
+                try:
+                    future.cancel()
+                except Exception:
+                    pass
+            except Exception:
+                pass
             raise CamoufoxBrowserError("free_camoufox_browser", "Camoufox 注册页面", "浏览器注册超时", error_code="camoufox_registration_timeout") from exc
 
     def shutdown(self, *, force: bool = False) -> bool:
@@ -3999,6 +4468,16 @@ def camoufox_debug_state(config: Mapping[str, Any] | None = None) -> dict[str, A
             snapshots.append((key, snapshot))
     snapshot_values = [snapshot for _key, snapshot in snapshots]
     sessions = [item for snapshot in snapshot_values for item in snapshot.get("sessions", [])]
+    closing_sessions = sorted({
+        str(session_id)
+        for snapshot in snapshot_values
+        for session_id in (snapshot.get("closing_sessions") or [])
+        if str(session_id or "").strip()
+    })
+    closing_contexts = sum(
+        max(0, int(snapshot.get("closing_contexts") or 0))
+        for snapshot in snapshot_values
+    )
     capacity = sum(max(0, int(snapshot.get("capacity") or 0)) for snapshot in snapshot_values)
     used = sum(max(0, int(snapshot.get("used") or snapshot.get("open_contexts") or 0)) for snapshot in snapshot_values)
     current_snapshot = next(
@@ -4030,6 +4509,8 @@ def camoufox_debug_state(config: Mapping[str, Any] | None = None) -> dict[str, A
         "used": used,
         "available": max(0, capacity - used),
         "open_contexts": len(sessions),
+        "closing_contexts": closing_contexts,
+        "closing_sessions": closing_sessions,
         "pool_count": len(snapshots),
         "sessions": sessions,
     }
@@ -4120,6 +4601,22 @@ class CamoufoxRegistrationRunner:
 
     def __call__(self, task: Mapping[str, Any], config: Mapping[str, Any], stop_event: Any, stage: Callable[[str, str], None], log: Callable[[str, str], None], *, twofa_retry: bool = False) -> Mapping[str, Any]:
         task_id = str(task.get("task_id") or "")
+        private_result = task.get("result") if isinstance(task.get("result"), Mapping) else {}
+        existing_password = ""
+        for candidate in (
+            private_result.get("password"),
+            task.get("password"),
+            task.get("saved_password"),
+        ):
+            if str(candidate or "").strip():
+                existing_password = str(candidate).strip()
+                break
+        if twofa_retry and not existing_password:
+            raise FreeRegisterError(
+                "free_existing_login", "已有 Free 账号登录",
+                "已有账号登录缺少已保存密码，拒绝使用固定注册密码",
+                retryable=False, error_code="free_existing_login_password_missing",
+            )
         browser_config = dict(config.get("camoufox") or {})
         if self.debug_artifact_dir:
             browser_config["_debug_artifact_dir"] = self.debug_artifact_dir
@@ -4136,7 +4633,8 @@ class CamoufoxRegistrationRunner:
             def callback(stage_code: str = "free_email_otp_wait") -> str:
                 return otp.wait_code(str(task.get("email") or ""), stage_code=stage_code)
             result = _pool_for(browser_config).register(
-                email=str(task.get("email") or ""), password=FIXED_PASSWORD,
+                email=str(task.get("email") or ""),
+                password="" if twofa_retry else FIXED_PASSWORD,
                 proxy=str(task.get("proxy") or ""), otp_callback=callback,
                 otp_prepare=otp.prepare, otp_mark_sent=otp.mark_sent,
                 config={
@@ -4147,6 +4645,7 @@ class CamoufoxRegistrationRunner:
                 stage_fn=stage,
                 timing_fn=config.get("_timing_substep"),
                 force_existing_login=twofa_retry,
+                existing_password=existing_password,
             )
             result = dict(result)
             result["registration_ip"] = str(task.get("expected_exit_ip") or task.get("exit_ip") or "")

@@ -502,6 +502,37 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertEqual(manager.public_state()["runtime_version"], "1.6.86")
         self.assertEqual(manager.preflight({"target_count": 1})["otp_parser_revision"], "pickup-dynamic-v6-samples")
 
+    def test_close_camoufox_debug_passes_current_config_to_pool_helper(self):
+        config = {
+            "camoufox": {
+                "debug_mode": False,
+                "headless": True,
+                "pool_size": 1,
+                "max_contexts_per_browser": 1,
+            },
+        }
+        manager = FreeRegisterManager(self.data_dir, config_provider=lambda: config)
+        session_id = "cam-debug-abc123456789"
+        states = [
+            {"sessions": [{"session_id": session_id}]},
+            {"sessions": []},
+        ]
+        with (
+            patch(
+                "mac_overrides.free_register_runtime.camoufox_debug_state",
+                side_effect=states,
+            ),
+            patch(
+                "mac_overrides.free_register_runtime.close_camoufox_debug_browsers",
+                return_value={"closed_contexts": 1},
+            ) as close,
+        ):
+            result = manager.close_camoufox_debug(session_id)
+
+        close.assert_called_once_with(session_id, config=config)
+        self.assertEqual(result["closed_contexts"], 1)
+        self.assertEqual(result["state"], {"sessions": []})
+
     def test_manager_preflight_applies_proxy_allocation_mode_from_config(self):
         pool = FreeMailboxPool(self.data_dir)
         pool.import_text("a@example.test----https://mail.example.test/pickup\n")

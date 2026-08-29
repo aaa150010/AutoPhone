@@ -5,6 +5,7 @@ import unittest
 
 from mac_overrides.error_observability import (
     ACCOUNT_BANNED_MESSAGE,
+    NODE_LABELS,
     classify_failure,
     format_failure_log,
     format_node_retry_log,
@@ -17,6 +18,9 @@ from mac_overrides.error_observability import (
 
 
 class ErrorObservabilityTests(unittest.TestCase):
+    def test_existing_free_login_password_has_a_public_diagnostic_label(self):
+        self.assertEqual(NODE_LABELS["free_existing_login_password"], "验证已有 Free 账号密码")
+
     def test_sentinel_lifecycle_traces_are_not_failures_or_retries(self):
         traces = (
             (

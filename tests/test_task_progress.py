@@ -58,6 +58,10 @@ class TaskProgressTests(unittest.TestCase):
         )
         self.assertEqual(progress["timing"]["elapsed_seconds"], 30)
 
+    def test_existing_free_login_password_is_a_registered_free_stage(self):
+        self.assertEqual(STAGES["free_existing_login_password"].label, "验证已有 Free 账号密码")
+        self.assertEqual(STAGES["free_existing_login_password"].group, "free")
+
     def test_phone_stage_definitions_skip_removed_plan_gate(self):
         phone_codes = [
             code for code, stage in STAGES.items()

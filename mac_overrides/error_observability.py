@@ -72,6 +72,7 @@ NODE_LABELS = {
     "free_roxy_challenge": "等待注册页安全验证",
     "free_roxy_cleanup": "清理 RoxyBrowser 环境",
     "free_existing_login": "已有 Free 账号登录",
+    "free_existing_login_password": "验证已有 Free 账号密码",
     "free_existing_login_otp": "已有 Free 账号邮箱验证",
     "free_proxy_binding": "绑定 Free 注册代理",
     "free_proxy_lease": "读取 Free 代理租约",

@@ -478,6 +478,7 @@ const camoufoxDebugCapacity = computed(() => Number(camoufoxDebug.value.capacity
 const camoufoxDebugUsed = computed(() => Number(camoufoxDebug.value.used ?? camoufoxDebugSessions.value.length))
 const camoufoxDebugAvailable = computed(() => Math.max(0, Number(camoufoxDebug.value.available ?? camoufoxDebugCapacity.value - camoufoxDebugUsed.value)))
 const camoufoxDebugOpenContexts = computed(() => Number(camoufoxDebug.value.open_contexts ?? camoufoxDebugUsed.value))
+const camoufoxDebugClosingContexts = computed(() => Number(camoufoxDebug.value.closing_contexts || 0))
 const camoufoxDebugHeadless = computed(() => typeof camoufoxDebug.value.headless === 'boolean' ? camoufoxDebug.value.headless : (Boolean(config.camoufox.debug_mode) ? false : Boolean(config.camoufox.headless)))
 
 async function copyDebugReference(value: string, label: string) {
@@ -576,7 +577,7 @@ onUnmounted(() => window.clearTimeout(timer))
           <div v-if="config.driver === 'camoufox' || camoufoxDebugSessions.length" class="camoufox-debug-bar">
             <div class="camoufox-debug-summary">
               <el-tag type="warning" effect="plain">Camoufox 调试窗口 {{ camoufoxDebugSessions.length }} / {{ camoufoxDebugCapacity || '-' }}</el-tag>
-              <span class="muted">占用 {{ camoufoxDebugUsed }} · 可用 {{ camoufoxDebugAvailable }} · 活动 context {{ camoufoxDebugOpenContexts }}</span>
+              <span class="muted">占用 {{ camoufoxDebugUsed }} · 可用 {{ camoufoxDebugAvailable }} · 活动 context {{ camoufoxDebugOpenContexts }}<template v-if="camoufoxDebugClosingContexts"> · 正在关闭 {{ camoufoxDebugClosingContexts }}</template></span>
               <span v-if="!camoufoxDebugHeadless" class="muted">有头模式</span>
             </div>
             <span class="muted">失败页面和安全挑战会保留；超时、取消、成功和浏览器断开会回收。</span>

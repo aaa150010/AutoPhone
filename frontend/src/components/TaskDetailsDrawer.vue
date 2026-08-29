@@ -52,6 +52,8 @@ const freeNodes: TaskStageNodeDefinition[] = [
   { code: 'free_email_identifier', label: '识别 Free 注册邮箱', group: 'free' },
   { code: 'free_email_password', label: '验证 Free 注册密码', group: 'free' },
   { code: 'free_email_otp_wait', label: '等待 Free 邮箱验证码', group: 'free' },
+  { code: 'free_existing_login_password', label: '验证已有 Free 账号密码', group: 'free' },
+  { code: 'free_existing_login_otp', label: '等待已有 Free 账号登录验证码', group: 'free' },
   { code: 'free_email_otp_validate', label: '验证 Free 邮箱验证码', group: 'free' },
   { code: 'free_protocol_result', label: '读取 Free 协议注册结果', group: 'free' },
   { code: 'free_account_create', label: '创建 Free 账号', group: 'free' },

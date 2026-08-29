@@ -989,6 +989,20 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
     def close_camoufox_debug(self, session_id: str = "") -> dict[str, Any]:
         """Close one retained debug session or all retained sessions."""
         normalized = str(session_id or "").strip()
+        # Keep the current normalized Camoufox settings available to the
+        # aggregate close helper.  ``config`` used to be referenced here
+        # without being initialized, so a valid close request could fail only
+        # after the session-id validation path had succeeded.
+        config: Mapping[str, Any] = {}
+        if callable(self.config_provider):
+            try:
+                candidate = self.config_provider()
+                if isinstance(candidate, Mapping):
+                    config = candidate
+            except Exception:
+                config = self._last_config
+        if not config:
+            config = self._last_config
         if normalized:
             # The pool module owns the event-loop objects. Keep the public
             # manager boundary narrow and use its aggregate close helper for
@@ -1936,6 +1950,20 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 now = int(time.time())
                 retry_id = f"{batch_id}-{secrets.token_hex(3)}"
                 workers = max(1, min(int(config.get("concurrency") or self._last_config.get("concurrency") or 3), 16))
+                # A task snapshot may intentionally expose only capability
+                # flags after restart, while the private result file still
+                # contains the account password needed for an existing-login
+                # or 2FA retry.  Merge the durable result as a fill-only
+                # fallback; never copy secrets into the public task shape.
+                original_result = (
+                    dict(original.get("result") or {})
+                    if isinstance(original.get("result"), Mapping) else {}
+                )
+                saved_result = self.pool.result(row_id)
+                merged_result = copy.deepcopy(dict(saved_result)) if isinstance(saved_result, Mapping) else {}
+                for key, value in original_result.items():
+                    if value not in (None, "") or key not in merged_result:
+                        merged_result[key] = copy.deepcopy(value)
                 task = {
                     "task_id": retry_id,
                     "ordinal": int(original.get("ordinal") or 1),
@@ -1970,7 +1998,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     "retry_key": retry_key,
                     "manual_generation": 0,
                     "progress": {"stage": "free_twofa_enroll" if twofa_retry else "free_oauth_session", "group": "free", "started_at": now, "updated_at": now, "finished_at": None},
-                    "result": copy.deepcopy(dict(original.get("result") or {})) if isinstance(original.get("result"), Mapping) else {"twofa_status": ""},
+                    "result": merged_result or {"twofa_status": ""},
                 }
                 self._tasks[retry_id] = task
                 self._retry_leases[retry_key] = retry_id

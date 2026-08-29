@@ -97,6 +97,7 @@ FREE_STAGE_LABELS = {
     "free_roxy_page_state": "等待 RoxyBrowser 页面状态",
     "free_roxy_login_password": "识别登录密码页",
     "free_existing_login": "已有 Free 账号登录",
+    "free_existing_login_password": "验证已有 Free 账号密码",
     "free_existing_login_otp": "已有 Free 账号邮箱验证",
     "free_roxy_challenge": "等待注册页安全验证",
     "free_camoufox_dependency": "检查 Camoufox 依赖",
