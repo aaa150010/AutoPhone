@@ -13,11 +13,15 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.92',
-  freeRuntimeVersion: '1.6.92',
-  title: 'Free Camoufox 调试窗口与任务布局修复',
+  version: '1.6.93',
+  freeRuntimeVersion: '1.6.93',
+  title: 'Free 邮箱池显示与导入排序修复',
   releasedAt: '2026-08-30',
   sections: [
+    {
+      title: 'Free 邮箱池显示与导入排序修复',
+      usage: '未运行的邮箱不再误显示为全协议；新导入邮箱会按本次导入顺序置于列表顶部，重复旧邮箱保留原有位置。',
+    },
     {
       title: 'Free Camoufox 调试窗口与任务布局修复',
       usage: '调试栏不会再把任务操作区撑成大块空白；状态栏区分浏览器进程、调试 context 和总容量。已有账号缺少真实保存密码时会明确提示补录密码，不会尝试注册默认密码；关闭窗口会先关闭页面并释放对应调试会话。',

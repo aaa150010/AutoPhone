@@ -383,19 +383,21 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertNotIn("token", persisted[0])
         self.assertNotIn("legacy-password", logs.path.read_text(encoding="utf-8"))
 
-    def test_free_pool_import_appends_and_deduplicates_existing_rows(self):
+    def test_free_pool_import_prepends_new_and_deduplicates_existing_rows(self):
         pool = FreeMailboxPool(self.data_dir)
         pool.import_text("first@example.test----https://mail.example.test/a\n")
 
         added, skipped = pool.import_text_with_stats(
             "first@example.test----https://mail.example.test/a\n"
             "second@example.test----https://mail.example.test/b\n"
+            "third@example.test----https://mail.example.test/c\n"
         )
 
-        self.assertEqual((added, skipped), (1, 1))
+        self.assertEqual((added, skipped), (2, 1))
         self.assertEqual([row.email for row in pool.entries()], [
-            "first@example.test",
             "second@example.test",
+            "third@example.test",
+            "first@example.test",
         ])
 
     def test_free_pool_delete_rejects_active_rows_and_keeps_history_files(self):
@@ -499,7 +501,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             runner=lambda *_args, **_kwargs: {},
             proxy_probe=lambda _proxy, _url: "203.0.113.20",
         )
-        self.assertEqual(manager.public_state()["runtime_version"], "1.6.92")
+        self.assertEqual(manager.public_state()["runtime_version"], "1.6.93")
         self.assertEqual(manager.preflight({"target_count": 1})["otp_parser_revision"], "pickup-dynamic-v6-samples")
 
     def test_close_camoufox_debug_passes_current_config_to_pool_helper(self):

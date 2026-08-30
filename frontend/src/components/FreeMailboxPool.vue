@@ -66,6 +66,13 @@ function isHistoricalDriver(row: FreeMailboxRow) {
   const driver = String(row.driver || '').trim().toLowerCase()
   return Boolean(driver) && driver !== 'protocol' && driver !== 'camoufox'
 }
+function mailboxDriverLabel(row: FreeMailboxRow) {
+  const driver = String(row.driver || '').trim().toLowerCase()
+  if (driver === 'camoufox') return 'Camoufox'
+  if (driver === 'protocol') return '全协议'
+  if (!driver) return '未运行'
+  return '历史链路'
+}
 function openImport() {
   mailboxText.value = ''
   importOpen.value = true
@@ -532,7 +539,7 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
           <el-table-column prop="line_no" label="原序号" width="68" align="right" />
           <el-table-column label="邮箱" min-width="190" show-overflow-tooltip><template #default="{ row }"><el-tooltip content="点击复制邮箱" placement="top"><el-button link class="email-copy" @click.stop="copyEmail(row)"><span>{{ row.email }}</span><el-icon><CopyDocument /></el-icon></el-button></el-tooltip></template></el-table-column>
           <el-table-column label="链路 / 阶段" min-width="180" show-overflow-tooltip>
-            <template #default="{ row }"><el-tag size="small" effect="plain">{{ row.driver === 'camoufox' ? 'Camoufox' : row.driver === 'protocol' || !row.driver ? '全协议' : '历史链路' }}</el-tag><el-tag size="small" :type="mailboxStageType(row)">{{ mailboxStageLabel(row) }}</el-tag></template>
+            <template #default="{ row }"><el-tag size="small" effect="plain">{{ mailboxDriverLabel(row) }}</el-tag><el-tag size="small" :type="mailboxStageType(row)">{{ mailboxStageLabel(row) }}</el-tag></template>
           </el-table-column>
           <el-table-column label="套餐 / Plus 试用" width="178">
             <template #default="{ row }"><el-tag size="small" :type="planTagType(row)" effect="light">{{ planLabel(row) }}</el-tag><el-tag v-if="row.plus_trial_eligible && String(row.subscription_plan || row.plan_type || '').toLowerCase() !== 'free'" size="small" type="success" effect="plain" class="trial-tag">Plus 试用</el-tag><el-tooltip v-if="!isHistoricalDriver(row) && row.has_access_token && String(row.plan_check_status || '').toLowerCase() === 'failed'" content="重新查询套餐"><el-button link size="small" :icon="Refresh" :loading="planBusy === row.row_id" :disabled="Boolean(planBusy)" aria-label="重新查询套餐" @click.stop="retryPlan(row)" /></el-tooltip></template>

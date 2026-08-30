@@ -131,7 +131,12 @@ class FreeMailboxPool:
             existing_ids = {entry.row_id for entry in existing}
             combined: list[FreeMailbox] = []
             seen: set[str] = set()
-            for entry in [*existing, *incoming]:
+            # Only genuinely new rows move to the top. Re-importing an old
+            # row must preserve its existing position and state association.
+            for entry in [
+                *(item for item in incoming if item.row_id not in existing_ids),
+                *existing,
+            ]:
                 if entry.row_id not in seen:
                     seen.add(entry.row_id)
                     combined.append(entry)
