@@ -3559,7 +3559,13 @@ def _submit_manual_code(self, task_id, code):
         raise _runtime.MailboxPoolError(str(exc)) from exc
 
 
-def _manual_email_wait(provider, email, automatic_wait):
+def _manual_email_wait(provider, email, automatic_wait, *, parser_provider=None):
+    # The recovered call sites (and older integrations) use the historic
+    # three-argument helper signature.  Infer the URL parser owner from the
+    # wrapper provider when the optional context is omitted so those callers
+    # remain compatible while still recording parser samples.
+    if parser_provider is None:
+        parser_provider = getattr(provider, "provider", None)
     task_id = str(_TASK_CONTEXT.get() or getattr(provider, "task_id", "") or "").strip()
     if not task_id:
         return automatic_wait()
@@ -3573,6 +3579,12 @@ def _manual_email_wait(provider, email, automatic_wait):
         stop_event=_manual_stop_event(provider),
         automatic_timeout_seconds=timeout,
         manual_timeout_seconds=_manual_verification_runtime_ext.DEFAULT_WINDOW_SECONDS,
+        on_automatic_unmatched=(
+            lambda cause: _mailbox_otp_service_ext.record_runtime_parser_sample(
+                parser_provider,
+                cause,
+            )
+        ) if parser_provider is not None else None,
         on_manual_selected=lambda: _call_log(
             getattr(provider, "log_fn", None),
             "  [人工邮箱验证码/email_code_waiting] 已接收当前任务的人工验证码",

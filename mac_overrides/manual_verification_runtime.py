@@ -340,6 +340,9 @@ def is_timeout_error(value: Any) -> bool:
             "timed out",
             "code_timeout",
             "no verification code",
+            "verification code timeout",
+            "验证码等待超时",
+            "邮箱验证码等待",
             "未获取到",
             "等待验证码",
         )
@@ -364,6 +367,8 @@ def wait_with_manual_fallback(
     stop_event: Any = None,
     automatic_timeout_seconds: int = 90,
     manual_timeout_seconds: int = DEFAULT_WINDOW_SECONDS,
+    on_automatic_unmatched: Callable[[Any], Any] | None = None,
+    on_manual_opened: Callable[[dict[str, Any]], Any] | None = None,
     on_manual_selected: Callable[[], Any] | None = None,
 ) -> Any:
     """Race a bounded automatic wait against an inline manual prompt."""
@@ -372,6 +377,20 @@ def wait_with_manual_fallback(
     condition = threading.Condition()
     manual_open = threading.Event()
     automatic_submitted = threading.Event()
+    automatic_unmatched_notified = False
+    manual_was_explicit = False
+
+    def notify_automatic_unmatched(reason: Any) -> None:
+        nonlocal automatic_unmatched_notified
+        if automatic_unmatched_notified or on_automatic_unmatched is None:
+            return
+        automatic_unmatched_notified = True
+        try:
+            on_automatic_unmatched(reason)
+        except Exception:
+            # Parser-sample persistence is diagnostic-only and must never
+            # prevent a task from accepting a valid manual code.
+            pass
 
     def run_automatic() -> None:
         try:
@@ -414,6 +433,7 @@ def wait_with_manual_fallback(
             return None
         return prompt
 
+    unmatched_reason: Any = "mailbox_code_timeout"
     while True:
         if _is_set(stop_event):
             broker.cancel_task(task_id)
@@ -423,6 +443,7 @@ def wait_with_manual_fallback(
         # automatic fallback path.
         prompt = visible_prompt()
         if prompt is not None:
+            manual_was_explicit = True
             manual_open.set()
             # A user may have opened the prompt and submitted a code before
             # the automatic waiter reaches its timeout.  Consume it now so an
@@ -470,14 +491,39 @@ def wait_with_manual_fallback(
                     return value
                 if kind == "error" and not is_timeout_error(value):
                     raise value
+                unmatched_reason = value if kind == "error" else "mailbox_code_invalid"
                 break
             remaining = deadline - time.monotonic()
             if remaining <= 0:
+                unmatched_reason = "mailbox_code_timeout"
                 break
             condition.wait(timeout=min(0.25, remaining))
 
-    broker.open(task_id, input_kind, generation, window_seconds=manual_timeout_seconds)
+    # Close the result/deadline hand-off before persisting the parser miss.
+    # A value already delivered by the automatic worker still wins; a value
+    # arriving after the automatic deadline is handled through the broker.
+    pending_automatic_result = False
+    with condition:
+        pending_before_open = list(result_queue)
+        result_queue.clear()
+    for result_kind, result_value in pending_before_open:
+        if result_kind == "result" and result_value:
+            pending_automatic_result = True
+            with condition:
+                result_queue.append((result_kind, result_value))
+        if result_kind == "error" and not is_timeout_error(result_value):
+            raise result_value
+        unmatched_reason = result_value if result_kind == "error" else unmatched_reason
+
+    if not pending_automatic_result and not manual_was_explicit:
+        notify_automatic_unmatched(unmatched_reason)
+    prompt = broker.open(task_id, input_kind, generation, window_seconds=manual_timeout_seconds)
     manual_open.set()
+    if on_manual_opened is not None:
+        try:
+            on_manual_opened(dict(prompt))
+        except Exception:
+            pass
     try:
         # The automatic worker can finish in the small hand-off window between
         # the timeout decision and opening the prompt.  Consume that result

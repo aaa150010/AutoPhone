@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+import threading
 from typing import Any, Callable, Mapping
 
 try:
@@ -54,6 +55,7 @@ class MailboxUrlOtpProvider:
         monotonic_fn: Callable[[], float] = time.monotonic,
         manual_broker: ManualVerificationBroker | None = None,
         manual_generation_getter: Callable[[str, str], int] | None = None,
+        verification_state_fn: Callable[[str, Mapping[str, Any] | None], Any] | None = None,
         timing_fn: TimingCallback | None = None,
         sample_context: Mapping[str, Any] | None = None,
     ) -> None:
@@ -90,11 +92,42 @@ class MailboxUrlOtpProvider:
         self.state = self.service.state
         self.timeout = self.service.timeout_seconds
         self.log_fn = log_fn
+        self.now_fn = now_fn
         self.task_id = str(task_id or "")
         self.stage_fn = stage_fn
         self.manual_broker = manual_broker
         self.manual_generation_getter = manual_generation_getter
+        self.verification_state_fn = verification_state_fn
         self.timing_fn = timing_fn
+
+    def _set_verification_state(
+        self,
+        stage_code: str,
+        phase: str,
+        opened_at: Any,
+        deadline_at: Any,
+    ) -> None:
+        callback = self.verification_state_fn
+        if not callable(callback):
+            return
+        try:
+            payload = {
+                "phase": str(phase or "")[:24],
+                "stage": str(stage_code or "")[:100],
+                "opened_at": max(0, int(opened_at or 0)),
+                "deadline_at": max(0, int(deadline_at or 0)),
+            }
+            callback(self.task_id, payload)
+        except Exception:
+            pass
+
+    def _clear_verification_state(self) -> None:
+        callback = self.verification_state_fn
+        if callable(callback):
+            try:
+                callback(self.task_id, None)
+            except Exception:
+                pass
 
     @staticmethod
     def _label(stage_code: str) -> str:
@@ -132,11 +165,35 @@ class MailboxUrlOtpProvider:
         resend_after_seconds: float = 12.0,
         stop_requested: Callable[[], bool] | None = None,
     ) -> str:
+        manual_completed = threading.Event()
+        timeout = max(1, int(self.timeout))
+        automatic_opened_at = int(self.now_fn())
+        automatic_deadline_at = automatic_opened_at + timeout
+        self._set_verification_state(
+            stage_code,
+            "automatic",
+            automatic_opened_at,
+            automatic_deadline_at,
+        )
+
+        def automatic_stop_requested() -> bool:
+            if manual_completed.is_set():
+                return True
+            if callable(stop_requested):
+                return bool(stop_requested())
+            return False
+
+        def manual_selected() -> None:
+            # Stop the automatic service before it reaches its own timeout;
+            # a manual success must not create a parser-miss sample later.
+            manual_completed.set()
+            self._log_manual_selected(stage_code)
+
         automatic_wait = lambda: self.service.wait_code(
             stage_code,
             resend_fn=resend_fn,
             resend_after_seconds=resend_after_seconds,
-            stop_requested=stop_requested,
+            stop_requested=automatic_stop_requested,
         )
         try:
             if self.manual_broker is not None and self.task_id:
@@ -155,9 +212,19 @@ class MailboxUrlOtpProvider:
                     input_kind="email_otp",
                     generation=generation,
                     stop_event=stop_requested,
-                    automatic_timeout_seconds=max(1, int(self.timeout)),
+                    automatic_timeout_seconds=timeout,
                     manual_timeout_seconds=300,
-                    on_manual_selected=lambda: self._log_manual_selected(stage_code),
+                    on_automatic_unmatched=lambda cause: self.service.record_parser_sample(
+                        str(self.service.diagnostic().get("reason") or getattr(cause, "code", "") or "mailbox_code_timeout"),
+                        self.service.diagnostic(),
+                    ),
+                    on_manual_opened=lambda prompt: self._set_verification_state(
+                        stage_code,
+                        "manual",
+                        prompt.get("opened_at"),
+                        prompt.get("deadline_at"),
+                    ),
+                    on_manual_selected=manual_selected,
                 ) or "").strip()
             return automatic_wait()
         except MailboxOtpError as exc:
@@ -185,6 +252,9 @@ class MailboxUrlOtpProvider:
                 error_code=f"{stage_code}_manual_{exc.code}",
                 retryable=exc.code in {"expired", "stopped"},
             ) from exc
+        finally:
+            manual_completed.set()
+            self._clear_verification_state()
 
     def _log_manual_selected(self, stage_code: str) -> None:
         if callable(self.log_fn):
@@ -237,6 +307,7 @@ def build_free_mailbox_otp_provider(
         retry_backoff_seconds=float(config.get("mailbox_retry_backoff_seconds", 1.0)),
         manual_broker=config.get("_manual_verification_broker"),
         manual_generation_getter=config.get("_manual_generation_getter"),
+        verification_state_fn=config.get("_mailbox_verification_state_fn"),
         timing_fn=config.get("_timing_substep"),
         sample_context={
             "task_id": task_id,

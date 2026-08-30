@@ -334,6 +334,45 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         with self._lock:
             return max(0, int(self._manual_generations.get(str(task_id), 0)))
 
+    def _mailbox_verification_state(
+        self,
+        task_id: str,
+        state: Mapping[str, Any] | None,
+    ) -> None:
+        """Publish only the non-sensitive OTP wait phase to the task table."""
+        normalized_task_id = str(task_id or "").strip()
+        if not normalized_task_id:
+            return
+        changed = False
+        with self._lock:
+            task = self._tasks.get(normalized_task_id)
+            if not isinstance(task, dict):
+                return
+            if state is None:
+                changed = task.pop("mailbox_verification", None) is not None
+            elif isinstance(state, Mapping):
+                phase = str(state.get("phase") or "").strip().lower()
+                if phase not in {"automatic", "manual"}:
+                    return
+                try:
+                    opened_at = max(0, int(state.get("opened_at") or 0))
+                    deadline_at = max(opened_at, int(state.get("deadline_at") or 0))
+                except (TypeError, ValueError):
+                    return
+                value = {
+                    "phase": phase,
+                    "stage": str(state.get("stage") or task.get("stage") or "")[:100],
+                    "opened_at": opened_at,
+                    "deadline_at": deadline_at,
+                }
+                if task.get("mailbox_verification") != value:
+                    task["mailbox_verification"] = value
+                    changed = True
+            if changed:
+                task["updated_at"] = int(time.time())
+        if changed:
+            self._save_tasks_safely("邮箱验证码等待状态更新")
+
     @staticmethod
     def _timing_record(task: dict[str, Any]) -> dict[str, Any]:
         value = task.get("timing")
@@ -767,6 +806,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             task = self._tasks.get(task_id)
             if task is not None:
                 progress = task.setdefault("progress", {})
+                task.pop("mailbox_verification", None)
                 final_stage = str(progress.get("stage") or task.get("stage") or "")
                 final_label = FREE_STAGE_LABELS.get(final_stage, final_stage)
                 started = int(progress.get("stage_started_at") or 0)
@@ -824,7 +864,35 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
 
     def _public_task(self, task: Mapping[str, Any]) -> dict[str, Any]:
         result = task.get("result") if isinstance(task.get("result"), Mapping) else {}
-        public = {key: copy.deepcopy(task[key]) for key in ("task_id", "incident_id", "ordinal", "slot_id", "slot_index", "concurrency_limit", "status", "created_at", "updated_at", "batch_id", "run_mode", "driver", "email", "row_id", "stage", "proxy_masked", "proxy_fingerprint", "profile_summary", "proxy_id", "proxy_scheme", "proxy_effective_scheme", "proxy_country", "proxy_group", "proxy_attempts", "cleanup_status", "retry_of", "retry_attempt", "retry_task_id", "retry_status", "retry_resolved", "retry_updated_at") if key in task}
+        public = {key: copy.deepcopy(task[key]) for key in ("task_id", "incident_id", "ordinal", "slot_id", "slot_index", "concurrency_limit", "status", "created_at", "updated_at", "batch_id", "run_mode", "driver", "email", "row_id", "stage", "mailbox_verification", "proxy_masked", "proxy_fingerprint", "profile_summary", "proxy_id", "proxy_scheme", "proxy_effective_scheme", "proxy_country", "proxy_group", "proxy_attempts", "cleanup_status", "retry_of", "retry_attempt", "retry_task_id", "retry_status", "retry_resolved", "retry_updated_at") if key in task}
+        verification = public.get("mailbox_verification")
+        if isinstance(verification, Mapping):
+            phase = str(verification.get("phase") or "").strip().lower()
+            try:
+                opened_at = max(0, int(verification.get("opened_at") or 0))
+                deadline_at = max(opened_at, int(verification.get("deadline_at") or 0))
+            except (TypeError, ValueError):
+                public.pop("mailbox_verification", None)
+            else:
+                public["mailbox_verification"] = {
+                    "phase": phase if phase in {"automatic", "manual"} else "automatic",
+                    "stage": str(verification.get("stage") or public.get("stage") or "")[:100],
+                    "opened_at": opened_at,
+                    "deadline_at": deadline_at,
+                }
+        if not public.get("incident_id"):
+            diagnostic_store = getattr(getattr(self, "log_store", None), "diagnostic_store", None)
+            if diagnostic_store is not None:
+                try:
+                    matches = diagnostic_store.search({
+                        "task_id": str(task.get("task_id") or ""),
+                        "first_node_code": "mailbox_parser_unmatched",
+                        "limit": 1,
+                    })
+                    if matches:
+                        public["incident_id"] = str(matches[0].get("incident_id") or "")
+                except Exception:
+                    pass
         public["account"] = public.get("email", "")
         mailbox_url = str(task.get("mailbox_url") or "").strip()
         if not mailbox_url and task.get("row_id"):
@@ -888,6 +956,13 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             if isinstance(prompt, Mapping) and prompt.get("input_kind"):
                 public["manual_verification"] = copy.deepcopy(dict(prompt))
                 public["capabilities"] = ["submit_manual_verification"]
+                verification = public.get("mailbox_verification") if isinstance(public.get("mailbox_verification"), Mapping) else {}
+                public["mailbox_verification"] = {
+                    "phase": "manual",
+                    "stage": str(verification.get("stage") or task.get("stage") or "")[:100],
+                    "opened_at": int(prompt.get("opened_at") or verification.get("opened_at") or 0),
+                    "deadline_at": int(prompt.get("deadline_at") or verification.get("deadline_at") or 0),
+                }
         if isinstance(task.get("timing"), Mapping):
             public["timing"] = copy.deepcopy(task["timing"])
         if isinstance(task.get("failure"), Mapping):
@@ -2796,6 +2871,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         if self.manual_broker is not None:
             task_config["_manual_verification_broker"] = self.manual_broker
             task_config["_manual_generation_getter"] = self._manual_generation
+        task_config["_mailbox_verification_state_fn"] = self._mailbox_verification_state
         self._log(f"[{task_id}/free_oauth_session] Free 任务开始", "info")
         task_log = lambda message, level="info", **fields: self._task_log(task_id, message, level, **fields)
         # Keep adapter-level timings attached to this task without changing

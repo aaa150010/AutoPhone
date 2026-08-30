@@ -159,6 +159,67 @@ class ManualVerificationRuntimeTests(unittest.TestCase):
         self.assertFalse(thread.is_alive())
         self.assertEqual(result, ["222222"])
 
+    def test_automatic_unmatched_callback_runs_once_before_manual_prompt(self):
+        broker = ManualVerificationBroker(default_window_seconds=3)
+        events = []
+        result = []
+
+        def run():
+            result.append(
+                wait_with_manual_fallback(
+                    lambda: "not-a-code",
+                    broker=broker,
+                    task_id="T-unmatched",
+                    input_kind="email_otp",
+                    generation=1,
+                    automatic_timeout_seconds=1,
+                    manual_timeout_seconds=3,
+                    on_automatic_unmatched=lambda reason: events.append(("unmatched", reason)),
+                    on_manual_opened=lambda prompt: events.append(("manual", prompt["input_kind"])),
+                )
+            )
+
+        thread = threading.Thread(target=run)
+        thread.start()
+        deadline = time.time() + 1
+        while time.time() < deadline and not broker.public("T-unmatched"):
+            time.sleep(0.01)
+        prompt = broker.public("T-unmatched")
+        self.assertTrue(prompt.get("can_submit"))
+        broker.submit("T-unmatched", "email_otp", 1, "123456")
+        thread.join(1)
+        self.assertEqual(result, ["123456"])
+        self.assertEqual([event[0] for event in events], ["unmatched", "manual"])
+
+    def test_manual_submission_before_automatic_timeout_does_not_mark_unmatched(self):
+        broker = ManualVerificationBroker(default_window_seconds=3)
+        automatic_release = threading.Event()
+        events = []
+        result = []
+
+        def run():
+            result.append(
+                wait_with_manual_fallback(
+                    lambda: (automatic_release.wait(2), "111111")[1],
+                    broker=broker,
+                    task_id="T-early-manual",
+                    input_kind="email_otp",
+                    generation=1,
+                    automatic_timeout_seconds=2,
+                    manual_timeout_seconds=3,
+                    on_automatic_unmatched=lambda reason: events.append(reason),
+                )
+            )
+
+        thread = threading.Thread(target=run)
+        thread.start()
+        broker.open("T-early-manual", "email_otp", 1, window_seconds=3)
+        broker.submit("T-early-manual", "email_otp", 1, "222222")
+        automatic_release.set()
+        thread.join(1)
+        self.assertEqual(result, ["222222"])
+        self.assertEqual(events, [])
+
 
 if __name__ == "__main__":
     unittest.main()

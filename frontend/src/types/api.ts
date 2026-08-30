@@ -175,6 +175,13 @@ export interface ManualVerificationRequest {
   remaining_seconds: number
 }
 
+export interface MailboxVerificationState {
+  phase: 'automatic' | 'manual' | string
+  stage: string
+  opened_at: number
+  deadline_at: number
+}
+
 export interface ManualVerificationSubmission {
   task_id: string
   input_kind: ManualVerificationInputKind
@@ -230,6 +237,7 @@ export interface RuntimeTask {
   progress?: TaskProgress | null
   timing?: TaskTiming | null
   manual_verification?: ManualVerificationRequest | null
+  mailbox_verification?: MailboxVerificationState | null
   checkpoint?: TaskCheckpoint | null
   retry_of?: string
   retry_attempt?: number

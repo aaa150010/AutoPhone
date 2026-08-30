@@ -13,11 +13,15 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.88',
-  freeRuntimeVersion: '1.6.88',
-  title: 'Free 2FA 重认证诊断与传输观测',
+  version: '1.6.89',
+  freeRuntimeVersion: '1.6.89',
+  title: '邮箱解析失败审计与人工验证码入口统一',
   releasedAt: '2026-08-30',
   sections: [
+    {
+      title: '邮箱解析失败审计与人工验证码入口统一',
+      usage: '普通流程和 Free 三条链路在自动取码未识别后会保存脱敏解析样本并生成可引用的“邮箱解析未识别”日志；人工输入成功不会覆盖原始解析失败。Free 注册表在自动等待时显示倒计时，超时后自动出现并聚焦验证码输入框，不再需要点击表格或切换人工输入。',
+    },
     {
       title: 'Free 2FA 重认证诊断与传输观测',
       usage: '2FA 重认证会记录 CSRF、signin、authorize、邮箱 OTP 验证和 OAuth 回调的 HTTP 状态、媒体类型及脱敏落点；成功的传输观测不会被误写成业务失败，首个真实失败节点在后续清理和重试中保持稳定。认证预热失败只作为诊断提示，不会阻断已有账号的 2FA 重试。',

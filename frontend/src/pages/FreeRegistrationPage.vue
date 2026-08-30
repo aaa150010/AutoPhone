@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleCheck, Connection, CopyDocument, Delete, Refresh, Setting, VideoPause, VideoPlay, View } from '@element-plus/icons-vue'
-import { closeFreeCamoufoxDebug, deleteFreeTasks, freeBatchRetry, getFreeConfig, getFreeMailboxUrl, getFreeSecret, getFreeState, getFreeTaskLatestCode, openManualVerification, preflightFree, rerunFreeTask, retryFreeTwofa, startFree, startFreePlanCheck, stopFree, type FreeConfig, type FreeState } from '../api/client'
+import { closeFreeCamoufoxDebug, deleteFreeTasks, freeBatchRetry, getFreeConfig, getFreeMailboxUrl, getFreeSecret, getFreeState, getFreeTaskLatestCode, preflightFree, rerunFreeTask, retryFreeTwofa, startFree, startFreePlanCheck, stopFree, type FreeConfig, type FreeState } from '../api/client'
 import PageToolbar from '../components/PageToolbar.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import ContentEmptyState from '../components/ContentEmptyState.vue'
@@ -60,7 +60,6 @@ const busy = ref<'preflight' | 'start' | 'stop' | ''>('')
 const planBusy = ref('')
 const openingMailboxUrlTaskIds = ref<string[]>([])
 const loadingLatestCodeTaskIds = ref<string[]>([])
-const manualOpeningTaskIds = ref<string[]>([])
 const quickTargetCount = ref(defaultConfig.target_count)
 const quickConcurrency = ref(defaultConfig.concurrency)
 const quickRunDirty = ref(false)
@@ -262,23 +261,10 @@ async function copyTaskLatestCode(task: any) {
   }
 }
 
-function needsManualOtp(task: any) {
-  return Boolean(task?.status === 'running' && ['free_email_otp_wait', 'free_email_otp_validate', 'free_existing_login_otp'].includes(String(task?.stage || '')))
-}
-
-async function openManualOtp(task: any) {
-  const taskId = String(task?.task_id || '').trim()
-  if (!taskId || manualOpeningTaskIds.value.includes(taskId)) return
-  manualOpeningTaskIds.value = [...manualOpeningTaskIds.value, taskId]
-  try {
-    await openManualVerification({ task_id: taskId, input_kind: 'email_otp' })
-    ElMessage.info('人工验证码输入已打开')
-    await refresh()
-  } catch (error: any) {
-    ElMessage.error(error?.message || '打开人工验证码输入失败')
-  } finally {
-    manualOpeningTaskIds.value = manualOpeningTaskIds.value.filter(id => id !== taskId)
-  }
+function automaticOtpRemaining(task: any) {
+  const verification = task?.mailbox_verification
+  if (verification?.phase !== 'automatic') return 0
+  return Math.max(0, Math.floor(Number(verification.deadline_at || 0) - nowSeconds.value))
 }
 
 async function copyIncidentId(value: string) {
@@ -618,6 +604,7 @@ onUnmounted(() => window.clearTimeout(timer))
             <el-table-column type="index" label="序号" width="58" align="center" fixed="left" />
             <el-table-column label="账号" min-width="220" show-overflow-tooltip><template #default="{ row }"><el-tooltip v-if="row.email" content="点击复制邮箱" placement="top"><el-button link class="email-copy" @click.stop="copyTaskEmail(row)"><strong>{{ row.email }}</strong><el-icon><CopyDocument /></el-icon></el-button></el-tooltip><span v-else>-</span><small class="task-subline">{{ row.task_id }}</small></template></el-table-column>
             <el-table-column label="取件 URL" width="122" align="center"><template #default="{ row }"><template v-if="row.has_mailbox_url"><el-tooltip content="打开取件网页" placement="top"><el-button link :icon="View" :loading="openingMailboxUrlTaskIds.includes(String(row.task_id || ''))" aria-label="打开取件网页" @click.stop="openTaskMailboxUrl(row)">打开</el-button></el-tooltip><el-tooltip content="提取并复制最新验证码" placement="top"><el-button link :icon="CopyDocument" :loading="loadingLatestCodeTaskIds.includes(String(row.task_id || ''))" aria-label="提取并复制最新验证码" @click.stop="copyTaskLatestCode(row)" /></el-tooltip></template><span v-else class="muted">-</span></template></el-table-column>
+            <el-table-column label="验证码" width="220" align="center"><template #default="{ row }"><TaskVerificationInput v-if="row.manual_verification?.can_submit" :task-id="row.task_id" :request="row.manual_verification" :now-seconds="nowSeconds" /><span v-else-if="row.mailbox_verification?.phase === 'automatic'" class="automatic-otp-wait">自动取码 <strong>{{ automaticOtpRemaining(row) }}s</strong></span><span v-else class="muted">-</span></template></el-table-column>
             <el-table-column label="链路 / 阶段" min-width="190" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" effect="plain">{{ row.driver === 'roxybrowser' ? 'RoxyBrowser' : row.driver === 'camoufox' ? 'Camoufox' : '全协议' }}</el-tag><small v-if="row.result?.account_flow" class="task-subline">{{ row.result.account_flow === 'existing_login' ? '已有账号登录' : '新账号注册' }}</small><small class="task-subline">{{ row.stage_label || row.stage || '-' }}</small></template></el-table-column>
             <el-table-column label="耗时" min-width="190"><template #default="{ row }"><TaskProgressCell :progress="row.progress" :timing="row.timing" :now-seconds="nowSeconds" :status="row.status" /></template></el-table-column>
             <el-table-column label="Slot" width="78" align="center"><template #default="{ row }">{{ row.slot_index || '-' }} / {{ row.concurrency_limit || config.concurrency }}</template></el-table-column>
@@ -646,8 +633,6 @@ onUnmounted(() => window.clearTimeout(timer))
                     </small>
                   </div>
                 </el-tooltip>
-                <div v-if="needsManualOtp(row) && !row.manual_verification" class="manual-otp-action"><el-button link type="warning" :loading="manualOpeningTaskIds.includes(String(row.task_id || ''))" @click.stop="openManualOtp(row)">切换人工输入</el-button></div>
-                <TaskVerificationInput v-else-if="row.manual_verification?.can_submit" :task-id="row.task_id" :request="row.manual_verification" :now-seconds="nowSeconds" />
               </template>
             </el-table-column>
             <el-table-column label="操作" width="118" align="center" fixed="right"><template #default="{ row }"><el-tooltip content="查看该账号日志"><el-button link :icon="View" aria-label="查看该账号日志" @click.stop="openTaskLog(row)" /></el-tooltip><el-tooltip v-if="['failed', 'stopped', 'pending_rerun'].includes(String(row.status || ''))" content="重跑该账号"><el-button link :icon="Refresh" aria-label="重跑该账号" :disabled="loading" @click.stop="rerunTask(row)" /></el-tooltip><el-tooltip v-if="row.status === 'twofa_pending'" content="重试 2FA"><el-button link type="warning" :icon="Refresh" aria-label="重试 2FA" :disabled="loading" @click.stop="retryTwofaTask(row)" /></el-tooltip></template></el-table-column>
@@ -739,7 +724,7 @@ onUnmounted(() => window.clearTimeout(timer))
 .task-incident { display: flex; align-items: center; min-width: 0; gap: 2px; line-height: 16px; }
 .task-incident .el-button { min-width: 0; padding: 0 2px; color: var(--el-color-primary); font-size: 10px; }
 .task-incident .el-button:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.manual-otp-action { margin-top: 2px; }
-.manual-otp-action :deep(.el-button) { padding: 0; font-size: 11px; }
+.automatic-otp-wait { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 176px; color: var(--el-text-color-secondary); font-size: 12px; white-space: nowrap; }
+.automatic-otp-wait strong { color: var(--el-color-warning-dark-2); font-variant-numeric: tabular-nums; }
 .failure-tooltip { display: grid; max-width: 520px; gap: 4px; line-height: 18px; }
 </style>

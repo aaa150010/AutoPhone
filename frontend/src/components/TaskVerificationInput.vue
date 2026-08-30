@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { Check } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { ApiError, submitManualVerification } from '../api/client'
@@ -16,6 +16,7 @@ const emit = defineEmits<{ accepted: [] }>()
 const code = ref('')
 const submitting = ref(false)
 const acceptedRequestKey = ref('')
+const inputRef = ref<any>()
 
 const requestKey = computed(() => manualVerificationRequestKey(props.taskId, props.request))
 
@@ -42,8 +43,18 @@ watch(
   () => {
     code.value = ''
     acceptedRequestKey.value = ''
+    void focusInput()
   },
 )
+
+async function focusInput() {
+  await nextTick()
+  if (canSubmit.value) inputRef.value?.focus?.()
+}
+
+onMounted(() => {
+  void focusInput()
+})
 
 async function submit() {
   const submittedCode = code.value.trim()
@@ -78,6 +89,7 @@ async function submit() {
 <template>
   <div class="verification-input">
     <el-input
+      ref="inputRef"
       v-model="code"
       :placeholder="kindLabel"
       :maxlength="12"

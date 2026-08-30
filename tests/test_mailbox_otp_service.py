@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
+import threading
+import time
 import unittest
 
 from mac_overrides.free_mailbox_otp import MailboxUrlOtpProvider
@@ -14,6 +16,7 @@ from mac_overrides.mailbox_otp_service import (
     runtime_diagnostic,
 )
 from mac_overrides.mailbox_url_runtime import MailboxResponse, MailboxUrlError, parse_received_timestamp
+from mac_overrides.manual_verification_runtime import ManualVerificationBroker
 
 
 class _Clock:
@@ -484,6 +487,51 @@ class MailboxOtpServiceTests(unittest.TestCase):
         self.assertEqual(raised.exception.error_code, "free_email_otp_wait_mailbox_ssl_error")
         self.assertNotIn("registration-proxy", str(raised.exception))
         self.assertNotIn("private-mail-token", str(raised.exception))
+
+    def test_free_provider_records_unmatched_mailbox_before_manual_input(self):
+        broker = ManualVerificationBroker(default_window_seconds=3)
+        states = []
+
+        class FakeService:
+            def __init__(self):
+                self.recorded = []
+
+            def wait_code(self, *_args, **_kwargs):
+                raise MailboxOtpError("mailbox_code_timeout", "邮箱验证码等待超时")
+
+            def diagnostic(self):
+                return {"reason": "mailbox_openai_message_without_otp"}
+
+            def record_parser_sample(self, reason, diagnostic):
+                self.recorded.append((reason, diagnostic))
+                return "MPS-test"
+
+            def close(self):
+                pass
+
+        provider = MailboxUrlOtpProvider(
+            "https://mail.example.test/inbox",
+            timeout=5,
+            task_id="free-task",
+            manual_broker=broker,
+            verification_state_fn=lambda task_id, state: states.append((task_id, state)),
+        )
+        fake = FakeService()
+        provider.service = fake
+        result = []
+        thread = threading.Thread(target=lambda: result.append(provider.wait_code("mailbox@example.test")))
+        thread.start()
+        deadline = time.time() + 1
+        while time.time() < deadline and not broker.public("free-task"):
+            time.sleep(0.01)
+        prompt = broker.public("free-task")
+        self.assertTrue(prompt.get("can_submit"))
+        broker.submit("free-task", "email_otp", 0, "123456")
+        thread.join(1)
+        self.assertEqual(result, ["123456"])
+        self.assertEqual(fake.recorded[0][0], "mailbox_openai_message_without_otp")
+        self.assertEqual([state[1]["phase"] for state in states if state[1]], ["automatic", "manual"])
+        self.assertIsNone(states[-1][1])
 
     def test_regular_runtime_provider_uses_the_same_shared_service(self):
         provider = SimpleNamespace(

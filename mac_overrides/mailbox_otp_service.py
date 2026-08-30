@@ -1037,6 +1037,18 @@ def runtime_diagnostic(provider: Any) -> dict[str, Any]:
     return _runtime_service(provider).diagnostic()
 
 
+def record_runtime_parser_sample(provider: Any, cause: Any = None) -> str:
+    """Persist a parser miss captured by the recovered ordinary provider."""
+    service = _runtime_service(provider)
+    diagnostic = service.diagnostic()
+    reason = str(
+        diagnostic.get("reason")
+        or getattr(cause, "code", "")
+        or "mailbox_code_timeout"
+    )
+    return service.record_parser_sample(reason, diagnostic)
+
+
 def log_runtime_diagnostic(provider: Any, log_fn: Callable[..., Any] | None) -> None:
     diagnostic = runtime_diagnostic(provider)
     if not diagnostic or str(diagnostic.get("reason") or "") == "code_found":
@@ -1155,6 +1167,7 @@ __all__ = [
     "legacy_wait_code",
     "log_runtime_diagnostic",
     "normalize_network_policy",
+    "record_runtime_parser_sample",
     "register_mailbox_source",
     "runtime_diagnostic",
     "runtime_snapshot",
