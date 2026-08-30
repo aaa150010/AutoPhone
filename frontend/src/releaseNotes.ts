@@ -13,11 +13,15 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.91',
-  freeRuntimeVersion: '1.6.91',
-  title: 'Free 密码配置与安全设置独立开关',
+  version: '1.6.92',
+  freeRuntimeVersion: '1.6.92',
+  title: 'Free Camoufox 调试窗口与任务布局修复',
   releasedAt: '2026-08-30',
   sections: [
+    {
+      title: 'Free Camoufox 调试窗口与任务布局修复',
+      usage: '调试栏不会再把任务操作区撑成大块空白；状态栏区分浏览器进程、调试 context 和总容量。已有账号缺少真实保存密码时会明确提示补录密码，不会尝试注册默认密码；关闭窗口会先关闭页面并释放对应调试会话。',
+    },
     {
       title: 'Free 注册密码配置',
       usage: 'Free 设置页新增注册账号密码配置，默认使用 Aa150010150010；注册页密码和后续补设密码共用该配置，已保存值仅以掩码显示。',

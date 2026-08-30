@@ -3555,6 +3555,27 @@ class CamoufoxBrowserPool:
                     raise
                 except Exception:
                     context_closed = False
+                if not context_closed:
+                    # A retained page can keep Playwright's context close
+                    # waiting after a renderer/network failure. Close the
+                    # visible page first, then retry the context once. The
+                    # page-level close is sufficient to remove the operator's
+                    # window, so do not keep a phantom debug hold if the
+                    # detached context itself refuses to close.
+                    page_close = getattr(session.page, "close", None)
+                    if callable(page_close):
+                        try:
+                            page_closed = await _close_context_safely(session.page, min(timeout, 5.0))
+                        except Exception:
+                            page_closed = False
+                    else:
+                        page_closed = False
+                    if page_closed:
+                        try:
+                            await _close_context_safely(session.context, min(timeout, 5.0))
+                        except Exception:
+                            pass
+                        context_closed = True
                 bridge_error = ""
                 bridge = session.proxy_bridge
                 if bridge is not None and context_closed:
@@ -3761,6 +3782,7 @@ class CamoufoxBrowserPool:
             "open_contexts": len(sessions),
             "closing_contexts": len(closing_sessions),
             "closing_sessions": sorted(closing_sessions),
+            "browser_count": len(self._slots),
             "pool_count": 1,
             "sessions": [
                 {
@@ -3915,8 +3937,41 @@ class CamoufoxBrowserPool:
         self._startup_semaphore = asyncio.Semaphore(min(self.startup_concurrency, self.pool_size * self.max_contexts))
         self._context_start_lock = asyncio.Lock()
         self._admission_lock = asyncio.Lock()
-        for _index in range(self.pool_size):
+        async def launch_slot(_index: int) -> tuple[int, Any, Any]:
             manager, browser = await self._launch_browser()
+            return _index, manager, browser
+
+        results = await asyncio.gather(
+            *(launch_slot(index) for index in range(self.pool_size)),
+            return_exceptions=True,
+        )
+        failures = [item for item in results if isinstance(item, BaseException)]
+        if failures:
+            close_timeout = _pool_timeout(self.config, "browser_recycle_timeout_seconds", 45)
+            for item in results:
+                if isinstance(item, BaseException):
+                    continue
+                _index, manager, browser = item
+                manager_closed = True
+                if manager is not None:
+                    manager_closed = await _close_async_resource(
+                        lambda manager=manager: manager.__aexit__(None, None, None),
+                        close_timeout,
+                    )
+                if not manager_closed and browser is not None:
+                    await _close_async_resource(browser.close, close_timeout)
+            failure = failures[0]
+            if isinstance(failure, CamoufoxBrowserError):
+                raise failure
+            raise CamoufoxBrowserError(
+                "free_camoufox_launch", "启动 Camoufox 浏览器池",
+                "Camoufox 浏览器池启动失败",
+                error_code="camoufox_browser_launch_failed",
+                diagnostic=type(failure).__name__,
+            ) from failure
+
+        for result in sorted(results, key=lambda item: item[0]):
+            _index, manager, browser = result
             slot = _BrowserSlot(
                 manager, browser, asyncio.Semaphore(self.max_contexts),
                 recycle_lock=asyncio.Lock(), idle_event=asyncio.Event(),
@@ -5111,6 +5166,10 @@ def camoufox_debug_state(config: Mapping[str, Any] | None = None) -> dict[str, A
         max(0, int(snapshot.get("closing_contexts") or 0))
         for snapshot in snapshot_values
     )
+    browser_count = sum(
+        max(0, int(snapshot.get("browser_count") or 0))
+        for snapshot in snapshot_values
+    )
     capacity = sum(max(0, int(snapshot.get("capacity") or 0)) for snapshot in snapshot_values)
     used = sum(max(0, int(snapshot.get("used") or snapshot.get("open_contexts") or 0)) for snapshot in snapshot_values)
     current_snapshot = next(
@@ -5133,8 +5192,10 @@ def camoufox_debug_state(config: Mapping[str, Any] | None = None) -> dict[str, A
             pool_size = max(1, int(browser_config.get("pool_size") or 2))
             max_contexts = max(1, int(browser_config.get("max_contexts_per_browser") or 3))
             capacity = pool_size * max_contexts
+            browser_count = pool_size
         except (TypeError, ValueError):
             capacity = 0
+            browser_count = 0
     return {
         "enabled": enabled,
         "headless": headless,
@@ -5144,6 +5205,7 @@ def camoufox_debug_state(config: Mapping[str, Any] | None = None) -> dict[str, A
         "open_contexts": len(sessions),
         "closing_contexts": closing_contexts,
         "closing_sessions": closing_sessions,
+        "browser_count": browser_count,
         "pool_count": len(snapshots),
         "sessions": sessions,
     }

@@ -1298,6 +1298,136 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         self.assertGreaterEqual(len(_FakeManager.instances), 2)
         self.assertTrue(all(item.entered == 1 and item.exited == 1 for item in _FakeManager.instances))
 
+    def test_pool_init_launches_configured_slots_concurrently(self):
+        async def exercise():
+            pool = object.__new__(runtime.CamoufoxBrowserPool)
+            pool.config = self._config(pool_size=2, startup_concurrency=2)
+            pool.pool_size = 2
+            pool.max_contexts = 1
+            pool.startup_concurrency = 2
+            pool._slots = []
+            pool._closed = False
+            pool.debug_mode = True
+            pool.headless = False
+            pool._debug_lock = threading.RLock()
+            pool._debug_sessions = {}
+            pool._debug_closing = set()
+            pool._launch_active = 0
+            pool._launch_peak = 0
+
+            class Manager:
+                async def __aexit__(self, *_args):
+                    return None
+
+            class Browser:
+                def on(self, *_args):
+                    return None
+
+            async def launch():
+                pool._launch_active += 1
+                pool._launch_peak = max(pool._launch_peak, pool._launch_active)
+                await asyncio.sleep(0.03)
+                pool._launch_active -= 1
+                return Manager(), Browser()
+
+            pool._launch_browser = launch
+            with patch.object(runtime, "_load_camoufox_api", return_value=(object(), object())):
+                await pool._init_async()
+            self.assertEqual(len(pool._slots), 2)
+            self.assertEqual(pool.debug_state()["browser_count"], 2)
+            self.assertEqual(pool._launch_peak, 2)
+
+        asyncio.run(exercise())
+
+    def test_pool_init_failure_closes_successful_slots(self):
+        async def exercise():
+            pool = object.__new__(runtime.CamoufoxBrowserPool)
+            pool.config = self._config(pool_size=2, startup_concurrency=2)
+            pool.pool_size = 2
+            pool.max_contexts = 1
+            pool.startup_concurrency = 2
+            pool._slots = []
+            pool._closed = False
+
+            class Manager:
+                def __init__(self):
+                    self.closed = False
+
+                async def __aexit__(self, *_args):
+                    self.closed = True
+
+            class Browser:
+                def on(self, *_args):
+                    return None
+
+            manager = Manager()
+            calls = 0
+
+            async def launch():
+                nonlocal calls
+                calls += 1
+                if calls == 1:
+                    return manager, Browser()
+                raise runtime.CamoufoxBrowserError(
+                    "free_camoufox_launch", "启动 Camoufox 浏览器池", "launch failed",
+                    error_code="camoufox_browser_launch_failed",
+                )
+
+            pool._launch_browser = launch
+            with patch.object(runtime, "_load_camoufox_api", return_value=(object(), object())):
+                with self.assertRaises(runtime.CamoufoxBrowserError):
+                    await pool._init_async()
+            self.assertTrue(manager.closed)
+            self.assertEqual(pool._slots, [])
+
+        asyncio.run(exercise())
+
+    def test_debug_close_removes_session_after_page_level_fallback(self):
+        async def exercise():
+            pool = object.__new__(runtime.CamoufoxBrowserPool)
+            pool.config = self._config()
+            pool._admission_lock = asyncio.Lock()
+            pool._debug_lock = threading.RLock()
+            pool._debug_sessions = {}
+            pool._debug_closing = set()
+            pool._closed = False
+            slot = runtime._BrowserSlot(
+                manager=None,
+                browser=None,
+                semaphore=asyncio.Semaphore(1),
+                debug_holds=1,
+            )
+
+            class StuckContext:
+                async def close(self):
+                    raise RuntimeError("context detached")
+
+            class Page:
+                def __init__(self):
+                    self.closed = False
+
+                async def close(self):
+                    self.closed = True
+
+            page = Page()
+            session = runtime._DebugSession(
+                session_id="cam-debug-pagefallback",
+                task_id="task-1",
+                context=StuckContext(),
+                page=page,
+                proxy_bridge=None,
+                slot=slot,
+                created_at=1.0,
+            )
+            pool._debug_sessions[session.session_id] = session
+            closed = await pool._close_debug_sessions_async(session.session_id)
+            self.assertEqual(closed, 1)
+            self.assertTrue(page.closed)
+            self.assertEqual(pool._debug_sessions, {})
+            self.assertEqual(slot.debug_holds, 0)
+
+        asyncio.run(exercise())
+
     def test_recycle_launch_failure_is_reported_on_next_registration(self):
         class FailingRecycleManager(_FakeManager):
             enters = 0

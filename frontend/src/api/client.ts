@@ -156,6 +156,7 @@ export interface FreeCamoufoxDebugState {
   open_contexts?: number
   closing_contexts?: number
   closing_sessions?: string[]
+  browser_count?: number
   pool_count?: number
   sessions?: FreeCamoufoxDebugSession[]
 }

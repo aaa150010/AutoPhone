@@ -531,6 +531,7 @@ async function refreshPlan(task: any) {
 const camoufoxDebug = computed(() => state.value.camoufox_debug || {})
 const camoufoxDebugSessions = computed(() => Array.isArray(camoufoxDebug.value.sessions) ? camoufoxDebug.value.sessions : [])
 const camoufoxDebugCapacity = computed(() => Number(camoufoxDebug.value.capacity || (Number(config.camoufox.pool_size || 0) * Number(config.camoufox.max_contexts_per_browser || 0))))
+const camoufoxDebugBrowserCount = computed(() => Number(camoufoxDebug.value.browser_count || config.camoufox.pool_size || 0))
 const camoufoxDebugUsed = computed(() => Number(camoufoxDebug.value.used ?? camoufoxDebugSessions.value.length))
 const camoufoxDebugAvailable = computed(() => Math.max(0, Number(camoufoxDebug.value.available ?? camoufoxDebugCapacity.value - camoufoxDebugUsed.value)))
 const camoufoxDebugOpenContexts = computed(() => Number(camoufoxDebug.value.open_contexts ?? camoufoxDebugUsed.value))
@@ -594,6 +595,10 @@ function taskFailureNode(task: any) {
   return freeFailureNodeIdentity(task?.failure)
 }
 
+function taskNeedsExistingPassword(task: any) {
+  return String(task?.failure?.error_code || '').trim().toLowerCase() === 'free_existing_login_password_missing'
+}
+
 function scheduleRefresh() {
   timer = window.setTimeout(async () => {
     await refresh()
@@ -618,7 +623,7 @@ onUnmounted(() => window.clearTimeout(timer))
     </PageToolbar>
     <div class="task-view">
       <WorkspacePanel title="Free 注册任务" :icon="Connection" fill body-padding="none">
-        <div class="task-panel">
+        <div class="task-panel" :class="{ 'has-camoufox-debug': config.driver === 'camoufox' || camoufoxDebugSessions.length }">
           <div class="run-snapshot task-summary"><div><span>可用 Free 邮箱</span><strong class="is-good">{{ Number(state.pool?.available || 0) }}</strong></div><div><span>任务总数</span><strong>{{ taskCounts.total }}</strong></div><div><span>排队 / 运行</span><strong>{{ taskCounts.running }}</strong></div><div><span>成功</span><strong class="is-good">{{ taskCounts.success - taskCounts.partial }}</strong></div><div><span>部分成功</span><strong class="is-warn">{{ taskCounts.partial }}</strong></div><div><span>失败</span><strong class="is-bad">{{ taskCounts.failed }}</strong></div><div><span>待重跑</span><strong class="is-warn">{{ taskCounts.rerun }}</strong></div><div><span>2FA 待重试</span><strong class="is-warn">{{ taskCounts.pending }}</strong></div></div>
           <div class="task-start-bar">
             <el-tag effect="plain">{{ config.driver === 'camoufox' ? 'Camoufox' : '全协议' }}</el-tag>
@@ -632,7 +637,7 @@ onUnmounted(() => window.clearTimeout(timer))
           <div v-if="config.driver === 'camoufox' || camoufoxDebugSessions.length" class="camoufox-debug-bar">
             <div class="camoufox-debug-summary">
               <el-tag type="warning" effect="plain">Camoufox 调试窗口 {{ camoufoxDebugSessions.length }} / {{ camoufoxDebugCapacity || '-' }}</el-tag>
-              <span class="muted">占用 {{ camoufoxDebugUsed }} · 可用 {{ camoufoxDebugAvailable }} · 活动 context {{ camoufoxDebugOpenContexts }}<template v-if="camoufoxDebugClosingContexts"> · 正在关闭 {{ camoufoxDebugClosingContexts }}</template></span>
+              <span class="muted">浏览器进程 {{ camoufoxDebugBrowserCount }} · 调试 context {{ camoufoxDebugUsed }} / {{ camoufoxDebugCapacity || '-' }} · 可用 {{ camoufoxDebugAvailable }} · 活动 context {{ camoufoxDebugOpenContexts }}<template v-if="camoufoxDebugClosingContexts"> · 正在关闭 {{ camoufoxDebugClosingContexts }}</template></span>
               <span v-if="!camoufoxDebugHeadless" class="muted">有头模式</span>
             </div>
             <span class="muted">失败页面和安全挑战会保留；超时、取消、成功和浏览器断开会回收。</span>
@@ -693,6 +698,7 @@ onUnmounted(() => window.clearTimeout(timer))
                     <template v-else>
                       <strong v-if="taskFailureNode(row).label || taskFailureNode(row).code">{{ taskFailureNode(row).label || taskFailureNode(row).code }}<code v-if="taskFailureNode(row).showCode">{{ taskFailureNode(row).code }}</code></strong>
                       <span>{{ taskFailureCause(row) }}</span>
+                      <span v-if="taskNeedsExistingPassword(row)" class="failure-action-hint">需补录真实密码后再处理；不会使用注册默认密码</span>
                     </template>
                     <small v-if="taskIncidentId(row) || taskDebugSessionId(row) || taskDebugArtifactId(row)" class="task-incident">
                       <el-button v-if="taskIncidentId(row)" text size="small" :icon="CopyDocument" @click.stop="copyIncidentId(taskIncidentId(row))">日志 ID {{ taskIncidentId(row) }}</el-button>
@@ -720,6 +726,7 @@ onUnmounted(() => window.clearTimeout(timer))
 .task-view { min-width: 0; min-height: 0; height: 100%; }
 .task-view :deep(.workspace-panel) { height: 100%; }
 .task-panel { display: grid; grid-template-rows: auto auto auto auto minmax(0, 1fr); gap: 8px; height: 100%; min-height: 0; padding: 10px; }
+.task-panel.has-camoufox-debug { grid-template-rows: auto auto auto auto auto minmax(0, 1fr); }
 .run-snapshot { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--workspace-border); border-radius: var(--workspace-radius); overflow: hidden; }
 .run-snapshot > div { display: grid; grid-template-rows: 18px 22px; align-items: center; min-height: 48px; padding: 5px 10px; background: #f8fafc; }
 .run-snapshot span { color: var(--el-text-color-secondary); font-size: 13px; }
@@ -790,6 +797,7 @@ onUnmounted(() => window.clearTimeout(timer))
 .failure-cell strong { color: var(--el-color-danger); font-size: 12px; font-weight: 650; }
 .failure-cell code { margin-left: 5px; color: var(--el-text-color-secondary); font-size: 10px; font-weight: 500; }
 .failure-cell span { color: var(--el-text-color-regular); font-size: 11px; }
+.failure-cell .failure-action-hint { color: var(--el-color-warning-dark-2); font-size: 11px; }
 .task-incident { display: flex; align-items: center; min-width: 0; gap: 2px; line-height: 16px; }
 .task-incident .el-button { min-width: 0; padding: 0 2px; color: var(--el-color-primary); font-size: 10px; }
 .task-incident .el-button:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
