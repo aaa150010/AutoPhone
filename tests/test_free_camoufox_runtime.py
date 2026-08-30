@@ -40,6 +40,35 @@ class _FakePage:
         return "ChatGPT"
 
 
+class _ProfileFillLocator:
+    first = None
+
+    def __init__(self):
+        self.first = self
+        self.value = ""
+        self.click_calls = 0
+        self.fill_calls = []
+
+    async def wait_for(self, **_kwargs):
+        return None
+
+    async def click(self, **_kwargs):
+        self.click_calls += 1
+        raise AssertionError("profile age fill must not click")
+
+    async def fill(self, value, **_kwargs):
+        self.fill_calls.append(value)
+        self.value = value
+
+
+class _ProfileFillPage:
+    def __init__(self):
+        self.locator_instance = _ProfileFillLocator()
+
+    def locator(self, _selector):
+        return self.locator_instance
+
+
 class _EntryPage(_FakePage):
     def locator(self, selector):
         if selector == "body":
@@ -145,6 +174,19 @@ class CamoufoxRuntimeTests(unittest.TestCase):
     def setUp(self):
         _FakeManager.instances.clear()
         _FakeManager.context_close_error = None
+
+    def test_profile_age_fill_skips_actionability_click(self):
+        page = _ProfileFillPage()
+
+        filled = asyncio.run(
+            runtime._fill_input_like_user(
+                page, "input[name='age']", "25", click=False,
+            )
+        )
+
+        self.assertTrue(filled)
+        self.assertEqual(page.locator_instance.click_calls, 0)
+        self.assertEqual(page.locator_instance.fill_calls, ["", "25"])
 
     @staticmethod
     def _config(**overrides):

@@ -1170,11 +1170,18 @@ async def _find_visible_selector(page: Any, selectors: tuple[str, ...]) -> str |
     return None
 
 
-async def _fill_input_like_user(page: Any, selector: str, value: str) -> bool:
+async def _fill_input_like_user(
+    page: Any,
+    selector: str,
+    value: str,
+    *,
+    click: bool = True,
+) -> bool:
     try:
         locator = page.locator(selector).first
         await locator.wait_for(state="visible", timeout=8000)
-        await locator.click()
+        if click:
+            await locator.click()
         await locator.fill("")
         await locator.fill(str(value))
         return True
@@ -3076,7 +3083,13 @@ async def _browser_flow(
                 age = await _find_visible_selector(page, AGE_SELECTORS)
                 age_filled = False
                 if age:
-                    age_filled = await _fill_input_like_user(page, age, str(age_value))
+                    # The about-you age control is visible but can be covered by
+                    # the page's transition layer. Filling it directly avoids
+                    # Playwright's 30s default click timeout; other fields keep
+                    # the existing click-first behavior.
+                    age_filled = await _fill_input_like_user(
+                        page, age, str(age_value), click=False,
+                    )
                 timing_mark(
                     "free_camoufox_profile", "profile_age_fill", age_started,
                     "success" if age_filled else "skipped",
