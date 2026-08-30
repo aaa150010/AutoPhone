@@ -870,6 +870,7 @@ class WebRouteTests(unittest.TestCase):
                 self.proxies = Proxies()
                 self.secret_calls = []
                 self.retry_calls = []
+                self.password_retry_calls = []
                 self.deleted_tasks = []
                 self.log_fn = None
 
@@ -888,6 +889,10 @@ class WebRouteTests(unittest.TestCase):
 
             def retry_twofa(self, task_id, _config):
                 self.retry_calls.append(task_id)
+                return {"task_id": task_id, "status": "queued"}
+
+            def retry_password(self, task_id, _config):
+                self.password_retry_calls.append(task_id)
                 return {"task_id": task_id, "status": "queued"}
 
             def delete_tasks(self, task_ids):
@@ -925,6 +930,10 @@ class WebRouteTests(unittest.TestCase):
                 json={"kind": "token", "row_ids": ["row-free"]},
             )
             retried = client.post("/api/free/2fa/retry", json={"task_id": "row-free"})
+            password_retried = client.post(
+                "/api/free/password/retry", json={"task_id": "row-free"}
+            )
+            old_roxy = client.get("/api/free/roxy/workspaces")
             old_nv = client.get("/api/nv/overview")
             old_pixel = client.get("/api/pixel/targets")
 
@@ -946,6 +955,10 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(free.secret_calls, [([], "token", ["row-free"])])
         self.assertEqual(retried.status_code, 200)
         self.assertEqual(free.retry_calls, ["row-free"])
+        self.assertEqual(password_retried.status_code, 200)
+        self.assertEqual(password_retried.get_json()["task"]["status"], "queued")
+        self.assertEqual(free.password_retry_calls, ["row-free"])
+        self.assertEqual(old_roxy.status_code, 404)
         self.assertEqual(old_nv.status_code, 404)
         self.assertEqual(old_pixel.status_code, 404)
 
@@ -1392,7 +1405,7 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(proxy.status_code, 409)
         self.assertEqual(group.status_code, 409)
 
-    def test_free_config_save_persists_roxy_driver_and_imports_proxy_draft_together(self):
+    def test_free_config_save_migrates_removed_driver_and_imports_proxy_draft_together(self):
         class ProxyPool:
             def __init__(self):
                 self.calls = []
@@ -1448,20 +1461,19 @@ class WebRouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
-        self.assertEqual(payload["config"]["driver"], "roxybrowser")
-        self.assertEqual(payload["config"]["roxybrowser"]["workspace_id"], "workspace-7")
+        self.assertEqual(payload["config"]["driver"], "protocol")
+        self.assertNotIn("roxybrowser", payload["config"])
         self.assertEqual(payload["proxy_imported"], 2)
         self.assertEqual(payload["proxies"]["count"], 2)
-        self.assertEqual(config_store.load()["driver"], "roxybrowser")
-        self.assertEqual(config_store.load()["roxybrowser"]["workspace_id"], "workspace-7")
-        self.assertEqual(config_store.load()["roxybrowser"]["project_id"], "project-9")
+        self.assertEqual(config_store.load()["driver"], "protocol")
+        self.assertNotIn("roxybrowser", config_store.load())
         self.assertEqual(free.proxies.calls, [(
             "proxy-a.test:8000\nproxy-b.test:8001",
             {"country": "JP", "group": "IPRoyal-JP", "scheme": "socks5h"},
         )])
 
-        # A later save that only changes Roxy settings must still return the
-        # already-persisted proxy pool to the unified Free settings page.
+        # A later save using the removed driver remains protocol-only and still
+        # returns the already-persisted proxy pool to the unified settings page.
         with app.test_client() as client:
             response = client.post("/api/free/config", json={
                 "driver": "roxybrowser",
@@ -1473,8 +1485,8 @@ class WebRouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         second_payload = response.get_json()
-        self.assertEqual(second_payload["config"]["roxybrowser"]["workspace_id"], "workspace-8")
-        self.assertEqual(second_payload["config"]["roxybrowser"]["project_id"], "project-10")
+        self.assertEqual(second_payload["config"]["driver"], "protocol")
+        self.assertNotIn("roxybrowser", second_payload["config"])
         self.assertEqual(second_payload["proxies"]["count"], 2)
         self.assertEqual(len(second_payload["proxies"]["rows"]), 2)
         self.assertEqual(second_payload["proxies"]["groups"][0]["group"], "IPRoyal-JP")

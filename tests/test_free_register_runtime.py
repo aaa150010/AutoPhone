@@ -499,7 +499,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             runner=lambda *_args, **_kwargs: {},
             proxy_probe=lambda _proxy, _url: "203.0.113.20",
         )
-        self.assertEqual(manager.public_state()["runtime_version"], "1.6.89")
+        self.assertEqual(manager.public_state()["runtime_version"], "1.6.91")
         self.assertEqual(manager.preflight({"target_count": 1})["otp_parser_revision"], "pickup-dynamic-v6-samples")
 
     def test_close_camoufox_debug_passes_current_config_to_pool_helper(self):
@@ -529,7 +529,21 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         ):
             result = manager.close_camoufox_debug(session_id)
 
-        close.assert_called_once_with(session_id, config=config)
+        close.assert_called_once()
+        close_config = close.call_args.kwargs.get("config")
+        self.assertIsInstance(close_config, dict)
+        self.assertEqual(
+            close_config["camoufox"].get("_debug_artifact_dir"),
+            str((self.data_dir / "camoufox_debug").resolve()),
+        )
+        self.assertEqual(
+            {key: value for key, value in close_config.items() if key != "camoufox"},
+            {key: value for key, value in config.items() if key != "camoufox"},
+        )
+        self.assertEqual(
+            {key: value for key, value in close_config["camoufox"].items() if key != "_debug_artifact_dir"},
+            config["camoufox"],
+        )
         self.assertEqual(result["closed_contexts"], 1)
         self.assertEqual(result["state"], {"sessions": []})
 
@@ -857,13 +871,12 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             ],
         )
 
-    def test_proxy_transport_maps_socks5_for_protocol_probe_and_roxy(self):
+    def test_proxy_transport_maps_socks5_for_protocol_and_probe(self):
         from mac_overrides.free_register_common import proxy_transport_value
 
         value = "socks5://u:p@proxy.test:3000"
         self.assertEqual(proxy_transport_value(value, driver="protocol"), value)
         self.assertEqual(proxy_transport_value(value, driver="probe"), value)
-        self.assertEqual(proxy_transport_value(value, driver="roxybrowser"), value)
 
     def test_proxy_transport_auto_uses_remote_dns_only_for_fake_ip_hosts(self):
         from mac_overrides import free_register_common
@@ -1158,38 +1171,39 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertEqual(public["rows"][0]["group"], "")
         self.assertNotIn("pass", str(public))
 
-    def test_structured_proxy_pool_filters_roxy_compatible_groups_and_quarantines_failures(self):
+    def test_structured_proxy_pool_shares_all_schemes_and_quarantines_failures(self):
         pool = StructuredFreeProxyPool(self.data_dir, failure_threshold=2, quarantine_seconds=600)
         pool.import_text(
             "socks4://user:pass@proxy-region-US.example:3000\n"
             "socks5://user:pass@proxy-region-US.example:3001\n",
             country="US", group="住宅 A",
         )
-        self.assertEqual(len(pool.records(driver="roxybrowser")), 1)
-        proxy_id = pool.records(driver="roxybrowser")[0]["proxy_id"]
-        pool.record_failure(proxy_id, node_code="free_roxy_open", message="连接失败")
-        pool.record_failure(proxy_id, node_code="free_roxy_open", message="连接失败")
-        self.assertEqual(pool.records(driver="roxybrowser"), [])
+        self.assertEqual(len(pool.records(driver="protocol")), 2)
+        self.assertEqual(len(pool.records(driver="camoufox")), 2)
+        proxy_id = pool.records(driver="protocol")[0]["proxy_id"]
+        pool.record_failure(proxy_id, node_code="proxy_connect_failed", message="连接失败")
+        pool.record_failure(proxy_id, node_code="proxy_connect_failed", message="连接失败")
+        self.assertEqual(len(pool.records(driver="protocol")), 1)
+        self.assertEqual(len(pool.records(driver="camoufox")), 1)
         self.assertEqual(pool.public()["groups"][0]["quarantined"], 1)
 
-    def test_pasted_proxy_preflight_honors_country_group_and_roxy_protocol(self):
+    def test_pasted_proxy_preflight_uses_shared_pool_without_classification_filters(self):
         manager = FreeRegisterManager(
             self.data_dir,
             proxy_probe=lambda proxy, _url: "203.0.113.50" if "proxy-region-US" in proxy else "203.0.113.51",
         )
         shared = manager.preflight_proxies(
             proxy_content="socks4://proxy-region-US.example:3000\nsocks5://proxy-region-US.example:3001\n",
-            driver="roxybrowser",
+            driver="protocol",
             country="US",
             group="住宅 A",
         )
-        self.assertEqual(shared["proxies"], 1)
+        self.assertEqual(shared["proxies"], 2)
         self.assertEqual(len(shared["rows"]), 2)
-        self.assertFalse(shared["rows"][0]["available"])
-        self.assertTrue(shared["rows"][1]["available"])
+        self.assertTrue(all(row["available"] for row in shared["rows"]))
         result = manager.preflight_proxies(
             proxy_content="socks5://proxy-region-US.example:3001\n",
-            driver="roxybrowser",
+            driver="camoufox",
             country="US",
             group="住宅 A",
         )
@@ -1206,7 +1220,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
 
         manager._record_proxy_failure(
             task,
-            FreeRegisterError("free_roxy_signup_email_submit", "提交 Free 注册邮箱", "页面未进入下一步"),
+            FreeRegisterError("free_email_otp_wait", "等待 Free 邮箱验证码", "页面未进入下一步"),
         )
         self.assertEqual(manager.proxies.public()["rows"][0]["consecutive_failures"], 0)
 
@@ -1294,11 +1308,11 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             time.sleep(0.01)
         self.assertFalse(manager.public_state()["running"])
 
-    def test_manager_start_forces_twofa_for_worker_even_when_caller_disables_it(self):
-        observed: list[bool] = []
+    def test_manager_start_preserves_explicit_security_step_choices(self):
+        observed: list[tuple[bool, bool]] = []
 
         def runner(_task, config, _stop, _stage, _log, *, twofa_retry=False):
-            observed.append(bool(config.get("auto_set_2fa")))
+            observed.append((bool(config.get("auto_set_password")), bool(config.get("auto_set_2fa"))))
             return {"access_token": "token-private", "twofa_status": "enabled", "totp_secret": "JBSWY3DPEHPK3PXP"}
 
         manager = FreeRegisterManager(
@@ -1314,7 +1328,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         deadline = time.time() + 3
         while manager.public_state()["running"] and time.time() < deadline:
             time.sleep(0.01)
-        self.assertEqual(observed, [True])
+        self.assertEqual(observed, [(False, False)])
 
     def test_mailbox_otp_provider_separates_registration_and_mailbox_proxies(self):
         from mac_overrides.free_register_runtime import MailboxUrlOtpProvider
@@ -1380,7 +1394,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertEqual({row["task_id"] for row in detail_logs}, {row["task_id"] for row in public})
         self.assertTrue(all(row["stage"] == "free_access_token" for row in detail_logs))
 
-    def test_pre_registration_roxy_failure_restores_mailbox_but_keeps_failed_task(self):
+    def test_pre_registration_protocol_failure_restores_mailbox_but_keeps_failed_task(self):
         pool = FreeMailboxPool(self.data_dir)
         pool.import_text("a@example.test----https://mail.example.test/a\n")
         FreeProxyPool(self.data_dir).import_text("http://proxy-a.test:8000\n")
@@ -1388,7 +1402,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         def runner(_task, _config, _stop, _stage, _log, *, twofa_retry=False):
             self.assertFalse(twofa_retry)
             raise FreeRegisterError(
-                "free_roxy_connect", "连接 RoxyBrowser", "缺少 Selenium 连接地址"
+                "free_protocol_preflight", "Free 全协议预检", "协议连接不可用"
             )
 
         manager = FreeRegisterManager(
@@ -1396,7 +1410,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             runner=runner,
             proxy_probe=lambda _proxy, _url: "203.0.113.20",
         )
-        manager.start({"driver": "roxybrowser", "target_count": 1, "proxy_retry_count": 0})
+        manager.start({"driver": "protocol", "target_count": 1, "proxy_retry_count": 0})
         deadline = time.time() + 3
         while manager.public_state()["running"] and time.time() < deadline:
             time.sleep(0.01)
@@ -1404,13 +1418,13 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         task = manager.public_tasks()[0]
         mailbox = manager.pool.public_rows()[0]
         self.assertEqual(task["status"], "failed")
-        self.assertEqual(task["failure"]["node_code"], "free_roxy_connect")
+        self.assertEqual(task["failure"]["node_code"], "free_protocol_preflight")
         self.assertEqual(mailbox["status"], "available")
         self.assertEqual(mailbox["proxy_masked"], "")
         self.assertEqual(manager.public_state()["pool"]["available"], 1)
         self.assertTrue(any(row["stage"] == "free_mailbox_released" for row in manager.public_logs(task["task_id"])))
 
-    def test_non_network_roxy_failure_never_switches_registration_proxy(self):
+    def test_non_network_protocol_failure_never_switches_registration_proxy(self):
         pool = FreeMailboxPool(self.data_dir)
         pool.import_text("a@example.test----https://mail.example.test/a\n")
         FreeProxyPool(self.data_dir).import_text(
@@ -1421,8 +1435,8 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         def runner(task, _config, _stop, _stage, _log, *, twofa_retry=False):
             attempts.append(task["proxy_id"])
             raise FreeRegisterError(
-                "free_roxy_connect", "连接 RoxyBrowser", "缺少 Roxy ChromeDriver 路径",
-                error_code="free_roxy_driver_unavailable",
+                "free_protocol_preflight", "Free 全协议预检", "协议运行时不可用",
+                error_code="free_protocol_unavailable",
             )
 
         manager = FreeRegisterManager(
@@ -1430,14 +1444,14 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             runner=runner,
             proxy_probe=lambda proxy, _url: "203.0.113." + ("20" if "proxy-a" in proxy else "21"),
         )
-        manager.start({"driver": "roxybrowser", "target_count": 1, "proxy_retry_count": 3})
+        manager.start({"driver": "protocol", "target_count": 1, "proxy_retry_count": 3})
         deadline = time.time() + 3
         while manager.public_state()["running"] and time.time() < deadline:
             time.sleep(0.01)
 
         self.assertEqual(len(attempts), 1)
         task = manager.public_tasks()[0]
-        self.assertEqual(task["failure"]["error_code"], "free_roxy_driver_unavailable")
+        self.assertEqual(task["failure"]["error_code"], "free_protocol_unavailable")
         self.assertFalse(any(row.get("outcome") == "switched" for row in task["proxy_attempts"]))
 
     def test_email_submit_transition_timeout_restores_mailbox(self):
@@ -1447,7 +1461,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
 
         def runner(_task, _config, _stop, _stage, _log, *, twofa_retry=False):
             raise FreeRegisterError(
-                "free_roxy_signup_email_submit", "提交 Free 注册邮箱", "页面未进入下一步"
+                "free_email_otp_wait", "等待 Free 邮箱验证码", "页面未进入下一步"
             )
 
         manager = FreeRegisterManager(
@@ -1455,16 +1469,16 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             runner=runner,
             proxy_probe=lambda _proxy, _url: "203.0.113.21",
         )
-        manager.start({"driver": "roxybrowser", "target_count": 1})
+        manager.start({"driver": "protocol", "target_count": 1})
         deadline = time.time() + 3
         while manager.public_state()["running"] and time.time() < deadline:
             time.sleep(0.01)
 
         self.assertEqual(manager.public_tasks()[0]["status"], "failed")
         mailbox = manager.pool.public_rows()[0]
-        self.assertEqual(mailbox["status"], "available")
-        self.assertTrue(manager.pool._row_state(mailbox["row_id"])["reusable_after_failure"])
-        self.assertEqual(manager.public_state()["pool"]["available"], 1)
+        self.assertEqual(mailbox["status"], "pending_rerun")
+        self.assertFalse(manager.pool._row_state(mailbox["row_id"])["reusable_after_failure"])
+        self.assertEqual(manager.public_state()["pool"]["available"], 0)
 
     def test_task_twofa_is_not_pending_before_registration_result(self):
         worker_entered = threading.Event()
@@ -1839,26 +1853,315 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         row_id = manager.pool.entries()[0].row_id
         self.assertEqual(manager.secret([], "totp", row_ids=[row_id]), "JBSWY3DPEHPK3PXP")
 
-    def test_roxy_twofa_retry_switches_to_protocol_without_reopening_profile(self):
+    def _seed_password_retry_task(self, manager, *, task_id="password-task"):
+        """Create a durable account snapshot for continuation-only tests."""
+        manager.pool.import_text(
+            "password@example.test----https://mail.example.test/password\n"
+        )
+        manager.proxies.import_text("http://proxy-password.test:8000\n")
+        row = manager.pool.entries()[0]
+        proxy = manager.proxies.public()["rows"][0]
+        result = {
+            "access_token": "token-private",
+            "password_status": "pending",
+            "twofa_status": "enabled",
+            "totp_secret": "JBSWY3DPEHPK3PXP",
+            "plan_type": "free",
+        }
+        manager.pool.save_result(row.row_id, result)
+        manager.pool.update(
+            row.row_id,
+            status="partial_success",
+            stage="free_password_enroll",
+            driver="protocol",
+            proxy="http://proxy-password.test:8000",
+            proxy_id=proxy["proxy_id"],
+            proxy_masked=proxy["masked"],
+            proxy_fingerprint=proxy["proxy_id"],
+            expected_exit_ip="203.0.113.88",
+            exit_ip="203.0.113.88",
+        )
+        manager._tasks = {
+            task_id: {
+                "task_id": task_id,
+                "ordinal": 1,
+                "status": "partial_success",
+                "created_at": int(time.time()),
+                "updated_at": int(time.time()),
+                "batch_id": "password-batch",
+                "driver": "protocol",
+                "email": row.email,
+                "row_id": row.row_id,
+                "mailbox_url": row.mailbox_url,
+                "proxy": "http://proxy-password.test:8000",
+                "proxy_id": proxy["proxy_id"],
+                "proxy_masked": proxy["masked"],
+                "proxy_fingerprint": proxy["proxy_id"],
+                "expected_exit_ip": "203.0.113.88",
+                "exit_ip": "203.0.113.88",
+                "proxy_attempts": [],
+                "cleanup_status": "released",
+                "result": result,
+            },
+        }
+        return row, result
+
+    def _wait_for_free_manager(self, manager, timeout=3):
+        deadline = time.time() + timeout
+        while manager.public_state()["running"] and time.time() < deadline:
+            time.sleep(0.01)
+        self.assertFalse(manager.public_state()["running"])
+
+    def test_password_retry_skips_registration_reservation_and_passes_runner_flag(self):
+        runner_flags = []
+
+        def runner(task, _config, _stop, _stage, _log, *, password_retry=False):
+            runner_flags.append(password_retry)
+            self.assertTrue(password_retry)
+            self.assertEqual(task["result"]["access_token"], "token-private")
+            return {
+                "access_token": "token-private",
+                "password_status": "enabled",
+                "password": FIXED_PASSWORD,
+                "password_set_after_registration": True,
+            }
+
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=runner,
+            proxy_probe=lambda _proxy, _url: "203.0.113.88",
+        )
+        row, _result = self._seed_password_retry_task(manager)
+        with (
+            patch.object(manager.pool, "reserve", side_effect=AssertionError("password retry must not reserve")) as reserve,
+            patch.object(manager, "_registration_account_exists", side_effect=AssertionError("password retry must not replay signup")) as account_exists,
+        ):
+            queued = manager.retry_password("password-task", {})
+            self._wait_for_free_manager(manager)
+
+        reserve.assert_not_called()
+        account_exists.assert_not_called()
+        self.assertEqual(runner_flags, [True])
+        retry_id = queued["task_id"]
+        with manager._lock:
+            retry_task = dict(manager._tasks[retry_id])
+        self.assertEqual(retry_task["status"], "success")
+        self.assertEqual(retry_task["result"]["password_status"], "enabled")
+        self.assertEqual(manager.pool.result(row.row_id)["access_token"], "token-private")
+        with manager._lock:
+            parent_task = dict(manager._tasks["password-task"])
+        parent_public = manager._public_task(parent_task)
+        self.assertEqual(parent_public["result"]["password_status"], "enabled")
+        self.assertTrue(parent_public["result"]["has_password"])
+
+    def test_password_retry_accepts_disabled_passwordless_signup(self):
+        runner_flags = []
+
+        def runner(task, _config, _stop, _stage, _log, *, password_retry=False):
+            runner_flags.append(password_retry)
+            self.assertTrue(password_retry)
+            self.assertEqual(task["result"]["account_flow"], "signup")
+            return {
+                "access_token": "token-private",
+                "account_flow": "signup",
+                "password_status": "enabled",
+                "password_set_after_registration": True,
+                "password": FIXED_PASSWORD,
+            }
+
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=runner,
+            proxy_probe=lambda _proxy, _url: "203.0.113.88",
+        )
+        row, result = self._seed_password_retry_task(manager)
+        result.update({
+            "account_flow": "signup",
+            "password_status": "disabled",
+            "password_set_after_registration": False,
+            "registration_password_used": False,
+        })
+        result.pop("password", None)
+        result.pop("credential_line", None)
+        manager.pool.save_result(row.row_id, result)
+        manager.pool.update(row.row_id, status="success", stage="free_result_save")
+        manager._tasks["password-task"]["status"] = "success"
+        manager._tasks["password-task"]["result"] = dict(result)
+
+        queued = manager.retry_password("password-task", {})
+        self._wait_for_free_manager(manager)
+
+        with manager._lock:
+            retry_task = dict(manager._tasks[queued["task_id"]])
+        self.assertEqual(runner_flags, [True])
+        self.assertEqual(retry_task["status"], "success")
+        self.assertEqual(retry_task["result"]["password_status"], "enabled")
+        self.assertEqual(manager.pool.result(row.row_id)["password"], FIXED_PASSWORD)
+
+    def test_public_task_uses_durable_password_result_after_retry(self):
+        manager = FreeRegisterManager(self.data_dir)
+        row, result = self._seed_password_retry_task(manager)
+        # Simulate the original task journal surviving while the continuation
+        # has already written its successful account result to the mailbox
+        # result file.
+        stale = dict(result)
+        stale.update({
+            "account_flow": "signup",
+            "password_status": "disabled",
+            "password_set_after_registration": False,
+            "registration_password_used": False,
+        })
+        stale.pop("password", None)
+        manager._tasks["password-task"]["result"] = stale
+        manager.pool.save_result(row.row_id, {
+            **stale,
+            "password_status": "enabled",
+            "password_set_after_registration": True,
+            "registration_password_used": True,
+            "password": FIXED_PASSWORD,
+        })
+
+        public = manager.public_tasks()[0]
+        self.assertEqual(public["result"]["password_status"], "enabled")
+        self.assertTrue(public["result"]["has_password"])
+
+    def test_password_retry_rejects_existing_login_even_when_pending(self):
+        manager = FreeRegisterManager(self.data_dir)
+        row, result = self._seed_password_retry_task(manager)
+        result.update({"account_flow": "existing_login", "password_status": "pending"})
+        manager.pool.save_result(row.row_id, result)
+        manager._tasks["password-task"]["result"] = dict(result)
+
+        with self.assertRaises(FreeRegisterError) as raised:
+            manager.retry_password("password-task", {})
+        self.assertEqual(raised.exception.error_code, "free_password_retry_not_pending")
+
+    def test_password_retry_recovers_missing_historical_proxy_id(self):
+        def runner(task, _config, _stop, _stage, _log, *, password_retry=False):
+            self.assertTrue(password_retry)
+            self.assertTrue(task["proxy_id"])
+            return {
+                "access_token": "token-private",
+                "password_status": "enabled",
+                "password": FIXED_PASSWORD,
+                "password_set_after_registration": True,
+            }
+
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=runner,
+            proxy_probe=lambda _proxy, _url: "203.0.113.88",
+        )
+        row, _result = self._seed_password_retry_task(manager)
+        proxy_id = manager.proxies.public()["rows"][0]["proxy_id"]
+        # Legacy snapshots may retain only the configured address. Clear both
+        # copies to exercise lookup and authoritative ID recovery.
+        manager._tasks["password-task"].pop("proxy_id", None)
+        manager.pool.update(row.row_id, proxy_id="")
+
+        queued = manager.retry_password("password-task", {})
+        self._wait_for_free_manager(manager)
+
+        with manager._lock:
+            retry_task = dict(manager._tasks[queued["task_id"]])
+        self.assertEqual(retry_task["proxy_id"], proxy_id)
+        self.assertEqual(manager.proxies.public()["rows"][0]["active_lease_count"], 0)
+
+    def test_failed_password_retry_keeps_token_and_partial_success(self):
+        def runner(_task, _config, _stop, _stage, _log, *, password_retry=False):
+            self.assertTrue(password_retry)
+            raise FreeRegisterError(
+                "free_password_add",
+                "提交 Free 账号密码",
+                "密码提交超时",
+                retryable=True,
+                error_code="free_password_add_timeout",
+            )
+
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=runner,
+            proxy_probe=lambda _proxy, _url: "203.0.113.88",
+        )
+        row, _result = self._seed_password_retry_task(manager)
+        queued = manager.retry_password("password-task", {})
+        self._wait_for_free_manager(manager)
+
+        with manager._lock:
+            retry_task = dict(manager._tasks[queued["task_id"]])
+        self.assertEqual(retry_task["status"], "partial_success")
+        self.assertEqual(retry_task["result"]["access_token"], "token-private")
+        self.assertTrue(manager._public_task(retry_task)["result"]["has_access_token"])
+        self.assertEqual(retry_task["result"]["password_status"], "pending")
+        self.assertEqual(manager.pool.result(row.row_id)["access_token"], "token-private")
+        self.assertEqual(manager.secret([queued["task_id"]], "token"), "token-private")
+
+    def test_untyped_password_retry_failure_keeps_token_and_plan_context(self):
+        def runner(_task, _config, _stop, _stage, _log, *, password_retry=False):
+            self.assertTrue(password_retry)
+            raise RuntimeError("adapter crashed")
+
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=runner,
+            proxy_probe=lambda _proxy, _url: "203.0.113.88",
+        )
+        row, _result = self._seed_password_retry_task(manager)
+        queued = manager.retry_password("password-task", {})
+        self._wait_for_free_manager(manager)
+
+        with manager._lock:
+            retry_task = dict(manager._tasks[queued["task_id"]])
+        self.assertEqual(retry_task["status"], "partial_success")
+        self.assertEqual(retry_task["result"]["access_token"], "token-private")
+        self.assertEqual(retry_task["result"]["plan_type"], "free")
+        self.assertEqual(retry_task["result"]["password_status"], "pending")
+        self.assertEqual(retry_task["failure"]["node_code"], "free_password_enroll")
+        saved = manager.pool.result(row.row_id)
+        self.assertEqual(saved["access_token"], "token-private")
+        self.assertEqual(saved["plan_type"], "free")
+
+    def test_batch_retry_routes_pending_password_to_password_continuation(self):
+        manager = FreeRegisterManager(self.data_dir)
+        manager._tasks = {
+            "password-batch-task": {
+                "task_id": "password-batch-task",
+                "status": "partial_success",
+                "result": {"access_token": "token-private", "password_status": "pending"},
+            },
+        }
+        with (
+            patch.object(manager, "retry_password", return_value={"task_id": "password-retry-task"}) as retry_password,
+            patch.object(manager, "retry_twofa") as retry_twofa,
+            patch.object(manager, "rerun") as rerun,
+        ):
+            result = manager.batch_retry(["password-batch-task"], {})
+
+        retry_password.assert_called_once_with("password-batch-task", {})
+        retry_twofa.assert_not_called()
+        rerun.assert_not_called()
+        self.assertEqual(result["accepted_count"], 1)
+        self.assertEqual(result["accepted"][0]["retry_task"]["task_id"], "password-retry-task")
+
+    def test_removed_driver_start_is_rejected_without_runner_or_pool_mutation(self):
         pool = FreeMailboxPool(self.data_dir)
         pool.import_text("a@example.test----https://mail.example.test/a\n")
         proxies = FreeProxyPool(self.data_dir)
         proxies.import_text("http://proxy-a.test:8000\n")
+        calls = []
 
         def runner(_task, _config, _stop, _stage, _log, *, twofa_retry=False):
-            return {"access_token": "token-private", "twofa_status": "pending"}
+            calls.append(twofa_retry)
+            return {"access_token": "token-private", "twofa_status": "enabled"}
 
         manager = FreeRegisterManager(self.data_dir, runner=runner, proxy_probe=lambda _proxy, _url: "203.0.113.20")
-        manager.start({"target_count": 1, "driver": "roxybrowser"})
-        deadline = time.time() + 3
-        while manager.public_state()["running"] and time.time() < deadline:
-            time.sleep(0.01)
-        pending = manager.public_tasks()[0]
-        manager.retry_twofa(pending["task_id"], {"driver": "roxybrowser"})
-        deadline = time.time() + 3
-        while manager.public_state()["running"] and time.time() < deadline:
-            time.sleep(0.01)
-        self.assertEqual(manager.public_tasks()[0]["driver"], "protocol")
+        with self.assertRaises(FreeRegisterError) as raised:
+            manager.start({"target_count": 1, "driver": "roxybrowser"})
+        self.assertEqual(raised.exception.node_code, "free_config")
+        self.assertEqual(calls, [])
+        self.assertEqual(manager.public_tasks(), [])
+        self.assertEqual(manager.pool.public_rows()[0]["status"], "available")
+        self.assertEqual(manager.proxies.public()["rows"][0]["active_lease_count"], 0)
 
     def test_camoufox_twofa_retry_switches_to_protocol_for_passwordless_account(self):
         pool = FreeMailboxPool(self.data_dir)

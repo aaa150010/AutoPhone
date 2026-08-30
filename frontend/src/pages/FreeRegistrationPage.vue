@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleCheck, Connection, CopyDocument, Delete, Refresh, Setting, VideoPause, VideoPlay, View } from '@element-plus/icons-vue'
-import { closeFreeCamoufoxDebug, deleteFreeTasks, freeBatchRetry, getFreeConfig, getFreeMailboxUrl, getFreeSecret, getFreeState, getFreeTaskLatestCode, preflightFree, rerunFreeTask, retryFreeTwofa, startFree, startFreePlanCheck, stopFree, type FreeConfig, type FreeState } from '../api/client'
+import { closeFreeCamoufoxDebug, deleteFreeTasks, freeBatchRetry, getFreeConfig, getFreeMailboxUrl, getFreeSecret, getFreeState, getFreeTaskLatestCode, preflightFree, rerunFreeTask, retryFreePassword, retryFreeTwofa, startFree, startFreePlanCheck, stopFree, type FreeConfig, type FreeState } from '../api/client'
 import PageToolbar from '../components/PageToolbar.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import ContentEmptyState from '../components/ContentEmptyState.vue'
@@ -21,20 +21,11 @@ import {
 import { useTaskProgressClock } from '../composables/useTaskProgressClock'
 
 const defaultConfig: FreeConfig = {
-  driver: 'protocol', flow_profile: 'reference_20260823', proxy_allocation_mode: 'healthy_random', target_count: 1, concurrency: 3, email_code_timeout: 90, auto_set_2fa: true,
+  driver: 'protocol', flow_profile: 'reference_20260823', proxy_allocation_mode: 'healthy_random', target_count: 1, concurrency: 3, email_code_timeout: 90, account_password: 'Aa150010150010', auto_set_password: false, auto_set_2fa: true,
   mailbox_network_mode: 'local_proxy', mailbox_proxy_url: 'http://127.0.0.1:7897',
   mailbox_request_retries: 3, mailbox_retry_backoff_seconds: 1,
   proxy_probe_url: 'https://chatgpt.com/', proxy_socks5_dns_mode: 'remote', protocol: { node_runner: '', sentinel_version: '20260219f9f6', sentinel_timeout: 90, network_timeout: 20, network_preflight_retries: 3, security_challenge_wait_seconds: 60, anonymous_warmup: true, authenticated_warmup: true },
   proxy_default_scheme: 'socks5',
-  roxybrowser: {
-    api_base: 'http://127.0.0.1:50000', api_key: '', workspace_id: '', project_id: '',
-    workspace_list_path: '/browser/workspace', create_path: '/browser/create', open_path: '/browser/open',
-    close_path: '/browser/close', delete_path: '/browser/delete', headless: true, force_open: false, keep_browser_open: false,
-    one_profile_per_account: true, delete_profile_after_run: true, random_os: true, os_choices: ['Windows', 'macOS'],
-    random_profile_name: true, profile_name_prefix: 'rb', selenium_timeout: 90,
-    api_retries: 3, api_retry_delay: 2, humanize_delay: true, humanize_factor: 1,
-    humanize_browser_actions: true, existing_account_login: true, post_registration_dwell_min: 18, post_registration_dwell_max: 45,
-  },
   camoufox: {
     debug_mode: true, headless: true, pool_size: 2, max_contexts_per_browser: 3, context_start_interval_ms: 175,
     startup_concurrency: 4, block_images: true, registration_timeout_seconds: 600,
@@ -67,7 +58,6 @@ const nowSeconds = useTaskProgressClock(() => state.value.tasks || [], () => run
 let timer = 0
 
 const running = computed(() => Boolean(state.value.running))
-const pendingRoxyCleanup = computed(() => Math.max(0, Number(state.value.roxy_cleanup?.pending || 0)))
 const visibleTasks = computed(() => (state.value.tasks || []).slice().sort((a, b) => {
   const batchOrder = Number(b.created_at || 0) - Number(a.created_at || 0)
   if (batchOrder) return batchOrder
@@ -96,9 +86,24 @@ const runtimeMismatch = computed(() => {
 function mergeConfig(value: any, forceQuickRun = false) {
   if (!value || typeof value !== 'object') return
   Object.assign(config, value)
+  // Do not let removed legacy fields re-enter the reactive draft when loading
+  // a pre-migration config from the server. Spreading this draft is
+  // used for every new preflight/start request.
+  const draft = config as Record<string, unknown>
+  delete draft.roxybrowser
+  delete draft.roxy_circuit_failure_threshold
+  delete draft.roxy_circuit_recovery_seconds
+  delete draft.roxy_api_key
+  delete draft.roxy_workspace_id
+  const proxySelection = draft.proxy_selection
+  if (proxySelection && typeof proxySelection === 'object') {
+    delete (proxySelection as Record<string, unknown>).roxybrowser
+  }
   Object.assign(config.protocol, value.protocol || {})
-  Object.assign(config.roxybrowser, value.roxybrowser || {})
   Object.assign(config.camoufox, value.camoufox || {})
+  // Old persisted configs may still report a removed driver. Keep the editor
+  // valid while historical task rows retain their original read-only metadata.
+  if (!['protocol', 'camoufox'].includes(String(config.driver || '').trim().toLowerCase())) config.driver = 'protocol'
   config.target_count = Math.min(200, Math.max(1, Number(config.target_count) || 1))
   config.concurrency = Math.min(16, Math.max(1, Number(config.concurrency) || 1))
   if (forceQuickRun || !quickRunDirty.value) {
@@ -107,12 +112,31 @@ function mergeConfig(value: any, forceQuickRun = false) {
   }
 }
 
+function taskDriverLabel(driver: unknown) {
+  const value = String(driver || '').trim().toLowerCase()
+  if (value === 'camoufox') return 'Camoufox'
+  if (value === 'protocol') return '全协议'
+  return value ? '历史链路' : '全协议'
+}
+
+function isHistoricalDriver(task: any) {
+  const value = String(task?.driver || '').trim().toLowerCase()
+  return Boolean(value) && value !== 'protocol' && value !== 'camoufox'
+}
+
 function quickRunConfig(): FreeConfig {
-  return {
+  const draft = {
     ...config,
     target_count: Math.min(200, Math.max(1, Number(quickTargetCount.value) || 1)),
     concurrency: Math.min(16, Math.max(1, Number(quickConcurrency.value) || 1)),
   }
+  const sanitized = draft as FreeConfig & Record<string, unknown>
+  delete sanitized.roxybrowser
+  delete sanitized.roxy_circuit_failure_threshold
+  delete sanitized.roxy_circuit_recovery_seconds
+  delete sanitized.roxy_api_key
+  delete sanitized.roxy_workspace_id
+  return sanitized
 }
 
 function markQuickRunDirty() {
@@ -325,6 +349,23 @@ function taskTwofaType(task: any) {
   return ['pending', 'failed'].includes(status) ? 'warning' : 'info'
 }
 
+function taskPasswordLabel(task: any) {
+  const status = String(task?.result?.password_status || '').toLowerCase()
+  const flow = String(task?.result?.account_flow || '').toLowerCase()
+  if (task?.result?.has_password || status === 'enabled') return '已设置'
+  if (status === 'pending') return '待重试'
+  if (status === 'disabled' && flow === 'signup') return '未设置（可补设）'
+  return '未设置'
+}
+
+function taskPasswordType(task: any) {
+  const status = String(task?.result?.password_status || '').toLowerCase()
+  const flow = String(task?.result?.account_flow || '').toLowerCase()
+  if (task?.result?.has_password || status === 'enabled') return 'success'
+  if (status === 'pending' || (status === 'disabled' && flow === 'signup')) return 'warning'
+  return 'info'
+}
+
 async function copyTaskSecret(kind: 'token' | 'password' | 'totp' | 'credential', tasks: any[], label: string) {
   const ids = tasks.map(task => String(task?.task_id || '')).filter(Boolean)
   if (!ids.length) {
@@ -387,7 +428,7 @@ async function deleteSelectedTasks() {
 
 async function rerunTask(task: any) {
   const taskId = String(task?.task_id || '')
-  if (!taskId || !['failed', 'stopped', 'pending_rerun'].includes(String(task?.status || ''))) return
+  if (isHistoricalDriver(task) || !taskId || !['failed', 'stopped', 'pending_rerun'].includes(String(task?.status || ''))) return
   try {
     await ElMessageBox.confirm(
       `仅当该账号已恢复为可用时才会重跑。确定重跑 ${task.email || taskId} 吗？`,
@@ -412,7 +453,7 @@ async function rerunTask(task: any) {
 
 async function retryTwofaTask(task: any) {
   const taskId = String(task?.task_id || task?.row_id || '')
-  if (!taskId || String(task?.status || '') !== 'twofa_pending' || loading.value) return
+  if (isHistoricalDriver(task) || !taskId || String(task?.status || '') !== 'twofa_pending' || loading.value) return
   loading.value = true
   try {
     const result = await retryFreeTwofa(taskId)
@@ -426,10 +467,39 @@ async function retryTwofaTask(task: any) {
   }
 }
 
+function canRetryPassword(task: any) {
+  if (isHistoricalDriver(task)) return false
+  const status = String(task?.result?.password_status || '').toLowerCase()
+  const accountFlow = String(task?.result?.account_flow || '').toLowerCase()
+  if (accountFlow === 'existing_login') return false
+  const taskStatus = String(task?.status || '')
+  return ['success', 'partial_success', 'twofa_pending', 'failed', 'pending_rerun'].includes(taskStatus)
+    && (status === 'pending' || (status === 'disabled' && accountFlow === 'signup'))
+}
+
+async function retryPasswordTask(task: any) {
+  const taskId = String(task?.task_id || task?.row_id || '')
+  if (!canRetryPassword(task) || !taskId || loading.value) return
+  loading.value = true
+  try {
+    const result = await retryFreePassword(taskId)
+    if (result.state) state.value = result.state
+    ElMessage.info(`已加入密码重试队列 ${result.task?.task_id || ''}`)
+    await refresh()
+  } catch (error: any) {
+    ElMessage.error(error?.message || '密码设置重试失败')
+  } finally {
+    loading.value = false
+  }
+}
+
 async function batchRetryCurrentNode() {
-  const eligible = selectedTasks.value.filter(task => ['failed', 'stopped', 'pending_rerun', 'twofa_pending'].includes(String(task?.status || '')))
+  const eligible = selectedTasks.value.filter(task => !isHistoricalDriver(task) && (
+    ['failed', 'stopped', 'pending_rerun', 'twofa_pending'].includes(String(task?.status || ''))
+    || canRetryPassword(task)
+  ))
   if (!eligible.length) {
-    ElMessage.warning('请选择失败或 2FA 待重试任务')
+    ElMessage.warning('请选择失败、密码或 2FA 待重试任务')
     return
   }
   try {
@@ -551,8 +621,7 @@ onUnmounted(() => window.clearTimeout(timer))
         <div class="task-panel">
           <div class="run-snapshot task-summary"><div><span>可用 Free 邮箱</span><strong class="is-good">{{ Number(state.pool?.available || 0) }}</strong></div><div><span>任务总数</span><strong>{{ taskCounts.total }}</strong></div><div><span>排队 / 运行</span><strong>{{ taskCounts.running }}</strong></div><div><span>成功</span><strong class="is-good">{{ taskCounts.success - taskCounts.partial }}</strong></div><div><span>部分成功</span><strong class="is-warn">{{ taskCounts.partial }}</strong></div><div><span>失败</span><strong class="is-bad">{{ taskCounts.failed }}</strong></div><div><span>待重跑</span><strong class="is-warn">{{ taskCounts.rerun }}</strong></div><div><span>2FA 待重试</span><strong class="is-warn">{{ taskCounts.pending }}</strong></div></div>
           <div class="task-start-bar">
-            <el-tag effect="plain">{{ config.driver === 'roxybrowser' ? 'RoxyBrowser' : config.driver === 'camoufox' ? 'Camoufox' : '全协议' }}</el-tag>
-            <el-tag v-if="pendingRoxyCleanup > 0" type="warning" effect="light">待清理 Profile {{ pendingRoxyCleanup }}</el-tag>
+            <el-tag effect="plain">{{ config.driver === 'camoufox' ? 'Camoufox' : '全协议' }}</el-tag>
             <label class="quick-run-field"><span>注册数量</span><el-input-number v-model="quickTargetCount" class="quick-run-number" :min="1" :max="200" controls-position="right" :disabled="running || Boolean(busy)" @update:model-value="markQuickRunDirty" /></label>
             <label class="quick-run-field"><span>并发</span><el-input-number v-model="quickConcurrency" class="quick-run-number" :min="1" :max="16" controls-position="right" :disabled="running || Boolean(busy)" @update:model-value="markQuickRunDirty" /></label>
             <span class="muted">配置并发 {{ quickConcurrency }} · 实际 Slot {{ Number(state.scheduler?.active_slots || 0) }}/{{ Number(state.scheduler?.concurrency || quickConcurrency) }} · 可用邮箱 {{ Number(state.pool?.available || 0) }} · 代理 {{ Number(state.pool?.proxies || 0) }}</span>
@@ -596,23 +665,23 @@ onUnmounted(() => window.clearTimeout(timer))
               <el-radio-button value="pending_rerun">待重跑 {{ taskCounts.rerun }}</el-radio-button>
             <el-radio-button value="stopped">已停止 {{ taskCounts.stopped }}</el-radio-button>
             </el-radio-group>
-            <el-select v-model="taskDriverFilter" size="small" clearable placeholder="链路" class="task-driver-filter"><el-option label="全协议" value="protocol" /><el-option label="RoxyBrowser" value="roxybrowser" /><el-option label="Camoufox" value="camoufox" /></el-select>
+            <el-select v-model="taskDriverFilter" size="small" clearable placeholder="链路" class="task-driver-filter"><el-option label="全协议" value="protocol" /><el-option label="Camoufox" value="camoufox" /></el-select>
           </div>
-          <div class="task-actions"><span class="muted">已选 {{ selectedTasks.length }} 个</span><el-button v-if="['twofa_pending', 'pending_rerun'].includes(taskStatusFilter)" size="small" type="warning" :icon="Refresh" :disabled="!selectedTasks.some(task => ['failed', 'stopped', 'pending_rerun', 'twofa_pending'].includes(String(task.status || '')))" @click="batchRetryCurrentNode">按当前失败节点批量重试</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('token', selectedTasks, 'Token')">复制 Token</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('password', selectedTasks, '密码')">复制密码</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('totp', selectedTasks, 'TOTP')">复制 TOTP</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('credential', selectedTasks, '完整凭据')">复制完整凭据</el-button><el-button size="small" :icon="CopyDocument" :disabled="!filteredTasks.some(task => task.result?.has_access_token)" @click="copyTaskTokens(filteredTasks)">复制当前筛选 Token</el-button><el-button size="small" type="danger" plain :icon="Delete" :disabled="!selectedTasks.length || loading" @click="deleteSelectedTasks">删除选中</el-button><el-button size="small" :icon="Refresh" @click="refresh">刷新任务</el-button></div>
+          <div class="task-actions"><span class="muted">已选 {{ selectedTasks.length }} 个</span><el-button v-if="['success', 'partial_success', 'twofa_pending', 'pending_rerun'].includes(taskStatusFilter)" size="small" type="warning" :icon="Refresh" :disabled="!selectedTasks.some(task => !isHistoricalDriver(task) && (['failed', 'stopped', 'pending_rerun', 'twofa_pending'].includes(String(task.status || '')) || canRetryPassword(task)))" @click="batchRetryCurrentNode">按当前失败节点批量重试</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('token', selectedTasks, 'Token')">复制 Token</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('password', selectedTasks, '密码')">复制密码</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('totp', selectedTasks, 'TOTP')">复制 TOTP</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('credential', selectedTasks, '完整凭据')">复制完整凭据</el-button><el-button size="small" :icon="CopyDocument" :disabled="!filteredTasks.some(task => task.result?.has_access_token)" @click="copyTaskTokens(filteredTasks)">复制当前筛选 Token</el-button><el-button size="small" type="danger" plain :icon="Delete" :disabled="!selectedTasks.length || loading" @click="deleteSelectedTasks">删除选中</el-button><el-button size="small" :icon="Refresh" @click="refresh">刷新任务</el-button></div>
           <el-table ref="taskTable" :data="filteredTasks" row-key="task_id" height="100%" size="small" @selection-change="handleTaskSelection">
             <el-table-column type="selection" width="42" reserve-selection />
             <el-table-column type="index" label="序号" width="58" align="center" fixed="left" />
             <el-table-column label="账号" min-width="220" show-overflow-tooltip><template #default="{ row }"><el-tooltip v-if="row.email" content="点击复制邮箱" placement="top"><el-button link class="email-copy" @click.stop="copyTaskEmail(row)"><strong>{{ row.email }}</strong><el-icon><CopyDocument /></el-icon></el-button></el-tooltip><span v-else>-</span><small class="task-subline">{{ row.task_id }}</small></template></el-table-column>
             <el-table-column label="取件 URL" width="122" align="center"><template #default="{ row }"><template v-if="row.has_mailbox_url"><el-tooltip content="打开取件网页" placement="top"><el-button link :icon="View" :loading="openingMailboxUrlTaskIds.includes(String(row.task_id || ''))" aria-label="打开取件网页" @click.stop="openTaskMailboxUrl(row)">打开</el-button></el-tooltip><el-tooltip content="提取并复制最新验证码" placement="top"><el-button link :icon="CopyDocument" :loading="loadingLatestCodeTaskIds.includes(String(row.task_id || ''))" aria-label="提取并复制最新验证码" @click.stop="copyTaskLatestCode(row)" /></el-tooltip></template><span v-else class="muted">-</span></template></el-table-column>
-            <el-table-column label="验证码" width="220" align="center"><template #default="{ row }"><TaskVerificationInput v-if="row.manual_verification?.can_submit" :task-id="row.task_id" :request="row.manual_verification" :now-seconds="nowSeconds" /><span v-else-if="row.mailbox_verification?.phase === 'automatic'" class="automatic-otp-wait">自动取码 <strong>{{ automaticOtpRemaining(row) }}s</strong></span><span v-else class="muted">-</span></template></el-table-column>
-            <el-table-column label="链路 / 阶段" min-width="190" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" effect="plain">{{ row.driver === 'roxybrowser' ? 'RoxyBrowser' : row.driver === 'camoufox' ? 'Camoufox' : '全协议' }}</el-tag><small v-if="row.result?.account_flow" class="task-subline">{{ row.result.account_flow === 'existing_login' ? '已有账号登录' : '新账号注册' }}</small><small class="task-subline">{{ row.stage_label || row.stage || '-' }}</small></template></el-table-column>
+            <el-table-column label="验证码" width="220" align="center"><template #default="{ row }"><TaskVerificationInput v-if="!isHistoricalDriver(row) && row.manual_verification?.can_submit" :task-id="row.task_id" :request="row.manual_verification" :now-seconds="nowSeconds" /><span v-else-if="!isHistoricalDriver(row) && row.mailbox_verification?.phase === 'automatic'" class="automatic-otp-wait">自动取码 <strong>{{ automaticOtpRemaining(row) }}s</strong></span><span v-else class="muted">-</span></template></el-table-column>
+            <el-table-column label="链路 / 阶段" min-width="190" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" effect="plain">{{ taskDriverLabel(row.driver) }}</el-tag><small v-if="isHistoricalDriver(row)" class="task-subline">仅历史记录</small><small v-if="row.result?.account_flow" class="task-subline">{{ row.result.account_flow === 'existing_login' ? '已有账号登录' : '新账号注册' }}</small><small class="task-subline">{{ row.stage_label || row.stage || '-' }}</small></template></el-table-column>
             <el-table-column label="耗时" min-width="190"><template #default="{ row }"><TaskProgressCell :progress="row.progress" :timing="row.timing" :now-seconds="nowSeconds" :status="row.status" /></template></el-table-column>
             <el-table-column label="Slot" width="78" align="center"><template #default="{ row }">{{ row.slot_index || '-' }} / {{ row.concurrency_limit || config.concurrency }}</template></el-table-column>
-            <el-table-column label="代理池" min-width="180" show-overflow-tooltip><template #default="{ row }"><span>共享健康随机池</span><small class="task-subline">{{ row.proxy_scheme || '' }} · {{ row.proxy_masked || '' }}</small></template></el-table-column>
+            <el-table-column label="代理池" min-width="140" align="center"><template #default="{ row }"><span>共享健康随机池</span></template></el-table-column>
             <el-table-column label="状态" width="180" align="center" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" :type="isRetryResolved(row.retry_resolved) ? 'success' : taskStatusType(row.status)">{{ displayTaskStatus(row) }}</el-tag></template></el-table-column>
-            <el-table-column label="套餐" min-width="155" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" :type="taskPlanType(row)" effect="light">{{ taskPlanLabel(row) }}</el-tag><el-tooltip v-if="row.result?.has_access_token && String(row.result?.plan_check_status || '').toLowerCase() === 'failed'" content="重新查询套餐"><el-button link size="small" :icon="Refresh" :loading="planBusy === String(row.task_id || row.row_id)" :disabled="Boolean(planBusy)" aria-label="重新查询套餐" @click.stop="refreshPlan(row)" /></el-tooltip></template></el-table-column>
+            <el-table-column label="套餐" min-width="155" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" :type="taskPlanType(row)" effect="light">{{ taskPlanLabel(row) }}</el-tag><el-tooltip v-if="!isHistoricalDriver(row) && row.result?.has_access_token && String(row.result?.plan_check_status || '').toLowerCase() === 'failed'" content="重新查询套餐"><el-button link size="small" :icon="Refresh" :loading="planBusy === String(row.task_id || row.row_id)" :disabled="Boolean(planBusy)" aria-label="重新查询套餐" @click.stop="refreshPlan(row)" /></el-tooltip></template></el-table-column>
             <el-table-column label="2FA" width="92" align="center"><template #default="{ row }"><el-tag size="small" :type="taskTwofaType(row)" effect="plain">{{ taskTwofaLabel(row) }}</el-tag></template></el-table-column>
-            <el-table-column label="Profile" min-width="110" show-overflow-tooltip><template #default="{ row }">{{ row.profile_summary || '-' }}</template></el-table-column>
+            <el-table-column label="密码" width="118" align="center"><template #default="{ row }"><el-tag size="small" :type="taskPasswordType(row)" effect="plain">{{ taskPasswordLabel(row) }}</el-tag></template></el-table-column>
             <el-table-column label="Token" width="72" align="center"><template #default="{ row }"><el-button v-if="row.result?.has_access_token" link :icon="CopyDocument" aria-label="复制该账号 Token" @click.stop="copyTaskTokens([row])" /><span v-else class="muted">-</span></template></el-table-column>
             <el-table-column label="错误" min-width="280">
               <template #default="{ row }">
@@ -635,7 +704,7 @@ onUnmounted(() => window.clearTimeout(timer))
                 </el-tooltip>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="118" align="center" fixed="right"><template #default="{ row }"><el-tooltip content="查看该账号日志"><el-button link :icon="View" aria-label="查看该账号日志" @click.stop="openTaskLog(row)" /></el-tooltip><el-tooltip v-if="['failed', 'stopped', 'pending_rerun'].includes(String(row.status || ''))" content="重跑该账号"><el-button link :icon="Refresh" aria-label="重跑该账号" :disabled="loading" @click.stop="rerunTask(row)" /></el-tooltip><el-tooltip v-if="row.status === 'twofa_pending'" content="重试 2FA"><el-button link type="warning" :icon="Refresh" aria-label="重试 2FA" :disabled="loading" @click.stop="retryTwofaTask(row)" /></el-tooltip></template></el-table-column>
+            <el-table-column label="操作" width="150" align="center" fixed="right"><template #default="{ row }"><el-tooltip content="查看该账号日志"><el-button link :icon="View" aria-label="查看该账号日志" @click.stop="openTaskLog(row)" /></el-tooltip><el-tooltip v-if="!isHistoricalDriver(row) && ['failed', 'stopped', 'pending_rerun'].includes(String(row.status || ''))" content="重跑该账号"><el-button link :icon="Refresh" aria-label="重跑该账号" :disabled="loading" @click.stop="rerunTask(row)" /></el-tooltip><el-tooltip v-if="!isHistoricalDriver(row) && row.status === 'twofa_pending'" content="重试 2FA"><el-button link type="warning" :icon="Refresh" aria-label="重试 2FA" :disabled="loading" @click.stop="retryTwofaTask(row)" /></el-tooltip><el-tooltip v-if="canRetryPassword(row)" content="重试密码"><el-button link type="warning" :icon="Refresh" aria-label="重试密码" :disabled="loading" @click.stop="retryPasswordTask(row)" /></el-tooltip></template></el-table-column>
             <template #empty><ContentEmptyState /></template>
           </el-table>
         </div>

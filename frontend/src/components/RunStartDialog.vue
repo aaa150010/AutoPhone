@@ -27,7 +27,7 @@ defineExpose({ open })
     :close-on-press-escape="!loading"
     :show-close="!loading"
   >
-    <p class="dialog-copy">Free 注册请进入“运行配置 &gt; Free 注册运行”选择全协议、RoxyBrowser 或 Camoufox 链路。</p>
+    <p class="dialog-copy">Free 注册请进入“运行配置 &gt; Free 注册运行”选择全协议或 Camoufox 链路。</p>
     <template #footer>
       <el-button :disabled="loading" @click="visible = false">取消</el-button>
       <el-button type="primary" :loading="loading" @click="confirm">确认运行</el-button>

@@ -66,7 +66,7 @@ export const stopRun = () => api('/api/stop', {})
 export const getMailboxes = () => api<MailboxPayload>('/api/mailboxes')
 export interface FreeConfig {
   version?: number
-  driver: 'protocol' | 'roxybrowser' | 'camoufox'
+  driver: 'protocol' | 'camoufox'
   flow_profile?: 'reference_20260823' | 'legacy' | string
   proxy_allocation_mode?: 'healthy_random' | string
   target_count: number
@@ -76,6 +76,9 @@ export interface FreeConfig {
   mailbox_proxy_url: string
   mailbox_request_retries: number
   mailbox_retry_backoff_seconds: number
+  /** Registration password; the Free config endpoint masks this as `********`. */
+  account_password: string
+  auto_set_password: boolean
   auto_set_2fa: boolean
   twofa_auto_retry_attempts?: number
   proxy_probe_url: string
@@ -87,12 +90,9 @@ export interface FreeConfig {
   proxy_quarantine_seconds?: number
   proxy_health_probe_ttl_seconds?: number
   proxy_retry_count?: number
-  roxy_circuit_failure_threshold?: number
-  roxy_circuit_recovery_seconds?: number
   /** @deprecated retained only for loading pre-v6 config responses. */
   proxy_selection?: {
     protocol?: { country?: string; group?: string }
-    roxybrowser?: { country?: string; group?: string }
     camoufox?: { country?: string; group?: string }
   }
   protocol: {
@@ -104,35 +104,6 @@ export interface FreeConfig {
     security_challenge_wait_seconds?: number
     anonymous_warmup?: boolean
     authenticated_warmup?: boolean
-  }
-  roxybrowser: {
-    api_base: string
-    api_key?: string
-    workspace_id: string
-    project_id: string
-    workspace_list_path: string
-    create_path: string
-    open_path: string
-    close_path: string
-    delete_path: string
-    headless: boolean
-    force_open?: boolean
-    keep_browser_open: boolean
-    one_profile_per_account: boolean
-    delete_profile_after_run: boolean
-    random_os: boolean
-    os_choices: string[]
-    random_profile_name: boolean
-    profile_name_prefix: string
-    selenium_timeout: number
-    api_retries: number
-    api_retry_delay: number
-    humanize_delay: boolean
-    humanize_factor: number
-    humanize_browser_actions: boolean
-    existing_account_login: boolean
-    post_registration_dwell_min: number
-    post_registration_dwell_max: number
   }
   camoufox: {
     debug_mode?: boolean
@@ -156,11 +127,10 @@ export interface FreeState {
   otp_parser_revision?: string
   running: boolean
   batch_id?: string
-  driver?: 'protocol' | 'roxybrowser' | 'camoufox' | string
+  driver?: 'protocol' | 'camoufox' | string
   tasks?: any[]
   pool?: { total?: number; available?: number; proxies?: number }
-  scheduler?: { concurrency?: number; active_slots?: number; queued_slots?: number; roxy_circuit_open?: boolean; roxy_failures?: number; roxy_circuit_opened_at?: number | null }
-  roxy_cleanup?: { pending?: number; records?: number }
+  scheduler?: { concurrency?: number; active_slots?: number; queued_slots?: number }
   camoufox_debug?: FreeCamoufoxDebugState
   summary?: { total?: number; active?: number; success?: number; failed?: number; stopped?: number }
 }
@@ -318,7 +288,6 @@ export const exportDiagnostics = (incidentIds: string[], format: 'json' | 'markd
 export const deleteDiagnostics = (incidentIds: string[]) => api<{ ok: true; deleted: number }>('/api/diagnostics/delete', { incident_ids: incidentIds })
 export const clearDiagnostics = () => api<{ ok: true; deleted: number }>('/api/diagnostics/clear-all', {})
 export const getDiagnosticsHealth = () => api<{ ok: true; health: Record<string, any> }>('/api/diagnostics/health')
-export const getFreeRoxyWorkspaces = () => api<{ ok: true; items: Array<{ workspace_id: string; workspace_name: string; project_id: string; project_name: string; label: string }> }>('/api/free/roxy/workspaces')
 export interface FreeMailboxRow {
   row_id: string
   line_no: number
@@ -327,7 +296,7 @@ export interface FreeMailboxRow {
   cooldown_until?: number | null
   cooldown_remaining?: number
   stage?: string
-  driver?: 'protocol' | 'roxybrowser' | 'camoufox' | string
+  driver?: 'protocol' | 'camoufox' | string
   proxy_masked?: string
   proxy_fingerprint?: string
   proxy_scheme?: string
@@ -589,6 +558,10 @@ export const retryFreeRebind = (taskId: string) => api<{ ok: true; task: FreeReb
 export const stopFreeRebind = () => api<{ ok: true; state: FreeRebindState }>('/api/free/rebind/stop', {})
 export const retryFreeTwofa = (id: string) => api<{ ok: true; task: any; state?: AppState }>(
   '/api/free/2fa/retry',
+  { task_id: id, row_id: id },
+)
+export const retryFreePassword = (id: string) => api<{ ok: true; task: any; state?: FreeState }>(
+  '/api/free/password/retry',
   { task_id: id, row_id: id },
 )
 export const importMailboxes = (poolContent: string) => api<{

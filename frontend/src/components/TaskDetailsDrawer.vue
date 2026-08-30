@@ -42,12 +42,6 @@ const standardNodes: TaskStageNodeDefinition[] = [
 const freeNodes: TaskStageNodeDefinition[] = [
   ...FREE_CAMOUFOX_STAGE_NODES,
   { code: 'oauth_create_node', label: '初始化 Node/Sentinel', group: 'free' },
-  { code: 'free_roxy_create', label: '创建 RoxyBrowser 环境', group: 'free' },
-  { code: 'free_roxy_open', label: '打开 RoxyBrowser 环境', group: 'free' },
-  { code: 'free_roxy_connect', label: '连接 RoxyBrowser', group: 'free' },
-  { code: 'free_roxy_signup_bootstrap', label: '打开 RoxyBrowser 注册页', group: 'free' },
-  { code: 'free_roxy_signup_email', label: '填写 Free 注册邮箱', group: 'free' },
-  { code: 'free_roxy_signup_email_submit', label: '提交 Free 注册邮箱', group: 'free' },
   { code: 'free_oauth_session', label: 'Free OAuth 会话', group: 'free' },
   { code: 'free_email_identifier', label: '识别 Free 注册邮箱', group: 'free' },
   { code: 'free_email_password', label: '验证 Free 注册密码', group: 'free' },
@@ -62,7 +56,6 @@ const freeNodes: TaskStageNodeDefinition[] = [
   { code: 'free_plan_check', label: '查询 Free 套餐资格', group: 'free' },
   { code: 'free_twofa_enroll', label: '注册 Free 账号 2FA', group: 'free' },
   { code: 'free_twofa_activate', label: '激活 Free 账号 2FA', group: 'free' },
-  { code: 'free_roxy_cleanup', label: '清理 RoxyBrowser 环境', group: 'free' },
   { code: 'free_result_save', label: '保存 Free 注册结果', group: 'free' },
 ]
 

@@ -127,6 +127,7 @@ class PublicStateRuntimeTests(unittest.TestCase):
                 "proxy": "http://user:proxy-secret@example.test:7890",
                 "free_proxy_pool_content": "http://free-user:free-secret@example.test:8000",
                 "free_register_password": "free-password",
+                "account_password": "custom-free-password",
                 "sub2api": {"password": "sub2-secret"},
                 "nv_import": {"api_key": "nv-secret"},
                 "email_notification": {"password": "smtp-secret"},
@@ -140,6 +141,7 @@ class PublicStateRuntimeTests(unittest.TestCase):
             "proxy-secret",
             "free-secret",
             "free-password",
+            "custom-free-password",
             "sub2-secret",
             "nv-secret",
             "smtp-secret",
@@ -149,6 +151,7 @@ class PublicStateRuntimeTests(unittest.TestCase):
         self.assertEqual(masked["sms_api_keys"], ["********"])
         self.assertEqual(masked["free_proxy_pool_content"], "********")
         self.assertEqual(masked["free_register_password"], "********")
+        self.assertEqual(masked["account_password"], "********")
 
     def test_runtime_summary_only_counts_the_current_batch(self):
         self.state["context"] = {

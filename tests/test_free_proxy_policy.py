@@ -100,7 +100,7 @@ class FreeProxyHealthTests(unittest.TestCase):
         self.assertEqual(current, "203.0.113.99")
         self.assertNotIn("last_exit_ip", self.manager.proxies.public()["rows"][0])
 
-    def test_auth_dns_tls_timeout_and_roxy_exit_evidence_are_classified(self):
+    def test_auth_dns_tls_timeout_and_proxy_exit_evidence_are_classified(self):
         failures = (
             FreeRegisterError("free_proxy_binding", "绑定 Free 注册代理", "代理认证被拒绝 HTTP 407"),
             FreeRegisterError("free_proxy_binding", "绑定 Free 注册代理", "代理域名解析失败"),
@@ -108,7 +108,6 @@ class FreeProxyHealthTests(unittest.TestCase):
             FreeRegisterError("free_protocol_preflight", "协议网络预检", "ChatGPT 连接超时"),
             FreeRegisterError("free_oauth_session", "Free OAuth 会话", "代理 CONNECT 失败"),
             FreeRegisterError("free_proxy_preflight", "Free 代理预检", "连接超时"),
-            FreeRegisterError("free_roxy_ip_verify", "校验 RoxyBrowser 出口 IP", "出口响应格式无效"),
         )
         self.assertTrue(all(is_proxy_health_failure(failure) for failure in failures))
 
@@ -177,7 +176,7 @@ class FreeProxyHealthTests(unittest.TestCase):
         self.assertFalse(is_proxy_health_failure(runtime_failure))
 
     def test_page_otp_account_challenge_and_lease_failures_never_reduce_health(self):
-        page_failure = FreeRegisterError("free_roxy_signup_email_submit", "测试节点", "页面提交超时")
+        page_failure = FreeRegisterError("free_account_create", "创建 Free 账号", "页面提交超时")
         page_failure.__cause__ = ConnectionError("proxy connection timeout")
         failures = (
             page_failure,

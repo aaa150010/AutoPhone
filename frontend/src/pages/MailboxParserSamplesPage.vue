@@ -38,7 +38,7 @@ const statusOptions = [
   { label: '忽略', value: 'ignored' },
 ]
 const scopeOptions = [{ label: '全部链路', value: '' }, { label: '普通流程', value: 'ordinary' }, { label: 'Free', value: 'free' }]
-const driverOptions = [{ label: '全部驱动', value: '' }, { label: '短信 / OAuth', value: 'sms_oauth' }, { label: '协议', value: 'protocol' }, { label: 'RoxyBrowser', value: 'roxybrowser' }, { label: 'Camoufox', value: 'camoufox' }]
+const driverOptions = [{ label: '全部驱动', value: '' }, { label: '短信 / OAuth', value: 'sms_oauth' }, { label: '协议', value: 'protocol' }, { label: 'Camoufox', value: 'camoufox' }]
 
 function formatTime(value: any) {
   if (!value) return '-'
@@ -54,6 +54,12 @@ function formatBytes(value: any) {
 function statusLabel(value: string) { return ({ new: '待处理', in_review: '处理中', resolved: '已解决', ignored: '忽略' } as Record<string, string>)[value] || value || '-' }
 function statusType(value: string) { return value === 'resolved' ? 'success' : value === 'ignored' ? 'info' : value === 'in_review' ? 'warning' : 'danger' }
 function scopeLabel(value: string) { return value === 'free' ? 'Free' : '普通' }
+function driverLabel(value: unknown) {
+  const driver = String(value || '').trim().toLowerCase()
+  if (driver === 'protocol') return '协议'
+  if (driver === 'camoufox') return 'Camoufox'
+  return driver ? '历史链路' : '-'
+}
 
 async function load() {
   loading.value = true
@@ -169,7 +175,7 @@ onMounted(() => { void load() })
       <el-table :data="samples" height="100%" stripe v-loading="loading" @selection-change="selectRows">
         <el-table-column type="selection" width="44" />
         <el-table-column label="样本 ID" min-width="170"><template #default="{ row }"><el-link type="primary" @click="openDetail(row)">{{ row.sample_id }}</el-link></template></el-table-column>
-        <el-table-column label="链路 / 驱动" min-width="140"><template #default="{ row }">{{ scopeLabel(row.scope) }} / {{ row.driver || '-' }}</template></el-table-column>
+        <el-table-column label="链路 / 驱动" min-width="140"><template #default="{ row }">{{ scopeLabel(row.scope) }} / {{ driverLabel(row.driver) }}</template></el-table-column>
         <el-table-column prop="stage" label="阶段" min-width="170" show-overflow-tooltip />
         <el-table-column prop="reason" label="未命中原因" min-width="220" show-overflow-tooltip />
         <el-table-column label="状态" width="90"><template #default="{ row }"><el-tag size="small" :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag></template></el-table-column>
@@ -185,7 +191,7 @@ onMounted(() => { void load() })
     <el-drawer v-model="detailOpen" :title="detail ? `解析样本 · ${detail.sample_id}` : '解析样本'" size="720px" destroy-on-close>
       <template v-if="detail">
         <div class="drawer-actions"><el-button size="small" :icon="Refresh" @click="runReparse">离线重解析</el-button><el-button size="small" :icon="CopyDocument" @click="exportSample('sanitized')">复制脱敏夹具</el-button><el-button size="small" :icon="Download" @click="downloadFixture">下载脱敏 JSON</el-button><el-button size="small" :icon="CopyDocument" type="warning" plain @click="exportSample('fixture')">复制原文夹具</el-button><el-button size="small" :icon="Download" type="warning" plain @click="downloadSample('fixture')">下载原文 JSON</el-button><el-button size="small" :icon="View" @click="revealRaw">查看原文</el-button></div>
-        <el-descriptions :column="2" border size="small"><el-descriptions-item label="状态"><el-tag size="small" :type="statusType(detail.status)">{{ statusLabel(detail.status) }}</el-tag></el-descriptions-item><el-descriptions-item label="链路 / 驱动">{{ scopeLabel(detail.scope) }} / {{ detail.driver }}</el-descriptions-item><el-descriptions-item label="阶段">{{ detail.stage }}</el-descriptions-item><el-descriptions-item label="未命中原因">{{ detail.reason }}</el-descriptions-item><el-descriptions-item label="解析器版本">{{ detail.parser_version }}</el-descriptions-item><el-descriptions-item label="出现次数">{{ detail.occurrence_count }}</el-descriptions-item><el-descriptions-item label="任务 ID" :span="2">{{ detail.task_id || '-' }}</el-descriptions-item><el-descriptions-item label="日志 ID" :span="2">{{ detail.incident_id || '-' }}</el-descriptions-item></el-descriptions>
+        <el-descriptions :column="2" border size="small"><el-descriptions-item label="状态"><el-tag size="small" :type="statusType(detail.status)">{{ statusLabel(detail.status) }}</el-tag></el-descriptions-item><el-descriptions-item label="链路 / 驱动">{{ scopeLabel(detail.scope) }} / {{ driverLabel(detail.driver) }}</el-descriptions-item><el-descriptions-item label="阶段">{{ detail.stage }}</el-descriptions-item><el-descriptions-item label="未命中原因">{{ detail.reason }}</el-descriptions-item><el-descriptions-item label="解析器版本">{{ detail.parser_version }}</el-descriptions-item><el-descriptions-item label="出现次数">{{ detail.occurrence_count }}</el-descriptions-item><el-descriptions-item label="任务 ID" :span="2">{{ detail.task_id || '-' }}</el-descriptions-item><el-descriptions-item label="日志 ID" :span="2">{{ detail.incident_id || '-' }}</el-descriptions-item></el-descriptions>
         <section class="detail-section"><h3>解析诊断</h3><pre class="json-block">{{ JSON.stringify(detail.diagnostics || {}, null, 2) }}</pre></section>
         <section class="detail-section"><h3>响应工件</h3><el-table :data="detail.responses || []" size="small"><el-table-column prop="request_role" label="角色" width="110" /><el-table-column prop="http_status" label="HTTP" width="70" /><el-table-column prop="content_type" label="类型" min-width="180" show-overflow-tooltip /><el-table-column label="指纹" min-width="170" show-overflow-tooltip><template #default="{ row }"><code>{{ row.response_fingerprint }}</code></template></el-table-column><el-table-column prop="body_bytes" label="大小" width="90" /></el-table></section>
         <section v-if="reparse" class="detail-section"><h3>当前解析器重跑结果</h3><div class="reparse-metrics"><span>消息 {{ reparse.message_count }}</span><span>含验证码字段 {{ reparse.code_message_count }}</span><span>详情链接 {{ reparse.detail_url_fingerprints.length }}</span><span>解析错误 {{ reparse.parse_errors.length }}</span></div><pre class="json-block">{{ JSON.stringify(reparse, null, 2) }}</pre></section>

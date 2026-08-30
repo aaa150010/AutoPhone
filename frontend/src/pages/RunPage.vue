@@ -258,7 +258,7 @@ function openDiagnostic(task: RuntimeTask) {
   emit('navigate', `/logs?incident_id=${encodeURIComponent(incidentId)}`)
 }
 
-async function copyFreeTaskSecret(payload: { kind: 'token' | 'password' | 'totp' | 'proxy' | 'credential'; tasks: RuntimeTask[] }) {
+async function copyFreeTaskSecret(payload: { kind: 'token' | 'password' | 'totp' | 'credential'; tasks: RuntimeTask[] }) {
   if (!navigator.clipboard?.writeText) {
     ElMessage.error('当前浏览器不支持安全剪贴板写入')
     return
@@ -267,7 +267,6 @@ async function copyFreeTaskSecret(payload: { kind: 'token' | 'password' | 'totp'
     if (payload.kind === 'token') return task.result?.has_access_token
     if (payload.kind === 'password') return task.result?.has_password
     if (payload.kind === 'totp') return task.result?.has_totp
-    if (payload.kind === 'proxy') return Boolean(task.proxy_masked)
     return task.result?.has_credential
   })
   const taskIds = [...new Set(eligible.map(task => String(task.task_id || '').trim()).filter(Boolean))]

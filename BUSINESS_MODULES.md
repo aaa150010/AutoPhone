@@ -43,7 +43,7 @@ These files were selected from the PyInstaller/PYZ extraction as likely first-pa
 
 - `mac_overrides/free_register_runtime.py`: Free controller compatibility facade and public runtime assembly.
 - `mac_overrides/free_protocol_runtime.py`: isolated Free full-protocol driver.
-- `mac_overrides/free_roxy_runtime.py`: RoxyBrowser profile lifecycle, fixed proxy/IP validation and browser registration state machine.
+- `mac_overrides/free_camoufox_runtime.py`: optional Camoufox browser pool and browser registration state machine.
 - `mac_overrides/free_register_config.py`: `${GPTPHONE_DATA_DIR}/free_register/` configuration, defaults, masking and migration.
 - `mac_overrides/free_proxy_runtime.py`: structured Free proxy pool, country/group selection, leases, health and quarantine.
 - `mac_overrides/free_live_check.py`: fast and deep account liveness checks using the account's saved registration proxy.

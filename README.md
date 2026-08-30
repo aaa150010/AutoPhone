@@ -1,6 +1,6 @@
 # GPT 注册中心（gptPhone）macOS 使用说明
 
-这是一个 macOS 可双击运行的 Element Plus WebUI 工具，包含彼此隔离的“接码工作台”和“Free 注册”两套流程。接码工作台负责 ChatGPT/OpenAI Auth、邮箱取码、必要时手机接码及 SUB2/Pixel/NV 后续处理；Free 注册可选择全协议或 RoxyBrowser，并使用独立邮箱池、代理池、配置、任务、日志和结果。
+这是一个 macOS 可双击运行的 Element Plus WebUI 工具，包含彼此隔离的“接码工作台”和“Free 注册”两套流程。接码工作台负责 ChatGPT/OpenAI Auth、邮箱取码、必要时手机接码及 SUB2/Pixel/NV 后续处理；Free 注册可选择全协议或 Camoufox，并使用独立邮箱池、代理池、配置、任务、日志和结果。
 
 `1.6.32` 新增“支付与网络工具”分组。支付链接工作台使用 `${GPTPHONE_DATA_DIR}/payment_tools/`，默认优先本地协议提炼，也支持手动粘贴、CDK/SSE、HTTP API 和可选 `pay.153.ink` 浏览器适配器；第三方模式在每批任务启动前显示目标域名、通道和账号数量，必须明确确认，且不会执行支付扣款。支付 Token 不进入任务列表、日志或前端本地存储，最终链接只能通过按需复制读取。
 
@@ -171,9 +171,9 @@ SMTP 授权码在公共状态和普通配置响应中保持 `********` 遮罩，
 Free 注册位于独立菜单分组，运行前在“运行配置 > Free 注册运行”选择链路并保存：
 
 - **全协议**：继续执行 Free OAuth、邮箱 OTP、账号创建、Token、套餐/Plus 资格和可选 2FA。
-- **RoxyBrowser**：每个账号创建一个临时 Profile，固定绑定一个代理和一个出口 IP；任务完成或失败后关闭并删除 Profile。默认并发为 `3`，上限为 `5`。
+- **Camoufox**：使用共享健康随机代理池执行浏览器注册，可配置无头模式、浏览器池和上下文并发。
 
-Free 邮箱、代理、任务、日志和结果只保存在 `${GPTPHONE_DATA_DIR}/free_register/`，不会被普通接码流程读取、删除或消耗。Free 任务表按账号显示独立日志，可查看代理绑定、Profile、页面、OTP、Session、套餐、2FA 和清理节点；日志不包含密码、验证码、Token、Cookie、取件 URL 或代理认证。
+Free 邮箱、代理、任务、日志和结果只保存在 `${GPTPHONE_DATA_DIR}/free_register/`，不会被普通接码流程读取、删除或消耗。Free 任务表按账号显示独立日志，可查看代理绑定、页面、OTP、Session、套餐和 2FA 节点；日志不包含密码、验证码、Token、Cookie、取件 URL 或代理认证。
 
 Free 的注册页面网络和邮箱取件网络必须分开理解：
 

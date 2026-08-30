@@ -45,6 +45,12 @@ DEFAULT_FREE_CONFIG: dict[str, Any] = {
     "mailbox_proxy_url": DEFAULT_FREE_MAILBOX_PROXY,
     "mailbox_request_retries": 3,
     "mailbox_retry_backoff_seconds": 1.0,
+    # One password is shared by the signup password page and the optional
+    # post-registration password continuation. It is masked by ``public``.
+    "account_password": "Aa150010150010",
+    # Password setup is opt-in. Keep the historical 2FA default enabled while
+    # allowing callers to explicitly disable either post-registration step.
+    "auto_set_password": False,
     "auto_set_2fa": True,
     # Automatic recovery is bounded to two additional attempts (three total
     # 2FA attempts including the initial enrollment). Direct manager callers
@@ -59,11 +65,9 @@ DEFAULT_FREE_CONFIG: dict[str, Any] = {
     "proxy_quarantine_seconds": 600,
     "proxy_health_probe_ttl_seconds": 300,
     "proxy_retry_count": 1,
-    "roxy_circuit_failure_threshold": 3,
-    "roxy_circuit_recovery_seconds": 30,
     "proxy_selection": {
         "protocol": {"country": "", "group": ""},
-        "roxybrowser": {"country": "", "group": ""},
+        "camoufox": {"country": "", "group": ""},
     },
     "protocol": {
         "node_runner": "",
@@ -75,40 +79,6 @@ DEFAULT_FREE_CONFIG: dict[str, Any] = {
         "anonymous_warmup": True,
         "authenticated_warmup": True,
         "geo_probe_url": "https://ipwho.is/",
-    },
-    "roxybrowser": {
-        "api_base": "http://127.0.0.1:50000",
-        "api_key": "",
-        "workspace_id": "",
-        "project_id": "",
-        "workspace_list_path": "/browser/workspace",
-        "list_path": "/browser/list",
-        "create_path": "/browser/create",
-        "open_path": "/browser/open",
-        "close_path": "/browser/close",
-        "delete_path": "/browser/delete",
-        "headless": True,
-        "force_open": False,
-        "keep_browser_open": False,
-        "one_profile_per_account": True,
-        "delete_profile_after_run": True,
-        "random_os": True,
-        "os_choices": ["Windows", "macOS"],
-        "random_profile_name": True,
-        "profile_name_prefix": "rb",
-        "proxy_check_channel": "IPRust.io",
-        "selenium_timeout": 90,
-        "api_retries": 3,
-        "api_retry_delay": 2.0,
-        "humanize_delay": True,
-        "humanize_factor": 1.0,
-        "humanize_browser_actions": True,
-        "existing_account_login": True,
-        "post_registration_dwell_min": 18,
-        "post_registration_dwell_max": 45,
-        "cleanup_verify_timeout": 8,
-        "cleanup_verify_interval": 0.25,
-        "recover_cleanup_on_start": True,
     },
     "camoufox": {
         # Debug mode intentionally defaults on so a failed browser task leaves
@@ -132,6 +102,11 @@ DEFAULT_FREE_CONFIG: dict[str, Any] = {
         "existing_account_login": True,
     },
 }
+
+# The previous implementation shipped this value as a code-level default.
+# Treat it as a migration marker only; an explicitly different user password
+# must remain untouched.
+LEGACY_DEFAULT_FREE_PASSWORD = "Aa150010@150010"
 
 
 def _merge(base: Mapping[str, Any], incoming: Mapping[str, Any]) -> dict[str, Any]:
@@ -188,7 +163,13 @@ class FreeConfigStore:
             (value or {}).get("version", (previous or {}).get("version")),
             0, 0, 10_000,
         )
-        incoming = {key: copy.deepcopy(item) for key, item in dict(value or {}).items() if key in DEFAULT_FREE_CONFIG}
+        raw_value = dict(value or {})
+        # The old ordinary-config key is no longer persisted there, but accept
+        # it during the one-time migration so a user's chosen password is not
+        # silently replaced by the new default.
+        if "account_password" not in raw_value and "free_register_password" in raw_value:
+            raw_value["account_password"] = raw_value.get("free_register_password")
+        incoming = {key: copy.deepcopy(item) for key, item in raw_value.items() if key in DEFAULT_FREE_CONFIG}
         # v7 and older stores used HTTP plus automatic SOCKS5 DNS selection as
         # their defaults. Migrate only those exact legacy values; current
         # stores keep every explicit protocol/DNS choice unchanged.
@@ -212,16 +193,21 @@ class FreeConfigStore:
                 legacy_camoufox["debug_mode"] = True
             incoming["camoufox"] = legacy_camoufox
         base = _merge(DEFAULT_FREE_CONFIG, previous or {})
-        if incoming.get("roxybrowser", {}).get("api_key") == SECRET_MASK:
-            incoming = copy.deepcopy(incoming)
-            incoming.setdefault("roxybrowser", {})["api_key"] = str(base["roxybrowser"].get("api_key") or "")
         if incoming.get("mailbox_proxy_url") == SECRET_MASK:
             incoming = copy.deepcopy(incoming)
             incoming["mailbox_proxy_url"] = str(base.get("mailbox_proxy_url") or DEFAULT_FREE_MAILBOX_PROXY)
         result = _merge(base, incoming)
+        # Do not carry the removed browser integration back into the persisted
+        # configuration. Legacy values are accepted only long enough to select
+        # the protocol driver during migration.
+        result.pop("roxybrowser", None)
+        result.pop("roxy_circuit_failure_threshold", None)
+        result.pop("roxy_circuit_recovery_seconds", None)
         driver = str(result.get("driver") or "protocol").strip().lower()
-        if driver not in {"protocol", "roxybrowser", "camoufox"}:
-            raise FreeRegisterError("free_config", "保存 Free 配置", "Free 注册链路只能选择全协议、RoxyBrowser 或 Camoufox", retryable=False)
+        if driver == "roxybrowser":
+            driver = "protocol"
+        if driver not in {"protocol", "camoufox"}:
+            raise FreeRegisterError("free_config", "保存 Free 配置", "Free 注册链路只能选择全协议或 Camoufox", retryable=False)
         result["driver"] = driver
         flow_profile = str(result.get("flow_profile") or "reference_20260823").strip().lower()
         result["flow_profile"] = flow_profile if flow_profile in {"reference_20260823", "legacy"} else "reference_20260823"
@@ -247,11 +233,21 @@ class FreeConfigStore:
         result["mailbox_proxy_url"] = mailbox_policy.proxy_url
         result["mailbox_request_retries"] = mailbox_policy.retries
         result["mailbox_retry_backoff_seconds"] = mailbox_policy.backoff_seconds
-        # Free registration is required to finish with an enrolled TOTP. Keep
-        # this server-owned invariant even when an older client submits false;
-        # a failed enrollment remains ``twofa_pending`` and is never reported
-        # as a successful account.
-        result["auto_set_2fa"] = True
+        account_password = clean(result.get("account_password"), 256)
+        if account_password == SECRET_MASK:
+            account_password = clean(base.get("account_password"), 256)
+        if account_password == LEGACY_DEFAULT_FREE_PASSWORD:
+            account_password = str(DEFAULT_FREE_CONFIG["account_password"])
+        result["account_password"] = account_password or str(DEFAULT_FREE_CONFIG["account_password"])
+        # Each post-registration security step is independently configurable.
+        # In particular, preserve an explicit false instead of restoring the
+        # former server-owned 2FA invariant.
+        result["auto_set_password"] = _as_bool(
+            result.get("auto_set_password"), bool(DEFAULT_FREE_CONFIG["auto_set_password"])
+        )
+        result["auto_set_2fa"] = _as_bool(
+            result.get("auto_set_2fa"), bool(DEFAULT_FREE_CONFIG["auto_set_2fa"])
+        )
         result["twofa_auto_retry_attempts"] = _int(result.get("twofa_auto_retry_attempts"), 2, 0, 2)
         scheme = str(result.get("proxy_default_scheme") or DEFAULT_FREE_CONFIG["proxy_default_scheme"]).strip().lower()
         if scheme not in {"http", "https", "socks4", "socks5", "socks5h"}:
@@ -265,11 +261,9 @@ class FreeConfigStore:
         result["proxy_quarantine_seconds"] = _int(result.get("proxy_quarantine_seconds"), 600, 30, 86400)
         result["proxy_health_probe_ttl_seconds"] = _int(result.get("proxy_health_probe_ttl_seconds"), 300, 0, 86400)
         result["proxy_retry_count"] = _int(result.get("proxy_retry_count"), 1, 0, 5)
-        result["roxy_circuit_failure_threshold"] = _int(result.get("roxy_circuit_failure_threshold"), 3, 1, 10)
-        result["roxy_circuit_recovery_seconds"] = _int(result.get("roxy_circuit_recovery_seconds"), 30, 0, 3600)
         selection = result.get("proxy_selection") if isinstance(result.get("proxy_selection"), Mapping) else {}
         normalized_selection: dict[str, dict[str, str]] = {}
-        for driver in ("protocol", "roxybrowser", "camoufox"):
+        for driver in ("protocol", "camoufox"):
             item = selection.get(driver) if isinstance(selection.get(driver), Mapping) else {}
             country = clean(item.get("country"), 2).upper()
             if country and not re.fullmatch(r"[A-Z]{2}", country):
@@ -303,46 +297,6 @@ class FreeConfigStore:
         protocol["geo_probe_url"] = geo_probe_url if parsed_geo and parsed_geo.scheme == "https" and parsed_geo.netloc else ""
         result["protocol"] = protocol
 
-        roxy_defaults = DEFAULT_FREE_CONFIG["roxybrowser"]
-        roxy = {key: copy.deepcopy(value) for key, value in dict(result.get("roxybrowser") or {}).items() if key in roxy_defaults}
-        api_base = clean(roxy.get("api_base"), 500) or "http://127.0.0.1:50000"
-        parsed_api = urlsplit(api_base)
-        if parsed_api.scheme not in {"http", "https"} or not parsed_api.netloc:
-            raise FreeRegisterError("free_config", "保存 Free 配置", "RoxyBrowser API 地址无效", retryable=False)
-        roxy["api_base"] = api_base.rstrip("/")
-        for key in ("api_key", "workspace_id", "project_id", "profile_name_prefix"):
-            roxy[key] = clean(roxy.get(key), 500)
-        for key in ("workspace_list_path", "list_path", "create_path", "open_path", "close_path", "delete_path", "proxy_check_channel"):
-            roxy[key] = clean(roxy.get(key), 500) or str(DEFAULT_FREE_CONFIG["roxybrowser"][key])
-        for key in (
-            "headless", "force_open", "keep_browser_open", "one_profile_per_account", "delete_profile_after_run",
-            "random_os", "random_profile_name", "humanize_delay", "humanize_browser_actions", "existing_account_login",
-        ):
-            roxy[key] = _as_bool(roxy.get(key), bool(DEFAULT_FREE_CONFIG["roxybrowser"][key]))
-        # Older stores always persisted the old ``headless=false`` default, so
-        # presence alone cannot distinguish it from an explicit user choice.
-        # Migrate every pre-v5 store once; after v5 the user's advanced toggle
-        # is authoritative and an explicit false value is preserved.
-        if source_version < 5:
-            roxy["headless"] = True
-        roxy["force_open"] = False
-        choices = roxy.get("os_choices")
-        if isinstance(choices, str):
-            choices = [item.strip() for item in choices.replace(";", ",").split(",") if item.strip()]
-        valid_os = [str(item) for item in (choices or []) if str(item) in {"Windows", "macOS", "Linux", "IOS", "Android"}]
-        roxy["os_choices"] = valid_os or ["Windows", "macOS"]
-        roxy["selenium_timeout"] = _int(roxy.get("selenium_timeout"), 90, 10, 300)
-        roxy["api_retries"] = _int(roxy.get("api_retries"), 3, 1, 5)
-        roxy["api_retry_delay"] = _float(roxy.get("api_retry_delay"), 2.0, 0.25, 15.0)
-        roxy["cleanup_verify_timeout"] = _float(roxy.get("cleanup_verify_timeout"), 8.0, 0.5, 60.0)
-        roxy["cleanup_verify_interval"] = _float(roxy.get("cleanup_verify_interval"), 0.25, 0.05, 5.0)
-        roxy["recover_cleanup_on_start"] = _as_bool(roxy.get("recover_cleanup_on_start"), True)
-        roxy["humanize_factor"] = _float(roxy.get("humanize_factor"), 1.0, 0.1, 5.0)
-        roxy["post_registration_dwell_min"] = _int(roxy.get("post_registration_dwell_min"), 18, 0, 300)
-        roxy["post_registration_dwell_max"] = _int(roxy.get("post_registration_dwell_max"), 45, roxy["post_registration_dwell_min"], 600)
-        if not roxy["profile_name_prefix"]:
-            roxy["profile_name_prefix"] = "rb"
-        result["roxybrowser"] = roxy
         # Keep the old shape for API compatibility, but always return empty
         # classification values so they cannot influence allocation.
         camoufox_defaults = DEFAULT_FREE_CONFIG["camoufox"]
@@ -366,7 +320,6 @@ class FreeConfigStore:
         result["camoufox"] = camoufox
         result["proxy_selection"] = {
             "protocol": {"country": "", "group": ""},
-            "roxybrowser": {"country": "", "group": ""},
             "camoufox": {"country": "", "group": ""},
         }
         # Preserve the existing staged schema migrations and add v8 -> v9 for
@@ -401,10 +354,22 @@ class FreeConfigStore:
                 source_version = int(source.get("version") or 0)
             except (TypeError, ValueError):
                 source_version = 0
+            legacy_roxy_config = (
+                str(source.get("driver") or "").strip().lower() == "roxybrowser"
+                or any(key in source for key in (
+                    "roxybrowser",
+                    "roxy_circuit_failure_threshold",
+                    "roxy_circuit_recovery_seconds",
+                ))
+            )
             needs_policy_migration = (
                 self.path.exists()
                 and (
-                    source_version < DEFAULT_FREE_CONFIG["version"]
+                    legacy_roxy_config
+                    or source_version < DEFAULT_FREE_CONFIG["version"]
+                    or "auto_set_password" not in source
+                    or "auto_set_2fa" not in source
+                    or "account_password" not in source
                     or not isinstance(source.get("camoufox"), Mapping)
                     or "debug_mode" not in source.get("camoufox", {})
                     or str(source.get("proxy_allocation_mode") or "").strip().lower() != "healthy_random"
@@ -426,9 +391,8 @@ class FreeConfigStore:
 
     def public(self) -> dict[str, Any]:
         value = self.load()
-        roxy = dict(value.get("roxybrowser") or {})
-        roxy["api_key"] = SECRET_MASK if clean(roxy.get("api_key")) else ""
-        value["roxybrowser"] = roxy
+        if str(value.get("account_password") or "").strip():
+            value["account_password"] = SECRET_MASK
         mailbox_proxy = str(value.get("mailbox_proxy_url") or "")
         try:
             parsed_mailbox_proxy = urlsplit(mailbox_proxy)
@@ -439,12 +403,12 @@ class FreeConfigStore:
         return value
 
     def secret(self, secret_id: str) -> str:
-        if secret_id not in {"roxy_api_key", "mailbox_proxy_url"}:
+        if secret_id not in {"mailbox_proxy_url"}:
             raise FreeRegisterError("free_config_secret", "读取 Free 配置密钥", "Free 配置密钥类型无效", retryable=False)
         value = self.load()
         if secret_id == "mailbox_proxy_url":
             return str(value.get("mailbox_proxy_url") or "")
-        return str(value.get("roxybrowser", {}).get("api_key") or "")
+        return ""
 
     def migrate_legacy(self, local_config: Mapping[str, Any] | None, legacy_data_dir: str | Path) -> dict[str, Any]:
         with self._lock:
@@ -458,6 +422,8 @@ class FreeConfigStore:
                 "email_code_timeout": legacy.get("email_code_timeout", 90),
                 "proxy_probe_url": legacy.get("free_proxy_probe_url", DEFAULT_PROXY_PROBE_URL),
             })
+            if str(legacy.get("free_register_password") or "").strip():
+                initial["account_password"] = legacy.get("free_register_password")
             initial["protocol"]["node_runner"] = str(legacy.get("codex_node_runner") or legacy.get("node_runner") or "")
             if not self.path.exists():
                 atomic_write(self.path, self.normalize(initial))

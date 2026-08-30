@@ -56,8 +56,8 @@ class FreeTransferTests(unittest.TestCase):
         self.assertEqual(
             full["content"].splitlines(),
             [
-                "with-password@example.test----real-openai-password----https://mail.example.test/password",
-                "with-totp@example.test----real-openai-password----https://mail.example.test/totp----JBSWY3DPEHPK3PXP",
+                "with-password@example.test----real-openai-password",
+                "with-totp@example.test----real-openai-password----JBSWY3DPEHPK3PXP",
                 "passwordless@example.test----https://mail.example.test/passwordless",
                 "passwordless-totp@example.test----https://mail.example.test/passwordless-totp----JBSWY3DPEHPK3PXP",
             ],
@@ -72,7 +72,7 @@ class FreeTransferTests(unittest.TestCase):
                 "passwordless-totp@example.test----https://mail.example.test/passwordless-totp----JBSWY3DPEHPK3PXP",
             ],
         )
-        self.assertNotIn("Aa150010@150010", full["content"])
+        self.assertNotIn("Aa150010150010", full["content"])
 
     def test_transfer_content_returns_skip_details_and_preserves_source_rows(self) -> None:
         running = self._row("running@example.test")

@@ -73,27 +73,6 @@ class FreeAccountRouteController:
         # the safe provider status when the exception exposes one.
         return 502
 
-    def roxy_workspaces(self):
-        if self.config_store is None:
-            return self.module.jsonify(ok=False, error="Free 配置服务尚未初始化"), 503
-        try:
-            from .free_roxy_runtime import RoxyBrowserClient
-        except ImportError:
-            from free_roxy_runtime import RoxyBrowserClient  # type: ignore[no-redef]
-        try:
-            result = RoxyBrowserClient(
-                self.config_store.load()["roxybrowser"],
-                log_fn=self.manager._log if self.manager else None,
-            ).list_workspaces()
-            return self.module.jsonify(ok=True, items=result)
-        except Exception as exc:
-            return self.error_response(
-                exc,
-                default_code="free_roxy_workspace",
-                default_label="读取 RoxyBrowser 工作区",
-                status=503,
-            )
-
     def mailbox_url(self):
         if self.manager is None:
             return self._unavailable()
@@ -173,6 +152,29 @@ class FreeAccountRouteController:
                 exc,
                 default_code="free_twofa_retry",
                 default_label="重试 Free 账号 2FA",
+            )
+
+    def retry_password(self):
+        if self.manager is None:
+            return self._unavailable()
+        data = self.module.request.get_json(silent=True) or {}
+        if not isinstance(data, Mapping):
+            return self.error_response(
+                ValueError("请求必须是 JSON 对象"),
+                default_code="free_password_retry",
+                default_label="重试 Free 账号密码设置",
+            )
+        try:
+            task = self.manager.retry_password(
+                str(data.get("task_id") or data.get("row_id") or ""),
+                self.config_store.load() if self.config_store is not None else {},
+            )
+            return self.module.jsonify(ok=True, task=task, state=self.free_state())
+        except Exception as exc:
+            return self.error_response(
+                exc,
+                default_code="free_password_retry",
+                default_label="重试 Free 账号密码设置",
             )
 
     def rerun(self):

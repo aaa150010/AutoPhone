@@ -40,6 +40,7 @@ def collect_failure_secrets(
         (
             config.get("gptmail_api_key"),
             config.get("free_register_password"),
+            config.get("account_password"),
             sub2api.get("password"),
             notification.get("password"),
             online_mailbox.get("api_token"),

@@ -42,7 +42,7 @@ except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
     from sms_balance_routes import SmsBalanceRouteController
 
 try:
-    from .free_register_common import safe_log_message as _safe_free_message
+    from .free_register_common import FIXED_PASSWORD as _FREE_FIXED_PASSWORD, safe_log_message as _safe_free_message
     from .free_failure_runtime import canonical_failure as _canonical_free_failure, exception_to_failure as _free_exception_to_failure
     from .free_config_routes import FreeControlRouteController
     from .free_pool_routes import (
@@ -51,7 +51,7 @@ try:
         signature_accepts_call,
     )
 except ImportError:
-    from free_register_common import safe_log_message as _safe_free_message  # type: ignore[no-redef]
+    from free_register_common import FIXED_PASSWORD as _FREE_FIXED_PASSWORD, safe_log_message as _safe_free_message  # type: ignore[no-redef]
     from free_failure_runtime import canonical_failure as _canonical_free_failure, exception_to_failure as _free_exception_to_failure  # type: ignore[no-redef]
     from free_config_routes import FreeControlRouteController  # type: ignore[no-redef]
     from free_pool_routes import (  # type: ignore[no-redef]
@@ -612,6 +612,8 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             value.setdefault("concurrency", 3)
             value.setdefault("target_count", 0)
             value.setdefault("proxy_probe_url", "https://chatgpt.com/")
+            value.setdefault("account_password", _FREE_FIXED_PASSWORD)
+            value.setdefault("auto_set_password", False)
             value.setdefault("auto_set_2fa", True)
             return value
         return free_config_store.save(data)
@@ -1229,7 +1231,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
 
     # Rebind owns an independent mailbox pool and task state.  Construct it
     # beside the Free registration manager, but keep its worker and routes
-    # isolated from the registration driver and RoxyBrowser lifecycle.
+    # isolated from the registration driver lifecycle.
     try:
         from .free_rebind_runtime import FreeRebindService
         from .free_rebind_routes import FreeRebindRouteController
@@ -1295,12 +1297,12 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/api/diagnostics/clear-all", "api_diagnostics_clear_all", diagnostic_routes.clear_all if diagnostic_routes else lambda: module.jsonify(ok=False, error="日志中心尚未初始化"), ["POST"]),
         ("/api/diagnostics/health", "api_diagnostics_health", diagnostic_routes.health if diagnostic_routes else lambda: module.jsonify(ok=False, error="日志中心尚未初始化"), ["GET"]),
         ("/api/free/tasks/delete", "api_free_tasks_delete", free_control_routes.delete_tasks, ["POST"]),
-        ("/api/free/roxy/workspaces", "api_free_roxy_workspaces", free_account_routes.roxy_workspaces, ["GET"]),
         *free_pool_routes.routes(),
         ("/api/free/mailboxes/url", "api_free_mailbox_url", free_account_routes.mailbox_url, ["POST"]),
         ("/api/free/mailboxes/latest-code", "api_free_mailbox_latest_code", free_account_routes.mailbox_latest_code, ["POST"]),
         ("/api/free/tasks/latest-code", "api_free_task_latest_code", free_account_routes.task_latest_code, ["POST"]),
         ("/api/free/2fa/retry", "api_free_twofa_retry", free_account_routes.retry_twofa, ["POST"]),
+        ("/api/free/password/retry", "api_free_password_retry", free_account_routes.retry_password, ["POST"]),
         ("/api/free/retry/batch", "api_free_retry_batch", free_account_routes.batch_retry, ["POST"]),
         ("/api/free/rerun", "api_free_rerun", free_account_routes.rerun, ["POST"]),
         ("/api/free/live-check", "api_free_live_check", free_account_routes.live_check, ["POST"]),

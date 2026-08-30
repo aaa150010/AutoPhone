@@ -21,9 +21,12 @@ from urllib.parse import quote, unquote, urlsplit, urlunsplit
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 OTP_RE = re.compile(r"\b(\d{6})\b")
 SECRET_MASK = "********"
-FIXED_PASSWORD = "Aa150010@150010"
+# Default used by both the signup password page and the optional
+# post-registration password continuation.  The value is configurable through
+# the isolated Free config; this constant only provides the fallback for old
+# direct callers that do not pass a config snapshot.
+FIXED_PASSWORD = "Aa150010150010"
 FREE_PROXY_SCHEMES = frozenset({"http", "https", "socks4", "socks5", "socks5h"})
-ROXY_PROXY_SCHEMES = frozenset({"http", "https", "socks5", "socks5h"})
 DEFAULT_FREE_PROXY_SCHEME = "socks5"
 DEFAULT_SOCKS5_DNS_MODE = "remote"
 TERMINAL_STATUSES = frozenset({"success", "partial_success", "failed", "stopped", "twofa_pending"})
@@ -84,22 +87,9 @@ FREE_STAGE_LABELS = {
     "proxy_connection_reset": "代理连接被重置",
     "proxy_tls_certificate_error": "代理证书校验失败",
     "proxy_connect_failed": "代理连接失败",
-    "free_roxy_create": "创建 RoxyBrowser 环境",
-    "free_roxy_open": "打开 RoxyBrowser 环境",
-    "free_roxy_connect": "连接 RoxyBrowser",
-    "free_roxy_ip_verify": "校验 RoxyBrowser 出口 IP",
-    "free_roxy_signup": "RoxyBrowser 页面注册",
-    "free_roxy_signup_bootstrap": "打开 RoxyBrowser 注册页",
-    "free_roxy_signup_email": "填写 Free 注册邮箱",
-    "free_roxy_signup_email_submit": "提交 Free 注册邮箱",
-    "free_roxy_signup_password": "提交 Free 注册密码",
-    "free_roxy_profile": "填写 Free 账号资料",
-    "free_roxy_page_state": "等待 RoxyBrowser 页面状态",
-    "free_roxy_login_password": "识别登录密码页",
     "free_existing_login": "已有 Free 账号登录",
     "free_existing_login_password": "验证已有 Free 账号密码",
     "free_existing_login_otp": "已有 Free 账号邮箱验证",
-    "free_roxy_challenge": "等待注册页安全验证",
     "free_camoufox_dependency": "检查 Camoufox 依赖",
     "free_camoufox_launch": "启动 Camoufox 浏览器池",
     "camoufox_pool_shutdown_pending": "等待 Camoufox 浏览器池关闭",
@@ -113,6 +103,12 @@ FREE_STAGE_LABELS = {
     "oauth_create_node": "初始化 Node/Sentinel",
     "free_oauth_session": "Free OAuth 会话",
     "free_twofa_reauth": "Free 2FA 重认证诊断",
+    "free_twofa_reauth_csrf": "2FA 重认证 CSRF",
+    "free_twofa_reauth_signin": "启动 2FA 重认证",
+    "free_twofa_reauth_authorize": "打开 2FA 重认证授权页面",
+    "free_twofa_otp_wait": "等待 2FA 邮箱验证码",
+    "free_twofa_otp_validate": "验证 2FA 邮箱验证码",
+    "free_twofa_reauth_callback": "刷新 2FA 重认证会话",
     "free_oauth_security_challenge": "等待 Free OAuth 安全验证",
     "oauth_bootstrap_html": "识别 Free OAuth 授权页面",
     "free_email_identifier": "识别 Free 注册邮箱",
@@ -128,8 +124,15 @@ FREE_STAGE_LABELS = {
     "free_plan_check": "查询 Free 套餐资格",
     "free_twofa_enroll": "注册 Free 账号 2FA",
     "free_twofa_activate": "激活 Free 账号 2FA",
-    "free_roxy_cleanup": "清理 RoxyBrowser 环境",
-    "free_roxy_window_quota_exhausted": "RoxyBrowser 窗口额度",
+    "free_password_eligibility": "检查 Free 账号密码资格",
+    "free_password_reauth_csrf": "密码设置重认证 CSRF",
+    "free_password_reauth_signin": "启动密码设置重认证",
+    "free_password_reauth_authorize": "打开密码设置授权页面",
+    "free_password_otp_wait": "等待密码设置邮箱验证码",
+    "free_password_otp_validate": "验证密码设置邮箱验证码",
+    "free_password_enroll": "打开新密码页面",
+    "free_password_add": "提交 Free 账号密码",
+    "free_password_callback": "刷新密码设置会话",
     "free_mailbox_released": "释放 Free 邮箱",
     "free_result_save": "保存 Free 注册结果",
     "free_live_proxy_blocked": "出口或服务端安全策略拒绝",
@@ -298,6 +301,12 @@ class FreeMailbox:
 
 def clean(value: Any, limit: int = 500) -> str:
     return re.sub(r"[\x00-\x1f\x7f]+", " ", str(value or "")).strip()[:limit]
+
+
+def configured_free_password(config: Mapping[str, Any] | None) -> str:
+    """Resolve the configured Free account password without accepting a mask."""
+    value = clean((config or {}).get("account_password"), 256) if isinstance(config, Mapping) else ""
+    return value if value and value != SECRET_MASK else FIXED_PASSWORD
 
 
 def safe_log_message(value: Any) -> str:
@@ -565,8 +574,6 @@ def proxy_transport_value(
     selected_driver = str(driver or "protocol").strip().lower()
     if selected_driver in {"camoufox", "playwright", "browser"} and scheme == "socks5h":
         scheme = "socks5"
-    elif selected_driver == "roxybrowser" and scheme == "socks5h":
-        scheme = "socks5"
     elif selected_driver in {"protocol", "probe", "live"} and scheme == "socks5":
         # SOCKS5 and SOCKS5H use the same proxy wire protocol. The latter is
         # only the curl naming for proxy-side DNS. Preserve the declared
@@ -680,8 +687,8 @@ def random_birthdate(rng: random.Random | None = None, today: date | None = None
 __all__ = [
     "DEFAULT_FREE_PROXY_SCHEME", "DEFAULT_SOCKS5_DNS_MODE", "FIXED_PASSWORD", "FREE_PROXY_SCHEMES", "FREE_STAGE_LABELS",
     "FreeMailbox", "FreeRegisterError", "FreeTwoFaPending", "OTP_RE", "ProxyBinding",
-    "ROXY_PROXY_SCHEMES", "SECRET_MASK", "TERMINAL_STATUSES", "atomic_write", "clean",
-    "fingerprint", "mask_proxy", "normalize_proxy_value", "parse_mailbox_line", "proxy_transport_value",
+    "SECRET_MASK", "TERMINAL_STATUSES", "atomic_write", "clean",
+    "configured_free_password", "fingerprint", "mask_proxy", "normalize_proxy_value", "parse_mailbox_line", "proxy_transport_value",
     "proxy_transport_config", "proxy_error_code", "proxy_error_label", "plus_trial_from_accounts", "proxy_error_detail", "random_birthdate", "random_display_name",
     "safe_log_message", "timezone_offset_minutes",
 ]

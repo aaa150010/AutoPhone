@@ -293,7 +293,7 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
           <div v-if="target" class="pair-meta"><span>目标：{{ target.email }}</span><el-tag size="small" type="warning">仅用于换绑</el-tag></div>
           <el-button class="start-button" type="primary" :icon="Link" :loading="startBusy" :disabled="!canStart" @click="start">开始换绑</el-button>
         </div>
-        <el-alert class="policy-alert" title="换绑不会连接 RoxyBrowser；完成后会用新邮箱重新登录并查询套餐与 Plus 资格。" type="info" :closable="false" />
+        <el-alert class="policy-alert" title="换绑统一使用协议链路；完成后会用新邮箱重新登录并查询套餐与 Plus 资格。" type="info" :closable="false" />
       </WorkspacePanel>
     </div>
 

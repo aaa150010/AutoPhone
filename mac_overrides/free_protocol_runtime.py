@@ -44,11 +44,16 @@ try:
         reference_fingerprint as _reference_fingerprint,
         reference_flow_enabled as _reference_flow_enabled,
     )
-    from .free_account_service import finalize_registration_result, mfa_enabled_from_payload
+    from .free_account_service import (
+        finalize_registration_result,
+        mfa_enabled_from_payload,
+        password_retry_allowed,
+    )
     from .free_register_common import (
         FIXED_PASSWORD,
         FreeRegisterError,
         FreeTwoFaPending,
+        configured_free_password,
         plus_trial_from_accounts as _plus_trial_from_accounts,
         random_birthdate,
         random_display_name,
@@ -79,9 +84,13 @@ except ImportError:
         reference_fingerprint as _reference_fingerprint,
         reference_flow_enabled as _reference_flow_enabled,
     )
-    from free_account_service import finalize_registration_result, mfa_enabled_from_payload  # type: ignore[no-redef]
+    from free_account_service import (  # type: ignore[no-redef]
+        finalize_registration_result,
+        mfa_enabled_from_payload,
+        password_retry_allowed,
+    )
     from free_register_common import (  # type: ignore[no-redef]
-        FIXED_PASSWORD, FreeRegisterError, FreeTwoFaPending,
+        FIXED_PASSWORD, FreeRegisterError, FreeTwoFaPending, configured_free_password,
         plus_trial_from_accounts as _plus_trial_from_accounts,
         random_birthdate, random_display_name,
         proxy_transport_value,
@@ -96,6 +105,14 @@ DEFAULT_AUTH_IMPERSONATES = (
     "chrome133a",
     "safari15_3",
     "safari17_0",
+)
+
+# Passwordless signup accounts can opt into a real ChatGPT password after the
+# OAuth callback.  This is a different operation from changing an existing
+# password: the Auth API uses the ``add_password`` eligibility endpoint and a
+# dedicated re-authentication/OTP session (as captured in chatgpt.com.har).
+CHATGPT_ADD_PASSWORD_ELIGIBILITY_URL = (
+    "https://chatgpt.com/backend-api/accounts/add_password/eligibility"
 )
 
 
@@ -302,6 +319,20 @@ def _explicit_false(value: Any) -> bool:
         isinstance(value, str)
         and value.strip().casefold() in {"false", "0", "no", "failed", "failure", "error"}
     )
+
+
+def _config_bool(value: Any, default: bool = False) -> bool:
+    """Parse persisted/direct-call booleans without treating ``"false"`` as true."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    normalized = str(value or "").strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return default
 
 
 def _plan_failure(exc: FreeRegisterError) -> dict[str, Any]:
@@ -601,7 +632,17 @@ class FreeProtocolMixin:
         value = int.from_bytes(digest[offset:offset + 4], "big") & 0x7fffffff
         return f"{value % 1_000_000:06d}"
 
-    def _run_protocol(self, task: Mapping[str, Any], config: Mapping[str, Any], stop_event: threading.Event, stage: Callable[[str, str], None], log: Callable[[str, str], None], *, twofa_retry: bool = False) -> Mapping[str, Any]:
+    def _run_protocol(
+        self,
+        task: Mapping[str, Any],
+        config: Mapping[str, Any],
+        stop_event: threading.Event,
+        stage: Callable[[str, str], None],
+        log: Callable[[str, str], None],
+        *,
+        twofa_retry: bool = False,
+        password_retry: bool = False,
+    ) -> Mapping[str, Any]:
         # Import the recovered chain inside the worker so fake-runner tests do
         # not need to load the bundled runtime.
         import codex_chain_runner
@@ -622,8 +663,16 @@ class FreeProtocolMixin:
                 retryable=False,
                 error_code="proxy_connect_failed",
             )
-        password = FIXED_PASSWORD
-        stage(task_id, "free_twofa_enroll" if twofa_retry else "oauth_create_node")
+        # Resolve the password once from the task's immutable config snapshot.
+        # Existing-account login retries still use their saved credential; this
+        # value is only for signup/password-continuation requests.
+        password = configured_free_password(config)
+        stage(
+            task_id,
+            "free_password_eligibility"
+            if password_retry
+            else "free_twofa_enroll" if twofa_retry else "oauth_create_node",
+        )
         resolved_runner = self.resolve_node_runner(config)
         if not resolved_runner:
             raise FreeRegisterError(
@@ -818,6 +867,65 @@ class FreeProtocolMixin:
                 # same AutoRegister preflight, anonymous cookies and TLS image
                 # before the re-authentication flow begins.
                 prepare_reference_transport(transport)
+            if password_retry:
+                saved = self.pool.result(str(task["row_id"]))
+                token = str(saved.get("access_token") or "").strip()
+                if not token:
+                    raise FreeRegisterError(
+                        "free_password_retry",
+                        "重试 Free 账号密码设置",
+                        "原账号没有可用 access token",
+                        retryable=False,
+                        error_code="free_password_retry_token_missing",
+                    )
+                if not password_retry_allowed(saved):
+                    raise FreeRegisterError(
+                        "free_password_retry",
+                        "重试 Free 账号密码设置",
+                        "该账号当前没有可补设的密码状态",
+                        retryable=False,
+                        error_code="free_password_retry_not_pending",
+                    )
+                if reference_flow:
+                    run_authenticated_warmup(transport, token)
+                result = dict(saved)
+                for key in (
+                    "failure", "error", "error_code", "error_node",
+                    "password_failure", "password_error",
+                ):
+                    result.pop(key, None)
+                try:
+                    password_result = self._set_password(
+                        transport, token, task, password, config, otp_provider, stage,
+                    )
+                except FreeRegisterError as exc:
+                    detail = _safe_log_message(exc)
+                    result.update({
+                        "password_status": "pending",
+                        "password_error": detail,
+                        "password_failure": {
+                            "node_code": exc.node_code,
+                            "node_label": exc.node_label,
+                            "error_code": exc.error_code,
+                            "public_message": (
+                                f"{exc.node_label} [{exc.node_label}/{exc.node_code}]：{detail}"
+                            ),
+                            "technical_summary": detail,
+                            "retryable": bool(exc.retryable),
+                            "provider_code": str(exc.provider_code or ""),
+                        },
+                    })
+                else:
+                    result.update(password_result)
+                saved_password = str(result.get("password") or "").strip()
+                if saved_password and result.get("totp_secret"):
+                    result["credential_line"] = (
+                        f"{email}----{saved_password}----{result['totp_secret']}"
+                    )
+                elif saved_password:
+                    result["credential_line"] = f"{email}----{saved_password}"
+                return result
+
             if twofa_retry:
                 saved = self.pool.result(str(task["row_id"]))
                 token = str(saved.get("access_token") or "")
@@ -828,18 +936,68 @@ class FreeProtocolMixin:
                     # context before starting password re-authentication.
                     # Keep this best-effort and on the same proxy/session.
                     run_authenticated_warmup(transport, token)
-                twofa = self._enroll_twofa(transport, token, task, password, config, otp_provider, stage)
                 result = dict(saved)
                 for key in ("failure", "error", "error_code", "error_node", "twofa_failure", "twofa_error"):
                     result.pop(key, None)
-                result.update(twofa)
                 saved_password = str(saved.get("password") or "")
                 if saved_password:
                     result["password"] = saved_password
                 else:
                     result.pop("password", None)
+                # A password operation that was pending (or deliberately
+                # disabled for a passwordless signup) gets its own retry and
+                # OTP baseline before the 2FA retry.
+                # Existing-login results are never assigned the fixed signup
+                # password implicitly.
+                if (
+                    _config_bool(config.get("auto_set_password"), False)
+                    and password_retry_allowed(saved)
+                ):
+                    try:
+                        password_result = self._set_password(
+                            transport, token, task, password, config, otp_provider, stage,
+                        )
+                    except FreeRegisterError as exc:
+                        result.update({
+                            "password_status": "pending",
+                            "password_error": _safe_log_message(exc),
+                            "password_failure": {
+                                "node_code": exc.node_code,
+                                "node_label": exc.node_label,
+                                "error_code": exc.error_code,
+                                "public_message": f"{exc.node_label} [{exc.node_label}/{exc.node_code}]：{_safe_log_message(exc)}",
+                                "technical_summary": _safe_log_message(exc),
+                                "retryable": bool(exc.retryable),
+                                "provider_code": str(exc.provider_code or ""),
+                            },
+                        })
+                    else:
+                        result.update(password_result)
+                        token = str(password_result.get("access_token") or token)
+                try:
+                    twofa = self._enroll_twofa(transport, token, task, password, config, otp_provider, stage)
+                except FreeTwoFaPending as pending:
+                    twofa = {
+                        "twofa_status": "pending",
+                        "twofa_error": _safe_log_message(pending),
+                        "twofa_failure": {
+                            "node_code": pending.node_code,
+                            "node_label": pending.node_label,
+                            "error_code": pending.error_code,
+                            "public_message": f"{pending.node_label} [{pending.node_label}/{pending.node_code}]：{_safe_log_message(pending)}",
+                            "technical_summary": _safe_log_message(pending),
+                            "retryable": bool(pending.retryable),
+                            "provider_code": str(pending.provider_code or ""),
+                        },
+                    }
+                result.update(twofa)
+                saved_password = str(result.get("password") or saved_password or "")
+                if saved_password:
+                    result["password"] = saved_password
                 if result.get("totp_secret") and saved_password:
-                    result["credential_line"] = f"{email}----{result['password']}----{result['totp_secret']}"
+                    result["credential_line"] = f"{email}----{saved_password}----{result['totp_secret']}"
+                elif result.get("password_status") == "enabled" and saved_password:
+                    result["credential_line"] = f"{email}----{saved_password}"
                 else:
                     result.pop("credential_line", None)
                 return result
@@ -890,7 +1048,45 @@ class FreeProtocolMixin:
                     "plan_failure": failure,
                     "plan_type": "", "plus_trial_eligible": False,
                 }
-            if bool(config.get("auto_set_2fa", True)):
+            registration_password_used = bool(result.get("registration_password_used")) if "registration_password_used" in result else (
+                account_flow == "signup" and bool(result.get("password"))
+            )
+
+            # Passwordless registrations can opt into a password after the
+            # account/session callback.  A signup that already traversed the
+            # real registration password page is already password-backed and
+            # must not trigger a redundant re-authentication OTP.
+            if account_flow == "signup" and _config_bool(config.get("auto_set_password"), False) and not registration_password_used:
+                try:
+                    password_result = self._set_password(
+                        transport, token, task, password, config, otp_provider, stage,
+                    )
+                    token = str(password_result.get("access_token") or token)
+                except FreeRegisterError as exc:
+                    password_result = {
+                        "password_status": "pending",
+                        "password_error": _safe_log_message(exc),
+                        "password_failure": {
+                            "node_code": exc.node_code,
+                            "node_label": exc.node_label,
+                            "error_code": exc.error_code,
+                            "public_message": f"{exc.node_label} [{exc.node_label}/{exc.node_code}]：{_safe_log_message(exc)}",
+                            "technical_summary": _safe_log_message(exc),
+                            "retryable": bool(exc.retryable),
+                            "provider_code": str(exc.provider_code or ""),
+                        },
+                    }
+                result.update(password_result)
+            elif registration_password_used and account_flow == "signup":
+                result.update({
+                    "password_status": "enabled",
+                    "password_set_after_registration": False,
+                    "password": str(result.get("password") or password),
+                })
+            else:
+                result.setdefault("password_status", "disabled")
+
+            if _config_bool(config.get("auto_set_2fa"), False):
                 try:
                     twofa = self._enroll_twofa(transport, token, task, password, config, otp_provider, stage)
                     capture_token = getattr(transport, "chatgpt_access_token", None)
@@ -921,24 +1117,29 @@ class FreeProtocolMixin:
             # Preserve the flow result's password boundary through plan/2FA
             # enrichment.  New flows emit the explicit marker; legacy test
             # doubles only returned ``signup + password``.
-            if "registration_password_used" in result:
-                registration_password_used = bool(result.get("registration_password_used"))
-            else:
-                registration_password_used = account_flow == "signup" and bool(result.get("password"))
+            password_set_after_registration = (
+                str(result.get("password_status") or "").strip().lower() == "enabled"
+                and bool(result.get("password_set_after_registration"))
+            )
             twofa.update({
                 "access_token": token,
                 "has_access_token": True,
                 "account_flow": account_flow,
                 "registration_password_used": registration_password_used,
+                "password_set_after_registration": password_set_after_registration,
+                "password_status": str(result.get("password_status") or "disabled"),
                 **plan_details,
             })
-            if registration_password_used:
-                twofa["password"] = str(result.get("password") or password or FIXED_PASSWORD)
+            for key in ("password", "password_error", "password_failure"):
+                if key in result:
+                    twofa[key] = result[key]
+            if registration_password_used or password_set_after_registration:
+                twofa["password"] = str(result.get("password") or password)
             return finalize_registration_result(
                 twofa,
                 driver="protocol",
                 email=email,
-                password_used=registration_password_used,
+                password_used=registration_password_used or password_set_after_registration,
             )
         finally:
             try:
@@ -1082,6 +1283,451 @@ class FreeProtocolMixin:
                 diagnostic=f"exception={type(exc).__name__}",
                 action_hint="账号已保存；检查认证网络后重新测活",
             ) from exc
+
+    def _set_password(
+        self,
+        transport: Any,
+        token: str,
+        task: Mapping[str, Any],
+        password: str,
+        config: Mapping[str, Any],
+        otp_provider: MailboxUrlOtpProvider,
+        stage: Callable[[str, str], None],
+    ) -> dict[str, Any]:
+        """Add a password to a passwordless signup account.
+
+        The Auth API deliberately uses a fresh NextAuth session for this
+        operation.  Keep this sequence separate from ``_enroll_twofa`` so a
+        password request never probes or otherwise touches ``mfa_info``:
+
+        ``eligibility -> csrf -> signin(openai) -> authorize -> OTP ->
+        validate -> password/add -> ChatGPT callback``.
+
+        The method returns a result envelope rather than mutating the task;
+        callers can preserve a successfully-created account when a later
+        password step is temporarily unavailable.
+        """
+        task_id = str(task.get("task_id") or "")
+        email = str(task.get("email") or "")
+        active_token = str(token or "").strip()
+        password_value = str(password or configured_free_password(config))
+        session = getattr(transport, "session", None)
+        if session is None or not callable(getattr(session, "get", None)) or not callable(getattr(session, "post", None)):
+            raise FreeRegisterError(
+                "free_password_enroll",
+                "注册 Free 账号密码",
+                "密码设置会话不可用",
+                retryable=True,
+                error_code="free_password_session_missing",
+                action_hint="保留账号和 Token，重建认证会话后重试密码设置",
+            )
+
+        phase: list[str] = [
+            "free_password_eligibility",
+            "检查 Free 账号密码资格",
+            "free_password_eligibility_failed",
+            "保留账号和 Token，稍后重试密码设置",
+        ]
+
+        def response_data(response: Any) -> dict[str, Any]:
+            if isinstance(response, Mapping):
+                return dict(response)
+            try:
+                value = response.json() if hasattr(response, "json") else {}
+            except Exception:
+                value = {}
+            return dict(value) if isinstance(value, Mapping) else {}
+
+        def fail(message: str, response: Any = None, data: Any = None) -> None:
+            raise FreeRegisterError(
+                phase[0],
+                phase[1],
+                message,
+                provider_status=_response_status(response),
+                provider_code=_response_provider_code(response, data),
+                error_code=phase[2],
+                action_hint=phase[3],
+            )
+
+        def status_ok(response: Any) -> bool:
+            status = _response_status(response)
+            return status is None or 200 <= status < 300
+
+        def prepare_mailbox_request() -> None:
+            finish = getattr(getattr(otp_provider, "service", None), "state", None)
+            finish_request = getattr(finish, "finish_request", None)
+            if callable(finish_request) and bool(getattr(finish, "active", False)):
+                finish_request()
+            prepare = getattr(otp_provider, "prepare", None)
+            if not callable(prepare):
+                return
+            try:
+                signature = inspect.signature(prepare)
+            except (TypeError, ValueError):
+                prepare("free_password_otp_wait", force_snapshot=True)
+                return
+            for kwargs in (
+                {"force_snapshot": True, "notify_stage": False},
+                {"force_snapshot": True},
+                {},
+            ):
+                try:
+                    signature.bind("free_password_otp_wait", **kwargs)
+                except TypeError:
+                    continue
+                prepare("free_password_otp_wait", **kwargs)
+                return
+            raise FreeRegisterError(
+                "free_password_otp_wait",
+                "准备 Free 账号密码邮箱验证码",
+                "邮箱 provider 不支持密码验证码准备签名",
+                retryable=False,
+                error_code="free_password_otp_prepare_failed",
+            )
+
+        def auth_headers(referer: str, *, form: bool = False, navigate: bool = False, url: str = "") -> dict[str, str]:
+            headers: dict[str, str] = {}
+            maker = getattr(transport, "_headers", None)
+            if callable(maker):
+                try:
+                    candidate = maker("password_reauth", referer)
+                    if isinstance(candidate, Mapping):
+                        headers.update({str(key): str(value) for key, value in candidate.items()})
+                except Exception:
+                    pass
+            if navigate:
+                try:
+                    headers = _reference_navigation_headers(
+                        transport,
+                        url or referer,
+                        referer,
+                        headers,
+                    )
+                except Exception:
+                    headers.setdefault("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                    headers.setdefault("referer", referer)
+                    headers.setdefault("sec-fetch-site", "same-origin")
+                    headers.setdefault("sec-fetch-mode", "navigate")
+                    headers.setdefault("sec-fetch-dest", "document")
+                for key in ("origin", "content-type", "authorization"):
+                    headers.pop(key, None)
+                return headers
+            headers.update({
+                "accept": "application/json",
+                "origin": "https://chatgpt.com",
+                "referer": referer,
+            })
+            if form:
+                headers["content-type"] = "application/x-www-form-urlencoded"
+            return headers
+
+        def auth_post(path: str, payload: Mapping[str, Any], *, flow: str, referer: str, timeout: int = 30) -> dict[str, Any]:
+            """Call the recovered transport helper, with an old-runtime fallback."""
+            helper = getattr(transport, "_post_auth_json", None)
+            if callable(helper):
+                value = helper(path, dict(payload), flow=flow, referer=referer, timeout=timeout)
+                return dict(value) if isinstance(value, Mapping) else {}
+            try:
+                response = session.post(
+                    f"https://auth.openai.com{path}",
+                    json=dict(payload),
+                    headers=auth_headers(referer),
+                    allow_redirects=False,
+                    timeout=timeout,
+                )
+            except Exception as exc:
+                return {"_status": 0, "error": type(exc).__name__}
+            value = response_data(response)
+            status = _response_status(response)
+            if status is not None:
+                value.setdefault("_status", status)
+            return value
+
+        # This endpoint is the only admission check for the post-registration
+        # password operation.  An explicit ``eligible: false`` means the
+        # account already has a password (or the operation is unavailable), so
+        # report it as disabled without attempting a second auth session.
+        try:
+            eligibility_response = session.get(
+                CHATGPT_ADD_PASSWORD_ELIGIBILITY_URL,
+                headers={
+                    "accept": "application/json",
+                    "authorization": f"Bearer {active_token}",
+                    "oai-device-id": str(getattr(transport, "device_id", "") or ""),
+                },
+                timeout=20,
+            )
+        except Exception as exc:
+            fail(f"密码资格请求失败（{type(exc).__name__}）")
+        eligibility_data = response_data(eligibility_response)
+        eligibility_status = _response_status(eligibility_response)
+        if eligibility_status is not None and not 200 <= eligibility_status < 300:
+            fail(
+                f"密码资格接口返回 HTTP {eligibility_status}",
+                eligibility_response,
+                eligibility_data,
+            )
+        if eligibility_data.get("eligible") is False:
+            return {
+                "password_status": "disabled",
+                "password_set_after_registration": False,
+            }
+
+        prepare_mailbox_request()
+        chatgpt_origin = "https://chatgpt.com"
+        auth_origin = "https://auth.openai.com"
+
+        # CSRF and signin are form requests on chatgpt.com.  The
+        # ``post_login_add_password`` query flag is what selects the reset
+        # password continuation after the OTP, and is intentionally kept out
+        # of the ordinary MFA flow.
+        phase[:] = [
+            "free_password_reauth_csrf",
+            "密码设置重认证 CSRF",
+            "free_password_reauth_csrf_failed",
+            "保留账号和 Token，稍后重试密码设置",
+        ]
+        try:
+            csrf_response = session.get(
+                f"{chatgpt_origin}/api/auth/csrf",
+                headers=auth_headers(f"{chatgpt_origin}/"),
+                timeout=30,
+                allow_redirects=True,
+            )
+            csrf_data = response_data(csrf_response)
+        except Exception as exc:
+            fail(f"密码设置重认证 CSRF 请求失败（{type(exc).__name__}）")
+        csrf_token = str(csrf_data.get("csrfToken") or "")
+        if not csrf_token:
+            fail(
+                f"密码设置重认证 CSRF 响应无效（HTTP {_response_status(csrf_response) or '-'}）",
+                csrf_response,
+                csrf_data,
+            )
+
+        phase[:] = [
+            "free_password_reauth_signin",
+            "启动密码设置重认证",
+            "free_password_reauth_signin_failed",
+            "保留账号和 Token，稍后重试密码设置",
+        ]
+        # Keep this request byte-for-byte compatible with the password-setting
+        # HAR: ``connection=password`` belongs to the 2FA re-auth flow, not
+        # the add-password continuation.
+        signin_query = urlencode({
+            "login_hint": email,
+            "reauth": "password",
+            "post_login_add_password": "true",
+            "max_age": "0",
+            "ext-oai-did": str(getattr(transport, "device_id", "") or ""),
+        })
+        signin_body = urlencode({
+            "callbackUrl": f"{chatgpt_origin}/",
+            "csrfToken": csrf_token,
+            "json": "true",
+        })
+        try:
+            signin_response = session.post(
+                f"{chatgpt_origin}/api/auth/signin/openai?{signin_query}",
+                headers=auth_headers(f"{chatgpt_origin}/", form=True),
+                data=signin_body,
+                allow_redirects=False,
+                timeout=30,
+            )
+            signin_data = response_data(signin_response)
+        except Exception as exc:
+            fail(f"密码设置 signin/openai 请求失败（{type(exc).__name__}）")
+        auth_url = str(signin_data.get("url") or "").strip()
+        if not auth_url:
+            fail(
+                f"密码设置重认证未返回 authorize 地址（HTTP {_response_status(signin_response) or '-'}）",
+                signin_response,
+                signin_data,
+            )
+        try:
+            parsed_auth = urlsplit(auth_url)
+        except (TypeError, ValueError):
+            parsed_auth = None
+        if parsed_auth is None or parsed_auth.scheme.casefold() != "https" or (parsed_auth.hostname or "").casefold() != "auth.openai.com":
+            fail("密码设置 authorize 地址不是 auth.openai.com", signin_response, signin_data)
+
+        phase[:] = [
+            "free_password_reauth_authorize",
+            "打开密码设置授权页面",
+            "free_password_reauth_authorize_failed",
+            "保留账号和 Token，稍后重试密码设置",
+        ]
+        try:
+            authorize_response = session.get(
+                auth_url,
+                headers=auth_headers(
+                    f"{chatgpt_origin}/",
+                    navigate=True,
+                    url=auth_url,
+                ),
+                allow_redirects=True,
+                timeout=45,
+            )
+        except Exception as exc:
+            fail(f"密码设置 authorize 页面请求失败（{type(exc).__name__}）")
+        authorize_status = _response_status(authorize_response)
+        if authorize_status is not None and not 200 <= authorize_status < 400:
+            fail(
+                f"密码设置 authorize 页面返回 HTTP {authorize_status}",
+                authorize_response,
+                response_data(authorize_response),
+            )
+
+        phase[:] = [
+            "free_password_otp_wait",
+            "等待密码设置邮箱验证码",
+            "free_password_otp_wait_failed",
+            "保留账号和 Token，确认本次密码设置验证码后重试",
+        ]
+        mark_sent = getattr(otp_provider, "mark_sent", None)
+        if callable(mark_sent):
+            mark_sent("free_password_otp_wait")
+        code = _call_otp_wait(
+            otp_provider,
+            email,
+            stage_code="free_password_otp_wait",
+        )
+        if not str(code or "").strip():
+            fail("密码设置邮箱验证码为空")
+
+        phase[:] = [
+            "free_password_otp_validate",
+            "验证密码设置邮箱验证码",
+            "free_password_otp_validate_failed",
+            "保留账号和 Token，确认验证码属于本次密码设置请求后重试",
+        ]
+        stage(task_id, "free_password_otp_validate")
+        verified = auth_post(
+            "/api/accounts/email-otp/validate",
+            {"code": str(code).strip()},
+            flow="password_add_reauth_email_otp",
+            referer=f"{auth_origin}/email-verification",
+            timeout=30,
+        )
+        verified_status = _response_status(verified)
+        if (verified_status is not None and not 200 <= verified_status < 300) or _explicit_false(verified.get("ok")):
+            fail(
+                f"密码设置邮箱验证码验证失败（HTTP {verified_status or '-'}）",
+                verified,
+                verified,
+            )
+        reset_url = _response_continue_url(verified)
+        if not reset_url:
+            fail("密码设置 OTP 响应缺少新密码页面地址", verified, verified)
+        try:
+            parsed_reset = urlsplit(reset_url)
+        except (TypeError, ValueError):
+            parsed_reset = None
+        if parsed_reset is None or parsed_reset.scheme.casefold() != "https" or (parsed_reset.hostname or "").casefold() != "auth.openai.com" or not parsed_reset.path.startswith("/reset-password/"):
+            fail("密码设置 OTP 响应地址不是 auth.openai.com/reset-password 页面", verified, verified)
+
+        # The browser loads the continuation page before submitting the JSON
+        # password/add request.  Keep the GET for cookies and server-side
+        # continuation state, while never persisting its URL/query.
+        phase[:] = [
+            "free_password_enroll",
+            "打开新密码页面",
+            "free_password_enroll_failed",
+            "保留账号和 Token，稍后重试密码设置",
+        ]
+        try:
+            reset_response = session.get(
+                reset_url,
+                headers=auth_headers(
+                    f"{auth_origin}/email-verification",
+                    navigate=True,
+                    url=reset_url,
+                ),
+                allow_redirects=True,
+                timeout=45,
+            )
+        except Exception as exc:
+            fail(f"新密码页面请求失败（{type(exc).__name__}）")
+        reset_status = _response_status(reset_response)
+        if reset_status is not None and not 200 <= reset_status < 400:
+            fail(f"新密码页面返回 HTTP {reset_status}", reset_response, response_data(reset_response))
+
+        phase[:] = [
+            "free_password_add",
+            "提交 Free 账号密码",
+            "free_password_add_failed",
+            "保留账号和 Token，稍后重试密码设置",
+        ]
+        added = auth_post(
+            "/api/accounts/password/add",
+            {"password": password_value},
+            flow="password_add",
+            referer=reset_url,
+            timeout=30,
+        )
+        added_status = _response_status(added)
+        if (added_status is not None and not 200 <= added_status < 300) or _explicit_false(added.get("ok")):
+            fail(
+                f"密码添加接口返回 HTTP {added_status or '-'}",
+                added,
+                added,
+            )
+        callback_url = _response_continue_url(added)
+        if not callback_url:
+            fail("密码添加响应缺少 ChatGPT OAuth callback 地址", added, added)
+        try:
+            parsed_callback = urlsplit(callback_url)
+        except (TypeError, ValueError):
+            parsed_callback = None
+        if parsed_callback is None or parsed_callback.scheme.casefold() != "https" or (parsed_callback.hostname or "").casefold() != "chatgpt.com" or not parsed_callback.path.startswith("/api/auth/callback/"):
+            fail("密码添加 callback 地址不是 ChatGPT OAuth callback", added, added)
+
+        phase[:] = [
+            "free_password_callback",
+            "刷新密码设置会话",
+            "free_password_callback_failed",
+            "保留账号和 Token，稍后重试密码设置",
+        ]
+        complete_callback = getattr(transport, "complete_chatgpt_callback", None)
+        if callable(complete_callback):
+            callback_response = complete_callback(callback_url)
+        else:
+            try:
+                callback_raw = session.get(
+                    callback_url,
+                    headers=auth_headers(
+                        f"{auth_origin}/reset-password/new-password",
+                        navigate=True,
+                        url=callback_url,
+                    ),
+                    allow_redirects=True,
+                    timeout=45,
+                )
+            except Exception as exc:
+                fail(f"密码设置 OAuth callback 请求失败（{type(exc).__name__}）")
+            callback_response = response_data(callback_raw)
+            callback_status = _response_status(callback_raw)
+            if callback_status is not None and not 200 <= callback_status < 400:
+                fail(f"密码设置 OAuth callback 返回 HTTP {callback_status}", callback_raw, callback_response)
+
+        refreshed = ""
+        capture_token = getattr(transport, "chatgpt_access_token", None)
+        if callable(capture_token):
+            try:
+                refreshed = str(capture_token() or "").strip()
+            except Exception:
+                refreshed = ""
+        if refreshed:
+            active_token = refreshed
+        if not active_token:
+            fail("密码设置 callback 完成后未取得 ChatGPT Session Token", callback_response, callback_response)
+        return {
+            "password_status": "enabled",
+            "password_set_after_registration": True,
+            "password": password_value,
+            "access_token": active_token,
+            "has_access_token": True,
+        }
 
     def _enroll_twofa(self, transport: Any, token: str, task: Mapping[str, Any], password: str, config: Mapping[str, Any], otp_provider: MailboxUrlOtpProvider, stage: Callable[[str, str], None]) -> dict[str, Any]:
         if transport is None or getattr(transport, "session", None) is None:

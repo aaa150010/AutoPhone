@@ -7,7 +7,14 @@ import time
 import unittest
 from unittest.mock import patch
 
-from mac_overrides.free_failure_runtime import canonical_failure, first_failure, sanitize_failure_text
+from mac_overrides.free_failure_runtime import (
+    canonical_failure,
+    completed_result_state,
+    first_failure,
+    normalize_password_result,
+    password_status_from_result,
+    sanitize_failure_text,
+)
 from mac_overrides.free_log_runtime import FreeLogStore
 from mac_overrides.free_register_common import (
     FIXED_PASSWORD,
@@ -27,6 +34,35 @@ class FreeFailureRuntimeTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
+
+    def test_password_status_normalizes_success_markers_from_legacy_results(self) -> None:
+        for value in (
+            {"password_status": "success"},
+            {"password_status": "completed"},
+            {"password_set_after_registration": True},
+            {"registration_password_used": True},
+            {"has_password": True},
+            {"password": "stored-secret"},
+        ):
+            self.assertEqual(password_status_from_result(value), "enabled")
+            self.assertEqual(normalize_password_result(value)["password_status"], "enabled")
+
+        self.assertEqual(
+            password_status_from_result({"password_status": "pending", "password": "stale-secret"}),
+            "pending",
+        )
+
+    def test_completed_result_state_keeps_password_success_without_status_field(self) -> None:
+        status, result, failure = completed_result_state({
+            "access_token": "token-private",
+            "account_flow": "signup",
+            "password_set_after_registration": True,
+            "password": "stored-secret",
+            "twofa_status": "disabled",
+        })
+        self.assertEqual(status, "success")
+        self.assertIsNone(failure)
+        self.assertEqual(result["password_status"], "enabled")
 
     def _wait(self, manager: FreeRegisterManager) -> None:
         deadline = time.time() + 3
@@ -167,11 +203,11 @@ class FreeFailureRuntimeTests(unittest.TestCase):
 
     def test_safe_page_hides_third_party_paths_and_non_page_addresses(self) -> None:
         hidden = canonical_failure({
-            "node_code": "free_roxy_connect",
+            "node_code": "free_camoufox_launch",
             "safe_page": "https://user:pass@example.test/private/123456?token=secret#fragment",
         })
         websocket = canonical_failure({
-            "node_code": "free_roxy_connect",
+            "node_code": "free_camoufox_launch",
             "safe_page": "wss://user:pass@127.0.0.1/devtools/browser/secret",
         })
 
@@ -189,8 +225,8 @@ class FreeFailureRuntimeTests(unittest.TestCase):
             "retryable": True,
         })
         cleanup = {
-            "node_code": "free_roxy_cleanup",
-            "node_label": "清理 RoxyBrowser 环境",
+            "node_code": "free_result_save",
+            "node_label": "保存 Free 注册结果",
             "error_code": "cleanup_failed",
             "public_message": "Profile 删除失败",
             "technical_summary": "timeout",
@@ -251,8 +287,8 @@ class FreeFailureRuntimeTests(unittest.TestCase):
         self.assertEqual(restarted.pool.public_rows()[0]["failure"], task["failure"])
 
         cleanup = {
-            "node_code": "free_roxy_cleanup",
-            "node_label": "清理 RoxyBrowser 环境",
+            "node_code": "free_result_save",
+            "node_label": "保存 Free 注册结果",
             "error_code": "cleanup_failed",
             "public_message": "清理失败",
             "technical_summary": "timeout",
@@ -637,9 +673,9 @@ class FreeFailureRuntimeTests(unittest.TestCase):
         pool.import_text("a@example.test----https://mail.example.test/pickup\n")
         row = pool.entries()[0]
         previous = {
-            "node_code": "free_roxy_connect",
-            "node_label": "连接 RoxyBrowser",
-            "error_code": "free_roxy_connect_failed",
+            "node_code": "free_camoufox_launch",
+            "node_label": "启动 Camoufox 浏览器",
+            "error_code": "camoufox_context_create_failed",
             "public_message": "上一次连接失败",
             "technical_summary": "timeout",
             "retryable": True,

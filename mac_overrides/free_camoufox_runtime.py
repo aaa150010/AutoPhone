@@ -1,7 +1,7 @@
 """Optional Camoufox browser driver for the Free registration workflow.
 
-Camoufox is deliberately imported lazily.  The existing protocol and
-RoxyBrowser drivers remain usable when the optional browser package is absent.
+Camoufox is deliberately imported lazily so the protocol driver remains usable
+when the optional browser package is absent.
 The browser pool owns only browser/context lifecycle; mailbox, result and
 failure semantics stay in the Free runtime and shared account service.
 """
@@ -36,16 +36,19 @@ try:
     from .free_account_service import (
         CHATGPT_ACCOUNTS_URL,
         CHATGPT_ELIGIBILITY_URL,
+        browser_add_password,
         browser_json_fetch,
         browser_plan_details,
         browser_session,
         browser_twofa,
         finalize_registration_result,
+        password_retry_allowed,
         plan_details_from_payloads,
     )
     from .free_register_common import (
         FIXED_PASSWORD,
         FreeRegisterError,
+        configured_free_password,
         clean,
         fingerprint,
         random_birthdate,
@@ -53,22 +56,23 @@ try:
         proxy_transport_config,
         safe_log_message,
     )
-    from .free_failure_runtime import sanitize_failure_text
+    from .free_failure_runtime import merge_account_result_fields, sanitize_failure_text
     from .free_mailbox_otp import build_free_mailbox_otp_provider
     from .free_proxy_bridge import Socks5HttpBridge
     from .free_timing import TimingCallback, emit_timing
 except ImportError:  # pragma: no cover - top-level recovery import
     from free_account_service import (  # type: ignore[no-redef]
         CHATGPT_ACCOUNTS_URL, CHATGPT_ELIGIBILITY_URL, browser_json_fetch,
+        browser_add_password,
         browser_plan_details, browser_session, browser_twofa, finalize_registration_result,
-        plan_details_from_payloads,
+        password_retry_allowed, plan_details_from_payloads,
     )
     from free_register_common import (  # type: ignore[no-redef]
-        FIXED_PASSWORD, FreeRegisterError, clean, random_birthdate, random_display_name,
+        FIXED_PASSWORD, FreeRegisterError, configured_free_password, clean, random_birthdate, random_display_name,
         fingerprint, proxy_transport_config,
         safe_log_message,
     )
-    from free_failure_runtime import sanitize_failure_text  # type: ignore[no-redef]
+    from free_failure_runtime import merge_account_result_fields, sanitize_failure_text  # type: ignore[no-redef]
     from free_mailbox_otp import build_free_mailbox_otp_provider  # type: ignore[no-redef]
     from free_proxy_bridge import Socks5HttpBridge  # type: ignore[no-redef]
     from free_timing import TimingCallback, emit_timing  # type: ignore[no-redef]
@@ -656,7 +660,7 @@ def _safe_debug_task_id(value: Any) -> str:
         return ""
     candidate = candidate[:160]
     internal = re.fullmatch(
-        r"(?i)(?:free|task|batch|camoufox|roxy)(?:[-_.:][A-Za-z0-9][A-Za-z0-9_.:-]{0,150})?",
+        r"(?i)(?:free|task|batch|camoufox)(?:[-_.:][A-Za-z0-9][A-Za-z0-9_.:-]{0,150})?",
         candidate,
     )
     if internal and not re.search(
@@ -1056,10 +1060,50 @@ async def _close_context_safely(context: Any, timeout: float) -> bool:
         except asyncio.CancelledError:
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
-            return False
-        except Exception:
-            return False
+        return False
     except Exception:
+        await asyncio.gather(task, return_exceptions=True)
+        return False
+
+
+async def _close_async_resource(close_fn: Callable[[], Any], timeout: float) -> bool:
+    """Close one async browser resource and always retrieve its task result.
+
+    Playwright's manager close can leave an internal future behind when its
+    browser process disappears during a timeout. Running the close coroutine
+    in an explicit task and gathering it after cancellation prevents the
+    ``Future exception was never retrieved`` warning from leaking into the
+    next Camoufox batch.
+    """
+    try:
+        result = close_fn()
+    except BaseException:
+        return False
+    if not inspect.isawaitable(result):
+        return True
+    task = asyncio.create_task(result)
+    budget = max(0.1, float(timeout))
+    try:
+        await asyncio.wait_for(asyncio.shield(task), timeout=budget)
+        return True
+    except asyncio.TimeoutError:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        return False
+    except asyncio.CancelledError:
+        # Defer caller cancellation until this resource has had a bounded
+        # chance to settle, then consume the task result before returning.
+        try:
+            await asyncio.wait_for(asyncio.shield(task), timeout=budget)
+        except asyncio.TimeoutError:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        except BaseException:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        return False
+    except BaseException:
+        await asyncio.gather(task, return_exceptions=True)
         return False
 
 
@@ -1930,6 +1974,165 @@ async def _submit_existing_login_password(page: Any, password: str) -> bool:
     return bool(fresh_selector and await _submit_visible_form(page, fresh_selector))
 
 
+def _stop_requested(value: Any) -> bool:
+    """Read a task stop signal without assuming Event versus callable shape."""
+    if value is None:
+        return False
+    try:
+        checker = getattr(value, "is_set", None)
+        if callable(checker):
+            return bool(checker())
+        return bool(value()) if callable(value) else bool(value)
+    except Exception:
+        # A broken stop callback should not keep a blocking OTP worker alive.
+        return True
+
+
+def _invoke_otp_callback(
+    callback: Callable[..., Any],
+    stage_code: str,
+    *,
+    stop_requested: Callable[[], bool],
+    deadline_monotonic: float,
+) -> Any:
+    """Invoke old and new OTP callback signatures without replaying side effects."""
+    try:
+        signature = inspect.signature(callback)
+    except (TypeError, ValueError):
+        # Opaque callables are uncommon; use the current contract once and let
+        # an implementation error propagate to the owning task.
+        return callback(
+            stage_code,
+            stop_requested=stop_requested,
+            deadline_monotonic=deadline_monotonic,
+        )
+    candidates = (
+        ((stage_code,), {"stop_requested": stop_requested, "deadline_monotonic": deadline_monotonic}),
+        ((stage_code,), {"stop_requested": stop_requested}),
+        ((stage_code,), {"deadline_monotonic": deadline_monotonic}),
+        ((stage_code,), {}),
+        ((), {"stop_requested": stop_requested, "deadline_monotonic": deadline_monotonic}),
+        ((), {"stop_requested": stop_requested}),
+        ((), {"deadline_monotonic": deadline_monotonic}),
+        ((), {}),
+    )
+    for args, kwargs in candidates:
+        try:
+            signature.bind(*args, **kwargs)
+        except TypeError:
+            continue
+        return callback(*args, **kwargs)
+    raise TypeError("unsupported OTP callback signature")
+
+
+async def _await_otp_callback(
+    callback: Callable[..., Any],
+    stage_code: str,
+    *,
+    deadline_monotonic: float,
+    stop_requested: Any = None,
+) -> Any:
+    """Run a blocking mailbox callback with a hard deadline and cancellation.
+
+    ``asyncio.to_thread`` uses the event loop's executor. Cancelling its await
+    does not stop the worker, so a mailbox poll can keep the loop alive long
+    after a Camoufox registration deadline. A dedicated daemon worker lets us
+    signal cooperative providers and keeps an uncooperative legacy callback
+    from blocking browser-pool shutdown.
+    """
+    loop = asyncio.get_running_loop()
+    result: asyncio.Future[Any] = loop.create_future()
+    worker_stop = threading.Event()
+
+    def requested() -> bool:
+        return worker_stop.is_set() or _stop_requested(stop_requested)
+
+    def consume_exception(future: asyncio.Future[Any]) -> None:
+        if not future.cancelled():
+            try:
+                future.exception()
+            except BaseException:
+                pass
+
+    result.add_done_callback(consume_exception)
+
+    def publish(kind: str, value: Any) -> None:
+        if result.done():
+            return
+        if kind == "error":
+            result.set_exception(value)
+        else:
+            result.set_result(value)
+
+    def worker() -> None:
+        try:
+            value = _invoke_otp_callback(
+                callback,
+                stage_code,
+                stop_requested=requested,
+                deadline_monotonic=deadline_monotonic,
+            )
+        except BaseException as exc:
+            kind, value = "error", exc
+        else:
+            kind = "result"
+        try:
+            loop.call_soon_threadsafe(publish, kind, value)
+        except RuntimeError:
+            # The owning loop may be closing after cancellation. The worker is
+            # daemonized and has no useful result to deliver at that point.
+            pass
+
+    thread = threading.Thread(
+        target=worker,
+        name=f"camoufox-otp-{clean(stage_code, 32) or 'wait'}",
+        daemon=True,
+    )
+    thread.start()
+
+    async def stop_and_drain() -> None:
+        worker_stop.set()
+        if result.done():
+            return
+        # Cooperative mailbox providers normally wake within one poll chunk;
+        # retain only a short grace period so browser cleanup remains bounded.
+        try:
+            await asyncio.wait_for(asyncio.shield(result), timeout=1.5)
+        except BaseException:
+            pass
+
+    while True:
+        if _stop_requested(stop_requested):
+            await stop_and_drain()
+            raise FreeRegisterError(
+                "free_run_stop",
+                "停止 Free 注册",
+                "任务已请求停止，邮箱验证码轮询已中断",
+                retryable=False,
+                error_code="free_run_stop",
+            )
+        remaining = float(deadline_monotonic) - time.monotonic()
+        if remaining <= 0:
+            await stop_and_drain()
+            raise CamoufoxBrowserError(
+                "free_email_otp_wait",
+                "等待 Camoufox 邮箱验证码",
+                "邮箱验证码等待已达到注册截止时间",
+                retryable=True,
+                error_code="camoufox_otp_wait_timeout",
+            )
+        try:
+            return await asyncio.wait_for(
+                asyncio.shield(result),
+                timeout=min(0.25, remaining),
+            )
+        except asyncio.TimeoutError:
+            continue
+        except asyncio.CancelledError:
+            await stop_and_drain()
+            raise
+
+
 async def _browser_flow(
     page: Any,
     *,
@@ -1945,11 +2148,16 @@ async def _browser_flow(
     timing_fn: TimingCallback | None = None,
     force_existing_login: bool = False,
     existing_password: str = "",
+    password_retry: bool = False,
+    password_retry_token: str = "",
     startup_gate: asyncio.Semaphore | None = None,
 ) -> dict[str, Any]:
     timeout = max(60, int(config.get("registration_timeout_seconds") or 600))
     deadline = time.monotonic() + timeout
     account_flow = "existing_login" if force_existing_login else "signup"
+    # The manager passes the configured value for normal runs, but resolving
+    # it here also keeps direct browser-flow callers aligned with Free config.
+    password = str(password or configured_free_password(config))
     password_used = False
     entry_submitted = False
     otp_submitted = False
@@ -2269,12 +2477,76 @@ async def _browser_flow(
             "registration_password_used": password_used,
             **plan,
         }
-        if bool(config.get("auto_set_2fa", True)):
+        password_set_after_registration = False
+        if account_flow == "signup" and password_used:
+            result.update({
+                "password_status": "enabled",
+                "password_set_after_registration": False,
+                "password": password,
+            })
+        elif account_flow == "signup" and _runtime_bool(config.get("auto_set_password"), False):
+            try:
+                password_result = await browser_add_password(
+                    page,
+                    token,
+                    email,
+                    password,
+                    otp_callback=otp_callback,
+                    otp_prepare=otp_prepare,
+                    otp_mark_sent=otp_mark_sent,
+                    stage_fn=set_stage,
+                    task_id=str(config.get("task_id") or ""),
+                    device_id=str(config.get("device_id") or ""),
+                    deadline_monotonic=deadline,
+                )
+                result.update(password_result)
+                token = str(password_result.get("access_token") or token)
+                password_set_after_registration = bool(
+                    password_result.get("password_set_after_registration")
+                )
+            except FreeRegisterError as exc:
+                detail = clean(str(exc), 300)
+                result.update({
+                    "password_status": "pending",
+                    "password_error": detail,
+                    "password_failure": {
+                        "node_code": exc.node_code,
+                        "node_label": exc.node_label,
+                        "error_code": exc.error_code,
+                        "public_message": f"{exc.node_label} [{exc.node_label}/{exc.node_code}]：{detail}",
+                        "technical_summary": detail,
+                        "retryable": bool(exc.retryable),
+                        "provider_code": str(exc.provider_code or ""),
+                    },
+                })
+        else:
+            result["password_status"] = "disabled"
+
+        # Keep the two security operations independent. Each helper owns its
+        # own mailbox baseline and therefore consumes a distinct OTP.
+        if _runtime_bool(config.get("auto_set_2fa"), True):
             set_stage("free_twofa_enroll")
             try:
-                secret = await browser_twofa(page, token)
+                twofa_result = await browser_twofa(
+                    page,
+                    token,
+                    email,
+                    otp_callback=otp_callback,
+                    otp_prepare=otp_prepare,
+                    otp_mark_sent=otp_mark_sent,
+                    stage_fn=lambda code: set_stage(code),
+                    task_id=str(config.get("task_id") or ""),
+                    device_id=str(config.get("device_id") or ""),
+                    deadline_monotonic=deadline,
+                    stop_requested=config.get("_stop_requested"),
+                )
+                if isinstance(twofa_result, Mapping):
+                    result.update(twofa_result)
+                    token = str(twofa_result.get("access_token") or token)
+                else:  # pragma: no cover - compatibility with old adapters
+                    result.update({"totp_secret": str(twofa_result or "")})
                 set_stage("free_twofa_activate")
-                result.update({"totp_secret": secret, "twofa_status": "enabled"})
+                result["twofa_status"] = "enabled"
             except FreeRegisterError as exc:
                 result.update({
                     "twofa_status": "pending",
@@ -2288,8 +2560,99 @@ async def _browser_flow(
                 })
         else:
             result["twofa_status"] = "disabled"
+        result["access_token"] = token
+        result["has_access_token"] = bool(token)
+        result["password_set_after_registration"] = bool(
+            result.get("password_set_after_registration") or password_set_after_registration
+        )
         return finalize_registration_result(
-            result, driver="camoufox", email=email, password_used=password_used,
+            result,
+            driver="camoufox",
+            email=email,
+            password_used=password_used or bool(result.get("password_set_after_registration")),
+        )
+
+    async def finish_password_retry() -> dict[str, Any]:
+        """Run only the post-registration password continuation.
+
+        A password retry has an account Token already. It must not open the
+        signup entry, submit the mailbox address, or invoke the 2FA helper.
+        ``browser_add_password`` owns the independent OTP baseline and the
+        Auth/ChatGPT callback sequence.
+        """
+        token = str(password_retry_token or "").strip()
+        if not token:
+            raise CamoufoxBrowserError(
+                "free_password_retry", "重试 Free 账号密码设置",
+                "原账号没有可用 access token", retryable=False,
+                error_code="free_password_retry_token_missing",
+            )
+        # ``browser_json_fetch`` is evaluated in the page's origin. Start from
+        # ChatGPT home when a concrete Playwright page is available, but keep
+        # compatibility with lightweight test doubles that only implement
+        # ``evaluate``.
+        goto = getattr(page, "goto", None)
+        if callable(goto):
+            try:
+                try:
+                    await goto("https://chatgpt.com/", wait_until="domcontentloaded", timeout=45_000)
+                except TypeError:
+                    await goto("https://chatgpt.com/", timeout=45_000)
+            except Exception as exc:
+                raise CamoufoxBrowserError(
+                    "free_password_reauth_authorize", "打开密码设置授权页面",
+                    f"密码设置前 ChatGPT 页面跳转失败（{type(exc).__name__}）",
+                    retryable=True, error_code="free_password_retry_navigation_failed",
+                    safe_page=_safe_url(page), page_type="password_retry",
+                ) from exc
+        set_stage("free_password_eligibility")
+        try:
+            result = await browser_add_password(
+                page,
+                token,
+                email,
+                password,
+                otp_callback=otp_callback,
+                otp_prepare=otp_prepare,
+                otp_mark_sent=otp_mark_sent,
+                stage_fn=set_stage,
+                task_id=str(config.get("task_id") or ""),
+                device_id=str(config.get("device_id") or ""),
+                deadline_monotonic=deadline,
+            )
+        except FreeRegisterError as exc:
+            detail = clean(str(exc), 300)
+            return {
+                "access_token": token,
+                "has_access_token": True,
+                "account_flow": "signup",
+                "registration_password_used": False,
+                "password_set_after_registration": False,
+                "password_status": "pending",
+                "password_error": detail,
+                "password_failure": {
+                    "node_code": exc.node_code,
+                    "node_label": exc.node_label,
+                    "error_code": exc.error_code,
+                    "public_message": f"{exc.node_label} [{exc.node_label}/{exc.node_code}]：{detail}",
+                    "technical_summary": detail,
+                    "retryable": bool(exc.retryable),
+                    "provider_code": str(exc.provider_code or ""),
+                },
+            }
+        output = dict(result) if isinstance(result, Mapping) else {}
+        output.setdefault("access_token", token)
+        output["has_access_token"] = bool(output.get("access_token"))
+        output.setdefault("account_flow", "signup")
+        output.setdefault("registration_password_used", False)
+        output["password_set_after_registration"] = bool(
+            output.get("password_set_after_registration")
+        )
+        return finalize_registration_result(
+            output,
+            driver="camoufox",
+            email=email,
+            password_used=bool(output.get("password_set_after_registration")),
         )
 
     async def open_registration_entry() -> None:
@@ -2346,6 +2709,9 @@ async def _browser_flow(
             safe_page=snapshot.get("url"), page_type="entry",
         )
 
+    if password_retry:
+        return await finish_password_retry()
+
     if startup_gate is None:
         await open_registration_entry()
     else:
@@ -2354,6 +2720,14 @@ async def _browser_flow(
 
     while time.monotonic() < deadline:
         step_count += 1
+        if _stop_requested(config.get("_stop_requested")):
+            raise FreeRegisterError(
+                "free_run_stop",
+                "停止 Free 注册",
+                "任务已请求停止，Camoufox 注册已中断",
+                retryable=False,
+                error_code="free_run_stop",
+            )
         # The about-you endpoint can legitimately take close to a minute to
         # finish. Keep a bounded guard, but do not turn that reference-flow
         # wait into an early page-state failure.
@@ -2617,10 +2991,12 @@ async def _browser_flow(
                     )
                 if entry_submitted or account_flow == "existing_login":
                     await mark_otp_sent(stage_code)
-                try:
-                    code = str(await asyncio.to_thread(otp_callback, stage_code) or "").strip()
-                except TypeError:
-                    code = str(await asyncio.to_thread(otp_callback) or "").strip()
+                code = str(await _await_otp_callback(
+                    otp_callback,
+                    stage_code,
+                    deadline_monotonic=deadline,
+                    stop_requested=config.get("_stop_requested"),
+                ) or "").strip()
                 if not code:
                     raise CamoufoxBrowserError(
                         "free_email_otp_wait", "等待 Free 邮箱验证码", "未获取到邮箱验证码",
@@ -2931,8 +3307,15 @@ class CamoufoxBrowserPool:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._ready = threading.Event()
+        # ``shutdown()`` can be called while the async thread is still
+        # initializing.  Keep that request separate from ``_closed`` so the
+        # thread can finish its current ``run_until_complete`` before any
+        # cleanup coroutine is scheduled.
+        self._init_finished = threading.Event()
         self._shutdown_complete = threading.Event()
         self._closed = False
+        self._shutdown_requested = threading.Event()
+        self._shutdown_task: asyncio.Task[Any] | None = None
         self._init_error: BaseException | None = None
         self._slots: list[_BrowserSlot] = []
         self._global_semaphore: asyncio.Semaphore | None = None
@@ -3444,18 +3827,32 @@ class CamoufoxBrowserPool:
                 except BaseException as exc:
                     self._init_error = exc
                 finally:
+                    self._init_finished.set()
                     self._ready.set()
-                if self._init_error is None:
-                    try:
-                        self._loop.run_forever()
-                    finally:
+                if self._init_error is None and not self._shutdown_requested.is_set():
+                    # A scheduled shutdown task performs cleanup and calls
+                    # ``loop.stop`` only after that cleanup has completed.
+                    self._loop.run_forever()
+
+                # A shutdown request can arrive during initialization, before
+                # ``run_forever`` has started.  In that case no callback can
+                # drive the loop, so run the cleanup task synchronously here.
+                # Initialization failures use the same path to reclaim any
+                # managers opened before the failing slot.
+                if not self._shutdown_complete.is_set():
+                    shutdown_task = self._shutdown_task
+                    if shutdown_task is not None:
+                        if not shutdown_task.done():
+                            self._loop.run_until_complete(shutdown_task)
+                        else:
+                            # Surface/consume a cleanup exception without
+                            # preventing the completion signal in ``finally``.
+                            try:
+                                shutdown_task.result()
+                            except BaseException:
+                                pass
+                    else:
                         self._loop.run_until_complete(self._shutdown_async())
-                        self._cancel_pending_tasks()
-                else:
-                    # Initialization may have opened some managers before a later
-                    # slot failed. Reclaim those partial resources before the
-                    # dependency/startup error reaches the caller.
-                    self._loop.run_until_complete(self._shutdown_async())
                     self._cancel_pending_tasks()
             finally:
                 try:
@@ -3467,6 +3864,41 @@ class CamoufoxBrowserPool:
         self._thread = threading.Thread(target=target, name="gptphone-camoufox", daemon=True)
         self._thread.start()
         self._ready.wait(timeout=90)
+
+    async def _cancel_pending_tasks_async(self) -> None:
+        """Cancel registration tasks before closing their browser managers."""
+        current = asyncio.current_task()
+        pending = [
+            task for task in asyncio.all_tasks()
+            if task is not current and not task.done()
+        ]
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+
+    async def _shutdown_and_stop_async(self) -> None:
+        """Drain async work, close resources, then release the event loop."""
+        try:
+            # Force-cancel registration/context tasks first.  Calling
+            # ``loop.stop`` before this drain was the source of pending-task
+            # warnings and ``Event loop stopped before Future completed`` in
+            # the two Camoufox incidents.
+            await self._cancel_pending_tasks_async()
+            await self._shutdown_async()
+        finally:
+            loop = self._loop
+            if loop is not None and not loop.is_closed():
+                loop.stop()
+
+    def _schedule_shutdown(self) -> None:
+        """Create the single shutdown task on the pool's asyncio thread."""
+        loop = self._loop
+        if loop is None or bool(getattr(loop, "is_closed", lambda: False)()):
+            return
+        task = self._shutdown_task
+        if task is None or task.done():
+            self._shutdown_task = loop.create_task(self._shutdown_and_stop_async())
 
     def _cancel_pending_tasks(self) -> None:
         if self._loop is None:
@@ -3585,24 +4017,18 @@ class CamoufoxBrowserPool:
                 await self._discard_debug_sessions_for_slot(slot)
         slots, self._slots = self._slots, []
         for slot in slots:
-            try:
-                manager = slot.manager
-                browser = slot.browser
-                if manager is not None:
-                    await asyncio.wait_for(manager.__aexit__(None, None, None), timeout=float(self.config.get("browser_recycle_timeout_seconds") or 45))
-                elif browser is not None:
-                    await asyncio.wait_for(browser.close(), timeout=float(self.config.get("context_close_timeout_seconds") or 15))
-            except Exception:
-                try:
-                    if slot.browser is not None:
-                        close_result = slot.browser.close()
-                        if inspect.isawaitable(close_result):
-                            await asyncio.wait_for(
-                                close_result,
-                                timeout=float(self.config.get("context_close_timeout_seconds") or 15),
-                            )
-                except Exception:
-                    pass
+            manager = slot.manager
+            browser = slot.browser
+            manager_timeout = float(self.config.get("browser_recycle_timeout_seconds") or 45)
+            browser_timeout = float(self.config.get("context_close_timeout_seconds") or 15)
+            manager_closed = True
+            if manager is not None:
+                manager_closed = await _close_async_resource(
+                    lambda manager=manager: manager.__aexit__(None, None, None),
+                    manager_timeout,
+                )
+            if (manager is None or not manager_closed) and browser is not None:
+                await _close_async_resource(browser.close, browser_timeout)
 
     async def _register_async(self, kwargs: Mapping[str, Any]) -> dict[str, Any]:
         if self._global_semaphore is None or not self._slots:
@@ -3726,6 +4152,10 @@ class CamoufoxBrowserPool:
                 async with self._admission_lock:
                     available = (
                         not slot.draining
+                        and not (
+                            slot.recycle_lock is not None
+                            and slot.recycle_lock.locked()
+                        )
                         and slot.active_contexts + slot.debug_holds < self.max_contexts
                     )
                     if available:
@@ -3736,6 +4166,10 @@ class CamoufoxBrowserPool:
             else:
                 available = (
                     not slot.draining
+                    and not (
+                        slot.recycle_lock is not None
+                        and slot.recycle_lock.locked()
+                    )
                     and slot.active_contexts + slot.debug_holds < self.max_contexts
                 )
                 if available:
@@ -3763,7 +4197,15 @@ class CamoufoxBrowserPool:
     async def _register_with_slot_once(self, kwargs: Mapping[str, Any]) -> dict[str, Any]:
         recovery_attempted = False
         while True:
-            available = [slot for slot in self._slots if not slot.draining and self._browser_connected(slot.browser)]
+            available = [
+                slot for slot in self._slots
+                if not slot.draining
+                and not (
+                    slot.recycle_lock is not None
+                    and slot.recycle_lock.locked()
+                )
+                and self._browser_connected(slot.browser)
+            ]
             if available:
                 # Retained debug contexts stay open and consume a real browser
                 # context slot even after their task Future has completed.
@@ -3783,21 +4225,57 @@ class CamoufoxBrowserPool:
                     break
                 await asyncio.sleep(0.05)
                 continue
+            # A disconnect callback or registration-limit cleanup can already
+            # be rebuilding every slot.  Treat that as a transient admission
+            # state and let the in-flight recycler finish.  The old code set
+            # ``recovery_attempted`` before finding a candidate and immediately
+            # reported ``browser_disconnected`` here, which raced the normal
+            # replacement launch and caused the RNBG5WMB failure.
+            recycling = [
+                slot for slot in self._slots
+                if slot.draining or (
+                    slot.recycle_lock is not None
+                    and slot.recycle_lock.locked()
+                )
+            ]
+            # A recycler owns the slot lock for its entire close/launch cycle.
+            # Keep admission waiting while any candidate is in that cycle. A
+            # completed-but-draining slot with an explicit recycle error is
+            # already terminal for this pool and should retain the existing
+            # structured ``recycle_failed`` result; a draining slot without
+            # an error is handed to the recovery branch below.
+            if any(
+                slot.recycle_lock is not None and slot.recycle_lock.locked()
+                for slot in recycling
+            ):
+                await asyncio.sleep(0.2)
+                continue
+            if any(slot.recycle_error for slot in recycling):
+                failure = CamoufoxBrowserError(
+                    "free_camoufox_launch", "启动 Camoufox 浏览器池",
+                    "Camoufox 浏览器进程回收后重新启动失败",
+                    retryable=True, error_code="camoufox_browser_recycle_failed",
+                    diagnostic=next(
+                        slot.recycle_error for slot in recycling if slot.recycle_error
+                    ),
+                )
+                setattr(failure, "safe_restart", True)
+                raise failure
             # A browser can disappear between the health check and context
             # creation.  Rebuild one disconnected slot before reporting that
             # the pool is empty; this mirrors the reference pool's admission
             # recovery and prevents a transient process exit from consuming a
             # whole task.
             if not recovery_attempted:
-                recovery_attempted = True
                 recoverable = next(
                     (
                         slot for slot in self._slots
-                        if not slot.draining and not slot.recycle_lock.locked()
+                        if slot.recycle_lock is None or not slot.recycle_lock.locked()
                     ),
                     None,
                 )
                 if recoverable is not None:
+                    recovery_attempted = True
                     generation = recoverable.generation
                     await self._recycle_slot(recoverable, generation, "浏览器池没有可用进程")
                     continue
@@ -4343,11 +4821,19 @@ class CamoufoxBrowserPool:
                 # operator releases the debug session or at process exit.
                 return False
             self._closed = True
+            shutdown_requested = getattr(self, "_shutdown_requested", None)
+            if shutdown_requested is not None:
+                shutdown_requested.set()
             loop = self._loop
             if loop is not None:
                 try:
-                    loop.call_soon_threadsafe(loop.stop)
-                except RuntimeError:
+                    # Never stop the loop directly. The shutdown coroutine
+                    # cancels/drains async work and closes every browser
+                    # manager before issuing the final ``loop.stop``.
+                    init_finished = getattr(self, "_init_finished", None)
+                    if init_finished is None or init_finished.is_set():
+                        loop.call_soon_threadsafe(self._schedule_shutdown)
+                except (RuntimeError, AttributeError):
                     # The loop may already be in its final close phase. The
                     # completion event below determines whether cleanup really
                     # finished before the pool is removed from the registry.
@@ -4358,7 +4844,7 @@ class CamoufoxBrowserPool:
             return True
         if thread is threading.current_thread():
             return completion.is_set()
-        thread.join(timeout=float(self.config.get("browser_recycle_timeout_seconds") or 45) + 5)
+        thread.join(timeout=_pool_shutdown_wait_budget(self.config))
         if thread.is_alive():
             return False
         completion.set()
@@ -4377,6 +4863,11 @@ def _proxy_config(proxy: str) -> dict[str, Any] | None:
 
 
 _POOL_LOCK = threading.RLock()
+# Registry operations and browser-pool shutdown must share one lifecycle
+# barrier.  Without it a settings read or a new task can obtain a pool after
+# shutdown has marked it closed but before its event-loop thread has released
+# the browser process.
+_POOL_LIFECYCLE_LOCK = threading.RLock()
 _POOLS: dict[tuple[Any, ...], CamoufoxBrowserPool] = {}
 
 
@@ -4389,9 +4880,42 @@ def _pool_timeout(config: Mapping[str, Any], key: str, default: float) -> float:
     return max(0.001, value)
 
 
+def _pool_shutdown_wait_budget(config: Mapping[str, Any]) -> float:
+    """Bound a synchronous wait for the pool's event-loop thread to exit.
+
+    ``_shutdown_async`` closes browser slots serially.  Each slot can spend
+    one browser-recycle timeout in the manager context and one context-close
+    timeout in its fallback browser close, so a single-slot budget undercounts
+    the real cleanup window as soon as ``pool_size`` is greater than one.  The
+    drain timeout and a small handoff margin cover a concurrent recycle that
+    was already queued when shutdown started.
+    """
+    try:
+        pool_size = max(1, int(config.get("pool_size") or 2))
+    except (TypeError, ValueError, OverflowError):
+        pool_size = 2
+    context_timeout = _pool_timeout(config, "context_close_timeout_seconds", 15)
+    browser_timeout = _pool_timeout(config, "browser_recycle_timeout_seconds", 45)
+    drain_timeout = _pool_timeout(
+        config, "browser_recycle_drain_timeout_seconds", 20,
+    )
+    # Slot teardown is currently serial; keep this calculation conservative
+    # until that ordering is deliberately changed and covered independently.
+    return max(
+        5.0,
+        (pool_size * (browser_timeout + context_timeout))
+        + drain_timeout
+        + 10.0,
+    )
+
+
 def _camoufox_pool_key(config: Mapping[str, Any]) -> tuple[Any, ...]:
     """Build the identity used to reuse a compatible browser pool."""
     debug_mode, effective_headless = _effective_camoufox_headless(config)
+    # ``_debug_artifact_dir`` is injected only by the runner and is absent
+    # from persisted settings read by the public debug-state endpoint. It is
+    # an output location, not a browser capability; including it would make
+    # the state poller retire the live registration pool as "obsolete".
     return (
         debug_mode, effective_headless, int(config.get("pool_size") or 2),
         int(config.get("max_contexts_per_browser") or 3), bool(config.get("block_images", True)),
@@ -4403,11 +4927,10 @@ def _camoufox_pool_key(config: Mapping[str, Any]) -> tuple[Any, ...]:
         _pool_timeout(config, "context_close_timeout_seconds", 15),
         _pool_timeout(config, "browser_recycle_timeout_seconds", 45),
         _pool_timeout(config, "browser_recycle_drain_timeout_seconds", 20),
-        str(config.get("_debug_artifact_dir") or ""),
     )
 
 
-def _retire_idle_camoufox_pools(
+def _retire_idle_camoufox_pools_locked(
     *, current_key: tuple[Any, ...] | None = None,
 ) -> dict[str, int]:
     """Close pools made obsolete by a config change once they are idle.
@@ -4433,6 +4956,17 @@ def _retire_idle_camoufox_pools(
             retained += 1
             continue
         try:
+            # ``shutdown`` may still be unwinding its event-loop thread.  A
+            # closed pool is no longer a valid admission owner, so detach it
+            # now and let that thread finish independently.  Keeping it in the
+            # registry caused the next task to inherit a closed/empty pool and
+            # surface ``camoufox_pool_shutdown_pending``.
+            if bool(getattr(pool, "_closed", False)):
+                with _POOL_LOCK:
+                    if _POOLS.get(key) is pool:
+                        _POOLS.pop(key, None)
+                        closed += 1
+                continue
             try:
                 result = pool.shutdown(force=False)
             except TypeError:
@@ -4449,43 +4983,40 @@ def _retire_idle_camoufox_pools(
     return {"closed_pools": closed, "retained_pools": retained}
 
 
+def _retire_idle_camoufox_pools(
+    *, current_key: tuple[Any, ...] | None = None,
+) -> dict[str, int]:
+    """Serialize idle-pool retirement with pool lookup and shutdown."""
+    with _POOL_LIFECYCLE_LOCK:
+        return _retire_idle_camoufox_pools_locked(current_key=current_key)
+
+
 def _pool_for(config: Mapping[str, Any]) -> CamoufoxBrowserPool:
     key = _camoufox_pool_key(config)
-    # Reconcile pools from a previous settings identity before admitting a new
-    # one.  Held debug windows and active tasks are retained by design.
-    _retire_idle_camoufox_pools(current_key=key)
-    while True:
+    with _POOL_LIFECYCLE_LOCK:
+        # Reconcile pools from a previous settings identity before admitting a
+        # new one. Held debug windows and active tasks are retained by design.
+        _retire_idle_camoufox_pools_locked(current_key=key)
+        # A pool marked closed has already received a shutdown request. Keep
+        # its object alive through its own daemon event-loop thread, but remove
+        # it from the registry immediately so a new task can obtain a healthy
+        # replacement. Waiting here used to surface ``camoufox_pool_shutdown_pending``
+        # and caused the next task to race into an empty/disconnected pool.
         with _POOL_LOCK:
-            pool = _POOLS.get(key)
-            if pool is None:
-                pool = CamoufoxBrowserPool(config)
-                _POOLS[key] = pool
-                return pool
-            if not bool(getattr(pool, "_closed", False)):
-                return pool
-        # A previous caller may have requested shutdown but timed out while
-        # Camoufox was closing. Keep that pool registered until its thread is
-        # actually gone; creating a replacement here would leak a browser
-        # process and make two pools compete for the same capacity.
-        try:
-            closed = pool.shutdown(force=False)
-        except TypeError:
-            closed = pool.shutdown()
-        # ``None`` is the historical shutdown return value used by a few
-        # compatibility adapters; only an explicit ``False`` means the pool
-        # thread is still alive and must remain registered.
-        if closed is False:
-            raise CamoufoxBrowserError(
-                "free_camoufox_launch", "启动 Camoufox 浏览器池",
-                "旧 Camoufox 浏览器池仍在关闭，请稍后重试",
-                retryable=True, error_code="camoufox_pool_shutdown_pending",
-            )
-        with _POOL_LOCK:
-            if _POOLS.get(key) is pool:
+            current = _POOLS.get(key)
+            if current is not None and not bool(getattr(current, "_closed", False)):
+                return current
+            if current is not None and _POOLS.get(key) is current:
                 _POOLS.pop(key, None)
+            for old_key, old_pool in list(_POOLS.items()):
+                if old_key != key and bool(getattr(old_pool, "_closed", False)):
+                    _POOLS.pop(old_key, None)
+            replacement = CamoufoxBrowserPool(config)
+            _POOLS[key] = replacement
+            return replacement
 
 
-def shutdown_camoufox_pools(*, force: bool = False) -> dict[str, int]:
+def _shutdown_camoufox_pools_locked(*, force: bool = False) -> dict[str, int]:
     """Shutdown idle Camoufox pools, preserving opted-in debug sessions.
 
     ``force=True`` is reserved for process exit. The default keeps active
@@ -4520,6 +5051,12 @@ def shutdown_camoufox_pools(*, force: bool = False) -> dict[str, int]:
     with _POOL_LOCK:
         retained = max(retained, len(_POOLS))
     return {"closed_pools": closed, "retained_pools": retained}
+
+
+def shutdown_camoufox_pools(*, force: bool = False) -> dict[str, int]:
+    """Shutdown pools under the same barrier used by pool lookup."""
+    with _POOL_LIFECYCLE_LOCK:
+        return _shutdown_camoufox_pools_locked(force=force)
 
 
 def camoufox_debug_state(config: Mapping[str, Any] | None = None) -> dict[str, Any]:
@@ -4695,9 +5232,39 @@ class CamoufoxRegistrationRunner:
             "max_contexts_per_browser": int(browser.get("max_contexts_per_browser") or 3),
         }
 
-    def __call__(self, task: Mapping[str, Any], config: Mapping[str, Any], stop_event: Any, stage: Callable[[str, str], None], log: Callable[[str, str], None], *, twofa_retry: bool = False) -> Mapping[str, Any]:
+    def __call__(
+        self,
+        task: Mapping[str, Any],
+        config: Mapping[str, Any],
+        stop_event: Any,
+        stage: Callable[[str, str], None],
+        log: Callable[[str, str], None],
+        *,
+        twofa_retry: bool = False,
+        password_retry: bool = False,
+    ) -> Mapping[str, Any]:
+        if twofa_retry and password_retry:
+            raise FreeRegisterError(
+                "free_retry", "重试 Free 任务",
+                "2FA 重试和密码重试不能同时提交",
+                retryable=False, error_code="free_retry_modes_conflict",
+            )
         task_id = str(task.get("task_id") or "")
         private_result = task.get("result") if isinstance(task.get("result"), Mapping) else {}
+        saved_password_token = str(private_result.get("access_token") or "").strip()
+        if password_retry:
+            if not saved_password_token:
+                raise FreeRegisterError(
+                    "free_password_retry", "重试 Free 账号密码设置",
+                    "原账号没有可用 access token", retryable=False,
+                    error_code="free_password_retry_token_missing",
+                )
+            if not password_retry_allowed(private_result):
+                raise FreeRegisterError(
+                    "free_password_retry", "重试 Free 账号密码设置",
+                    "该账号当前没有可补设的密码状态", retryable=False,
+                    error_code="free_password_retry_not_pending",
+                )
         existing_password = ""
         for candidate in (
             private_result.get("password"),
@@ -4723,27 +5290,54 @@ class CamoufoxRegistrationRunner:
             stage_fn=stage,
         )
         try:
-            stage(task_id, "free_camoufox_signup")
+            stage(task_id, "free_password_enroll" if password_retry else "free_camoufox_signup")
             if stop_event.is_set():
                 raise FreeRegisterError("free_run_stop", "停止 Free 注册", "任务在启动 Camoufox 前已停止", retryable=False)
-            def callback(stage_code: str = "free_email_otp_wait") -> str:
-                return otp.wait_code(str(task.get("email") or ""), stage_code=stage_code)
+            def callback(
+                stage_code: str = "free_email_otp_wait",
+                *,
+                stop_requested: Callable[[], bool] | None = None,
+                deadline_monotonic: float | None = None,
+            ) -> str:
+                def combined_stop() -> bool:
+                    return stop_event.is_set() or (
+                        callable(stop_requested) and bool(stop_requested())
+                    )
+
+                return otp.wait_code(
+                    str(task.get("email") or ""),
+                    stage_code=stage_code,
+                    stop_requested=combined_stop,
+                    deadline_monotonic=deadline_monotonic,
+                )
             result = _pool_for(browser_config).register(
                 email=str(task.get("email") or ""),
-                password="" if twofa_retry else FIXED_PASSWORD,
+                # Existing-login and password-continuation adapters retain the
+                # historical empty argument shape; _browser_flow resolves the
+                # configured value before submitting a signup/password page.
+                password="" if (twofa_retry or password_retry) else configured_free_password(config),
                 proxy=str(task.get("proxy") or ""), otp_callback=callback,
                 otp_prepare=otp.prepare, otp_mark_sent=otp.mark_sent,
                 config={
                     **config, **browser_config, "task_id": task_id,
+                    "device_id": str(task.get("device_id") or ""),
                     "incident_id": str(task.get("incident_id") or ""),
                     "proxy_fingerprint": str(task.get("proxy_fingerprint") or ""),
+                    "_stop_requested": stop_event.is_set,
                 }, log=log,
                 stage_fn=stage,
                 timing_fn=config.get("_timing_substep"),
                 force_existing_login=twofa_retry,
                 existing_password=existing_password,
+                password_retry=password_retry,
+                password_retry_token=saved_password_token,
             )
             result = dict(result)
+            if password_retry:
+                # The browser continuation returns only password fields. Fill
+                # missing account evidence from the saved result so a successful
+                # password operation cannot erase an existing TOTP/plan/token.
+                result = merge_account_result_fields(private_result, result)
             result["registration_ip"] = str(task.get("expected_exit_ip") or task.get("exit_ip") or "")
             result["expected_exit_ip"] = str(task.get("expected_exit_ip") or task.get("exit_ip") or "")
             result["profile_summary"] = "Camoufox shared pool"
@@ -4760,4 +5354,5 @@ class CamoufoxRegistrationRunner:
 __all__ = [
     "CamoufoxBrowserError", "CamoufoxDependencyError", "CamoufoxRegistrationRunner",
     "CamoufoxBrowserPool", "annotate_camoufox_debug_session", "shutdown_camoufox_pools",
+    "browser_add_password",
 ]

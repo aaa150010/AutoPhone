@@ -12,11 +12,33 @@ from mac_overrides.free_camoufox_runtime import _effective_camoufox_headless
 
 
 class FreeConfigRouteTests(unittest.TestCase):
+    def test_legacy_roxy_driver_migrates_to_protocol_without_persisting_removed_config(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = FreeConfigStore(Path(directory))
+            store.path.write_text(json.dumps({
+                "version": 8,
+                "driver": "roxybrowser",
+                "roxybrowser": {
+                    "api_base": "http://127.0.0.1:50000",
+                    "workspace_id": "legacy-workspace",
+                    "project_id": "legacy-project",
+                },
+            }), encoding="utf-8")
+
+            normalized = store.load()
+
+            self.assertEqual(normalized["driver"], "protocol")
+            self.assertNotIn("roxybrowser", normalized)
+            persisted = json.loads(store.path.read_text(encoding="utf-8"))
+            self.assertEqual(persisted["driver"], "protocol")
+            self.assertNotIn("roxybrowser", persisted)
+
     def test_new_config_defaults_to_socks5_remote_chatgpt(self):
         with tempfile.TemporaryDirectory() as directory:
             store = FreeConfigStore(Path(directory))
             normalized = store.normalize({})
             self.assertEqual(normalized["version"], 9)
+            self.assertEqual(normalized["account_password"], "Aa150010150010")
             self.assertEqual(normalized["proxy_default_scheme"], "socks5")
             self.assertEqual(normalized["proxy_socks5_dns_mode"], "remote")
             self.assertEqual(normalized["proxy_probe_url"], "https://chatgpt.com/")
@@ -24,6 +46,43 @@ class FreeConfigRouteTests(unittest.TestCase):
             # ``headless`` remains the persisted preference.  The runtime
             # forces a headed browser while debug mode is enabled.
             self.assertTrue(normalized["camoufox"]["headless"])
+
+    def test_account_password_is_persisted_and_masked_without_overwriting_on_public_save(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = FreeConfigStore(Path(directory))
+
+            saved = store.save({"account_password": "Custom-Password-123"})
+            self.assertEqual(saved["account_password"], "Custom-Password-123")
+            self.assertEqual(store.load()["account_password"], "Custom-Password-123")
+            self.assertEqual(store.public()["account_password"], "********")
+
+            # The UI posts the masked value when the user leaves the field
+            # unchanged. The stored secret must survive that round trip.
+            masked = store.save({"account_password": "********"})
+            self.assertEqual(masked["account_password"], "Custom-Password-123")
+            self.assertEqual(store.public()["account_password"], "********")
+
+    def test_legacy_free_register_password_migrates_to_account_password(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = FreeConfigStore(Path(directory))
+            normalized = store.normalize({"free_register_password": "Legacy-Password"})
+            self.assertEqual(normalized["account_password"], "Legacy-Password")
+            self.assertNotIn("free_register_password", normalized)
+
+    def test_legacy_default_password_migrates_to_current_default(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = FreeConfigStore(Path(directory))
+            normalized = store.normalize({"account_password": "Aa150010@150010"})
+            self.assertEqual(normalized["account_password"], "Aa150010150010")
+
+            normalized = store.normalize({"free_register_password": "Aa150010@150010"})
+            self.assertEqual(normalized["account_password"], "Aa150010150010")
+
+    def test_custom_password_is_not_rewritten_by_default_migration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = FreeConfigStore(Path(directory))
+            normalized = store.normalize({"account_password": "Aa150010150010-custom"})
+            self.assertEqual(normalized["account_password"], "Aa150010150010-custom")
 
     def test_v7_legacy_proxy_defaults_migrate_and_persist(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -83,6 +142,24 @@ class FreeConfigRouteTests(unittest.TestCase):
             self.assertFalse(normalized["camoufox"]["debug_mode"])
             self.assertTrue(normalized["camoufox"]["headless"])
 
+    def test_current_config_without_security_options_gets_persisted_defaults(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = FreeConfigStore(Path(directory))
+            store.path.write_text(json.dumps({
+                "version": 9,
+                "driver": "protocol",
+                "camoufox": {"debug_mode": False, "headless": True},
+                "auto_set_2fa": False,
+            }), encoding="utf-8")
+
+            normalized = store.load()
+            persisted = json.loads(store.path.read_text(encoding="utf-8"))
+
+            self.assertFalse(normalized["auto_set_2fa"])
+            self.assertFalse(normalized["auto_set_password"])
+            self.assertFalse(persisted["auto_set_2fa"])
+            self.assertFalse(persisted["auto_set_password"])
+
     def test_debug_mode_forces_effective_headed_without_overwriting_preference(self):
         self.assertEqual(
             _effective_camoufox_headless({"debug_mode": True, "headless": True}),
@@ -131,14 +208,34 @@ class FreeConfigRouteTests(unittest.TestCase):
             self.assertEqual(normalized["proxy_default_scheme"], "http")
             self.assertEqual(normalized["proxy_socks5_dns_mode"], "local")
 
-    def test_free_config_forces_twofa_enabled(self):
+    def test_free_config_security_options_are_independent(self):
         with tempfile.TemporaryDirectory() as directory:
             store = FreeConfigStore(Path(directory))
-            normalized = store.normalize({"auto_set_2fa": False})
-            self.assertTrue(normalized["auto_set_2fa"])
-            saved = store.save({"auto_set_2fa": False})
-            self.assertTrue(saved["auto_set_2fa"])
-            self.assertTrue(store.public()["auto_set_2fa"])
+            defaults = store.normalize({})
+            self.assertFalse(defaults["auto_set_password"])
+            self.assertTrue(defaults["auto_set_2fa"])
+
+            for auto_set_password, auto_set_2fa in (
+                (False, False),
+                (True, False),
+                (False, True),
+                (True, True),
+            ):
+                normalized = store.normalize({
+                    "auto_set_password": auto_set_password,
+                    "auto_set_2fa": auto_set_2fa,
+                })
+                self.assertEqual(normalized["auto_set_password"], auto_set_password)
+                self.assertEqual(normalized["auto_set_2fa"], auto_set_2fa)
+                saved = store.save({
+                    "auto_set_password": auto_set_password,
+                    "auto_set_2fa": auto_set_2fa,
+                })
+                self.assertEqual(saved["auto_set_password"], auto_set_password)
+                self.assertEqual(saved["auto_set_2fa"], auto_set_2fa)
+                public = store.public()
+                self.assertEqual(public["auto_set_password"], auto_set_password)
+                self.assertEqual(public["auto_set_2fa"], auto_set_2fa)
 
     def test_legacy_proxy_policy_is_normalized_to_shared_pool(self):
         with tempfile.TemporaryDirectory() as directory:

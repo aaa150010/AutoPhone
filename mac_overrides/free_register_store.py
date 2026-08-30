@@ -16,6 +16,7 @@ try:
     from .free_failure_runtime import (
         canonical_failure,
         merge_account_result_fields,
+        normalize_password_result,
         sanitize_failure_text,
     )
     from .free_register_common import (
@@ -37,6 +38,7 @@ except ImportError:
     from free_failure_runtime import (  # type: ignore[no-redef]
         canonical_failure,
         merge_account_result_fields,
+        normalize_password_result,
         sanitize_failure_text,
     )
     from free_register_common import (  # type: ignore[no-redef]
@@ -58,6 +60,39 @@ except ImportError:
 
 ACTIVE_POOL_STATUSES = frozenset({"reserved", "queued", "running"})
 FREE_EMAIL_429_COOLDOWN_SECONDS = 300
+
+
+def _account_material_line(
+    email: str,
+    mailbox_url: str,
+    result: Mapping[str, Any],
+    *,
+    include_password: bool = True,
+) -> str:
+    """Build the credential shape consumed by the ordinary mailbox flow.
+
+    Password and URL are intentionally mutually exclusive in the first two
+    fields.  A password-backed account is consumed as ``email----password``
+    (or ``email----password----totp``); a passwordless account needs its
+    private mailbox URL to fetch the next code (``email----url`` or
+    ``email----url----totp``).  The URL is read from the selected private pool
+    row at request time and never copied into a public task snapshot.
+    """
+    if not isinstance(result, Mapping):
+        result = {}
+    password = str(result.get("password") or "").strip()
+    totp_secret = str(result.get("totp_secret") or "").strip()
+    email_value = str(email or "").strip()
+    mailbox_value = str(mailbox_url or "").strip()
+    if include_password and password:
+        fields = [email_value, password]
+    else:
+        fields = [email_value, mailbox_value]
+    if totp_secret:
+        fields.append(totp_secret)
+    # A malformed historical row must not produce a dangling delimiter or
+    # accidentally expose a password as a URL-only row.
+    return "----".join(fields) if all(fields) else ""
 
 
 def _cooldown_timestamp(value: Any) -> float:
@@ -388,6 +423,8 @@ class FreeMailboxPool:
                 current = state.get(row.row_id, {})
                 result = self.result(row.row_id)
                 current_status = str(current.get("status") or "available")
+                if result:
+                    result = normalize_password_result(result)
                 if current_status in ACTIVE_POOL_STATUSES:
                     failure_source = current.get("failure")
                 else:
@@ -399,6 +436,13 @@ class FreeMailboxPool:
                     default_node_label="查询 Free 套餐资格",
                 )
                 live_failure = canonical_failure(result.get("live_check_failure") if isinstance(result.get("live_check_failure"), Mapping) else None)
+                has_password = bool(result.get("password"))
+                has_totp = bool(result.get("totp_secret"))
+                # A passwordless TOTP account still has a usable complete
+                # material line: its mailbox URL is supplied on demand from
+                # the private source row.  Do not require a persisted
+                # ``credential_line`` (which deliberately omits that URL).
+                has_credential = bool(result.get("credential_line")) or has_totp or has_password
                 output.append({
                     "row_id": row.row_id,
                     "line_no": row.line_no,
@@ -440,9 +484,9 @@ class FreeMailboxPool:
                     "twofa_status": result.get("twofa_status", ""),
                     "twofa_error": sanitize_failure_text(result.get("twofa_error", ""), 300),
                     "has_access_token": bool(result.get("access_token")),
-                    "has_password": bool(result.get("password")),
-                    "has_totp": bool(result.get("totp_secret")),
-                    "has_credential": bool(result.get("credential_line")),
+                    "has_password": has_password,
+                    "has_totp": has_totp,
+                    "has_credential": has_credential,
                     "rebind_email": sanitize_failure_text(result.get("rebind_email", ""), 320),
                     "rebind_task_id": sanitize_failure_text(result.get("rebind_task_id", ""), 120),
                     "rebind_status": sanitize_failure_text(result.get("rebind_status", ""), 64),
@@ -465,7 +509,7 @@ class FreeMailboxPool:
             result = self.result(row.row_id)
             if result.get("status") not in (None, "", "success") and not result.get("access_token"):
                 continue
-            credential = str(result.get("credential_line") or "").strip()
+            credential = _account_material_line(row.email, row.mailbox_url, result)
             token = str(result.get("access_token") or "").strip()
             if credential or token:
                 values.append(credential or f"{row.email}----{token}")
@@ -515,15 +559,16 @@ class FreeMailboxPool:
             if not result:
                 skipped.append({"row_id": row.row_id, "email": row.email, "reason": "该 Free 邮箱没有注册结果，暂不可传输"})
                 continue
-            password = str(result.get("password") or "").strip()
-            totp_secret = str(result.get("totp_secret") or "").strip()
-            fields = [row.email]
-            if password and include_password:
-                fields.append(password)
-            fields.append(row.mailbox_url)
-            if totp_secret:
-                fields.append(totp_secret)
-            lines.append("----".join(fields))
+            line = _account_material_line(
+                row.email,
+                row.mailbox_url,
+                result,
+                include_password=include_password,
+            )
+            if line:
+                lines.append(line)
+            else:
+                skipped.append({"row_id": row.row_id, "email": row.email, "reason": "该 Free 邮箱缺少可用账号凭据"})
         requested_missing = selected - {row.row_id for row in self.entries()}
         skipped.extend({"row_id": row_id, "email": "", "reason": "Free 邮箱行不存在或已变化"} for row_id in sorted(requested_missing))
         return {

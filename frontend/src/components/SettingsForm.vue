@@ -58,7 +58,6 @@ const navigation: SettingsNavNode[] = [
     children: [
       { key: 'free-scale', label: '目标数与并发', anchor: 'free-register' },
       { key: 'free-driver', label: '注册链路', anchor: 'free-register' },
-      { key: 'free-roxy', label: 'RoxyBrowser 与人工节奏', anchor: 'free-register' },
       { key: 'free-proxy', label: '独立代理池预检', anchor: 'free-register' },
     ],
   },

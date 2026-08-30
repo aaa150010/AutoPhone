@@ -1,9 +1,8 @@
 """Pure-protocol Free account email rebind service.
 
 This service owns only rebind tasks and destination mailboxes.  Registration
-drivers are intentionally invisible here: a source row may have originated in
-the protocol or RoxyBrowser flow, but the rebind worker always constructs a
-fresh protocol transport and never touches a RoxyBrowser profile.
+drivers are intentionally invisible here; the worker always constructs a
+fresh protocol transport.
 """
 
 from __future__ import annotations

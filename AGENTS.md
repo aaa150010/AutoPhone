@@ -4,48 +4,46 @@
 
 GPT 注册中心（gptPhone）是 macOS 本地 Flask + Vue 3/Element Plus 应用，包含普通短信/OAuth 流程和 Free 注册流程。恢复的后端模块是 Python 3.13 运行时产物；可维护的后端改动放在 `mac_overrides/`，不要把 `business_pyc/`、`plus_launcher.pyc` 或 `pycdc_attempt/` 当作源码重构。
 
-## 最高优先级：照抄 AutoRegister
+## 最高优先级：按参考项目实现
 
-Free 全协议链路和 RoxyBrowser 链路必须以同级项目 `/Users/lwh/projects/AutoRegister` 为行为基准，整体照抄其真实实现和调用顺序：会话建立、网络预检、匿名预热、OAuth/登录页面状态机、Sentinel、代理池分配、邮箱提交后的分支、OTP 页面、资料页、consent、OAuth 回调、Session 刷新、2FA、结果持久化、失败清理、Profile 生命周期、`connection_info` 对账和结构化诊断都按 AutoRegister 的逻辑实现。代理来自池并按任务上下文传递，但不得强制“一号一 IP”或因出口 IP 轮换拒绝健康任务。
+Free 只保留 `protocol` 和 `camoufox` 两条新建链路。协议链路必须以同级项目 `/Users/lwh/projects/AutoRegister` 为行为基准，Camoufox 链路必须以 `/Users/lwh/projects/aBaiFreeGPT` 为行为基准；会话建立、网络预检、匿名预热、OAuth/登录页面状态机、Sentinel、代理池分配、邮箱提交后的分支、OTP 页面、资料页、consent、OAuth 回调、Session 刷新、2FA、结果持久化、失败清理、`connection_info` 对账和结构化诊断都按相应参考实现的调用顺序执行。只允许在 transport adapter 层保留 HTTP 与异步浏览器的实现差异。
 
-Free 代理池是全协议和 RoxyBrowser 共用的单一 `healthy_random` 池：不按国家或代理组筛选、分配或展示，允许并发任务共享同一代理和出口 IP。代理预检只验证实际代理请求、HTTP 成功状态和出口 IP 格式；任务期间出口 IP 变化必须更新当前记录并继续健康任务，不得产生新的 `free_proxy_drift` 停止节点。历史国家/分组字段只能迁移为空，不能恢复为分配策略；RoxyBrowser 仅保留自身的 SOCKS4 协议能力限制。
+Free 代理池是两条链路共用的单一 `healthy_random` 池：不按国家或代理组筛选、分配或展示，允许并发任务共享同一代理和出口 IP。代理预检只验证实际代理请求、HTTP 成功状态和出口 IP 格式；任务期间出口 IP 变化必须更新当前记录并继续健康任务，不得产生新的 `free_proxy_drift` 停止节点。历史国家/分组字段只能迁移为空，不能恢复为分配策略。
 
-Free 账号换绑统一使用纯协议链路：无论账号最初由全协议还是
-RoxyBrowser 注册，换绑都必须复用 AutoRegister 对齐的协议会话、
-Sentinel、password+TOTP 登录、`change_email` eligibility/begin/verify、
-新邮箱 OTP、换绑后新邮箱重登、Session 刷新以及套餐/Plus 资格查询。
-RoxyBrowser Profile 只作为原注册来源记录，换绑过程中不得打开、连接、
-复用或创建 RoxyBrowser Profile，不得为换绑另行设计浏览器状态机。
-换绑只允许使用已有密码和已启用 TOTP 的完整 Free 账号；邮箱验证码
-继续使用 `mac_overrides/mailbox_otp_service.py` 的现有基线、旧码排除、
-轮询、重发和阶段隔离策略。Free 注册本身仍按其配置的 protocol 或
-RoxyBrowser 驱动执行，但注册驱动不得改变后续换绑协议。
+Free 账号换绑统一使用纯协议链路：无论账号来自哪条历史注册链路，都必须复用 AutoRegister 对齐的协议会话、Sentinel、password+TOTP 登录、`change_email` eligibility/begin/verify、新邮箱 OTP、换绑后新邮箱重登、Session 刷新以及套餐/Plus 资格查询。换绑不得打开、连接、复用或创建浏览器 Profile，也不得另行设计浏览器状态机。换绑只允许使用已有密码和已启用 TOTP 的完整 Free 账号；邮箱验证码继续使用 `mac_overrides/mailbox_otp_service.py` 的现有基线、旧码排除、轮询、重发和阶段隔离策略。
 
 唯一允许保留 AutoPhone 自己实现的是邮箱解析和邮箱验证码获取：继续使用 `mac_overrides/mailbox_otp_service.py` 及其现有策略模式，包括来源解析、请求前基线、旧验证码排除、消息身份判断、时间过滤、轮询、重发和阶段隔离。除这些邮箱取件边界外，不得自行设计另一套注册链路，不得为了兼容旧实现而保留与 AutoRegister 不同的主流程。
 
 对照位置：
 
 - 协议注册：`/Users/lwh/projects/AutoRegister/core/chatgpt_auth.py`、`core/openai_auth.py`、`core/sentinel_runner.py`、`main.py`。
-- RoxyBrowser：`core/roxy_registration.py`、`core/roxybrowser_client.py`、`core/otp_utils.py`、`core/humanize.py`、`core/live_check_service.py`、`config/proxy.py`、`config/roxybrowser.py`。
+- Camoufox 注册：`/Users/lwh/projects/aBaiFreeGPT`（仅作只读行为对照）。
 - 只吸收实现逻辑，不复制任何账号、邮箱密码、Cookie、Token、验证码、代理凭据、运行数据或第三方授权信息。
 - 开源参考副本仅作只读对照；新建的临时副本使用完必须删除。项目保留的长期只读副本除非用户明确要求，不得删除。
 
-### Free 三链路参考与共享边界
+### Free 双链路参考与共享边界
 
 - Camoufox 参考项目为 `/Users/lwh/projects/aBaiFreeGPT`，当前对照提交为 `0b4b7197863d49b54875a7d0c7ef5bc0ee35aafa`，许可证为 AGPL-3.0；该副本只读，不承载 AutoPhone 运行数据。
-- protocol 和 RoxyBrowser 只能参考同级 `/Users/lwh/projects/AutoRegister`；Camoufox 只能参考同级 `/Users/lwh/projects/aBaiFreeGPT`。除这两个本地对照项目外，不再引入其他项目作为行为基准。
+- protocol 只能参考同级 `/Users/lwh/projects/AutoRegister`；Camoufox 只能参考同级 `/Users/lwh/projects/aBaiFreeGPT`。除这两个本地对照项目外，不再引入其他项目作为行为基准。
 - 对照项目只吸收代码和调用顺序；禁止复制其运行数据、账号、邮箱 provider、凭据、Cookie、Token、验证码、代理信息或第三方授权状态。
-- Free 注册驱动包括 `protocol`、`roxybrowser`、`camoufox`。三条链路共用 `${GPTPHONE_DATA_DIR}/free_register/` 下的同一个邮箱池。
-- 三条链路必须统一调用 `mac_overrides/mailbox_otp_service.py` 的邮箱 URL 解码和策略模式，包括来源解析、请求前基线、旧验证码排除、消息身份判断、时间过滤、轮询、重发和阶段隔离；浏览器驱动不得引入固定邮箱格式或另一套邮箱 provider。
-- 新注册默认优先走 passwordless 邮箱 OTP；只有实际进入并提交注册密码页时才使用固定密码 `Aa150010@150010` 并保存密码。已有账号登录、2FA 重试和换绑必须使用已保存的真实密码。
-- Session、2FA、套餐/Plus 和结构化错误使用统一业务结果契约，但协议 HTTP、Roxy Selenium/CDP、Camoufox async page 只在 transport adapter 层保持差异。
-- RoxyBrowser/Camoufox 只记录注册来源；换绑始终复用纯协议链路，不打开、连接、复用或创建浏览器 Profile。
+- Free 注册驱动仅包括 `protocol`、`camoufox`，两条链路共用 `${GPTPHONE_DATA_DIR}/free_register/` 下的同一个邮箱池。历史数据中的 `driver=roxybrowser` 只读展示为历史链路，不得再创建、启动、重试或配置该驱动，也不得调用 Roxy API、Profile 或清理逻辑。
+- 两条链路必须统一调用 `mac_overrides/mailbox_otp_service.py` 的邮箱 URL 解码和策略模式，包括来源解析、请求前基线、旧验证码排除、消息身份判断、时间过滤、轮询、重发和阶段隔离；浏览器驱动不得引入固定邮箱格式或另一套邮箱 provider。
+- 新注册默认优先走 passwordless 邮箱 OTP；只有实际进入并提交注册密码页时才使用配置中的注册密码（默认 `Aa150010150010`）并保存密码。已有账号登录、2FA 重试和换绑必须使用已保存的真实密码。
+- 注册密码和 2FA 是两个独立的可选分支，四种开关组合都必须可运行；密码分支不得为了前置判断查询 `mfa_info`，只有实际进入 2FA 分支时才读取 MFA 状态。判断账号是否有密码以真实 `password_status=enabled` 为准，`password_set_after_registration` 仅表示本次是否执行过补设操作。
+- Session、2FA、套餐/Plus 和结构化错误使用统一业务结果契约，但协议 HTTP 与 Camoufox async page 只在 transport adapter 层保持差异。
+- 注册来源只允许记录 `protocol` 或 `camoufox`；历史 Roxy 来源保留为只读兼容信息，换绑始终复用纯协议链路。
+
+## 故障排查闭环
+
+- 每次故障先用 `incident_id`、任务/批次/账号标识和时间线定位首个真实失败节点，先确认现有代码路径和参考项目调用顺序，再修改代码；不得仅凭最后一行泛化错误重复改同一处。
+- 一个根因只做一次窄范围修复：先运行对应的定向测试，再运行完整测试和 `git diff --check`。没有新增证据时不得重复提交相同修补；连续两次同一节点失败必须暂停自动改动，整理证据并询问用户是否扩大范围。
+- 真实邮箱、代理、浏览器和安全挑战只在用户明确授权的单次验证中执行；静态测试失败、网络不可用或权限不足不能伪装成真实链路成功。临时副本和临时数据目录由本次任务创建后必须在结束前删除。
 
 ## 编辑边界和数据隔离
 
 ## 日志中心与故障审计
 
-- 所有普通流程、Free protocol/RoxyBrowser/Camoufox、Free 换绑、支付和网络诊断错误都必须产生可引用的 `incident_id`（日志中心显示为 `LOG-日期-短标识`）；排查优先使用日志 ID、稳定任务/批次/账号标识和时间范围，不要求人工翻阅自由文本日志。
+- 所有普通流程、Free protocol/Camoufox（以及历史 Roxy 只读记录）、Free 换绑、支付和网络诊断错误都必须产生可引用的 `incident_id`（日志中心显示为 `LOG-日期-短标识`）；排查优先使用日志 ID、稳定任务/批次/账号标识和时间范围，不要求人工翻阅自由文本日志。
 - 新链路必须写入统一的结构化诊断事件，至少包含 `event_id`、`incident_id`、时间、链路、驱动、任务/批次、`node_code`、中文 `node_label`、结果、失败代码、可重试属性和脱敏处理建议；不得建立无法检索的私有日志格式。
 - 诊断事件只追加，不原地覆盖；重试、浏览器关闭、代理释放、清理和进程恢复不得覆盖首个真实业务失败。清理或系统错误必须作为关联事件保存。
 - 日志中心的诊断索引只保存脱敏事件和 HMAC/短指纹，不能成为普通流程与 Free 流程共享邮箱、代理、账号结果或运行状态的通道。

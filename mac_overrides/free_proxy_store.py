@@ -76,9 +76,9 @@ except ImportError:
     from free_proxy_health import is_proxy_health_failure  # type: ignore[no-redef]
 
 
-SUPPORTED_ROXY_SCHEMES = frozenset({"http", "https", "socks5", "socks5h"})
 PROXY_STATUSES = frozenset({"unknown", "available", "quarantined"})
 PROXY_ALLOCATION_MODES = frozenset({"healthy_random"})
+SUPPORTED_FREE_DRIVERS = frozenset({"protocol", "camoufox"})
 DEFAULT_PROXY_COUNTRY = "ZZ"
 DEFAULT_PROXY_GROUP = "默认组"
 SINGLE_POOL_COUNTRY = ""
@@ -126,6 +126,28 @@ def _probe_status() -> int | None:
         return int(value) if value is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def _normalize_driver(value: Any) -> str:
+    """Validate a Free driver before touching proxy-pool state.
+
+    The driver is part of the public allocation contract even though the
+    supported drivers currently share one pool.  Keeping validation in this
+    module prevents removed or unknown transports from accidentally reading,
+    probing, or leasing proxy rows through a compatibility query.
+    """
+    candidate = str(value or "protocol").strip().lower()
+    if candidate not in SUPPORTED_FREE_DRIVERS:
+        raise FreeRegisterError(
+            "free_config",
+            "校验 Free 注册链路",
+            "Free 注册链路只能选择全协议或 Camoufox",
+            retryable=False,
+            error_code="free_driver_unsupported",
+        )
+    return candidate
+
+
 PROXY_COUNTRY_PATTERN = re.compile(
     r"(?:^|[-_.])(?:region|country|res|area|dc|res_sc)-([A-Za-z]{2})(?:[-_.:]|$)",
     re.IGNORECASE,
@@ -708,14 +730,13 @@ class FreeProxyPool:
         return row.get("last_probe_ok") is False or not checked or checked + ttl <= (time.time() if now is None else now)
 
     def _eligible(self, *, country: str | None = None, group: str | None = None, driver: str = "protocol", now: float | None = None) -> list[dict[str, Any]]:
+        _normalize_driver(driver)
         current_time = time.time() if now is None else now
         rows: list[dict[str, Any]] = []
         for row in self._load():
             if not row.get("enabled"):
                 continue
             if row.get("status") == "quarantined" and not self._quarantine_expired(row, current_time):
-                continue
-            if driver == "roxybrowser" and str(row.get("scheme") or "").lower() not in SUPPORTED_ROXY_SCHEMES:
                 continue
             rows.append(row)
         return rows
@@ -728,6 +749,7 @@ class FreeProxyPool:
         passwords.  Keeping this distinction in the error makes a quarantined
         pool distinguishable from a missing pool without weakening allocation.
         """
+        _normalize_driver(driver)
         rows = self._load()
         candidate_ids = {
             str(row.get("proxy_id") or row.get("_identity") or "")
@@ -740,11 +762,7 @@ class FreeProxyPool:
             row for row in enabled
             if row.get("status") == "quarantined" and not self._quarantine_expired(row, now)
         ]
-        unsupported = [
-            row for row in enabled
-            if driver == "roxybrowser"
-            and str(row.get("scheme") or "").lower() not in SUPPORTED_ROXY_SCHEMES
-        ]
+        unsupported: list[Mapping[str, Any]] = []
         failure_nodes: list[str] = []
         for row in quarantined:
             failure = row.get("last_failure")
@@ -763,6 +781,7 @@ class FreeProxyPool:
         }
 
     def _pool_health_error(self, *, requested: int, driver: str, candidates: Iterable[Mapping[str, Any]] = ()) -> FreeRegisterError:
+        driver = _normalize_driver(driver)
         summary = self._pool_health_summary(driver=driver, candidates=candidates)
         if summary["total"] <= 0:
             message = "Free 代理池没有保存记录，请先导入代理"
@@ -806,10 +825,12 @@ class FreeProxyPool:
             return copy.deepcopy(self._load())
 
     def available(self, count: int, *, country: str | None = None, group: str | None = None, driver: str = "protocol") -> list[dict[str, Any]]:
+        driver = _normalize_driver(driver)
         with self._lock:
             return copy.deepcopy(self._eligible(country=country, group=group, driver=driver)[:max(0, int(count))])
 
     def records(self, *, country: str | None = None, group: str | None = None, driver: str = "protocol") -> list[dict[str, Any]]:
+        driver = _normalize_driver(driver)
         with self._lock:
             return copy.deepcopy(self._eligible(country=country, group=group, driver=driver))
 
@@ -886,7 +907,6 @@ class FreeProxyPool:
             # Public metadata reflects the declared scheme. Protocol
             # requests must not silently switch SOCKS5 to SOCKS5H.
             "protocol_scheme": configured_scheme,
-            "roxy_scheme": "SOCKS5" if configured_scheme in {"socks5", "socks5h"} else configured_scheme.upper() if configured_scheme in {"http", "https"} else "",
             "country": SINGLE_POOL_COUNTRY,
             "group": SINGLE_POOL_GROUP,
             "enabled": health["enabled"],
@@ -1149,6 +1169,7 @@ class FreeProxyPool:
         perform_probe: bool = True,
         health_probe_ttl_seconds: int | None = None,
     ) -> list[ProxyBinding]:
+        driver = _normalize_driver(driver)
         requested = max(0, int(count))
         if requested == 0:
             return []
@@ -1164,32 +1185,11 @@ class FreeProxyPool:
             if inline_content:
                 values = self._parse_lines(content, country=SINGLE_POOL_COUNTRY, group=SINGLE_POOL_GROUP, scheme=self.default_scheme)
             else:
-                # Read the shared healthy pool before applying the Roxy
-                # protocol capability filter.  This preserves the explicit
-                # SOCKS4 diagnostic below instead of collapsing an otherwise
-                # healthy-but-unsupported row into the generic pool-empty
-                # error.  Other drivers accept the same shared candidates.
+                # All supported drivers share the same healthy random pool.
                 values = self._eligible(driver="protocol")
             excluded = {str(value) for value in exclude_proxy_ids if str(value)}
             if excluded:
                 values = [row for row in values if str(row.get("proxy_id") or "") not in excluded]
-            if driver == "roxybrowser":
-                roxy_values = [
-                    row for row in values
-                    if str(row.get("scheme") or "").lower() in SUPPORTED_ROXY_SCHEMES
-                ]
-                if not roxy_values and values and all(
-                    str(row.get("scheme") or "").lower() == "socks4" for row in values
-                ):
-                    raise FreeRegisterError(
-                        "free_roxy_proxy", "配置 RoxyBrowser 代理",
-                        "RoxyBrowser 不支持 SOCKS4；请为 RoxyBrowser 分组提供 HTTP、HTTPS 或 SOCKS5 代理",
-                        retryable=False,
-                        error_code="free_roxy_socks4_unsupported",
-                        provider_code="unsupported_proxy_scheme",
-                        action_hint="将该分组切换为 HTTP、HTTPS、SOCKS5 或 SOCKS5H；SOCKS4 仍可用于纯协议注册",
-                    )
-                values = roxy_values
             if not values:
                 if inline_content:
                     raise FreeRegisterError(
@@ -1702,7 +1702,6 @@ __all__ = [
     "DEFAULT_PROXY_PROBE_URL",
     "DEFAULT_PROXY_COUNTRY",
     "DEFAULT_PROXY_GROUP",
-    "SUPPORTED_ROXY_SCHEMES",
     "FreeProxyLease",
     "FreeProxyPool",
     "infer_country",

@@ -41,8 +41,8 @@ def save_free_config_bundle(
         "proxy_imported": proxy_imported,
     }
     # The Free page has one unified save action. Return the persisted pool on
-    # every save so changing only the driver or Roxy workspace cannot make the
-    # already-saved proxy table disappear from the page.
+    # every save so changing only the driver cannot make the already-saved
+    # proxy table disappear from the page.
     public_proxies = getattr(getattr(manager, "proxies", None), "public", None)
     if callable(public_proxies):
         payload["proxies"] = public_proxies()

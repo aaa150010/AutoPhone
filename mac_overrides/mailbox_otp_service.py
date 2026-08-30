@@ -246,6 +246,12 @@ class MailboxHttpTransport:
         current = str(url)
         origin = self._origin(current)
         for _redirect in range(6):
+            if self._deadline_monotonic is not None and self._deadline_monotonic <= self.monotonic_fn():
+                raise MailboxOtpError(
+                    "mailbox_timeout",
+                    "邮箱取件请求已达到本轮时间预算",
+                    retryable=True,
+                )
             response = self.session.get(current, **dict(kwargs))
             status = int(getattr(response, "status_code", 0) or 0)
             if status not in {301, 302, 303, 307, 308}:
@@ -316,7 +322,17 @@ class MailboxHttpTransport:
                         max_attempts=total_attempts,
                         duration_ms=duration_ms,
                     )
-                    self.sleep_fn(self.policy.backoff_seconds * attempt)
+                    delay = self.policy.backoff_seconds * attempt
+                    if self._deadline_monotonic is not None:
+                        remaining = self._deadline_monotonic - self.monotonic_fn()
+                        if remaining <= 0:
+                            raise MailboxOtpError(
+                                "mailbox_timeout",
+                                "邮箱取件请求已达到本轮时间预算",
+                                retryable=True,
+                            )
+                        delay = min(delay, remaining)
+                    self.sleep_fn(max(0.0, delay))
                     continue
                 self.last_error_code = "" if 200 <= status < 300 else "mailbox_http_error"
                 self._event(
@@ -349,7 +365,13 @@ class MailboxHttpTransport:
                 )
                 if attempt >= total_attempts:
                     break
-                self.sleep_fn(self.policy.backoff_seconds * attempt)
+                delay = self.policy.backoff_seconds * attempt
+                if self._deadline_monotonic is not None:
+                    remaining = self._deadline_monotonic - self.monotonic_fn()
+                    if remaining <= 0:
+                        break
+                    delay = min(delay, remaining)
+                self.sleep_fn(max(0.0, delay))
         assert last_error is not None
         raise MailboxUrlError(last_error.code, str(last_error)) from last_error
 
@@ -660,6 +682,7 @@ class MailboxOtpService:
         *,
         force_snapshot: bool = False,
         notify_stage: bool = True,
+        deadline_monotonic: float | None = None,
     ) -> None:
         """Start an OTP request, optionally taking a fresh mailbox baseline.
 
@@ -692,6 +715,8 @@ class MailboxOtpService:
                 # registration worker indefinitely before the OTP request
                 # even starts.
                 baseline_deadline = self.monotonic_fn() + self.timeout_seconds
+                if deadline_monotonic is not None:
+                    baseline_deadline = min(baseline_deadline, float(deadline_monotonic))
                 self._scan_with_deadline(baseline_deadline, self.state.snapshot)
                 diagnostic = self.diagnostic()
                 self._log(
@@ -760,14 +785,21 @@ class MailboxOtpService:
         resend_fn: Callable[[], None] | None = None,
         resend_after_seconds: float = 12.0,
         stop_requested: Callable[[], bool] | None = None,
+        deadline_monotonic: float | None = None,
     ) -> str:
         self._stage(stage_code)
         stage_key = str(stage_code or self.current_stage or "email_code_waiting")
         used_codes = self.used_codes_by_stage.setdefault(stage_key, set())
         used_identities = self.used_identities_by_stage.setdefault(stage_key, set())
         code_identities = self.used_code_identities_by_stage.setdefault(stage_key, {})
+        requested_deadline = None
+        if deadline_monotonic is not None:
+            try:
+                requested_deadline = float(deadline_monotonic)
+            except (TypeError, ValueError):
+                requested_deadline = None
         if not self.state.active:
-            self.prepare(stage_code)
+            self.prepare(stage_code, deadline_monotonic=requested_deadline)
         maximum = max(1, int(self.timeout_seconds / self.poll_interval_seconds))
         # A 2FA re-authentication must never submit a code that existed before
         # its own request. Registration and existing-login phases retain the
@@ -779,6 +811,15 @@ class MailboxOtpService:
         )
         started = self.monotonic_fn()
         deadline = started + self.timeout_seconds
+        if requested_deadline is not None:
+            deadline = min(deadline, requested_deadline)
+        if deadline <= started:
+            self.state.finish_request()
+            raise MailboxOtpError(
+                "mailbox_code_timeout",
+                "邮箱验证码等待已达到调用方时间预算",
+                retryable=True,
+            )
         resend_at = started + max(3.0, min(float(resend_after_seconds), self.timeout_seconds / 2))
         resend_attempted = False
         last_error: MailboxOtpError | None = None
@@ -887,6 +928,14 @@ class MailboxOtpService:
                     self.sleep_fn(delay)
 
         fallback_started = self.monotonic_fn()
+        if callable(stop_requested) and bool(stop_requested()):
+            self.state.finish_request()
+            raise MailboxOtpError(
+                "mailbox_wait_stopped",
+                "邮箱验证码轮询已按任务停止请求中断",
+                retryable=False,
+            )
+        fallback_timing_outcome = "success"
         try:
             # Preserve the existing final-baseline fallback, but give it one
             # short bounded request window instead of allowing a fresh full
@@ -895,16 +944,31 @@ class MailboxOtpService:
                 5.0,
                 max(3.0, float(self.policy.request_timeout_seconds)),
             )
-            fallback = self._scan_with_deadline(
-                fallback_deadline,
-                self.state.final_baseline_fallback,
-            )
+            if requested_deadline is not None:
+                fallback_deadline = min(fallback_deadline, requested_deadline)
+            if fallback_deadline <= self.monotonic_fn():
+                fallback = None
+                fallback_timing_outcome = "timeout"
+                last_error = MailboxOtpError(
+                    "mailbox_timeout",
+                    "邮箱取件请求已达到本轮时间预算",
+                    retryable=True,
+                )
+            else:
+                fallback = self._scan_with_deadline(
+                    fallback_deadline,
+                    self.state.final_baseline_fallback,
+                )
         except MailboxUrlError as exc:
             fallback = None
             last_error = mailbox_error_from_url_error(exc, self.diagnostic())
             self._timing("mailbox_final_fallback", (self.monotonic_fn() - fallback_started) * 1000.0, "error")
         else:
-            self._timing("mailbox_final_fallback", (self.monotonic_fn() - fallback_started) * 1000.0, "success")
+            self._timing(
+                "mailbox_final_fallback",
+                (self.monotonic_fn() - fallback_started) * 1000.0,
+                fallback_timing_outcome,
+            )
         if fallback is not None:
             code = str(fallback.code or "").strip()
             identity = str(fallback.identity or "").strip()

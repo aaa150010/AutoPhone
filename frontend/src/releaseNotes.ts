@@ -13,11 +13,19 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.89',
-  freeRuntimeVersion: '1.6.89',
-  title: '邮箱解析失败审计与人工验证码入口统一',
+  version: '1.6.91',
+  freeRuntimeVersion: '1.6.91',
+  title: 'Free 密码配置与安全设置独立开关',
   releasedAt: '2026-08-30',
   sections: [
+    {
+      title: 'Free 注册密码配置',
+      usage: 'Free 设置页新增注册账号密码配置，默认使用 Aa150010150010；注册页密码和后续补设密码共用该配置，已保存值仅以掩码显示。',
+    },
+    {
+      title: 'Free 链路收敛与安全设置独立开关',
+      usage: 'Free 注册新任务仅保留全协议和 Camoufox；历史 RoxyBrowser 记录继续只读展示并自动按协议链路兼容读取。密码和 2FA 可分别启用，每个启用的设置都会独立重新获取邮箱验证码；任务列表只显示共享代理池状态，不展示逐条代理地址或复制入口。',
+    },
     {
       title: '邮箱解析失败审计与人工验证码入口统一',
       usage: '普通流程和 Free 三条链路在自动取码未识别后会保存脱敏解析样本并生成可引用的“邮箱解析未识别”日志；人工输入成功不会覆盖原始解析失败。Free 注册表在自动等待时显示倒计时，超时后自动出现并聚焦验证码输入框，不再需要点击表格或切换人工输入。',

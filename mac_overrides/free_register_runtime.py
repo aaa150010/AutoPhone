@@ -21,6 +21,7 @@ try:
         exception_to_failure,
         has_account_result,
         merge_account_result_fields,
+        normalize_password_result,
         sanitize_failure_text,
         sanitize_log_message,
         sanitize_proxy_attempts,
@@ -42,12 +43,11 @@ try:
         random_display_name,
         safe_log_message as _safe_log_message,
     )
+    from .free_account_service import password_retry_allowed
     from .free_runtime_info import runtime_info
     from .free_timing import FREE_TIMING_SUBSTEPS
-    from .free_register_store import FreeMailboxPool, FreeProxyPool, FreeTaskStore
+    from .free_register_store import FreeMailboxPool, FreeProxyPool, FreeTaskStore, _account_material_line
     from .free_register_scheduler import FreeRegisterSchedulerMixin
-    from .free_roxy_runtime import RoxyBrowserClient, RoxyRegistrationRunner
-    from .free_roxy_lifecycle import RoxyCleanupStore, RoxyLifecycle
     from .free_log_runtime import FreeLogStore
     from .free_live_check import build_free_live_check_service
     from .free_plan_check import build_free_plan_check_service
@@ -57,7 +57,6 @@ try:
         annotate_camoufox_debug_session,
         camoufox_debug_state,
         close_camoufox_debug_browsers,
-        shutdown_camoufox_pools,
     )
     from .free_notifications import FreeBatchNotificationAdapter
     from .free_priority_executor import PriorityExecutor
@@ -70,6 +69,7 @@ except ImportError:
         exception_to_failure,
         has_account_result,
         merge_account_result_fields,
+        normalize_password_result,
         sanitize_failure_text,
         sanitize_log_message,
         sanitize_proxy_attempts,
@@ -83,12 +83,11 @@ except ImportError:
         proxy_transport_value,
         random_birthdate, random_display_name, safe_log_message as _safe_log_message,
     )
+    from free_account_service import password_retry_allowed  # type: ignore[no-redef]
     from free_runtime_info import runtime_info  # type: ignore[no-redef]
     from free_timing import FREE_TIMING_SUBSTEPS  # type: ignore[no-redef]
-    from free_register_store import FreeMailboxPool, FreeProxyPool, FreeTaskStore  # type: ignore[no-redef]
+    from free_register_store import FreeMailboxPool, FreeProxyPool, FreeTaskStore, _account_material_line  # type: ignore[no-redef]
     from free_register_scheduler import FreeRegisterSchedulerMixin  # type: ignore[no-redef]
-    from free_roxy_runtime import RoxyBrowserClient, RoxyRegistrationRunner  # type: ignore[no-redef]
-    from free_roxy_lifecycle import RoxyCleanupStore, RoxyLifecycle  # type: ignore[no-redef]
     from free_log_runtime import FreeLogStore  # type: ignore[no-redef]
     from free_live_check import build_free_live_check_service  # type: ignore[no-redef]
     from free_plan_check import build_free_plan_check_service  # type: ignore[no-redef]
@@ -98,7 +97,6 @@ except ImportError:
         annotate_camoufox_debug_session,
         camoufox_debug_state,
         close_camoufox_debug_browsers,
-        shutdown_camoufox_pools,
     )
     from free_notifications import FreeBatchNotificationAdapter  # type: ignore[no-redef]
     from free_priority_executor import PriorityExecutor  # type: ignore[no-redef]
@@ -111,14 +109,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         "free_proxy_binding", "free_proxy_lease",
         "proxy_protocol_mismatch", "proxy_auth_rejected", "proxy_dns_failed",
         "proxy_connect_timeout", "proxy_connection_reset", "proxy_tls_certificate_error", "proxy_connect_failed",
-        "free_roxy_api",
-        "free_roxy_window_quota_exhausted",
-        "free_roxy_create",
-        "free_roxy_open",
-        "free_roxy_connect",
-        "free_roxy_signup_bootstrap",
-        "free_roxy_signup_email", "free_roxy_signup_email_submit", "free_camoufox_dependency", "oauth_create_node", "free_proxy_geo", "free_protocol_preflight", "free_protocol_warmup",
-        "roxy_circuit_open",
+        "free_camoufox_dependency", "oauth_create_node", "free_proxy_geo", "free_protocol_preflight", "free_protocol_warmup",
     })
 
     def __init__(self, data_dir: str | Path, *, progress: Any = None, log_fn: Callable[[str, str], None] | None = None, runner: Callable[..., Mapping[str, Any]] | None = None, proxy_probe: Callable[[str, str], str] | None = None, proxy_chatgpt_probe: Callable[[str], int] | None = None, diagnostic_store: Any = None, manual_broker: Any = None, notification_config_getter: Callable[[], Any] | None = None, config_provider: Callable[[], Mapping[str, Any]] | None = None) -> None:
@@ -140,16 +131,11 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         self._stop = threading.Event()
         self._executor: PriorityExecutor | None = None
         self._futures: set[Future[Any]] = set()
-        # A retry can deliberately use a different transport (for example a
-        # Roxy-origin account is retried through the protocol adapter). Keep
-        # the driver on each Future so terminal cleanup never follows the
+        # Keep the driver on each Future so terminal cleanup never follows the
         # previous batch's global configuration.
         self._future_drivers: dict[Future[Any], str] = {}
         self._tasks: dict[str, dict[str, Any]] = self.task_store.load()
         self._batch_id = ""
-        self._roxy_failures = 0
-        self._roxy_circuit_open = False
-        self._roxy_circuit_opened_at = 0.0
         self._circuit_stop_requested = False
         self._user_stop_requested = False
         self._last_config: dict[str, Any] = {}
@@ -161,7 +147,6 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         self._timing_checkpoint_mono: dict[str, float] = {}
         self._manual_generations: dict[str, int] = {}
         self._retry_leases: dict[str, str] = {}
-        self.roxy_cleanup_store = RoxyCleanupStore(self.data_dir / "roxy_cleanup.json")
         self._heartbeat_stop = threading.Event()
         self._heartbeat_thread: threading.Thread | None = None
         self._reconcile_account_results_from_history()
@@ -838,6 +823,19 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 if parent_id and parent_id in self._tasks:
                     parent = self._tasks[parent_id]
                     child_status = str(task.get("status") or "").strip()
+                    # A continuation is represented as a child task, while
+                    # the original registration row remains visible in the
+                    # task table.  Carry the latest account result back to
+                    # that parent so a successful password/2FA retry cannot
+                    # leave the original row showing stale capabilities.
+                    if child_status in {"success", "partial_success", "twofa_pending"}:
+                        child_result = task.get("result")
+                        parent_result = parent.get("result")
+                        if isinstance(child_result, Mapping):
+                            parent["result"] = merge_account_result_fields(
+                                parent_result if isinstance(parent_result, Mapping) else {},
+                                child_result,
+                            )
                     parent.update({
                         "retry_task_id": str(task.get("task_id") or ""),
                         "retry_status": child_status,
@@ -864,6 +862,20 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
 
     def _public_task(self, task: Mapping[str, Any]) -> dict[str, Any]:
         result = task.get("result") if isinstance(task.get("result"), Mapping) else {}
+        # The task journal and mailbox result file are persisted separately.
+        # A continuation can finish after the original task snapshot was
+        # written (or before a process restart), so use the durable account
+        # result as a fill/override source for the public capability view.
+        row_id = str(task.get("row_id") or "").strip()
+        if row_id:
+            try:
+                durable_result = self.pool.result(row_id)
+            except Exception:
+                durable_result = {}
+            if isinstance(durable_result, Mapping) and durable_result:
+                result = merge_account_result_fields(result, durable_result)
+        if result:
+            result = normalize_password_result(result)
         public = {key: copy.deepcopy(task[key]) for key in ("task_id", "incident_id", "ordinal", "slot_id", "slot_index", "concurrency_limit", "status", "created_at", "updated_at", "batch_id", "run_mode", "driver", "email", "row_id", "stage", "mailbox_verification", "proxy_masked", "proxy_fingerprint", "profile_summary", "proxy_id", "proxy_scheme", "proxy_effective_scheme", "proxy_country", "proxy_group", "proxy_attempts", "cleanup_status", "retry_of", "retry_attempt", "retry_task_id", "retry_status", "retry_resolved", "retry_updated_at") if key in task}
         verification = public.get("mailbox_verification")
         if isinstance(verification, Mapping):
@@ -907,7 +919,13 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         public["stage_label"] = FREE_STAGE_LABELS.get(str(public.get("stage") or ""), str(public.get("stage") or ""))
         public["result"] = {
             key: copy.deepcopy(result[key])
-            for key in ("account_flow", "plan_type", "subscription_plan", "has_active_subscription", "plus_trial_eligible", "eligible_campaign_id", "plan_check_status", "plan_check_task_id", "plan_checked_at", "plan_error_code", "plan_http_status", "plan_retry_after_until", "twofa_status", "twofa_error", "has_access_token")
+            for key in (
+                "account_flow", "plan_type", "subscription_plan", "has_active_subscription",
+                "plus_trial_eligible", "eligible_campaign_id", "plan_check_status",
+                "plan_check_task_id", "plan_checked_at", "plan_error_code", "plan_http_status",
+                "plan_retry_after_until", "password_status", "password_set_after_registration",
+                "twofa_status", "twofa_error", "has_access_token",
+            )
             if key in result
         }
         public["result"]["has_access_token"] = bool(result.get("access_token"))
@@ -987,32 +1005,6 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
 
     def public_logs(self, task_id: str = "") -> list[dict[str, Any]]:
         return self.log_store.snapshot(task_id)
-
-    def recover_roxy_cleanup(self, config: Mapping[str, Any]) -> dict[str, int]:
-        """Explicitly retry owned Roxy cleanup records.
-
-        This method performs network calls only when a caller explicitly
-        requests recovery (for example a Free preflight/cleanup button).
-        Unknown/unmarked profiles are never scanned for deletion.
-        """
-        roxy = dict(config.get("roxybrowser") or {})
-        roxy["lifecycle_store_path"] = str(self.data_dir / "roxy_cleanup.json")
-        client = RoxyBrowserClient(roxy, log_fn=self._log)
-        lifecycle = RoxyLifecycle(
-            client,
-            self.roxy_cleanup_store,
-            log_fn=self._log,
-            verify_timeout=float(roxy.get("cleanup_verify_timeout") or 8),
-            verify_interval=float(roxy.get("cleanup_verify_interval") or 0.25),
-            retries=int(roxy.get("api_retries") or 3),
-        )
-        intents = lifecycle.recover_creation_intents(limit=100)
-        pending = lifecycle.recover_pending(limit=100)
-        return {
-            "examined": int(intents.get("examined") or 0) + int(pending.get("examined") or 0),
-            "recovered": int(intents.get("recovered") or 0) + int(pending.get("recovered") or 0),
-            "failed": int(intents.get("failed") or 0) + int(pending.get("failed") or 0),
-        }
 
     def delete_tasks(self, task_ids: Sequence[str]) -> int:
         selected = {str(task_id or "").strip() for task_id in task_ids}
@@ -1112,13 +1104,6 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     "concurrency": max(1, min(int(self._last_config.get("concurrency") or self._last_config.get("free_concurrency") or 3), 16)),
                     "active_slots": sum(1 for task in tasks if task.get("status") == "running"),
                     "queued_slots": sum(1 for task in tasks if task.get("status") == "queued"),
-                    "roxy_circuit_open": bool(self._roxy_circuit_open),
-                    "roxy_failures": int(self._roxy_failures),
-                    "roxy_circuit_opened_at": self._roxy_circuit_opened_at or None,
-                },
-                "roxy_cleanup": {
-                    "pending": len(self.roxy_cleanup_store.pending()),
-                    "records": len(self.roxy_cleanup_store.records()),
                 },
                 "camoufox_debug": camoufox_debug,
                 "summary": {
@@ -1146,7 +1131,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 config = self._last_config
         if not config:
             config = self._last_config
-        return camoufox_debug_state(config)
+        return camoufox_debug_state(self._camoufox_state_config(config))
 
     def close_camoufox_debug(self, session_id: str = "") -> dict[str, Any]:
         """Close one retained debug session or all retained sessions."""
@@ -1183,12 +1168,37 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     retryable=False,
                     error_code="camoufox_debug_session_not_found",
                 )
-        result = close_camoufox_debug_browsers(normalized, config=config)
+        result = close_camoufox_debug_browsers(
+            normalized,
+            config=self._camoufox_state_config(config),
+        )
         result["state"] = self.camoufox_debug_state()
         return result
 
     def _available_count(self) -> int:
         return len(self.pool.available(10_000))
+
+    def _camoufox_state_config(self, config: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        """Build the runtime-only Camoufox config used for pool identity.
+
+        The runner adds its artifact directory to the low-level browser config
+        before creating a pool.  State and cleanup requests used to calculate a
+        key from the persisted config alone, so every idle state poll could
+        mistake the live pool for an obsolete one and shut it down.  Keep this
+        private path out of persisted/public config while using the same value
+        for admission, state and cleanup.
+        """
+        value = copy.deepcopy(dict(config or {}))
+        browser = value.get("camoufox")
+        if isinstance(browser, Mapping):
+            browser_value = copy.deepcopy(dict(browser))
+            browser_value.setdefault("_debug_artifact_dir", str(self.data_dir / "camoufox_debug"))
+            value["camoufox"] = browser_value
+        else:
+            value["camoufox"] = {
+                "_debug_artifact_dir": str(self.data_dir / "camoufox_debug"),
+            }
+        return value
 
     def import_mailboxes(
         self,
@@ -1357,25 +1367,12 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 raise FreeRegisterError(
                     "free_run_preflight",
                     "预检 Free 注册",
-                    "Free 注册任务运行中，暂不能执行会回收 Roxy Profile 的批次预检",
+                    "Free 注册任务运行中，暂不能执行批次预检",
                     retryable=False,
                 )
         driver = str(config.get("driver") or "protocol").strip().lower()
-        if driver not in {"protocol", "roxybrowser", "camoufox"}:
+        if driver not in {"protocol", "camoufox"}:
             raise FreeRegisterError("free_config", "Free 注册预检", "Free 注册链路无效", retryable=False)
-        cleanup_result = {"examined": 0, "recovered": 0, "failed": 0}
-        if driver == "roxybrowser" and not self._custom_runner:
-            # Re-check while holding the same manager lock immediately before
-            # the recovery scan; a start request cannot race this cleanup.
-            with self._lock:
-                if self.public_state().get("running"):
-                    raise FreeRegisterError(
-                        "free_run_preflight",
-                        "预检 Free 注册",
-                        "Free 注册任务运行中，暂不能执行 Roxy Profile 回收预检",
-                        retryable=False,
-                    )
-                cleanup_result = self.recover_roxy_cleanup(config)
         protocol_result = {}
         if driver == "protocol" and not self._custom_runner:
             protocol_result = self.protocol_preflight(config)
@@ -1402,10 +1399,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             perform_probe=False,
             health_probe_ttl_seconds=int(config["proxy_health_probe_ttl_seconds"]) if "proxy_health_probe_ttl_seconds" in config else 0,
         )
-        roxy_result = {"driver": driver}
         camoufox_result = {"driver": driver}
-        if driver == "roxybrowser" and not self._custom_runner:
-            roxy_result = RoxyRegistrationRunner.preflight(config)
         if driver == "camoufox" and not self._custom_runner:
             camoufox_result = CamoufoxRegistrationRunner.preflight(config)
         return {
@@ -1415,14 +1409,19 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             "mailboxes": available,
             "proxies": len(bindings),
             "protocol": protocol_result,
-            "roxy": roxy_result,
             "camoufox": camoufox_result,
-            "roxy_cleanup": cleanup_result,
             "proxy_selection": {"country": "", "group": ""},
         }
 
     def preflight_proxies(self, *, proxy_content: str = "", probe_url: str = "https://chatgpt.com/", driver: str = "protocol", country: str | None = None, group: str | None = None, scheme: str | None = None, tls_verify: bool = True, tls_compat_fallback: bool = True, socks5_dns_mode: str = "declared", layered_probe: bool = False) -> dict[str, Any]:
         """Probe the isolated Free proxy pool without consuming mailboxes or tasks."""
+        normalized_driver = str(driver or "protocol").strip().lower()
+        if normalized_driver not in {"protocol", "camoufox"}:
+            raise FreeRegisterError(
+                "free_config", "Free 代理预检", "Free 注册链路只能选择全协议或 Camoufox", retryable=False,
+                error_code="free_driver_unsupported",
+            )
+        driver = normalized_driver
         self.proxies.configure_policy(
             tls_verify=tls_verify,
             tls_compat_fallback=tls_compat_fallback,
@@ -1744,7 +1743,11 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
 
     def start(self, config: Mapping[str, Any], *, pool_content: str = "", proxy_content: str = "", row_ids: Sequence[str] = ()) -> dict[str, Any]:
         normalized_config = dict(config)
-        normalized_config["auto_set_2fa"] = True
+        # Preserve explicit security-step choices at the manager boundary.
+        # Older code forced 2FA on here, which made an explicit ``false`` from
+        # the UI ineffective and also caused password-only runs to enter MFA.
+        normalized_config.setdefault("auto_set_password", False)
+        normalized_config.setdefault("auto_set_2fa", True)
         # HTTP callers normally pass a FreeConfigStore-normalized snapshot.
         # Keep direct manager integrations on the same production defaults
         # without changing explicit protocol or DNS choices.
@@ -1752,6 +1755,17 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             normalized_config["proxy_default_scheme"] = "socks5"
         if not str(normalized_config.get("proxy_socks5_dns_mode") or "").strip():
             normalized_config["proxy_socks5_dns_mode"] = "remote"
+        # Keep the manager boundary strict even when a caller bypasses the
+        # HTTP config store. Legacy browser tasks remain readable from history,
+        # but a new start request must never reserve rows or touch a removed
+        # transport.
+        requested_driver = str(normalized_config.get("driver") or "protocol").strip().lower()
+        if requested_driver not in {"protocol", "camoufox"}:
+            raise FreeRegisterError(
+                "free_config", "启动 Free 注册", "Free 注册链路只能选择全协议或 Camoufox", retryable=False,
+                error_code="free_driver_unsupported",
+            )
+        normalized_config["driver"] = requested_driver
         with self._lock:
             # Keep the production manager boundary aligned with the Free
             # contract even for callers that bypass the HTTP config store.
@@ -1775,8 +1789,8 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
     ) -> dict[str, Any]:
         """Start a batch while ``start`` still owns the manager lock.
 
-        Preflight can make a local Roxy API call, but the reservation and
-        executor creation remain one transaction.  Releasing the lock between
+        The reservation and executor creation remain one transaction. Releasing
+        the lock between
         the running check and mailbox/proxy reservation allowed two concurrent
         start requests to both pass the check.
         """
@@ -1784,14 +1798,11 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         # mailbox/proxy rows. Custom runners are test/integration adapters
         # and intentionally retain their existing contract.
         requested_driver = str(config.get("driver") or "protocol").strip().lower()
-        cleanup_result = {"examined": 0, "recovered": 0, "failed": 0}
-        if requested_driver == "roxybrowser" and not self._custom_runner:
-            cleanup_result = self.recover_roxy_cleanup(config)
-            if cleanup_result.get("failed"):
-                self._log(
-                    f"[RoxyBrowser/free_roxy_cleanup] 启动前仍有 {cleanup_result['failed']} 个 Profile 待清理，继续启动会保留队列",
-                    "warn",
-                )
+        if requested_driver not in {"protocol", "camoufox"}:
+            raise FreeRegisterError(
+                "free_config", "启动 Free 注册", "Free 注册链路只能选择全协议或 Camoufox", retryable=False,
+                error_code="free_driver_unsupported",
+            )
         if requested_driver == "protocol" and not self._custom_runner:
             self.protocol_preflight(config)
         if pool_content.strip():
@@ -1879,10 +1890,8 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             if len(rows) < target_count:
                 raise FreeRegisterError("free_pool_preflight", "Free 邮箱池预检", f"Free 邮箱数量不足：需要 {target_count} 条，当前只有 {len(rows)} 条", retryable=False)
             driver = str(config.get("driver") or "protocol").strip().lower()
-            if driver not in {"protocol", "roxybrowser", "camoufox"}:
+            if driver not in {"protocol", "camoufox"}:
                 raise FreeRegisterError("free_config", "启动 Free 注册", "Free 注册链路无效", retryable=False)
-            if driver == "roxybrowser" and not self._custom_runner:
-                RoxyRegistrationRunner.preflight(config)
             if driver == "camoufox" and not self._custom_runner:
                 CamoufoxRegistrationRunner.preflight(config)
             # Import pasted proxies only after mailbox/result guards pass.  A
@@ -1945,9 +1954,6 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 self._save_tasks_safely("启动失败回滚")
                 raise
             self._batch_id = batch_id
-            self._roxy_failures = 0
-            self._roxy_circuit_open = False
-            self._roxy_circuit_opened_at = 0.0
             self._circuit_stop_requested = False
             self._user_stop_requested = False
             self._stop.clear()
@@ -1970,62 +1976,34 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 "batch_id": batch_id,
                 "tasks": self.public_tasks(),
                 "state": self.public_state(),
-                "roxy_cleanup": cleanup_result,
             }
 
     def _future_done(self, future: Future[Any]) -> None:
-        cleanup_config: dict[str, Any] | None = None
-        cleanup_camoufox = False
         executor: PriorityExecutor | None = None
         completed_batch_id = ""
         with self._lock:
             if future not in self._futures:
                 return
             executor = self._executor
-            driver = str(self._future_drivers.get(future) or self._last_config.get("driver") or "").strip().lower()
-            # Remove the completed Future before deriving the remaining set.
-            # Done callbacks can run concurrently; observing the old set first
-            # lets two final callbacks both skip driver/pool cleanup.
+            # Remove the completed Future while holding the manager lock so
+            # concurrent completion callbacks cannot clean up the same task
+            # twice.
             self._futures.discard(future)
             self._future_drivers.pop(future, None)
             is_last = not self._futures
-            # Browser resources are shared by tasks of the same transport,
-            # while protocol retries may coexist in the same executor.  A
-            # Roxy/Camoufox cleanup must therefore wait only for the final
-            # Future using that driver, not for an unrelated protocol Future.
-            remaining_drivers = [
-                str(value or "").strip().lower()
-                for candidate, value in self._future_drivers.items()
-                if candidate in self._futures
-            ]
-            if not self._custom_runner and driver == "roxybrowser" and "roxybrowser" not in remaining_drivers:
-                cleanup_config = copy.deepcopy(self._last_config)
-            elif not self._custom_runner and driver == "camoufox" and "camoufox" not in remaining_drivers:
-                cleanup_camoufox = True
             if is_last:
                 self._heartbeat_stop.set()
             # Completion callbacks must always continue into Future and
             # executor cleanup even when the task store is temporarily
             # unavailable.
             self._save_tasks_safely("任务完成回调")
-        if cleanup_config is not None:
-            try:
-                result = self.recover_roxy_cleanup(cleanup_config)
-                if result.get("examined"):
-                    self._log(
-                        f"[RoxyBrowser/free_roxy_cleanup] 批次结束回收：检查={result['examined']}，已释放={result['recovered']}，待重试={result['failed']}",
-                        "info" if not result.get("failed") else "warn",
-                    )
-            except Exception as exc:
-                self._log(
-                    f"[RoxyBrowser/free_roxy_cleanup] 批次结束回收失败（{type(exc).__name__}）",
-                    "warn",
-                )
-        if cleanup_camoufox:
-            try:
-                shutdown_camoufox_pools()
-            except Exception as exc:
-                self._log(f"[Camoufox/free_camoufox_launch] 批次结束回收浏览器池失败（{type(exc).__name__}）", "warn")
+        # Keep the shared Camoufox pool alive across batches.  Shutting it down
+        # from this callback races a new start request: the next worker can
+        # acquire the pool after the callback releases ``self._lock`` but
+        # before the browser thread finishes closing, yielding a stale closed
+        # pool (``camoufox_pool_shutdown_pending``) or a disconnected browser.
+        # Explicit debug/config cleanup and process-exit shutdown still release
+        # idle pools; normal batch completion only releases task resources.
         with self._lock:
             if not self._futures and self._executor is executor and executor is not None:
                 completed_batch_id = str(self._batch_id or "")
@@ -2192,8 +2170,18 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         config: Mapping[str, Any],
         *,
         retry_node: str,
-        twofa_retry: bool,
+        twofa_retry: bool = False,
+        password_retry: bool = False,
     ) -> dict[str, Any]:
+        if twofa_retry and password_retry:
+            raise FreeRegisterError(
+                "free_retry",
+                "重试 Free 任务",
+                "2FA 重试和密码重试不能同时提交",
+                retryable=False,
+                error_code="free_retry_modes_conflict",
+            )
+        continuation = bool(twofa_retry or password_retry)
         row_id = str(original.get("row_id") or "").strip()
         if not row_id:
             raise FreeRegisterError("free_rerun", "重跑 Free 账号", "任务没有绑定 Free 邮箱", retryable=False)
@@ -2207,10 +2195,37 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 self._retry_leases.pop(retry_key, None)
             row_state = self.pool._row_state(row_id)
             pool_status = str(row_state.get("status") or "")
+            # Password continuation is a post-registration operation. Read the
+            # durable result before touching mailbox/proxy state so a stale
+            # task snapshot cannot accidentally replay signup.
+            saved_result: dict[str, Any] = {}
+            if password_retry:
+                stored = self.pool.result(row_id)
+                if isinstance(stored, Mapping):
+                    saved_result = copy.deepcopy(dict(stored))
+                snapshot_result = original.get("result")
+                if isinstance(snapshot_result, Mapping):
+                    saved_result = merge_account_result_fields(snapshot_result, saved_result)
+                if not str(saved_result.get("access_token") or "").strip():
+                    raise FreeRegisterError(
+                        "free_password_retry",
+                        "重试 Free 账号密码设置",
+                        "原账号没有可用 access token",
+                        retryable=False,
+                        error_code="free_password_retry_token_missing",
+                    )
+                if not password_retry_allowed(saved_result):
+                    raise FreeRegisterError(
+                        "free_password_retry",
+                        "重试 Free 账号密码设置",
+                        "该账号当前没有可补设的密码状态",
+                        retryable=False,
+                        error_code="free_password_retry_not_pending",
+                    )
             # This must run before changing a pending row back to available or
             # reserving it again.  Two-factor retries are continuations of an
             # existing account and intentionally bypass this registration guard.
-            if not twofa_retry and self._registration_account_exists(row_id, original):
+            if not continuation and self._registration_account_exists(row_id, original):
                 raise FreeRegisterError(
                     "free_rerun",
                     "重跑 Free 账号",
@@ -2219,33 +2234,45 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     error_code="free_rerun_account_result_exists",
                     action_hint="使用“重试 2FA”、已有账号登录或测活；不要重复提交注册邮箱",
                 )
-            if not twofa_retry:
+            if not continuation:
                 if pool_status == "pending_rerun":
                     self.pool.update(row_id, status="available", batch_id="", stage="", error="", reusable_after_failure=False)
                     pool_status = "available"
                 if pool_status != "available" or self.pool.entry(row_id) is None:
                     raise FreeRegisterError("free_rerun", "重跑 Free 账号", "该账号当前不可重跑，请先在 Free 邮箱中心恢复为可用", retryable=False, error_code="free_rerun_mailbox_unavailable")
-            else:
+            elif twofa_retry:
                 if pool_status not in {"twofa_pending", "available", "pending_rerun"}:
                     raise FreeRegisterError("free_twofa_retry", "重试 Free 账号 2FA", "该账号当前没有可重试的 2FA 状态", retryable=False)
+            else:
+                # A password continuation may follow a partial 2FA result or a
+                # legacy pending-rerun row. It must never require the mailbox to
+                # be reset to ``available`` and must reject an active task.
+                if pool_status in {"queued", "running", "reserved"}:
+                    raise FreeRegisterError(
+                        "free_password_retry",
+                        "重试 Free 账号密码设置",
+                        "该账号当前已有续跑任务",
+                        retryable=False,
+                        error_code="free_password_retry_active",
+                    )
 
             active_batch = bool(self._executor and self._futures)
             batch_id = str(self._batch_id or "") if active_batch else f"free-retry-{int(time.time())}-{secrets.token_hex(4)}"
             driver = str(original.get("driver") or config.get("driver") or "protocol").strip().lower()
             # 2FA is a continuation of an already-created account.  Keep it
-            # on the AutoRegister-aligned protocol path for both browser
-            # origins: passwordless registrations have a token but no saved
-            # signup password, and reopening a Camoufox/Roxy signup page
+            # on the AutoRegister-aligned protocol path for browser origins:
+            # passwordless registrations have a token but no saved signup
+            # password, and reopening a Camoufox signup page
             # would either require a nonexistent password or replay signup.
-            if twofa_retry and driver in {"camoufox", "roxybrowser"}:
+            if twofa_retry and driver == "camoufox":
                 driver = "protocol"
-            if driver not in {"protocol", "roxybrowser", "camoufox"}:
+            if driver not in {"protocol", "camoufox"}:
                 raise FreeRegisterError("free_rerun", "重跑 Free 账号", "Free 注册链路无效", retryable=False)
             mailbox = self.pool.entry(row_id)
             if mailbox is None:
                 raise FreeRegisterError("free_rerun", "重跑 Free 账号", "Free 邮箱记录不存在", retryable=False)
             reserved = False
-            if not twofa_retry:
+            if not continuation:
                 self.pool.reserve([mailbox], batch_id)
                 reserved = True
             proxy_content = ""
@@ -2272,18 +2299,70 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     socks5_dns_mode=str(config.get("proxy_socks5_dns_mode") or "remote"),
                     allocation_mode="healthy_random",
                 )
-                bindings = self.proxies.bind(
-                    1,
-                    content=proxy_content,
-                    probe=self.proxy_probe,
-                    probe_url=str(config.get("proxy_probe_url") or "https://chatgpt.com/"),
-                    driver=driver,
-                    perform_probe=False,
-                    health_probe_ttl_seconds=int(config["proxy_health_probe_ttl_seconds"]) if "proxy_health_probe_ttl_seconds" in config else 0,
-                )
-                if not bindings:
-                    raise FreeRegisterError("free_proxy_binding", "绑定 Free 代理", "当前没有可用健康代理", retryable=True)
-                binding = bindings[0]
+                # Keep a password continuation on the proxy that created the
+                # account whenever its durable identity is still present. This
+                # avoids changing the authenticated network context and also
+                # avoids treating a post-registration retry as a new signup.
+                original_proxy = str(
+                    original.get("proxy") or row_state.get("proxy") or ""
+                ).strip()
+                original_proxy_id = str(
+                    original.get("proxy_id") or row_state.get("proxy_id") or ""
+                ).strip()
+                original_proxy_available = False
+                matched_proxy_record: Mapping[str, Any] | None = None
+                if password_retry and (original_proxy or original_proxy_id):
+                    try:
+                        records = self.proxies._load()  # type: ignore[attr-defined]
+                    except Exception:
+                        records = []
+                    for record in records if isinstance(records, list) else []:
+                        if not isinstance(record, Mapping):
+                            continue
+                        configured = str(record.get("_normalized") or "").strip()
+                        record_id = str(record.get("proxy_id") or "").strip()
+                        if (original_proxy_id and record_id == original_proxy_id) or (original_proxy and configured == original_proxy):
+                            original_proxy_available = True
+                            matched_proxy_record = record
+                            # Older task snapshots persisted the address but
+                            # not the pool identity. Recover the authoritative
+                            # ID so lease/release and health bookkeeping target
+                            # the same row.
+                            if not original_proxy_id:
+                                original_proxy_id = record_id
+                            if not original_proxy:
+                                original_proxy = configured
+                            break
+                if password_retry and original_proxy and original_proxy_available:
+                    record = matched_proxy_record or {}
+                    record_scheme = str(record.get("scheme") or "").strip().lower()
+                    record_effective_scheme = str(
+                        record.get("effective_scheme") or record_scheme
+                    ).strip().lower()
+                    binding = ProxyBinding(
+                        original_proxy,
+                        str(original.get("proxy_fingerprint") or original_proxy_id or _fingerprint(original_proxy)),
+                        str(original.get("proxy_masked") or record.get("masked") or _mask_proxy(original_proxy)),
+                        str(original.get("expected_exit_ip") or original.get("exit_ip") or row_state.get("exit_ip") or ""),
+                        proxy_id=original_proxy_id,
+                        scheme=str(original.get("proxy_scheme") or row_state.get("proxy_scheme") or record_scheme),
+                        country=str(original.get("proxy_country") or row_state.get("proxy_country") or record.get("country") or ""),
+                        group=str(original.get("proxy_group") or row_state.get("proxy_group") or record.get("group") or ""),
+                        effective_scheme=str(original.get("proxy_effective_scheme") or original.get("proxy_scheme") or row_state.get("proxy_scheme") or record_effective_scheme),
+                    )
+                else:
+                    bindings = self.proxies.bind(
+                        1,
+                        content=proxy_content,
+                        probe=self.proxy_probe,
+                        probe_url=str(config.get("proxy_probe_url") or "https://chatgpt.com/"),
+                        driver=driver,
+                        perform_probe=False,
+                        health_probe_ttl_seconds=int(config["proxy_health_probe_ttl_seconds"]) if "proxy_health_probe_ttl_seconds" in config else 0,
+                    )
+                    if not bindings:
+                        raise FreeRegisterError("free_proxy_binding", "绑定 Free 代理", "当前没有可用健康代理", retryable=True)
+                    binding = bindings[0]
                 now = int(time.time())
                 retry_id = f"{batch_id}-{secrets.token_hex(3)}"
                 workers = max(1, min(int(config.get("concurrency") or self._last_config.get("concurrency") or 3), 16))
@@ -2297,10 +2376,15 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     if isinstance(original.get("result"), Mapping) else {}
                 )
                 saved_result = self.pool.result(row_id)
-                merged_result = copy.deepcopy(dict(saved_result)) if isinstance(saved_result, Mapping) else {}
-                for key, value in original_result.items():
-                    if value not in (None, "") or key not in merged_result:
-                        merged_result[key] = copy.deepcopy(value)
+                merged_result = merge_account_result_fields(
+                    original_result,
+                    saved_result if isinstance(saved_result, Mapping) else {},
+                )
+                if password_retry:
+                    # The durable continuation marker is authoritative; a
+                    # stale task snapshot must not turn a pending password into
+                    # an already-enabled result.
+                    merged_result["password_status"] = "pending"
                 task = {
                     "task_id": retry_id,
                     "ordinal": int(original.get("ordinal") or 1),
@@ -2334,15 +2418,17 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     "retry_node_code": retry_node,
                     "retry_key": retry_key,
                     "manual_generation": 0,
-                    "progress": {"stage": "free_twofa_enroll" if twofa_retry else "free_oauth_session", "group": "free", "started_at": now, "updated_at": now, "finished_at": None},
-                    "result": merged_result or {"twofa_status": ""},
+                    "progress": {"stage": "free_twofa_enroll" if twofa_retry else "free_password_eligibility" if password_retry else "free_oauth_session", "group": "free", "started_at": now, "updated_at": now, "finished_at": None},
+                    "result": merged_result or saved_result or {"twofa_status": ""},
+                    "retry_mode": "password" if password_retry else "twofa" if twofa_retry else "registration",
                 }
                 self._tasks[retry_id] = task
                 self._retry_leases[retry_key] = retry_id
                 self.proxies.lease(binding, owner=retry_id, batch_id=batch_id, task_id=retry_id)
-                self.pool.update(row_id, status="twofa_pending" if twofa_retry else "queued", batch_id=batch_id, stage=retry_node, driver=driver, proxy=binding.proxy, proxy_masked=binding.masked, proxy_fingerprint=binding.fingerprint, expected_exit_ip=binding.exit_ip, exit_ip=binding.exit_ip, proxy_id=binding.proxy_id, proxy_country=binding.country, proxy_group=binding.group)
+                self.pool.update(row_id, status="queued", batch_id=batch_id, stage=retry_node, driver=driver, proxy=binding.proxy, proxy_masked=binding.masked, proxy_fingerprint=binding.fingerprint, expected_exit_ip=binding.exit_ip, exit_ip=binding.exit_ip, proxy_id=binding.proxy_id, proxy_country=binding.country, proxy_group=binding.group)
                 retry_config = dict(config)
-                retry_config["auto_set_2fa"] = True
+                retry_config.setdefault("auto_set_password", False)
+                retry_config.setdefault("auto_set_2fa", True)
                 # Make the retry durable before a worker can complete.  This
                 # is especially important for custom runners that return
                 # synchronously from submit().
@@ -2361,6 +2447,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     retry_id,
                     retry_config,
                     twofa_retry,
+                    password_retry,
                     driver=driver,
                     priority=0,
                 )
@@ -2380,7 +2467,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     except Exception:
                         pass
                 self._retry_leases.pop(retry_key, None)
-                if reserved or not twofa_retry:
+                if reserved:
                     try:
                         self.pool.update(row_id, status="available", batch_id="", stage="", driver="", proxy="", proxy_masked="", proxy_fingerprint="", expected_exit_ip="", exit_ip="", proxy_id="", proxy_country="", proxy_group="")
                     except Exception:
@@ -2418,6 +2505,67 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             raise FreeRegisterError("free_twofa_retry", "重试 Free 账号 2FA", "该任务当前没有待重试的 2FA", retryable=False)
         return self._enqueue_retry(task, config, retry_node="free_twofa_activate", twofa_retry=True)
 
+    def retry_password(self, task_id: str, config: Mapping[str, Any]) -> dict[str, Any]:
+        """Queue only the pending post-registration password operation.
+
+        The continuation is deliberately keyed off the durable result rather
+        than the task's public status. A process restart or a later 2FA failure
+        can change that status while the account Token and pending password
+        marker remain valid.
+        """
+        normalized = str(task_id or "").strip()
+        with self._lock:
+            task = copy.deepcopy(self._tasks.get(normalized))
+        if task is None:
+            row = self.pool.entry(normalized)
+            saved = self.pool.result(normalized) if row is not None else {}
+            if row is None or not isinstance(saved, Mapping):
+                raise FreeRegisterError(
+                    "free_password_retry", "重试 Free 账号密码设置",
+                    "没有找到对应的 Free 任务", retryable=False,
+                )
+            task = {
+                "task_id": normalized,
+                "row_id": row.row_id,
+                "email": row.email,
+                "mailbox_url": row.mailbox_url,
+                "result": dict(saved),
+                "driver": saved.get("driver") or "protocol",
+                "status": str(saved.get("status") or "partial_success"),
+                "proxy": "",
+            }
+        result = task.get("result") if isinstance(task.get("result"), Mapping) else {}
+        durable = self.pool.result(str(task.get("row_id") or normalized))
+        merged = merge_account_result_fields(result, durable if isinstance(durable, Mapping) else {})
+        if not str(merged.get("access_token") or "").strip():
+            raise FreeRegisterError(
+                "free_password_retry", "重试 Free 账号密码设置",
+                "原账号没有可用 access token", retryable=False,
+                error_code="free_password_retry_token_missing",
+            )
+        if not password_retry_allowed(merged):
+            raise FreeRegisterError(
+                "free_password_retry", "重试 Free 账号密码设置",
+                "该账号当前没有可补设的密码状态", retryable=False,
+                error_code="free_password_retry_not_pending",
+            )
+        task["result"] = merged
+        status = str(task.get("status") or "")
+        if status in {"queued", "running"}:
+            raise FreeRegisterError(
+                "free_password_retry", "重试 Free 账号密码设置",
+                "该账号当前已有运行中的任务", retryable=False,
+                error_code="free_password_retry_active",
+            )
+        # Historical failed/pending-rerun snapshots are valid continuation
+        # sources as long as the durable account evidence above is present.
+        return self._enqueue_retry(
+            task,
+            config,
+            retry_node="free_password_enroll",
+            password_retry=True,
+        )
+
     def batch_retry(self, task_ids: Sequence[str], config: Mapping[str, Any]) -> dict[str, Any]:
         """Queue selected failed/2FA tasks independently and report each result."""
         selected = list(dict.fromkeys(str(value or "").strip() for value in task_ids if str(value or "").strip()))
@@ -2433,10 +2581,16 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     continue
                 status = str(task.get("status") or "")
                 failure = task.get("failure") if isinstance(task.get("failure"), Mapping) else {}
-                if failure and self._batch_retry_blocked(failure):
+                result = task.get("result") if isinstance(task.get("result"), Mapping) else {}
+                if (
+                    password_retry_allowed(result)
+                    and status in {"success", "partial_success", "twofa_pending", "failed", "pending_rerun"}
+                ):
+                    queued = self.retry_password(task_id, config)
+                elif failure and self._batch_retry_blocked(failure):
                     skipped.append({"task_id": task_id, "reason": "当前失败节点不可自动重试，请按诊断建议处理"})
                     continue
-                if status == "twofa_pending":
+                elif status == "twofa_pending":
                     queued = self.retry_twofa(task_id, config)
                 elif status in {"failed", "stopped", "pending_rerun"}:
                     queued = self.rerun(task_id, config)
@@ -2487,9 +2641,18 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 task = self._tasks.get(str(task_id))
                 if not task:
                     continue
-                seen_rows.add(str(task.get("row_id") or ""))
+                row_id = str(task.get("row_id") or "").strip()
+                seen_rows.add(row_id)
                 result = task.get("result") if isinstance(task.get("result"), Mapping) else {}
-                value = {"token": result.get("access_token"), "password": result.get("password"), "totp": result.get("totp_secret"), "proxy": task.get("proxy"), "credential": result.get("credential_line")}.get(kind)
+                if kind == "credential":
+                    mailbox = self.pool.entry(row_id) if row_id else None
+                    value = _account_material_line(
+                        str(task.get("email") or getattr(mailbox, "email", "")),
+                        str(getattr(mailbox, "mailbox_url", "") or ""),
+                        result,
+                    )
+                else:
+                    value = {"token": result.get("access_token"), "password": result.get("password"), "totp": result.get("totp_secret"), "proxy": task.get("proxy")}.get(kind)
                 if value:
                     values.append(str(value))
             for row_id in row_ids:
@@ -2498,7 +2661,15 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     continue
                 result = self.pool.result(normalized)
                 private_state = self.pool._row_state(normalized)
-                value = {"token": result.get("access_token"), "password": result.get("password"), "totp": result.get("totp_secret"), "proxy": result.get("proxy") or private_state.get("proxy"), "credential": result.get("credential_line")}.get(kind)
+                if kind == "credential":
+                    mailbox = self.pool.entry(normalized)
+                    value = _account_material_line(
+                        str(getattr(mailbox, "email", "") or result.get("email") or ""),
+                        str(getattr(mailbox, "mailbox_url", "") or ""),
+                        result,
+                    )
+                else:
+                    value = {"token": result.get("access_token"), "password": result.get("password"), "totp": result.get("totp_secret"), "proxy": result.get("proxy") or private_state.get("proxy")}.get(kind)
                 if value:
                     values.append(str(value))
         return "\n".join(values)
@@ -2750,12 +2921,6 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
     def _runner_for(self, config: Mapping[str, Any]) -> Callable[..., Mapping[str, Any]]:
         if self._custom_runner:
             return self.runner
-        if str(config.get("driver") or "protocol").strip().lower() == "roxybrowser":
-            # Keep Profile ownership outside task payloads while giving every
-            # worker the same persistent journal for restart recovery.
-            return RoxyRegistrationRunner(
-                lifecycle_store_path=str(self.data_dir / "roxy_cleanup.json"),
-            )
         if str(config.get("driver") or "protocol").strip().lower() == "camoufox":
             camoufox_artifact_dir = self.data_dir / "camoufox_debug"
             return CamoufoxRegistrationRunner(
@@ -2835,29 +3000,25 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             )
             return ""
 
-    def _worker(self, task_id: str, config: dict[str, Any], twofa_retry: bool = False) -> None:
-        self._maybe_recover_roxy_circuit(config)
+    def _worker(
+        self,
+        task_id: str,
+        config: dict[str, Any],
+        twofa_retry: bool = False,
+        password_retry: bool = False,
+    ) -> None:
+        if twofa_retry and password_retry:
+            raise FreeRegisterError(
+                "free_retry", "重试 Free 任务",
+                "2FA 重试和密码重试不能同时提交",
+                retryable=False, error_code="free_retry_modes_conflict",
+            )
         with self._lock:
             task = self._tasks.get(task_id)
             if not task:
                 return
-            if task.get("driver") == "roxybrowser" and self._roxy_circuit_open:
-                failure = {
-                    "node_code": "roxy_circuit_open",
-                    "node_label": "RoxyBrowser 批次熔断",
-                    "error_code": "roxy_circuit_open",
-                    "public_message": "RoxyBrowser 批次熔断 [RoxyBrowser 批次熔断/roxy_circuit_open]：基础设施连续失败，未启动该账号",
-                    "technical_summary": "RoxyBrowser 基础设施连续失败",
-                    "retryable": True,
-                }
-                failure, _ = self._persist_task_failure(
-                    task_id, task, status="failed", failure=failure,
-                )
-                self._restore_mailbox_after_pre_registration_failure(task, failure)
-                self._release_task_lease(task)
-                return
             task["status"] = "running"
-            if twofa_retry:
+            if twofa_retry or password_retry:
                 task.pop("failure", None)
             task["updated_at"] = int(time.time())
             snapshot = dict(task)
@@ -2872,7 +3033,8 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             task_config["_manual_verification_broker"] = self.manual_broker
             task_config["_manual_generation_getter"] = self._manual_generation
         task_config["_mailbox_verification_state_fn"] = self._mailbox_verification_state
-        self._log(f"[{task_id}/free_oauth_session] Free 任务开始", "info")
+        start_node = "free_password_enroll" if password_retry else "free_twofa_enroll" if twofa_retry else "free_oauth_session"
+        self._log(f"[{task_id}/{start_node}] Free 任务开始", "info")
         task_log = lambda message, level="info", **fields: self._task_log(task_id, message, level, **fields)
         # Keep adapter-level timings attached to this task without changing
         # the historical runner callable signature or protocol ordering.
@@ -2894,13 +3056,19 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             attempt = 0
             while True:
                 try:
-                    result = dict(runner(snapshot, task_config, self._stop, self._stage, task_log, twofa_retry=twofa_retry))
+                    runner_kwargs: dict[str, Any] = {}
+                    # Preserve compatibility with older custom runners: only
+                    # pass a keyword for the continuation mode being used.
+                    if twofa_retry:
+                        runner_kwargs["twofa_retry"] = True
+                    if password_retry:
+                        runner_kwargs["password_retry"] = True
+                    result = dict(runner(snapshot, task_config, self._stop, self._stage, task_log, **runner_kwargs))
                     break
                 except FreeRegisterError as exc:
                     error_node = str(getattr(exc, "node_code", ""))
                     failed_proxy_id = str(snapshot.get("proxy_id") or "")
                     network_failure = is_proxy_health_failure(exc)
-                    pre_profile = error_node in {"free_roxy_create", "free_roxy_open", "free_roxy_connect", "free_roxy_api"}
                     # OAuth bootstrap and the first email-identification POST
                     # are both route-level protocol nodes.  HTML login/error
                     # envelopes from either node may be retried on another
@@ -2909,9 +3077,6 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     protocol_pre_email = error_node in {
                         "free_protocol_preflight", "free_oauth_session", "free_email_identifier",
                     }
-                    roxy_pre_email = error_node == "free_roxy_signup_bootstrap" and bool(
-                        getattr(exc, "proxy_retryable", False)
-                    )
                     camoufox_proxy_retryable = bool(getattr(exc, "proxy_retryable", False))
                     camoufox_pre_email = (
                         error_node == "free_camoufox_navigation" and camoufox_proxy_retryable
@@ -2921,9 +3086,8 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                         and camoufox_proxy_retryable
                     )
                     can_retry_pre_email = (
-                        ((pre_profile or protocol_pre_email) and network_failure)
+                        (protocol_pre_email and network_failure)
                         or (protocol_pre_email and bool(getattr(exc, "proxy_retryable", False)))
-                        or roxy_pre_email
                         or camoufox_pre_email
                     )
                     if not can_retry_pre_email or attempt >= retry_limit or self._stop.is_set():
@@ -2964,6 +3128,13 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 if current is not None:
                     current.setdefault("proxy_attempts", []).append({"proxy_id": snapshot.get("proxy_id", ""), "stage": "free_result_save", "outcome": "success", "at": int(time.time())})
                     current["proxy_attempts"] = current["proxy_attempts"][-10:]
+            # Continuations return a partial envelope. Merge it fill-only with
+            # the account result captured before the retry so Token, TOTP and
+            # plan fields cannot disappear when an adapter returns only the
+            # field it changed.
+            if twofa_retry or password_retry:
+                prior_result = snapshot.get("result") if isinstance(snapshot.get("result"), Mapping) else {}
+                result = merge_account_result_fields(prior_result, result)
             self._save_task(task_id, profile_summary=result.get("profile_summary", ""), registration_ip=result.get("registration_ip", ""))
             status, result, result_failure = completed_result_state(
                 result,
@@ -3005,9 +3176,6 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     "proxy_connection_reset": "更换代理或稍后重试连接",
                     "proxy_tls_certificate_error": "确认代理证书链和 TLS 配置",
                     "proxy_connect_failed": "确认代理地址、端口和认证信息",
-                    "free_roxy_create": "检查 RoxyBrowser API、工作区和项目配置",
-                    "free_roxy_open": "检查 RoxyBrowser Profile 是否可打开且保持无头",
-                    "free_roxy_connect": "检查 Roxy 返回的 debugger/webdriver 地址和驱动文件",
                     "free_oauth_security_challenge": "当前代理或会话遇到安全验证，请更换代理后重试",
                     "free_camoufox_navigation": "检查 Camoufox 代理、浏览器导航状态和上游 HTTP 状态",
                     "free_email_otp_wait": "确认邮箱取件 URL 可用，并在服务端发送验证码后重试",
@@ -3019,27 +3187,48 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             if action_hint and not failure.get("action_hint"):
                 failure["action_hint"] = action_hint
             error_node = node_code
-            quota_failure = error_node == "free_roxy_window_quota_exhausted"
-            if quota_failure:
-                # A server-side window quota is a resource stop, not a
-                # browser API circuit failure.  Stop admission for queued
-                # tasks while keeping their mailbox/proxy reusable.
-                with self._lock:
-                    self._stop.set()
-                    self._circuit_stop_requested = True
-                self._log(f"[{task_id}/RoxyBrowser 窗口额度/free_roxy_window_quota_exhausted] 已停止继续创建窗口，等待遗留 Profile 清理", "error")
-            circuit_failure = bool(self._roxy_circuit_open and error_node in {"free_roxy_api", "free_roxy_create", "free_roxy_open", "free_roxy_connect"})
-            terminal_status = "failed" if quota_failure or circuit_failure or not self._stop.is_set() else "stopped"
-            failure, _ = self._persist_task_failure(
-                task_id, snapshot, status=terminal_status, failure=failure,
-            )
+            terminal_status = "failed" if not self._stop.is_set() else "stopped"
+            if password_retry:
+                # Password continuation failure is recoverable account state,
+                # not a fresh registration failure. Keep the Token and expose
+                # the password marker so the same independent retry remains
+                # available without replaying signup.
+                prior = snapshot.get("result") if isinstance(snapshot.get("result"), Mapping) else {}
+                pending_result = merge_account_result_fields(
+                    prior,
+                    {
+                        "password_status": "pending",
+                        "password_error": _safe_log_message(exc),
+                        "password_failure": failure,
+                    },
+                )
+                failure, _ = self._persist_task_failure(
+                    task_id, snapshot, status="partial_success", failure=failure,
+                    result=pending_result,
+                )
+                terminal_status = "partial_success"
+            else:
+                failure, _ = self._persist_task_failure(
+                    task_id, snapshot, status=terminal_status, failure=failure,
+                )
             debug_session_id = str(failure.get("debug_session_id") or "")
             if debug_session_id:
                 with self._lock:
                     incident_ref = str(self._tasks.get(task_id, {}).get("incident_id") or "")
                 if incident_ref:
                     annotate_camoufox_debug_session(debug_session_id, incident_ref)
-            if self._can_reuse_mailbox_after_failure(exc.node_code, exc):
+            if password_retry:
+                # This mailbox was never re-reserved for the continuation. Do
+                # not route its failure through the registration-only
+                # ``pending_rerun``/mailbox-release message; leave the row in a
+                # visible partial state so the independent password action can
+                # be invoked again.
+                self.pool.update(
+                    snapshot["row_id"], status="partial_success", stage="free_password_enroll",
+                    error=failure["public_message"], failure=failure,
+                    reusable_after_failure=False,
+                )
+            elif self._can_reuse_mailbox_after_failure(exc.node_code, exc):
                 self._restore_mailbox_after_pre_registration_failure(snapshot, failure)
             else:
                 self.pool.update(
@@ -3064,9 +3253,12 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     previous_failure_code=str(failure.get("error_code") or node_code),
                     previous_retryable=failure.get("retryable") if isinstance(failure.get("retryable"), bool) else None,
                 )
-            self._finish_progress(task_id, "failed" if terminal_status == "failed" else "stopped")
+            self._finish_progress(
+                task_id,
+                "partial" if terminal_status == "partial_success"
+                else "failed" if terminal_status == "failed" else "stopped",
+            )
             self._record_proxy_failure(snapshot, exc)
-            self._roxy_failure(snapshot, exc)
             self._release_task_lease(snapshot)
             self._log(
                 f"[{task_id}/{node_label}/{node_code}] {failure['public_message']}", "error",
@@ -3133,7 +3325,13 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             )
         except Exception as exc:
             failure, classified_exc, current_stage, current_label = (
-                self._persist_unexpected_task_failure(task_id, snapshot, exc)
+                self._persist_unexpected_task_failure(
+                    task_id,
+                    snapshot,
+                    exc,
+                    twofa_retry=twofa_retry,
+                    password_retry=password_retry,
+                )
             )
             debug_session_id = str(failure.get("debug_session_id") or "")
             if debug_session_id:
@@ -3145,19 +3343,19 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 self._stage(
                     task_id,
                     current_stage,
-                    previous_outcome="failed",
+                    previous_outcome="interrupted" if (twofa_retry or password_retry) else "failed",
                     previous_failure_code=str(failure.get("error_code") or current_stage),
                     previous_retryable=failure.get("retryable") if isinstance(failure.get("retryable"), bool) else None,
                 )
-            self._finish_progress(task_id, "failed")
+            continuation = bool(twofa_retry or password_retry)
+            self._finish_progress(task_id, "partial" if continuation else "failed")
             self._record_proxy_failure(snapshot, classified_exc)
-            self._roxy_failure(snapshot, classified_exc)
             self._release_task_lease(snapshot)
             self._log(
                 f"[{task_id}/{current_label}/{current_stage}] {failure['public_message']}",
-                "error", task_id=task_id, node_code=failure["node_code"],
+                "warn" if continuation else "error", task_id=task_id, node_code=failure["node_code"],
                 node_label=failure["node_label"], error_code=failure["error_code"],
-                outcome="failed", diagnostic=failure.get("technical_summary"),
+                outcome="partial" if continuation else "failed", diagnostic=failure.get("technical_summary"),
                 action_hint=failure.get("action_hint"), retryable=failure.get("retryable"),
                 page_type=failure.get("page_type"), safe_page=failure.get("safe_page"),
                 content_type=failure.get("content_type"), session_rebuilds=failure.get("session_rebuilds"),

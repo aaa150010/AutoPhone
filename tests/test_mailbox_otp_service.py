@@ -71,6 +71,30 @@ class SSLError(RuntimeError):
 
 
 class MailboxOtpServiceTests(unittest.TestCase):
+    def test_free_provider_propagates_absolute_deadline_to_mailbox_waiter(self):
+        calls = {}
+
+        class BlockingService:
+            def wait_code(self, stage_code, *, stop_requested, deadline_monotonic, **_kwargs):
+                calls["stage"] = stage_code
+                calls["deadline"] = deadline_monotonic
+                while not stop_requested():
+                    time.sleep(0.005)
+                raise MailboxOtpError("mailbox_wait_stopped", "stopped")
+
+        provider = MailboxUrlOtpProvider(
+            "https://mail.example.test/inbox",
+            timeout=90,
+            fetcher=lambda url: MailboxResponse(url, b"[]", "application/json", 200),
+        )
+        provider.service = BlockingService()
+        deadline = time.monotonic() + 0.05
+        with self.assertRaises(FreeRegisterError) as raised:
+            provider.wait_code("mailbox@example.test", deadline_monotonic=deadline)
+        self.assertEqual(calls["stage"], "free_email_otp_wait")
+        self.assertEqual(calls["deadline"], deadline)
+        self.assertEqual(raised.exception.error_code, "free_email_otp_wait_mailbox_code_timeout")
+
     def test_explicit_proxy_supports_all_configured_schemes_and_disables_environment(self):
         for proxy in (
             "http://127.0.0.1:7897",

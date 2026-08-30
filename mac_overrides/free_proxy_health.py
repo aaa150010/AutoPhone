@@ -6,7 +6,7 @@ import re
 from typing import Any
 
 
-_EXIT_VERIFICATION_NODES = frozenset({"free_roxy_ip_verify"})
+_EXIT_VERIFICATION_NODES = frozenset()
 _NETWORK_EVIDENCE_NODES = frozenset({
     "free_proxy_binding",
     "free_proxy_preflight",

@@ -22,7 +22,7 @@ class FreeProxyRobustnessTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
-    def test_preflight_does_not_probe_chatgpt_login(self) -> None:
+    def test_preflight_rejects_removed_driver_without_probe(self) -> None:
         chatgpt_calls: list[str] = []
         manager = FreeRegisterManager(
             self.data_dir,
@@ -31,11 +31,12 @@ class FreeProxyRobustnessTests(unittest.TestCase):
             proxy_chatgpt_probe=lambda proxy: chatgpt_calls.append(proxy) or 200,
         )
 
-        roxy = manager.preflight_proxies(
-            proxy_content="socks5://user:private@proxy.example.test:3000\n",
-            driver="roxybrowser",
-        )
-        self.assertEqual(roxy["proxies"], 1)
+        with self.assertRaises(FreeRegisterError) as raised:
+            manager.preflight_proxies(
+                proxy_content="socks5://user:private@proxy.example.test:3000\n",
+                driver="roxybrowser",
+            )
+        self.assertEqual(raised.exception.node_code, "free_config")
         self.assertEqual(chatgpt_calls, [])
 
         protocol = manager.preflight_proxies(
@@ -45,6 +46,19 @@ class FreeProxyRobustnessTests(unittest.TestCase):
         self.assertEqual(protocol["proxies"], 1)
         self.assertEqual(chatgpt_calls, [])
         self.assertNotIn("private", str(protocol))
+
+    def test_pool_queries_reject_removed_driver_before_loading_rows(self) -> None:
+        pool = FreeProxyPool(self.data_dir)
+        pool.import_text("socks5://user:private@proxy.example.test:3000\n")
+        with patch.object(pool, "_load", side_effect=AssertionError("pool must not be read")):
+            for query in (
+                lambda: pool.available(1, driver="roxybrowser"),
+                lambda: pool.records(driver="roxybrowser"),
+            ):
+                with self.subTest(query=query):
+                    with self.assertRaises(FreeRegisterError) as raised:
+                        query()
+                    self.assertEqual(raised.exception.error_code, "free_driver_unsupported")
 
     def test_failed_proxy_rows_share_one_credential_safe_preflight_incident(self) -> None:
         diagnostic_store = DiagnosticStore(self.data_dir / "diagnostics")

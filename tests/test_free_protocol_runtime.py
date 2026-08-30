@@ -393,6 +393,40 @@ class FreeProtocolRuntimeTests(unittest.TestCase):
         self.assertFalse(transport.config["run_chatgpt_signup_phase"])
         self.assertEqual(_Transport.phone_calls, 0)
 
+    def test_protocol_signup_passes_configured_password_to_recovered_flow(self):
+        build_calls = []
+        observed = {}
+        otp = _Otp()
+
+        def run_flow(transport, *, oauth_context, password, **_kwargs):
+            observed["password"] = password
+            observed["register_password"] = transport.config["register"]["password"]
+            transport.initiate_oauth(oauth_context["url"])
+            return {**_result(), "account_flow": "signup", "password": password}, transport
+
+        with (
+            patch.dict(sys.modules, _fake_modules(build_calls)),
+            patch.object(runtime, "build_free_mailbox_otp_provider", return_value=otp),
+            patch.object(runtime, "run_free_protocol_flow", side_effect=run_flow),
+        ):
+            result = _Manager()._run_protocol(
+                _task(),
+                {
+                    "flow_profile": "legacy",
+                    "auto_set_2fa": False,
+                    "account_password": "Custom-Password-123",
+                },
+                threading.Event(),
+                lambda *_args: None,
+                lambda *_args, **_kwargs: None,
+            )
+
+        self.assertEqual(observed, {
+            "password": "Custom-Password-123",
+            "register_password": "Custom-Password-123",
+        })
+        self.assertEqual(result["password"], "Custom-Password-123")
+
     def test_existing_account_result_never_gets_fixed_password_or_credential(self):
         build_calls = []
         otp = _Otp()
@@ -468,6 +502,87 @@ class FreeProtocolRuntimeTests(unittest.TestCase):
         self.assertIn("timezone_offset_min=540", session.urls[0])
         self.assertEqual(raised.exception.provider_status, 503)
         self.assertEqual(raised.exception.provider_code, "upstream_busy")
+
+    def test_password_reauth_matches_har_without_connection_selector(self):
+        class Otp:
+            def __init__(self):
+                self.calls = []
+
+            def prepare(self, *args, **kwargs):
+                self.calls.append(("prepare", args, kwargs))
+
+            def mark_sent(self, *args, **kwargs):
+                self.calls.append(("mark_sent", args, kwargs))
+
+            def wait_code(self, _email, **kwargs):
+                self.calls.append(("wait_code", kwargs))
+                return "123456"
+
+        class Session:
+            def __init__(self):
+                self.events = []
+
+            def get(self, url, **kwargs):
+                self.events.append(("get", url, kwargs))
+                if url.endswith("/add_password/eligibility"):
+                    return _Response(200, {"eligible": True})
+                if url.endswith("/api/auth/csrf"):
+                    return _Response(200, {"csrfToken": "csrf-private"})
+                return _Response(200, {})
+
+            def post(self, url, **kwargs):
+                self.events.append(("post", url, kwargs))
+                if "/api/auth/signin/openai?" in url:
+                    return _Response(200, {"url": "https://auth.openai.com/authorize/password"})
+                return _Response(200, {})
+
+        class Transport:
+            def __init__(self):
+                self.session = Session()
+                self.device_id = "device"
+                self.auth_calls = []
+                self.callbacks = []
+
+            def _post_auth_json(self, path, payload, **kwargs):
+                self.auth_calls.append((path, payload, kwargs))
+                if path.endswith("email-otp/validate"):
+                    return {"_status": 200, "continue_url": "https://auth.openai.com/reset-password/password"}
+                if path.endswith("password/add"):
+                    return {"_status": 200, "continue_url": "https://chatgpt.com/api/auth/callback/openai?state=password"}
+                return {"_status": 200}
+
+            def complete_chatgpt_callback(self, url):
+                self.callbacks.append(url)
+                return {"_status": 200}
+
+            def chatgpt_access_token(self):
+                return "fresh-session-token"
+
+        otp = Otp()
+        transport = Transport()
+        result = _Manager()._set_password(
+            transport,
+            "stale-session-token",
+            _task(),
+            runtime.FIXED_PASSWORD,
+            {},
+            otp,
+            lambda *_args: None,
+        )
+
+        self.assertEqual(result["password_status"], "enabled")
+        signin = next(url for kind, url, _kwargs in transport.session.events if kind == "post" and "/signin/openai?" in url)
+        query = parse_qs(urlsplit(signin).query)
+        self.assertNotIn("connection", query)
+        self.assertEqual(query["login_hint"], [_task()["email"]])
+        self.assertEqual(query["reauth"], ["password"])
+        self.assertEqual(query["post_login_add_password"], ["true"])
+        self.assertEqual(query["max_age"], ["0"])
+        self.assertEqual(transport.callbacks, ["https://chatgpt.com/api/auth/callback/openai?state=password"])
+        self.assertNotIn(
+            "https://chatgpt.com/backend-api/accounts/mfa_info",
+            [url for _kind, url, _kwargs in transport.session.events],
+        )
 
     def test_twofa_failures_keep_exact_subnode_and_provider_fields(self):
         class SendFailureTransport:
@@ -752,6 +867,7 @@ class FreeProtocolRuntimeTests(unittest.TestCase):
         self.assertEqual(transport.session.events[0][0:2], ("get", "https://chatgpt.com/api/auth/csrf"))
         self.assertIn("reauth=password", transport.session.events[1][1])
         signin_query = parse_qs(urlsplit(transport.session.events[1][1]).query)
+        self.assertEqual(signin_query["connection"], ["password"])
         self.assertEqual(signin_query["ext-oai-did"], ["device"])
         self.assertEqual(transport.session.events[2][1], "https://auth.openai.com/authorize/private")
         self.assertEqual(transport.session.events[3][1], "https://auth.openai.com/callback/private")

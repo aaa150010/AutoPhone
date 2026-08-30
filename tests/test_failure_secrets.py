@@ -25,6 +25,7 @@ class FailureSecretsTests(unittest.TestCase):
             settings={
                 "pool_content": "user@example.test---mailbox-password---mailbox-token",
                 "sms_api_keys": ["sms-secret"],
+                "account_password": "custom-free-password",
             },
             mailbox_admin=_MailboxAdminModule,
             sms_keys_from_config=lambda config: config.get("sms_api_keys") or (),
@@ -33,6 +34,7 @@ class FailureSecretsTests(unittest.TestCase):
         self.assertIn("mailbox-password", secrets)
         self.assertIn("mailbox-token", secrets)
         self.assertIn("sms-secret", secrets)
+        self.assertIn("custom-free-password", secrets)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import time
 import threading
+import math
+import inspect
 from typing import Any, Callable, Mapping
 
 try:
@@ -93,6 +95,7 @@ class MailboxUrlOtpProvider:
         self.timeout = self.service.timeout_seconds
         self.log_fn = log_fn
         self.now_fn = now_fn
+        self.monotonic_fn = monotonic_fn
         self.task_id = str(task_id or "")
         self.stage_fn = stage_fn
         self.manual_broker = manual_broker
@@ -164,9 +167,29 @@ class MailboxUrlOtpProvider:
         resend_fn: Callable[[], None] | None = None,
         resend_after_seconds: float = 12.0,
         stop_requested: Callable[[], bool] | None = None,
+        deadline_monotonic: float | None = None,
     ) -> str:
         manual_completed = threading.Event()
         timeout = max(1, int(self.timeout))
+        requested_deadline: float | None = None
+        if deadline_monotonic is not None:
+            try:
+                requested_deadline = float(deadline_monotonic)
+            except (TypeError, ValueError):
+                requested_deadline = None
+        if requested_deadline is not None:
+            remaining = requested_deadline - self.monotonic_fn()
+            if remaining <= 0:
+                raise FreeRegisterError(
+                    stage_code,
+                    self._label(stage_code),
+                    "邮箱验证码等待已达到调用方时间预算",
+                    retryable=True,
+                    error_code=f"{stage_code}_mailbox_code_timeout",
+                )
+            # Round up a fractional remainder for one final polling turn;
+            # the absolute deadline predicate below still stops it exactly.
+            timeout = max(1, min(timeout, int(math.ceil(remaining))))
         automatic_opened_at = int(self.now_fn())
         automatic_deadline_at = automatic_opened_at + timeout
         self._set_verification_state(
@@ -179,6 +202,8 @@ class MailboxUrlOtpProvider:
         def automatic_stop_requested() -> bool:
             if manual_completed.is_set():
                 return True
+            if requested_deadline is not None and self.monotonic_fn() >= requested_deadline:
+                return True
             if callable(stop_requested):
                 return bool(stop_requested())
             return False
@@ -189,12 +214,49 @@ class MailboxUrlOtpProvider:
             manual_completed.set()
             self._log_manual_selected(stage_code)
 
-        automatic_wait = lambda: self.service.wait_code(
-            stage_code,
-            resend_fn=resend_fn,
-            resend_after_seconds=resend_after_seconds,
-            stop_requested=automatic_stop_requested,
-        )
+        def deadline_reached() -> bool:
+            # An explicit task stop takes precedence over the local deadline
+            # so callers retain the stable ``free_run_stop`` node.
+            externally_stopped = bool(stop_requested()) if callable(stop_requested) else False
+            return (
+                requested_deadline is not None
+                and self.monotonic_fn() >= requested_deadline
+                and not externally_stopped
+            )
+
+        def automatic_wait() -> Any:
+            waiter = getattr(self.service, "wait_code", None)
+            if not callable(waiter):
+                raise MailboxOtpError(
+                    "mailbox_waiter_missing",
+                    "邮箱取件服务缺少 wait_code 方法",
+                    retryable=False,
+                )
+            kwargs = {
+                "resend_fn": resend_fn,
+                "resend_after_seconds": resend_after_seconds,
+                "stop_requested": automatic_stop_requested,
+                "deadline_monotonic": requested_deadline,
+            }
+            try:
+                signature = inspect.signature(waiter)
+            except (TypeError, ValueError):
+                return waiter(stage_code, **kwargs)
+            accepts_var_kwargs = any(
+                parameter.kind is inspect.Parameter.VAR_KEYWORD
+                for parameter in signature.parameters.values()
+            )
+            if not accepts_var_kwargs:
+                kwargs = {
+                    key: value for key, value in kwargs.items()
+                    if key in signature.parameters
+                }
+            # ``wait_code(email)`` is still used by a few legacy test and
+            # integration adapters. Signature filtering keeps those callers
+            # working without catching a TypeError raised inside provider
+            # code itself.
+            signature.bind(stage_code, **kwargs)
+            return waiter(stage_code, **kwargs)
         try:
             if self.manual_broker is not None and self.task_id:
                 try:
@@ -211,9 +273,25 @@ class MailboxUrlOtpProvider:
                     task_id=self.task_id,
                     input_kind="email_otp",
                     generation=generation,
-                    stop_event=stop_requested,
+                    # Use the same combined predicate for both automatic and
+                    # manual phases.  Passing only the caller's stop event
+                    # here used to leave the manual broker alive after the
+                    # Camoufox registration deadline had expired.
+                    stop_event=automatic_stop_requested,
                     automatic_timeout_seconds=timeout,
-                    manual_timeout_seconds=300,
+                    manual_timeout_seconds=(
+                        max(
+                            1,
+                            min(
+                                300,
+                                int(math.ceil(
+                                    requested_deadline - self.monotonic_fn()
+                                )),
+                            ),
+                        )
+                        if requested_deadline is not None
+                        else 300
+                    ),
                     on_automatic_unmatched=lambda cause: self.service.record_parser_sample(
                         str(self.service.diagnostic().get("reason") or getattr(cause, "code", "") or "mailbox_code_timeout"),
                         self.service.diagnostic(),
@@ -229,6 +307,14 @@ class MailboxUrlOtpProvider:
             return automatic_wait()
         except MailboxOtpError as exc:
             if exc.code == "mailbox_wait_stopped":
+                if deadline_reached():
+                    raise FreeRegisterError(
+                        stage_code,
+                        self._label(stage_code),
+                        "邮箱验证码等待已达到调用方时间预算",
+                        retryable=True,
+                        error_code=f"{stage_code}_mailbox_code_timeout",
+                    ) from exc
                 raise FreeRegisterError(
                     "free_run_stop",
                     "停止 Free 注册",
@@ -245,6 +331,14 @@ class MailboxUrlOtpProvider:
                 provider_status=exc.status,
             ) from exc
         except ManualVerificationError as exc:
+            if exc.code == "stopped" and deadline_reached():
+                raise FreeRegisterError(
+                    stage_code,
+                    self._label(stage_code),
+                    "邮箱验证码等待已达到调用方时间预算",
+                    retryable=True,
+                    error_code=f"{stage_code}_mailbox_code_timeout",
+                ) from exc
             raise FreeRegisterError(
                 stage_code,
                 self._label(stage_code),

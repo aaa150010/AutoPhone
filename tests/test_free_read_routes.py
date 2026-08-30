@@ -177,11 +177,6 @@ class FreeReadRouteFailureTests(unittest.TestCase):
         with app.test_client() as client:
             responses = (
                 (
-                    client.get("/api/free/roxy/workspaces"),
-                    "free_roxy_workspace",
-                    "读取 RoxyBrowser 工作区",
-                ),
-                (
                     client.get("/api/free/live-check/state"),
                     "free_live_state",
                     "读取 Free 账号测活状态",
@@ -242,7 +237,7 @@ class FreeReadRouteFailureTests(unittest.TestCase):
                     "读取 Free 敏感字段",
                 ),
                 (
-                    client.post("/api/free/config/secret", json={"id": "roxy_api_key"}),
+                    client.post("/api/free/config/secret", json={"id": "removed_secret"}),
                     "free_config_secret",
                     "读取 Free 配置密钥",
                 ),

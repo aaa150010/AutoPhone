@@ -38,6 +38,39 @@ PRIVATE_ACCOUNT_RESULT_KEYS = frozenset({
     "credential_line",
 })
 
+# Non-secret account state required by a continuation.  These fields are
+# fill-only too: a fresh adapter response remains authoritative, while a
+# partial retry response cannot erase the plan or capability markers captured
+# by the original registration.
+ACCOUNT_STATE_RESULT_KEYS = frozenset({
+    "plan_type",
+    "subscription_plan",
+    "has_active_subscription",
+    "plus_trial_eligible",
+    "plan_check_status",
+    "plan_checked_at",
+    "account_flow",
+    "registration_password_used",
+    "password_set_after_registration",
+    "twofa_status",
+    "has_access_token",
+    "has_password",
+    "has_totp",
+    "has_credential",
+    "registration_completed",
+    "oauth_callback_completed",
+    "account_created",
+    "password_status",
+})
+
+PASSWORD_ENABLED_STATUSES = frozenset({
+    "enabled", "active", "configured", "set", "success", "succeeded",
+    "complete", "completed", "true", "yes", "1",
+})
+PASSWORD_PENDING_STATUSES = frozenset({
+    "pending", "queued", "running", "retry", "retrying",
+})
+
 
 def _result_value_present(value: Any) -> bool:
     """Return whether a private result field contains usable data."""
@@ -50,6 +83,48 @@ def _result_value_present(value: Any) -> bool:
     if isinstance(value, (Mapping, list, tuple, set)):
         return bool(value)
     return True
+
+
+def _result_marker_true(value: Any) -> bool:
+    """Parse persisted capability markers without treating ``'false'`` as true."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value != 0
+    return str(value or "").strip().lower() in {
+        "1", "true", "yes", "y", "on", "enabled", "active", "set",
+        "success", "succeeded", "complete", "completed", "configured",
+    }
+
+
+def password_status_from_result(result: Mapping[str, Any] | None) -> str:
+    """Return one stable password capability state for old and new results."""
+    if not isinstance(result, Mapping):
+        return "disabled"
+    status = str(result.get("password_status") or "").strip().lower()
+    # An explicit in-flight marker wins over stale credentials from a prior
+    # attempt; callers must keep the independent password retry available.
+    if status in PASSWORD_PENDING_STATUSES:
+        return "pending"
+    if status in PASSWORD_ENABLED_STATUSES:
+        return "enabled"
+    if any(
+        _result_marker_true(result.get(key))
+        for key in (
+            "password_set_after_registration",
+            "registration_password_used",
+            "has_password",
+        )
+    ) or bool(str(result.get("password") or "").strip()):
+        return "enabled"
+    return status or "disabled"
+
+
+def normalize_password_result(result: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Normalize password status while retaining all other result fields."""
+    payload = copy.deepcopy(dict(result)) if isinstance(result, Mapping) else {}
+    payload["password_status"] = password_status_from_result(payload)
+    return payload
 
 
 def has_account_result(result: Mapping[str, Any] | None) -> bool:
@@ -66,7 +141,7 @@ def merge_account_result_fields(
     existing: Mapping[str, Any] | None,
     incoming: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Fill missing private account fields without changing current outcome."""
+    """Fill missing account evidence/state without changing current outcome."""
     merged = copy.deepcopy(dict(incoming))
     if not isinstance(existing, Mapping):
         return merged
@@ -74,6 +149,11 @@ def merge_account_result_fields(
         if _result_value_present(merged.get(key)):
             continue
         if _result_value_present(existing.get(key)):
+            merged[key] = copy.deepcopy(existing[key])
+    for key in ACCOUNT_STATE_RESULT_KEYS:
+        if key in merged:
+            continue
+        if key in existing and existing.get(key) not in (None, ""):
             merged[key] = copy.deepcopy(existing[key])
     return merged
 
@@ -128,7 +208,6 @@ _ACTION_HINTS = {
     "camoufox_pool_shutdown_pending": "等待旧 Camoufox 窗口关闭完成后再重试",
     "free_process_recovery": "确认中断账号的邮箱状态后重新创建任务",
     "free_run_stop": "可重新选择该邮箱启动 Free 注册",
-    "roxy_circuit_open": "检查 RoxyBrowser API 和遗留 Profile 清理状态后重试",
     "free_protocol": "查看最后成功节点及其上游响应后重试",
     "free_proxy_binding": "检查代理绑定记录和可达性",
     "free_proxy_lease": "检查代理租约记录和代理池状态",
@@ -564,7 +643,7 @@ def completed_result_state(
     post_registration_failure: Mapping[str, Any] | None = None,
 ) -> tuple[str, dict[str, Any], dict[str, Any] | None]:
     """Normalize one account result and remove failures from superseded attempts."""
-    payload = copy.deepcopy(dict(result))
+    payload = normalize_password_result(result)
     historic = canonical_failure(
         payload.get("failure") if isinstance(payload.get("failure"), Mapping) else None
     )
@@ -582,6 +661,7 @@ def completed_result_state(
             payload.pop(key, None)
 
     twofa_pending = str(payload.get("twofa_status") or "").strip().lower() == "pending"
+    password_pending = str(payload.get("password_status") or "").strip().lower() == "pending"
     twofa_failure = canonical_failure(
         payload.get("twofa_failure") if isinstance(payload.get("twofa_failure"), Mapping) else None,
         default_node_code="free_twofa_activate",
@@ -606,6 +686,30 @@ def completed_result_state(
         payload.pop("twofa_failure", None)
         payload.pop("twofa_error", None)
 
+    password_failure = canonical_failure(
+        payload.get("password_failure") if isinstance(payload.get("password_failure"), Mapping) else None,
+        default_node_code="free_password_enroll",
+        default_node_label="注册 Free 账号密码",
+    )
+    if password_pending and password_failure is None and historic and str(historic.get("node_code", "")).startswith("free_password_"):
+        password_failure = historic
+    if password_pending and password_failure is None:
+        detail = sanitize_failure_text(payload.get("password_error") or "服务端未返回错误详情", 800)
+        password_failure = canonical_failure({
+            "node_code": "free_password_enroll",
+            "node_label": "注册 Free 账号密码",
+            "error_code": "free_password_pending",
+            "public_message": f"账号已注册，但密码设置待重试：{detail}",
+            "technical_summary": detail,
+            "retryable": True,
+        })
+    if password_pending and password_failure is not None:
+        password_failure["retryable"] = True
+        payload["password_failure"] = password_failure
+    else:
+        payload.pop("password_failure", None)
+        payload.pop("password_error", None)
+
     post_failure = canonical_failure(post_registration_failure)
     if post_failure is None:
         payload.pop("post_registration_failure", None)
@@ -613,6 +717,8 @@ def completed_result_state(
         payload["post_registration_failure"] = post_failure
     if twofa_pending:
         status, failure = "twofa_pending", twofa_failure
+    elif password_pending:
+        status, failure = "partial_success", password_failure
     elif post_failure is not None:
         status, failure = "partial_success", post_failure
     elif plan_failure is not None:
@@ -764,24 +870,96 @@ class FreeFailureRuntimeMixin:
         task_id: str,
         task: Mapping[str, Any],
         error: BaseException,
+        *,
+        twofa_retry: bool = False,
+        password_retry: bool = False,
     ) -> tuple[dict[str, Any], FreeRegisterError, str, str]:
         """Attribute an untyped error to the live node and persist it safely."""
+        if twofa_retry and password_retry:
+            raise ValueError("Free 续跑模式不能同时设置 2FA 和密码")
         with self._lock:
             node_code = str(
                 self._tasks.get(task_id, {}).get("stage")
                 or task.get("stage")
                 or "free_protocol"
             )
+        # Continuations do not necessarily publish a top-level stage before
+        # entering the adapter (their cursor lives in ``progress``).  Keep an
+        # unexpected adapter exception attached to the operation that can be
+        # retried, rather than misclassifying it as a fresh OAuth failure.
+        if password_retry:
+            node_code = "free_password_enroll"
+        elif twofa_retry and not node_code.startswith("free_twofa_"):
+            node_code = "free_twofa_activate"
         node_label = FREE_STAGE_LABELS.get(node_code, node_code or "Free 注册协议")
         failure = exception_to_failure(error, node_code=node_code, node_label=node_label)
         failure.setdefault("action_hint", "检查该节点最后一条日志及其上游响应后重试")
+        continuation_result: dict[str, Any] | None = None
+        continuation_status = "failed"
+        if password_retry:
+            # A password continuation already has an authenticated account.
+            # Preserve its private material and leave an explicit independent
+            # retry marker when an adapter raises an untyped exception.
+            continuation_status = "partial_success"
+            continuation_result = {
+                "password_status": "pending",
+                "password_error": failure.get("public_message") or failure.get("technical_summary") or "密码设置失败",
+                "password_failure": copy.deepcopy(failure),
+            }
+        elif twofa_retry:
+            continuation_status = "twofa_pending"
+            continuation_result = {
+                "twofa_status": "pending",
+                "twofa_error": failure.get("public_message") or failure.get("technical_summary") or "2FA 激活失败",
+                "twofa_failure": copy.deepcopy(failure),
+            }
+        if continuation_result is not None:
+            # Keep non-secret account state that is needed to resume the
+            # independent operation.  ``merge_account_result_fields`` below
+            # intentionally covers credential material only, so copy the
+            # small status/plan allowlist explicitly rather than carrying
+            # stale diagnostic fields from the previous attempt.
+            with self._lock:
+                current_result = self._tasks.get(task_id, {}).get("result")
+            prior_result = current_result if isinstance(current_result, Mapping) else task.get("result")
+            if isinstance(prior_result, Mapping):
+                for key in (
+                    "plan_type", "subscription_plan", "has_active_subscription",
+                    "plus_trial_eligible", "plan_check_status", "plan_checked_at",
+                    "account_flow", "registration_password_used",
+                    "password_set_after_registration", "twofa_status",
+                    "has_access_token", "has_password", "has_totp",
+                    "has_credential", "registration_completed",
+                    "oauth_callback_completed", "account_created",
+                ):
+                    if key not in continuation_result and prior_result.get(key) not in (None, ""):
+                        continuation_result[key] = copy.deepcopy(prior_result[key])
         failure, _ = self._persist_task_failure(
             task_id,
             task,
-            status="failed",
+            status=continuation_status,
             failure=failure,
+            result=continuation_result,
         )
-        if self._can_reuse_mailbox_after_failure(node_code):
+        if password_retry:
+            self.pool.update(
+                str(task.get("row_id") or ""),
+                status="partial_success",
+                stage="free_password_enroll",
+                error=failure["public_message"],
+                failure=failure,
+                reusable_after_failure=False,
+            )
+        elif twofa_retry:
+            self.pool.update(
+                str(task.get("row_id") or ""),
+                status="twofa_pending",
+                stage="free_twofa_activate",
+                error=failure["public_message"],
+                failure=failure,
+                reusable_after_failure=False,
+            )
+        elif self._can_reuse_mailbox_after_failure(node_code):
             self._restore_mailbox_after_pre_registration_failure(task, failure)
         else:
             self.pool.update(
@@ -825,6 +1003,8 @@ __all__ = [
     "exception_to_failure",
     "failure_result_payload",
     "first_failure",
+    "normalize_password_result",
+    "password_status_from_result",
     "plan_failure_from_result",
     "sanitize_failure_text",
     "sanitize_log_message",

@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import tempfile
 import threading
+import time
 import unittest
 from unittest.mock import ANY, AsyncMock, Mock, patch
 
@@ -173,6 +174,63 @@ class CamoufoxRuntimeTests(unittest.TestCase):
 
     def test_browser_flow_accepts_transport_proxy_argument(self):
         self.assertIn("proxy", inspect.signature(runtime._browser_flow).parameters)
+
+    def test_otp_callback_deadline_stops_blocking_worker(self):
+        """A mailbox waiter cannot outlive the Camoufox registration deadline."""
+        started = threading.Event()
+        stopped = threading.Event()
+
+        def blocking_callback(_stage, *, stop_requested, deadline_monotonic):
+            self.assertGreater(deadline_monotonic, time.monotonic())
+            started.set()
+            while not stop_requested():
+                time.sleep(0.005)
+            stopped.set()
+            return ""
+
+        async def run():
+            with self.assertRaises(runtime.CamoufoxBrowserError) as raised:
+                await runtime._await_otp_callback(
+                    blocking_callback,
+                    "free_email_otp_wait",
+                    deadline_monotonic=time.monotonic() + 0.05,
+                )
+            return raised.exception
+
+        failure = asyncio.run(run())
+        self.assertTrue(started.is_set())
+        self.assertTrue(stopped.wait(1.0))
+        self.assertEqual(failure.error_code, "camoufox_otp_wait_timeout")
+
+    def test_otp_callback_stop_signal_cancels_worker(self):
+        """Cancelling the async page flow propagates to a mailbox callback."""
+        started = threading.Event()
+        stopped = threading.Event()
+
+        def blocking_callback(_stage, *, stop_requested, deadline_monotonic):
+            started.set()
+            while not stop_requested():
+                time.sleep(0.005)
+            stopped.set()
+            return ""
+
+        async def run():
+            task = asyncio.create_task(runtime._await_otp_callback(
+                blocking_callback,
+                "free_email_otp_wait",
+                deadline_monotonic=time.monotonic() + 30,
+            ))
+            for _ in range(100):
+                if started.is_set():
+                    break
+                await asyncio.sleep(0.005)
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+
+        asyncio.run(run())
+        self.assertTrue(started.is_set())
+        self.assertTrue(stopped.wait(1.0))
 
     def test_profile_transition_timing_is_non_overlapping(self):
         """The async submit and home confirmation intervals are distinct."""
@@ -1002,6 +1060,226 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         self.assertIsNot(first, second)
         self.assertTrue(first.shutdown_called)
 
+    def test_pool_for_replaces_closed_pool_without_shutdown_pending_error(self):
+        class ClosedPool:
+            def __init__(self):
+                self._closed = True
+
+            def has_debug_sessions(self):
+                return False
+
+            def has_active_contexts(self):
+                return False
+
+        class FreshPool:
+            def __init__(self, config):
+                self.config = dict(config)
+                self._closed = False
+
+        config = self._config()
+        key = runtime._camoufox_pool_key(config)
+        old_pool = ClosedPool()
+        with runtime._POOL_LOCK:
+            previous = dict(runtime._POOLS)
+            runtime._POOLS.clear()
+            runtime._POOLS[key] = old_pool
+        with patch.object(runtime, "CamoufoxBrowserPool", FreshPool):
+            try:
+                replacement = runtime._pool_for(config)
+                self.assertIsInstance(replacement, FreshPool)
+                self.assertIsNot(replacement, old_pool)
+                self.assertIs(runtime._POOLS[key], replacement)
+            finally:
+                with runtime._POOL_LOCK:
+                    runtime._POOLS.clear()
+                    runtime._POOLS.update(previous)
+
+    def test_pool_shutdown_join_budget_scales_with_pool_size(self):
+        """Serial slot teardown gets enough time before it is reported pending."""
+        class Loop:
+            def stop(self):
+                return None
+
+            def call_soon_threadsafe(self, callback):
+                callback()
+
+        class Thread:
+            def __init__(self):
+                self.join_timeout = None
+
+            def join(self, *, timeout=None):
+                self.join_timeout = timeout
+
+            def is_alive(self):
+                return False
+
+        config = self._config(
+            pool_size=3,
+            context_close_timeout_seconds=2,
+            browser_recycle_timeout_seconds=4,
+            browser_recycle_drain_timeout_seconds=1,
+        )
+        pool = object.__new__(runtime.CamoufoxBrowserPool)
+        pool.config = config
+        pool._closed = False
+        pool._lock = threading.Lock()
+        pool._debug_lock = threading.RLock()
+        pool._debug_sessions = {}
+        pool._slots = []
+        pool._loop = Loop()
+        pool._thread = Thread()
+        pool._shutdown_complete = threading.Event()
+
+        self.assertTrue(pool.shutdown())
+        self.assertGreaterEqual(
+            pool._thread.join_timeout,
+            runtime._pool_shutdown_wait_budget(config),
+        )
+        self.assertGreaterEqual(pool._thread.join_timeout, 3 * (4 + 2))
+
+    def test_pool_for_detaches_shutdown_pool_before_creating_replacement(self):
+        """A shutdown-in-flight pool cannot block a fresh registration pool."""
+        class TrackingEvent(threading.Event):
+            def __init__(self):
+                super().__init__()
+                self.timeout_seen = None
+
+            def wait(self, timeout=None):
+                self.timeout_seen = timeout
+                return False
+
+        class ClosedPool:
+            def __init__(self, config):
+                self.config = dict(config)
+                self._closed = True
+                self._shutdown_complete = TrackingEvent()
+
+            def has_debug_sessions(self):
+                return False
+
+            def has_active_contexts(self):
+                return False
+
+        config = self._config(
+            pool_size=3,
+            context_close_timeout_seconds=2,
+            browser_recycle_timeout_seconds=4,
+            browser_recycle_drain_timeout_seconds=1,
+        )
+        key = runtime._camoufox_pool_key(config)
+        old_pool = ClosedPool(config)
+        with runtime._POOL_LOCK:
+            previous = dict(runtime._POOLS)
+            runtime._POOLS.clear()
+            runtime._POOLS[key] = old_pool
+        replacement = object()
+        with patch.object(runtime, "CamoufoxBrowserPool", return_value=replacement) as pool_constructor:
+            try:
+                result = runtime._pool_for(config)
+                registry_result = runtime._POOLS.get(key)
+            finally:
+                with runtime._POOL_LOCK:
+                    runtime._POOLS.clear()
+                    runtime._POOLS.update(previous)
+        self.assertIs(result, replacement)
+        self.assertIs(registry_result, replacement)
+        self.assertIsNone(old_pool._shutdown_complete.timeout_seen)
+        pool_constructor.assert_called_once_with(config)
+
+    def test_pool_for_detaches_obsolete_closed_pool_before_new_identity(self):
+        """A settings change can create a new pool while old cleanup drains."""
+        class ClosedPool:
+            def __init__(self, config):
+                self.config = dict(config)
+                self._closed = True
+
+            def has_debug_sessions(self):
+                return False
+
+            def has_active_contexts(self):
+                return False
+
+        old_config = self._config(pool_size=2, context_close_timeout_seconds=1)
+        new_config = self._config(pool_size=2, context_close_timeout_seconds=2)
+        old_key = runtime._camoufox_pool_key(old_config)
+        new_key = runtime._camoufox_pool_key(new_config)
+        self.assertNotEqual(old_key, new_key)
+        old_pool = ClosedPool(old_config)
+        with runtime._POOL_LOCK:
+            previous = dict(runtime._POOLS)
+            runtime._POOLS.clear()
+            runtime._POOLS[old_key] = old_pool
+        replacement = object()
+        with patch.object(runtime, "CamoufoxBrowserPool", return_value=replacement) as constructor:
+            try:
+                result = runtime._pool_for(new_config)
+            finally:
+                with runtime._POOL_LOCK:
+                    runtime._POOLS.clear()
+                    runtime._POOLS.update(previous)
+        self.assertIs(result, replacement)
+        constructor.assert_called_once_with(new_config)
+
+    def test_admission_waits_until_all_recycling_slots_are_released(self):
+        """A locked recycler must not be selected as an apparently idle slot."""
+        async def exercise():
+            class Browser:
+                @staticmethod
+                def is_connected():
+                    return True
+
+            pool = object.__new__(runtime.CamoufoxBrowserPool)
+            pool.config = self._config(context_close_timeout_seconds=0.1)
+            pool.max_contexts = 1
+            pool.context_start_interval = 0
+            pool._context_start_lock = None
+            pool._startup_semaphore = None
+            pool._admission_lock = asyncio.Lock()
+            pool._closed = False
+            pool._slots = []
+
+            slots = []
+            for index in range(2):
+                slot = runtime._BrowserSlot(
+                    manager=None,
+                    browser=Browser(),
+                    semaphore=asyncio.Semaphore(1),
+                    recycle_lock=asyncio.Lock(),
+                    idle_event=asyncio.Event(),
+                    draining=index == 0,
+                )
+                slot.idle_event.set()
+                await slot.recycle_lock.acquire()
+                slots.append(slot)
+            pool._slots = slots
+
+            async def release_recyclers():
+                await asyncio.sleep(0.05)
+                for slot in slots:
+                    slot.draining = False
+                    slot.recycle_lock.release()
+
+            releaser = asyncio.create_task(release_recyclers())
+            try:
+                with (
+                    patch.object(runtime, "_new_context", new=AsyncMock(return_value=_FakeContext())),
+                    patch.object(runtime, "_browser_flow", new=AsyncMock(return_value={"ok": True})),
+                    patch.object(runtime, "_close_context_safely", new=AsyncMock(return_value=True)),
+                ):
+                    started = time.monotonic()
+                    result = await asyncio.wait_for(
+                        pool._register_with_slot_once({"proxy": ""}),
+                        timeout=1.0,
+                    )
+                    elapsed = time.monotonic() - started
+            finally:
+                await releaser
+
+            self.assertTrue(result["ok"])
+            self.assertGreaterEqual(elapsed, 0.04)
+
+        asyncio.run(exercise())
+
     def test_pool_closes_context_and_recycles_after_registration_limit(self):
         async def fake_flow(_page, **_kwargs):
             return {"ok": True, "account_flow": "signup"}
@@ -1325,6 +1603,45 @@ class CamoufoxRuntimeTests(unittest.TestCase):
 
         self.assertEqual(raised.exception.error_code, "camoufox_registration_timeout")
         self.assertGreaterEqual(len(_FakeManager.instances), 2)
+        self.assertTrue(all(item.exited == 1 for item in _FakeManager.instances))
+
+    def test_shutdown_drains_running_registration_before_stopping_loop(self):
+        """Pool shutdown must not stop the loop underneath a live task."""
+        started = threading.Event()
+        errors: list[BaseException] = []
+
+        async def stuck_flow(_page, **_kwargs):
+            started.set()
+            await asyncio.Event().wait()
+
+        with (
+            patch.object(runtime, "_load_camoufox_api", return_value=(_FakeManager, _fake_context)),
+            patch.object(runtime, "_browser_flow", side_effect=stuck_flow),
+        ):
+            pool = runtime.CamoufoxBrowserPool(self._config(registration_timeout_seconds=30))
+
+            def register() -> None:
+                try:
+                    pool.register(email="user@example.test", password="password", proxy="")
+                except BaseException as exc:  # noqa: BLE001 - assert structured cancellation below
+                    errors.append(exc)
+
+            worker = threading.Thread(target=register, daemon=True)
+            worker.start()
+            self.assertTrue(started.wait(timeout=2))
+            try:
+                self.assertTrue(pool.shutdown(force=True))
+            finally:
+                worker.join(timeout=2)
+
+        self.assertFalse(worker.is_alive())
+        self.assertTrue(pool._shutdown_complete.is_set())
+        self.assertTrue(errors)
+        self.assertIsInstance(errors[0], runtime.CamoufoxBrowserError)
+        self.assertIn(
+            errors[0].error_code,
+            {"camoufox_pool_closed", "camoufox_registration_cancelled"},
+        )
         self.assertTrue(all(item.exited == 1 for item in _FakeManager.instances))
 
     def test_browser_disconnect_cancellation_is_structured_and_not_a_proxy_failure(self):
@@ -1924,6 +2241,57 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         self.assertEqual(state["open_contexts"], 1)
         self.assertEqual(old_pool.shutdown_calls, 0)
 
+    def test_debug_artifact_dir_does_not_split_pool_identity(self):
+        """Diagnostic output paths must not retire the live registration pool."""
+        class FakePool:
+            def __init__(self):
+                self.shutdown_calls = 0
+
+            def has_debug_sessions(self):
+                return False
+
+            def has_active_contexts(self):
+                return False
+
+            def shutdown(self, *, force=False):
+                self.shutdown_calls += 1
+                return True
+
+            def debug_state(self):
+                return {
+                    "enabled": True,
+                    "headless": False,
+                    "capacity": 1,
+                    "used": 0,
+                    "open_contexts": 0,
+                    "sessions": [],
+                }
+
+        runner_config = self._config(
+            debug_mode=True,
+            headless=True,
+            _debug_artifact_dir="/tmp/camoufox-debug",
+        )
+        persisted_config = self._config(debug_mode=True, headless=True)
+        self.assertEqual(
+            runtime._camoufox_pool_key(runner_config),
+            runtime._camoufox_pool_key(persisted_config),
+        )
+        pool = FakePool()
+        key = runtime._camoufox_pool_key(runner_config)
+        with runtime._POOL_LOCK:
+            previous = dict(runtime._POOLS)
+            runtime._POOLS.clear()
+            runtime._POOLS[key] = pool
+        try:
+            state = runtime.camoufox_debug_state(persisted_config)
+        finally:
+            with runtime._POOL_LOCK:
+                runtime._POOLS.clear()
+                runtime._POOLS.update(previous)
+        self.assertEqual(pool.shutdown_calls, 0)
+        self.assertEqual(state["pool_count"], 1)
+
     def test_close_debug_helper_keeps_current_config_after_last_pool_is_removed(self):
         class FakePool:
             def __init__(self):
@@ -2001,6 +2369,36 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         self.assertNotIn("password", result)
         mailbox.close.assert_called_once_with()
 
+    def test_runner_passes_configured_password_for_signup(self):
+        mailbox = Mock()
+        pool = Mock()
+        pool.register.return_value = {
+            "access_token": "access-token",
+            "account_flow": "signup",
+            "registration_password_used": True,
+            "password": "Custom-Password-123",
+        }
+        task = {
+            "task_id": "signup-task",
+            "email": "user@example.test",
+            "mailbox_url": "https://mail.example.test/code",
+            "proxy": "",
+        }
+        config = {
+            "driver": "camoufox",
+            "account_password": "Custom-Password-123",
+            "email_code_timeout": 90,
+            "camoufox": self._config(),
+        }
+        with (
+            patch.object(runtime, "build_free_mailbox_otp_provider", return_value=mailbox),
+            patch.object(runtime, "_pool_for", return_value=pool),
+        ):
+            runtime.CamoufoxRegistrationRunner()(task, config, threading.Event(), Mock(), Mock())
+
+        self.assertEqual(pool.register.call_args.kwargs["password"], "Custom-Password-123")
+        mailbox.close.assert_called_once_with()
+
     def test_runner_passes_existing_login_mode_for_twofa_retry(self):
         mailbox = Mock()
         pool = Mock()
@@ -2016,6 +2414,126 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         self.assertTrue(pool.register.call_args.kwargs["force_existing_login"])
         self.assertEqual(pool.register.call_args.kwargs["existing_password"], "saved-account-password")
         self.assertEqual(pool.register.call_args.kwargs["password"], "")
+
+    def test_password_retry_runner_passes_continuation_flag_without_login_mode(self):
+        mailbox = Mock()
+        pool = Mock()
+        pool.register.return_value = {
+            "access_token": "access-token",
+            "password_status": "enabled",
+            "password_set_after_registration": True,
+            "password": "new-account-password",
+        }
+        task = {
+            "task_id": "password-retry-task",
+            "email": "user@example.test",
+            "mailbox_url": "https://mail.example.test/code",
+            "proxy": "",
+            "result": {
+                "access_token": "access-token",
+                "password_status": "pending",
+                "twofa_status": "enabled",
+            },
+        }
+        config = {"driver": "camoufox", "email_code_timeout": 90, "camoufox": self._config()}
+        with (
+            patch.object(runtime, "build_free_mailbox_otp_provider", return_value=mailbox),
+            patch.object(runtime, "_pool_for", return_value=pool),
+        ):
+            result = runtime.CamoufoxRegistrationRunner()(
+                task,
+                config,
+                threading.Event(),
+                Mock(),
+                Mock(),
+                password_retry=True,
+            )
+
+        kwargs = pool.register.call_args.kwargs
+        self.assertTrue(kwargs["password_retry"])
+        self.assertFalse(kwargs["force_existing_login"])
+        self.assertEqual(kwargs["password"], "")
+        self.assertEqual(result["password_status"], "enabled")
+        self.assertEqual(result["access_token"], "access-token")
+        mailbox.close.assert_called_once_with()
+
+    def test_password_retry_runner_accepts_disabled_passwordless_signup(self):
+        mailbox = Mock()
+        pool = Mock()
+        pool.register.return_value = {
+            "access_token": "access-token",
+            "account_flow": "signup",
+            "password_status": "enabled",
+            "password_set_after_registration": True,
+            "password": "new-account-password",
+        }
+        task = {
+            "task_id": "password-retry-disabled-task",
+            "email": "user@example.test",
+            "mailbox_url": "https://mail.example.test/code",
+            "proxy": "",
+            "result": {
+                "access_token": "access-token",
+                "account_flow": "signup",
+                "password_status": "disabled",
+                "registration_password_used": False,
+            },
+        }
+        config = {"driver": "camoufox", "email_code_timeout": 90, "camoufox": self._config()}
+        with (
+            patch.object(runtime, "build_free_mailbox_otp_provider", return_value=mailbox),
+            patch.object(runtime, "_pool_for", return_value=pool),
+        ):
+            result = runtime.CamoufoxRegistrationRunner()(
+                task,
+                config,
+                threading.Event(),
+                Mock(),
+                Mock(),
+                password_retry=True,
+            )
+
+        kwargs = pool.register.call_args.kwargs
+        self.assertTrue(kwargs["password_retry"])
+        self.assertFalse(kwargs["force_existing_login"])
+        self.assertEqual(result["password_status"], "enabled")
+        self.assertEqual(result["password"], "new-account-password")
+        mailbox.close.assert_called_once_with()
+
+    def test_password_retry_browser_flow_only_calls_password_helper(self):
+        page = Mock()
+        page.goto = AsyncMock()
+        add_password = AsyncMock(return_value={
+            "access_token": "access-token",
+            "password_status": "enabled",
+            "password_set_after_registration": True,
+            "password": "new-account-password",
+        })
+        with (
+            patch.object(runtime, "browser_add_password", new=add_password),
+            patch.object(runtime, "browser_twofa", new=AsyncMock()) as twofa,
+            patch.object(runtime, "browser_json_fetch", new=AsyncMock()) as json_fetch,
+        ):
+            result = asyncio.run(
+                runtime._browser_flow(
+                    page,
+                    email="user@example.test",
+                    password="new-account-password",
+                    otp_callback=lambda: "123456",
+                    config={"registration_timeout_seconds": 60},
+                    log=lambda *_args: None,
+                    password_retry=True,
+                    password_retry_token="access-token",
+                )
+            )
+
+        page.goto.assert_awaited_once()
+        add_password.assert_awaited_once()
+        self.assertEqual(add_password.call_args.args[1], "access-token")
+        twofa.assert_not_awaited()
+        json_fetch.assert_not_awaited()
+        self.assertEqual(result["password_status"], "enabled")
+        self.assertEqual(result["access_token"], "access-token")
 
     def test_runner_rejects_twofa_retry_without_saved_password(self):
         mailbox = Mock()

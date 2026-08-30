@@ -37,7 +37,7 @@ const emit = defineEmits<{
   mailboxTotp: [RuntimeTask]
   mailboxUrl: [RuntimeTask]
   mailboxLatestCode: [RuntimeTask]
-  freeSecret: [{ kind: 'token' | 'password' | 'totp' | 'proxy' | 'credential'; tasks: RuntimeTask[] }]
+  freeSecret: [{ kind: 'token' | 'password' | 'totp' | 'credential'; tasks: RuntimeTask[] }]
   freeTwofaRetry: [RuntimeTask]
   diagnostic: [RuntimeTask]
   copyDiagnosticId: [string]
@@ -147,6 +147,11 @@ function failureTooltip(row: RuntimeTask) {
     : details.join(' · ')
 }
 
+function isHistoricalDriver(row: RuntimeTask) {
+  const driver = String((row as any)?.driver || '').trim().toLowerCase()
+  return Boolean(driver) && driver !== 'protocol' && driver !== 'camoufox'
+}
+
 function openDetails(row: RuntimeTask) {
   selectedTaskKey.value = taskRowKey(row)
   detailsOpen.value = true
@@ -156,7 +161,7 @@ function selectFreeTasks(rows: RuntimeTask[]) {
   selectedFreeTasks.value = rows.filter(row => row.run_mode === 'free_register')
 }
 
-function emitFreeSecret(kind: 'token' | 'password' | 'totp' | 'proxy' | 'credential', rows: RuntimeTask[]) {
+function emitFreeSecret(kind: 'token' | 'password' | 'totp' | 'credential', rows: RuntimeTask[]) {
   emit('freeSecret', { kind, tasks: rows.filter(row => row.run_mode === 'free_register') })
 }
 </script>
@@ -187,12 +192,12 @@ function emitFreeSecret(kind: 'token' | 'password' | 'totp' | 'proxy' | 'credent
       <el-table-column label="2FA" width="62" align="center">
         <template #default="{ row }"><el-tooltip v-if="row.run_mode === 'free_register' && row.result?.has_totp" content="复制注册 2FA 密钥" placement="top"><el-button link :icon="CopyDocument" aria-label="复制注册 2FA 密钥" @click="emitFreeSecret('totp', [row])" /></el-tooltip><el-tooltip v-else-if="row.has_totp" content="复制临时 2FA 验证码" placement="top"><el-button link :icon="CopyDocument" :loading="loadingMailboxTotps.includes(row.task_id)" aria-label="复制临时 2FA 验证码" @click="emit('mailboxTotp', row)" /></el-tooltip><span v-else class="muted">-</span></template>
       </el-table-column>
-      <el-table-column label="Token / 代理" width="108" align="center"><template #default="{ row }"><template v-if="row.run_mode === 'free_register'"><el-button v-if="row.result?.has_access_token" link @click="emitFreeSecret('token', [row])">Token</el-button><el-button v-if="row.proxy_masked" link @click="emitFreeSecret('proxy', [row])">代理</el-button><span v-if="!row.result?.has_access_token && !row.proxy_masked" class="muted">-</span></template><span v-else class="muted">-</span></template></el-table-column>
+      <el-table-column label="Token" width="72" align="center"><template #default="{ row }"><template v-if="row.run_mode === 'free_register'"><el-button v-if="row.result?.has_access_token" link @click="emitFreeSecret('token', [row])">Token</el-button><span v-else class="muted">-</span></template><span v-else class="muted">-</span></template></el-table-column>
       <el-table-column label="当前阶段 / 结果" min-width="340">
         <template #default="{ row }"><div class="result-cell"><TaskProgressCell :progress="row.progress" :timing="row.timing" :now-seconds="nowSeconds" :status="row.status" /><el-tag class="result-tag" :type="statusType(row.status, row)">{{ statusLabel(row.status, row) }}</el-tag></div></template>
       </el-table-column>
       <el-table-column label="待处理事项" min-width="280" show-overflow-tooltip>
-        <template #default="{ row }"><span v-if="isRetryResolved(row.retry_resolved)" class="muted">已由重试解决</span><div v-else-if="row.failure" class="failure-actions"><el-tooltip :content="failureTooltip(row)" placement="top"><span class="failure-detail" :class="{ 'account-banned-detail': isAccountBanned(row) }"><template v-if="isAccountBanned(row)">{{ ACCOUNT_BANNED_DISPLAY_MESSAGE }}</template><template v-else><span class="failure-node">{{ failureIdentity(row).label || failureIdentity(row).code }}<code v-if="failureIdentity(row).showCode">{{ failureIdentity(row).code }}</code></span>{{ failureCause(row) }}</template></span></el-tooltip><el-button v-if="row.run_mode === 'free_register' && row.status === 'twofa_pending' && row.driver !== 'roxybrowser'" link type="warning" @click="emit('freeTwofaRetry', row)">重试 2FA</el-button></div><el-button v-else-if="row.run_mode === 'free_register' && row.status === 'twofa_pending' && row.driver !== 'roxybrowser'" link type="warning" @click="emit('freeTwofaRetry', row)">重试 2FA</el-button><TaskVerificationInput v-else-if="shouldShowManualVerification(row) && !acceptedVerificationKeys.has(verificationKey(row))" :task-id="row.task_id" :request="row.manual_verification" :now-seconds="nowSeconds" @accepted="markVerificationAccepted(row)" /><span v-else class="muted">-</span></template>
+        <template #default="{ row }"><span v-if="isRetryResolved(row.retry_resolved)" class="muted">已由重试解决</span><div v-else-if="row.failure" class="failure-actions"><el-tooltip :content="failureTooltip(row)" placement="top"><span class="failure-detail" :class="{ 'account-banned-detail': isAccountBanned(row) }"><template v-if="isAccountBanned(row)">{{ ACCOUNT_BANNED_DISPLAY_MESSAGE }}</template><template v-else><span class="failure-node">{{ failureIdentity(row).label || failureIdentity(row).code }}<code v-if="failureIdentity(row).showCode">{{ failureIdentity(row).code }}</code></span>{{ failureCause(row) }}</template></span></el-tooltip><el-button v-if="!isHistoricalDriver(row) && row.run_mode === 'free_register' && row.status === 'twofa_pending'" link type="warning" @click="emit('freeTwofaRetry', row)">重试 2FA</el-button></div><el-button v-else-if="!isHistoricalDriver(row) && row.run_mode === 'free_register' && row.status === 'twofa_pending'" link type="warning" @click="emit('freeTwofaRetry', row)">重试 2FA</el-button><TaskVerificationInput v-else-if="!isHistoricalDriver(row) && shouldShowManualVerification(row) && !acceptedVerificationKeys.has(verificationKey(row))" :task-id="row.task_id" :request="row.manual_verification" :now-seconds="nowSeconds" @accepted="markVerificationAccepted(row)" /><span v-else class="muted">-</span></template>
       </el-table-column>
       <el-table-column label="操作" width="100" fixed="right" align="center"><template #default="{ row }"><el-tooltip content="查看任务链路详情" placement="top"><el-button link :icon="Document" aria-label="查看任务链路详情" @click="openDetails(row)" /></el-tooltip><el-tooltip v-if="row.incident_id" content="打开故障日志" placement="top"><el-button link :icon="View" aria-label="打开故障日志" @click="emit('diagnostic', row)" /></el-tooltip></template></el-table-column>
       <template #empty><ContentEmptyState /></template>

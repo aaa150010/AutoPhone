@@ -1,4 +1,4 @@
-"""Scheduling recovery, proxy replacement and Roxy circuit controls for Free runs."""
+"""Scheduling recovery and proxy replacement for Free runs."""
 
 from __future__ import annotations
 
@@ -169,40 +169,5 @@ class FreeRegisterSchedulerMixin:
                     f"（第 {attempt + 1} 次）",
                     "warn",
                 )
-
-    def _roxy_failure(self, task: Mapping[str, Any], exc: BaseException) -> None:
-        if str(task.get("driver") or "") != "roxybrowser":
-            return
-        code = str(getattr(exc, "node_code", "") or "")
-        if code not in {"free_roxy_api", "free_roxy_create", "free_roxy_open", "free_roxy_connect"}:
-            return
-        with self._lock:
-            self._roxy_failures += 1
-            threshold = max(1, int(self._last_config.get("roxy_circuit_failure_threshold") or 3)) if hasattr(self, "_last_config") else 3
-            if self._roxy_failures >= threshold:
-                self._roxy_circuit_open = True
-                self._roxy_circuit_opened_at = time.time()
-                self._circuit_stop_requested = True
-                self._stop.set()
-        if self._roxy_circuit_open:
-            self._log(f"[{task.get('task_id')}/RoxyBrowser 熔断/roxy_circuit_open] Roxy 基础设施连续失败，停止启动新的 Free 任务", "error")
-
-    def _maybe_recover_roxy_circuit(self, config: Mapping[str, Any]) -> None:
-        """Move an elapsed Roxy circuit into a fresh half-open batch window."""
-        with self._lock:
-            if not self._roxy_circuit_open:
-                return
-            configured = config.get("roxy_circuit_recovery_seconds")
-            recovery = max(0, int(configured if configured is not None else 30))
-            if time.time() - float(self._roxy_circuit_opened_at or 0) < recovery:
-                return
-            self._roxy_circuit_open = False
-            self._roxy_failures = 0
-            self._roxy_circuit_opened_at = 0.0
-            if self._circuit_stop_requested and not self._user_stop_requested:
-                self._stop.clear()
-            self._circuit_stop_requested = False
-            self._log("[RoxyBrowser/free_roxy_circuit] 熔断恢复，允许新的 Roxy 任务进入半开放探测", "warn")
-
 
 __all__ = ["FreeRegisterSchedulerMixin"]

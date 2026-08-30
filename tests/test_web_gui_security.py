@@ -194,6 +194,7 @@ class WebGuiSecurityTests(unittest.TestCase):
             "proxy": "http://proxy-user:proxy-pass@127.0.0.1:7890",
             "free_proxy_pool_content": "http://free-user:free-pass@proxy.example.test:8000",
             "free_register_password": "free-password",
+            "account_password": "custom-free-password",
             "sub2api": {"password": "sub2-secret"},
             "email_notification": {"password": "smtp-secret"},
             "online_mailbox": {"api_token": "online-mailbox-secret"},
@@ -207,6 +208,7 @@ class WebGuiSecurityTests(unittest.TestCase):
             "proxy-pass",
             "free-pass",
             "free-password",
+            "custom-free-password",
             "sub2-secret",
             "smtp-secret",
             "online-mailbox-secret",
@@ -216,6 +218,7 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(masked["online_mailbox"]["api_token"], "********")
         self.assertEqual(masked["free_proxy_pool_content"], "********")
         self.assertEqual(masked["free_register_password"], "********")
+        self.assertEqual(masked["account_password"], "********")
 
     def test_free_proxy_pool_secret_stays_out_of_ordinary_config(self):
         content = "http://free-user:free-pass@proxy.example.test:8000\nsocks5h://u:p@proxy.example.test:8001"
