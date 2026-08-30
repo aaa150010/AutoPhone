@@ -18,6 +18,28 @@ class _Page:
 
 
 class FreeAccountServiceTests(unittest.TestCase):
+    def test_browser_json_fetch_records_timing_without_exposing_request_data(self):
+        class EvalPage:
+            async def evaluate(self, _script, _args):
+                return {"ok": True, "status": 200, "payload": {"value": "safe"}}
+
+        events: list[tuple[str, str, int, str]] = []
+        result = asyncio.run(
+            service.browser_json_fetch(
+                EvalPage(),
+                "https://chatgpt.com/backend-api/accounts/check?secret=hidden",
+                token="secret-token",
+                timing_fn=lambda *event: events.append(event),
+                timing_stage="free_access_token",
+                timing_code="plan_accounts_fetch",
+            )
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0][0:2], ("free_access_token", "plan_accounts_fetch"))
+        self.assertEqual(events[0][3], "success")
+
     def test_password_retry_allowed_for_pending_or_disabled_signup_only(self):
         self.assertTrue(service.password_retry_allowed({
             "account_flow": "signup",
@@ -51,6 +73,7 @@ class FreeAccountServiceTests(unittest.TestCase):
     def test_browser_twofa_reauth_otp_precedes_mfa_requests(self):
         page = _Page()
         events: list[tuple[str, str]] = []
+        timing_events: list[tuple[str, str, int, str]] = []
         def record_prepare(*args, **kwargs):
             events.append(("prepare", str((args, kwargs))))
 
@@ -106,7 +129,7 @@ class FreeAccountServiceTests(unittest.TestCase):
                 return {"ok": True, "status": 200, "payload": {"success": True}}
             self.fail(f"unexpected browser JSON URL: {url}")
 
-        async def session(_page):
+        async def session(_page, **_kwargs):
             events.append(("session", "refresh"))
             return {"accessToken": "fresh-token"}
 
@@ -124,6 +147,7 @@ class FreeAccountServiceTests(unittest.TestCase):
                     otp_prepare=prepare,
                     otp_mark_sent=mark_sent,
                     device_id="device-1",
+                    timing_fn=lambda *event: timing_events.append(event),
                 )
             )
 
@@ -132,6 +156,9 @@ class FreeAccountServiceTests(unittest.TestCase):
         self.assertEqual(result["access_token"], "fresh-token")
         self.assertEqual(page.goto_calls[0], "https://auth.openai.com/authorize?state=reauth")
         self.assertEqual(page.goto_calls[1], "https://chatgpt.com/api/auth/callback/openai?state=done")
+        self.assertTrue(
+            any(event[0:2] == ("free_twofa_reauth_callback", "oauth_callback_navigation") for event in timing_events)
+        )
         self.assertEqual(prepare.call_args.args, ("free_twofa_enroll",))
         self.assertTrue(prepare.call_args.kwargs.get("force_snapshot"))
         self.assertEqual(mark_sent.call_args.args, ("free_twofa_enroll",))

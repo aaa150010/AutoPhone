@@ -13,11 +13,15 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.93',
-  freeRuntimeVersion: '1.6.93',
-  title: 'Free 邮箱池显示与导入排序修复',
+  version: '1.6.94',
+  freeRuntimeVersion: '1.6.94',
+  title: 'Free Camoufox 注册耗时拆分',
   releasedAt: '2026-08-30',
   sections: [
+    {
+      title: 'Free Camoufox 注册耗时拆分',
+      usage: 'Camoufox 池 admission、context/page 创建、入口导航与表单跳转，以及认证 callback、Session、套餐和 2FA 请求会分别记录脱敏耗时，便于定位慢节点；本次不改变注册顺序、重试边界或等待窗口。',
+    },
     {
       title: 'Free 邮箱池显示与导入排序修复',
       usage: '未运行的邮箱不再误显示为全协议；新导入邮箱会按本次导入顺序置于列表顶部，重复旧邮箱保留原有位置。',

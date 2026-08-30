@@ -2194,6 +2194,8 @@ async def _browser_flow(
     profile_home_state_recorded = False
     profile_transition_recorded = False
     entry_transition_deadline = 0.0
+    entry_transition_started = 0.0
+    entry_transition_recorded = False
     entry_retry_used = False
     entry_signin_fallback_used = False
     entry_recovery = "none"
@@ -2472,10 +2474,25 @@ async def _browser_flow(
         return "", await _page_state(page)
 
     async def finish_home() -> dict[str, Any]:
-        session = await browser_session(page)
+        if callable(timing_fn):
+            session = await browser_session(
+                page,
+                timing_fn=timing_fn,
+                timing_stage="free_access_token",
+            )
+        else:
+            session = await browser_session(page)
         set_stage("free_access_token")
         token = str(session.get("accessToken") or "")
-        plan = await browser_plan_details(page, token)
+        if callable(timing_fn):
+            plan = await browser_plan_details(
+                page,
+                token,
+                timing_fn=timing_fn,
+                timing_stage="free_access_token",
+            )
+        else:
+            plan = await browser_plan_details(page, token)
         set_stage("free_plan_check")
         result: dict[str, Any] = {
             "access_token": token,
@@ -2505,6 +2522,7 @@ async def _browser_flow(
                     task_id=str(config.get("task_id") or ""),
                     device_id=str(config.get("device_id") or ""),
                     deadline_monotonic=deadline,
+                    timing_fn=timing_fn,
                 )
                 result.update(password_result)
                 token = str(password_result.get("access_token") or token)
@@ -2546,6 +2564,7 @@ async def _browser_flow(
                     device_id=str(config.get("device_id") or ""),
                     deadline_monotonic=deadline,
                     stop_requested=config.get("_stop_requested"),
+                    timing_fn=timing_fn,
                 )
                 if isinstance(twofa_result, Mapping):
                     result.update(twofa_result)
@@ -2626,6 +2645,7 @@ async def _browser_flow(
                 task_id=str(config.get("task_id") or ""),
                 device_id=str(config.get("device_id") or ""),
                 deadline_monotonic=deadline,
+                timing_fn=timing_fn,
             )
         except FreeRegisterError as exc:
             detail = clean(str(exc), 300)
@@ -2664,7 +2684,7 @@ async def _browser_flow(
 
     async def open_registration_entry() -> None:
         """Keep the reference startup gate around only entry navigation."""
-        nonlocal entry_submitted, entry_transition_deadline
+        nonlocal entry_submitted, entry_transition_deadline, entry_transition_started
         nonlocal entry_retry_used, entry_signin_fallback_used, entry_recovery
         # Establish the mailbox baseline before the first request that may
         # send an OTP. The provider itself remains AutoPhone's strategy mode.
@@ -2672,12 +2692,30 @@ async def _browser_flow(
             # Capture the pre-login mailbox baseline without announcing an OTP
             # stage before the page has actually requested authentication.
             await prepare_otp("free_existing_login_otp", notify_stage=False)
-        await _goto_with_retry(
-            page, CHATGPT_LOGIN_URL, timeout_ms=min(timeout * 1000, 90_000),
-            proxy_retryable=not force_existing_login, log=log,
+        navigation_started = time.monotonic()
+        try:
+            await _goto_with_retry(
+                page, CHATGPT_LOGIN_URL, timeout_ms=min(timeout * 1000, 90_000),
+                proxy_retryable=not force_existing_login, log=log,
+            )
+        except Exception:
+            emit_timing(
+                timing_fn, "free_camoufox_signup", "camoufox_initial_navigation",
+                (time.monotonic() - navigation_started) * 1000, "error",
+            )
+            raise
+        emit_timing(
+            timing_fn, "free_camoufox_signup", "camoufox_initial_navigation",
+            (time.monotonic() - navigation_started) * 1000, "success",
         )
         await asyncio.sleep(1.5)
+        form_wait_started = time.monotonic()
         email_selector = await _wait_for_any_selector(page, EMAIL_SELECTORS, timeout=12)
+        emit_timing(
+            timing_fn, "free_camoufox_signup", "camoufox_entry_form_wait",
+            (time.monotonic() - form_wait_started) * 1000,
+            "success" if email_selector else "timeout",
+        )
         if email_selector:
             set_stage("free_existing_login" if force_existing_login else "free_camoufox_signup_email")
             if not force_existing_login:
@@ -2685,6 +2723,7 @@ async def _browser_flow(
             await submit_entry_email(email_selector)
             entry_submitted = True
             entry_transition_deadline = time.monotonic() + 45.0
+            entry_transition_started = time.monotonic()
             return
 
         # Keep the same-origin NextAuth fallback from the reference flow for a
@@ -2702,6 +2741,7 @@ async def _browser_flow(
             )
             entry_submitted = True
             entry_transition_deadline = time.monotonic() + 45.0
+            entry_transition_started = time.monotonic()
             return
         snapshot = await _snapshot(page)
         raise CamoufoxBrowserError(
@@ -2745,6 +2785,20 @@ async def _browser_flow(
                 safe_page=_safe_url(page), page_type="state_machine",
             )
         state = await _page_state(page)
+        if (
+            entry_submitted
+            and entry_transition_started
+            and not entry_transition_recorded
+            and state not in {"entry", "unknown"}
+        ):
+            emit_timing(
+                timing_fn,
+                "free_camoufox_signup_email",
+                "camoufox_entry_transition_wait",
+                (time.monotonic() - entry_transition_started) * 1000,
+                "success",
+            )
+            entry_transition_recorded = True
         auth_states = {
             "otp", "otp_wait", "email_verification", "signup_password",
             "login_password", "profile", "oauth_callback", "home", "security",
@@ -2808,6 +2862,7 @@ async def _browser_flow(
                 if selector:
                     await submit_entry_email(selector, recovery=True)
                     entry_transition_deadline = time.monotonic() + 45.0
+                    entry_transition_started = time.monotonic()
                     seen.clear()
                     await asyncio.sleep(1.0)
                     continue
@@ -2863,6 +2918,7 @@ async def _browser_flow(
                     await submit_entry_email(selector)
                     entry_submitted = True
                     entry_transition_deadline = time.monotonic() + 45.0
+                    entry_transition_started = time.monotonic()
                 else:
                     reopened = await _click_exact_button_text(
                         page, ("Continue", "继续"), timeout=3,
@@ -4263,6 +4319,8 @@ class CamoufoxBrowserPool:
                 await asyncio.sleep(0)
 
     async def _register_with_slot_once(self, kwargs: Mapping[str, Any]) -> dict[str, Any]:
+        timing_fn = kwargs.get("timing_fn")
+        admission_started = time.monotonic()
         recovery_attempted = False
         while True:
             available = [
@@ -4369,6 +4427,13 @@ class CamoufoxBrowserPool:
             # A debug context may have been retained after the slot selection;
             # return to the pool scan so another browser can admit this task.
             raise _SlotAdmissionRace()
+        emit_timing(
+            timing_fn,
+            "free_camoufox_signup",
+            "camoufox_pool_admission",
+            (time.monotonic() - admission_started) * 1000,
+            "success",
+        )
         async with permit:
             recycle_required = False
             generation = slot.generation
@@ -4390,8 +4455,9 @@ class CamoufoxBrowserPool:
                     )
                     setattr(failure, "safe_restart", True)
                     raise failure
-                await self._wait_context_start_slot()
+                context_started = time.monotonic()
                 try:
+                    await self._wait_context_start_slot()
                     context_proxy = _proxy_config(str(kwargs.get("proxy") or ""))
                     if (
                         context_proxy
@@ -4405,9 +4471,30 @@ class CamoufoxBrowserPool:
                         slot.browser,
                         proxy=context_proxy,
                     )
+                    emit_timing(
+                        timing_fn,
+                        "free_camoufox_signup",
+                        "camoufox_context_create",
+                        (time.monotonic() - context_started) * 1000,
+                        "success",
+                    )
                 except CamoufoxBrowserError:
+                    emit_timing(
+                        timing_fn,
+                        "free_camoufox_signup",
+                        "camoufox_context_create",
+                        (time.monotonic() - context_started) * 1000,
+                        "error",
+                    )
                     raise
                 except Exception as exc:
+                    emit_timing(
+                        timing_fn,
+                        "free_camoufox_signup",
+                        "camoufox_context_create",
+                        (time.monotonic() - context_started) * 1000,
+                        "error",
+                    )
                     recycle_required = True
                     if _browser_process_lost(exc):
                         recycle_required = True
@@ -4437,9 +4524,24 @@ class CamoufoxBrowserPool:
                         and "reason=proxy_or_transport" in failure.diagnostic,
                     )
                     raise failure from exc
+                page_started = time.monotonic()
                 try:
                     page = await context.new_page()
+                    emit_timing(
+                        timing_fn,
+                        "free_camoufox_signup",
+                        "camoufox_page_create",
+                        (time.monotonic() - page_started) * 1000,
+                        "success",
+                    )
                 except Exception as exc:
+                    emit_timing(
+                        timing_fn,
+                        "free_camoufox_signup",
+                        "camoufox_page_create",
+                        (time.monotonic() - page_started) * 1000,
+                        "error",
+                    )
                     recycle_required = True
                     if _browser_process_lost(exc):
                         recycle_required = True

@@ -14,11 +14,13 @@ try:
     from .chatgpt_totp import totp_code
     from .free_failure_runtime import password_status_from_result
     from .free_register_common import FIXED_PASSWORD, FreeRegisterError, clean
+    from .free_timing import emit_timing
 except ImportError:  # pragma: no cover - top-level recovery import
     from chatgpt_plan_gate import plan_from_accounts_check  # type: ignore[no-redef]
     from chatgpt_totp import totp_code  # type: ignore[no-redef]
     from free_failure_runtime import password_status_from_result  # type: ignore[no-redef]
     from free_register_common import FIXED_PASSWORD, FreeRegisterError, clean  # type: ignore[no-redef]
+    from free_timing import emit_timing  # type: ignore[no-redef]
 
 
 MAX_TOKEN_CHARS = 16384
@@ -299,20 +301,54 @@ def plan_details_with_fallbacks(
     return details
 
 
-async def browser_plan_details(page: Any, token: str) -> dict[str, Any]:
+async def browser_plan_details(
+    page: Any,
+    token: str,
+    *,
+    timing_fn: Callable[..., Any] | None = None,
+    timing_stage: str = "free_access_token",
+) -> dict[str, Any]:
     """Query browser same-origin plan endpoints with aBai's fallback order."""
     accounts_url = CHATGPT_ACCOUNTS_URL
     if "?" not in accounts_url:
         accounts_url += "?timezone_offset_min=-"
-    accounts = await browser_json_fetch(page, accounts_url, token=token)
-    eligibility = await browser_json_fetch(page, CHATGPT_ELIGIBILITY_URL, token=token)
+    accounts = await browser_json_fetch(
+        page,
+        accounts_url,
+        token=token,
+        timing_fn=timing_fn,
+        timing_stage=timing_stage,
+        timing_code="plan_accounts_fetch",
+    )
+    eligibility = await browser_json_fetch(
+        page,
+        CHATGPT_ELIGIBILITY_URL,
+        token=token,
+        timing_fn=timing_fn,
+        timing_stage=timing_stage,
+        timing_code="plan_eligibility_fetch",
+    )
     fallbacks: list[tuple[str, Any]] = []
     if plan_details_from_payloads(accounts, eligibility).get("plan_check_status") != "success":
-        me = await browser_json_fetch(page, CHATGPT_ME_URL, token=token)
+        me = await browser_json_fetch(
+            page,
+            CHATGPT_ME_URL,
+            token=token,
+            timing_fn=timing_fn,
+            timing_stage=timing_stage,
+            timing_code="plan_fallback_fetch",
+        )
         fallbacks.append(("backend-api/me", me))
         if _fallback_plan(me):
             return plan_details_with_fallbacks(accounts, eligibility, fallbacks)
-        usage = await browser_json_fetch(page, CHATGPT_WHAM_USAGE_URL, token=token)
+        usage = await browser_json_fetch(
+            page,
+            CHATGPT_WHAM_USAGE_URL,
+            token=token,
+            timing_fn=timing_fn,
+            timing_stage=timing_stage,
+            timing_code="plan_fallback_fetch",
+        )
         fallbacks.append(("backend-api/wham/usage", usage))
     return plan_details_with_fallbacks(accounts, eligibility, fallbacks)
 
@@ -458,8 +494,12 @@ async def browser_json_fetch(
     token: str = "",
     body: Mapping[str, Any] | None = None,
     form: bool = False,
+    timing_fn: Callable[..., Any] | None = None,
+    timing_stage: str = "",
+    timing_code: str = "",
 ) -> dict[str, Any]:
     """Fetch same-origin/account JSON from an async browser page."""
+    started = time.monotonic()
     script = """
     async ({url, method, token, body, form}) => {
       try {
@@ -492,16 +532,40 @@ async def browser_json_fetch(
       }
     }
     """
-    result = await page.evaluate(script, {"url": url, "method": method, "token": token, "body": dict(body) if body is not None else None, "form": bool(form)})
-    return dict(result) if isinstance(result, Mapping) else {"ok": False, "status": 0, "payload": {}}
+    try:
+        result = await page.evaluate(script, {"url": url, "method": method, "token": token, "body": dict(body) if body is not None else None, "form": bool(form)})
+    except Exception:
+        emit_timing(timing_fn, timing_stage, timing_code, (time.monotonic() - started) * 1000, "error")
+        raise
+    normalized = dict(result) if isinstance(result, Mapping) else {"ok": False, "status": 0, "payload": {}}
+    if timing_code:
+        emit_timing(
+            timing_fn,
+            timing_stage,
+            timing_code,
+            (time.monotonic() - started) * 1000,
+            "success" if normalized.get("ok") else "error",
+        )
+    return normalized
 
 
-async def browser_session(page: Any) -> dict[str, Any]:
+async def browser_session(
+    page: Any,
+    *,
+    timing_fn: Callable[..., Any] | None = None,
+    timing_stage: str = "free_access_token",
+) -> dict[str, Any]:
     deadline = time.monotonic() + 45
     last_status = 0
     last_code = "session_http_failed"
     while time.monotonic() < deadline:
-        result = await browser_json_fetch(page, "https://chatgpt.com/api/auth/session")
+        result = await browser_json_fetch(
+            page,
+            "https://chatgpt.com/api/auth/session",
+            timing_fn=timing_fn,
+            timing_stage=timing_stage,
+            timing_code="session_fetch",
+        )
         last_status = _status(result)
         last_code = _provider_code(result, "session_http_failed")
         if last_status == 200:
@@ -532,6 +596,7 @@ async def browser_add_password(
     task_id: str = "",
     device_id: str = "",
     deadline_monotonic: float | None = None,
+    timing_fn: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
     """Set a password from an authenticated browser context.
 
@@ -679,7 +744,14 @@ async def browser_add_password(
 
     # Eligibility is the sole ChatGPT-side gate.  An explicit false response
     # is a normal no-op; do not open a new auth session in that case.
-    eligibility = await browser_json_fetch(page, ADD_PASSWORD_ELIGIBILITY_URL, token=str(token or ""))
+    eligibility = await browser_json_fetch(
+        page,
+        ADD_PASSWORD_ELIGIBILITY_URL,
+        token=str(token or ""),
+        timing_fn=timing_fn,
+        timing_stage="free_plan_check",
+        timing_code="password_eligibility_fetch",
+    )
     if not eligibility.get("ok") and _status(eligibility) not in {0}:
         raise failure(
             "free_password_eligibility",
@@ -695,7 +767,10 @@ async def browser_add_password(
     # sequence. Capture a fresh mailbox baseline before it starts.
     await call_prepare()
     stage("free_password_reauth_csrf")
-    csrf = await browser_json_fetch(page, AUTH_CSRF_URL)
+    csrf = await browser_json_fetch(
+        page, AUTH_CSRF_URL,
+        timing_fn=timing_fn, timing_stage="free_password_reauth_csrf", timing_code="auth_csrf_fetch",
+    )
     csrf_payload = _json_payload(csrf.get("payload"))
     csrf_token = str(csrf_payload.get("csrfToken") or "") if isinstance(csrf_payload, Mapping) else ""
     if not csrf.get("ok") or not csrf_token:
@@ -736,6 +811,9 @@ async def browser_add_password(
         method="POST",
         body={"callbackUrl": "https://chatgpt.com/", "csrfToken": csrf_token, "json": "true"},
         form=True,
+        timing_fn=timing_fn,
+        timing_stage="free_password_reauth_signin",
+        timing_code="auth_signin_fetch",
     )
     signin_payload = _json_payload(signin.get("payload"))
     auth_url = str(signin_payload.get("url") or "") if isinstance(signin_payload, Mapping) else ""
@@ -769,6 +847,9 @@ async def browser_add_password(
         AUTH_EMAIL_OTP_VALIDATE_URL,
         method="POST",
         body={"code": code},
+        timing_fn=timing_fn,
+        timing_stage="free_password_otp_validate",
+        timing_code="otp_validate_fetch",
     )
     validated_payload = _json_payload(validated.get("payload"))
     if not validated.get("ok"):
@@ -799,6 +880,9 @@ async def browser_add_password(
         AUTH_PASSWORD_ADD_URL,
         method="POST",
         body={"password": password_value},
+        timing_fn=timing_fn,
+        timing_stage="free_password_add",
+        timing_code="password_add_fetch",
     )
     added_payload = _json_payload(added.get("payload"))
     if not added.get("ok"):
@@ -821,8 +905,19 @@ async def browser_add_password(
             added,
         )
     stage("free_password_callback")
-    await navigate(callback_url)
-    refreshed = await browser_session(page)
+    callback_started = time.monotonic()
+    try:
+        await navigate(callback_url)
+    except Exception:
+        emit_timing(timing_fn, "free_password_callback", "oauth_callback_navigation", (time.monotonic() - callback_started) * 1000, "error")
+        raise
+    emit_timing(timing_fn, "free_password_callback", "oauth_callback_navigation", (time.monotonic() - callback_started) * 1000, "success")
+    if callable(timing_fn):
+        refreshed = await browser_session(
+            page, timing_fn=timing_fn, timing_stage="free_password_callback",
+        )
+    else:
+        refreshed = await browser_session(page)
     active_token = str(refreshed.get("accessToken") or token or "")
     if not active_token:
         raise failure(
@@ -853,6 +948,7 @@ async def browser_twofa(
     device_id: str = "",
     deadline_monotonic: float | None = None,
     stop_requested: Callable[[], bool] | None = None,
+    timing_fn: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
     """Enroll browser 2FA through a fresh password re-authentication.
 
@@ -1023,7 +1119,10 @@ async def browser_twofa(
     # causes OpenAI to send the 2FA re-authentication code.
     await prepare_otp()
     stage("free_twofa_reauth_csrf")
-    csrf = await browser_json_fetch(page, AUTH_CSRF_URL)
+    csrf = await browser_json_fetch(
+        page, AUTH_CSRF_URL,
+        timing_fn=timing_fn, timing_stage="free_twofa_reauth_csrf", timing_code="auth_csrf_fetch",
+    )
     csrf_payload = _json_payload(csrf.get("payload"))
     csrf_token = str(csrf_payload.get("csrfToken") or "") if isinstance(csrf_payload, Mapping) else ""
     if not csrf.get("ok") or not csrf_token:
@@ -1061,6 +1160,9 @@ async def browser_twofa(
             "json": "true",
         },
         form=True,
+        timing_fn=timing_fn,
+        timing_stage="free_twofa_reauth_signin",
+        timing_code="auth_signin_fetch",
     )
     signin_payload = _json_payload(signin.get("payload"))
     auth_url = _response_continue_url(signin_payload or signin)
@@ -1099,6 +1201,9 @@ async def browser_twofa(
         AUTH_EMAIL_OTP_VALIDATE_URL,
         method="POST",
         body={"code": code},
+        timing_fn=timing_fn,
+        timing_stage="free_twofa_otp_validate",
+        timing_code="otp_validate_fetch",
     )
     if not validated.get("ok"):
         raise failure(
@@ -1126,8 +1231,19 @@ async def browser_twofa(
         )
 
     stage("free_twofa_reauth_callback")
-    await navigate(continue_url, "free_twofa_reauth_callback", "刷新 2FA 重认证会话")
-    refreshed = await browser_session(page)
+    callback_started = time.monotonic()
+    try:
+        await navigate(continue_url, "free_twofa_reauth_callback", "刷新 2FA 重认证会话")
+    except Exception:
+        emit_timing(timing_fn, "free_twofa_reauth_callback", "oauth_callback_navigation", (time.monotonic() - callback_started) * 1000, "error")
+        raise
+    emit_timing(timing_fn, "free_twofa_reauth_callback", "oauth_callback_navigation", (time.monotonic() - callback_started) * 1000, "success")
+    if callable(timing_fn):
+        refreshed = await browser_session(
+            page, timing_fn=timing_fn, timing_stage="free_twofa_reauth_callback",
+        )
+    else:
+        refreshed = await browser_session(page)
     refreshed_token = str(refreshed.get("accessToken") or "").strip()
     if refreshed_token:
         active_token = refreshed_token
@@ -1141,7 +1257,10 @@ async def browser_twofa(
 
     # Idempotency is checked only after the fresh re-authentication.  The
     # password helper above has no call to this endpoint at all.
-    current = await browser_json_fetch(page, MFA_INFO_URL, token=active_token)
+    current = await browser_json_fetch(
+        page, MFA_INFO_URL, token=active_token,
+        timing_fn=timing_fn, timing_stage="free_twofa_enroll", timing_code="mfa_info_fetch",
+    )
     if current.get("ok") and mfa_enabled_from_payload(current.get("payload")):
         return {
             "twofa_status": "enabled",
@@ -1155,6 +1274,9 @@ async def browser_twofa(
         method="POST",
         token=active_token,
         body={"factor_type": "totp"},
+        timing_fn=timing_fn,
+        timing_stage="free_twofa_enroll",
+        timing_code="mfa_enroll_fetch",
     )
     if not enrolled.get("ok"):
         raise failure(
@@ -1170,12 +1292,18 @@ async def browser_twofa(
         method="POST",
         token=active_token,
         body=activation,
+        timing_fn=timing_fn,
+        timing_stage="free_twofa_activate",
+        timing_code="mfa_activate_fetch",
     )
     value = _json_payload(activated)
     if not activated.get("ok") or not bool(value.get("success")):
         # The activation response can be lost after the server commits it.
         # Confirm the authoritative state before reporting a retryable failure.
-        confirmed = await browser_json_fetch(page, MFA_INFO_URL, token=active_token)
+        confirmed = await browser_json_fetch(
+            page, MFA_INFO_URL, token=active_token,
+            timing_fn=timing_fn, timing_stage="free_twofa_activate", timing_code="mfa_info_fetch",
+        )
         if confirmed.get("ok") and mfa_enabled_from_payload(confirmed.get("payload")):
             return {
                 "twofa_status": "enabled",

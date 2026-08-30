@@ -1302,6 +1302,7 @@ class CamoufoxRuntimeTests(unittest.TestCase):
                     slot.recycle_lock.release()
 
             releaser = asyncio.create_task(release_recyclers())
+            events: list[tuple[str, str, int, str]] = []
             try:
                 with (
                     patch.object(runtime, "_new_context", new=AsyncMock(return_value=_FakeContext())),
@@ -1310,7 +1311,10 @@ class CamoufoxRuntimeTests(unittest.TestCase):
                 ):
                     started = time.monotonic()
                     result = await asyncio.wait_for(
-                        pool._register_with_slot_once({"proxy": ""}),
+                        pool._register_with_slot_once({
+                            "proxy": "",
+                            "timing_fn": lambda *event: events.append(event),
+                        }),
                         timeout=1.0,
                     )
                     elapsed = time.monotonic() - started
@@ -1319,6 +1323,9 @@ class CamoufoxRuntimeTests(unittest.TestCase):
 
             self.assertTrue(result["ok"])
             self.assertGreaterEqual(elapsed, 0.04)
+            self.assertEqual(events[0][0:2], ("free_camoufox_signup", "camoufox_pool_admission"))
+            self.assertIn(("free_camoufox_signup", "camoufox_context_create"), [event[0:2] for event in events])
+            self.assertIn(("free_camoufox_signup", "camoufox_page_create"), [event[0:2] for event in events])
 
         asyncio.run(exercise())
 
