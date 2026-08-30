@@ -13,11 +13,15 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.87',
-  freeRuntimeVersion: '1.6.87',
-  title: 'Free 账号结果保护与重复注册拦截',
-  releasedAt: '2026-08-29',
+  version: '1.6.88',
+  freeRuntimeVersion: '1.6.88',
+  title: 'Free 2FA 重认证诊断与传输观测',
+  releasedAt: '2026-08-30',
   sections: [
+    {
+      title: 'Free 2FA 重认证诊断与传输观测',
+      usage: '2FA 重认证会记录 CSRF、signin、authorize、邮箱 OTP 验证和 OAuth 回调的 HTTP 状态、媒体类型及脱敏落点；成功的传输观测不会被误写成业务失败，首个真实失败节点在后续清理和重试中保持稳定。认证预热失败只作为诊断提示，不会阻断已有账号的 2FA 重试。',
+    },
     {
       title: 'Free 账号结果保护与重复注册拦截',
       usage: '注册流程发生后续失败时不会清除已经保存的账号凭据；服务重启会从历史任务补回缺失的私有结果。启动或重跑前会检查结果文件和历史任务，已确认创建过账号的邮箱不会再次提交整条 signup；结果文件损坏时会先停止并给出可引用的诊断，避免误注册。',

@@ -415,6 +415,14 @@ class FreeLogStore:
             rows = self._load_for_store(self.path)
             source_text = safe_log_message(message)
             text = sanitize_log_message(source_text)
+            # Transport observations are kept in the append-only diagnostic
+            # index, where its strict scalar allowlist can redact them.  Do
+            # not copy this map into the legacy Free log row or merge it into
+            # the failure payload: a successful HTTP observation is not a
+            # business failure.
+            transport_payload = fields.get("transport")
+            if not isinstance(transport_payload, Mapping):
+                transport_payload = {}
             match = re.search(r"\[([^\]/]{1,160})/([^\]/]{1,160})(?:/([^\]]{1,160}))?\]", source_text)
             task_id = str(fields.get("task_id") or "")
             if not task_id:
@@ -516,15 +524,26 @@ class FreeLogStore:
             if self.diagnostic_store is not None:
                 try:
                     failure_payload = dict(structured_failure)
-                    failure_payload.update({
-                        key: row.get(key)
-                        for key in (
-                            "error_code", "provider_code", "technical_summary", "diagnostic",
-                            "action_hint", "retryable", "http_status", "debug_session_id",
-                            "debug_artifact_id", "artifact_id",
-                        )
-                        if row.get(key) not in (None, "")
-                    })
+                    failure_outcome = str(row.get("outcome") or level or "").strip().lower()
+                    failure_signal = bool(structured_failure) or failure_outcome in {
+                        "error", "failed", "failure", "stopped",
+                    } or str(level or "").strip().lower() in {"error", "danger"}
+                    if not failure_signal:
+                        # HTTP/media-type observations are transport evidence,
+                        # not business failures. Keep them in ``transport`` so
+                        # a successful 200 response cannot become the incident
+                        # root cause through the legacy row metadata path.
+                        failure_payload = {}
+                    else:
+                        failure_payload.update({
+                            key: row.get(key)
+                            for key in (
+                                "error_code", "provider_code", "technical_summary", "diagnostic",
+                                "action_hint", "retryable", "http_status", "debug_session_id",
+                                "debug_artifact_id", "artifact_id",
+                            )
+                            if row.get(key) not in (None, "")
+                        })
                     incident_id = self.diagnostic_store.record({
                         "level": level,
                         "outcome": row.get("outcome") or level,
@@ -544,6 +563,7 @@ class FreeLogStore:
                         "subject_display": fields.get("subject_display") or fields.get("email_masked") or "",
                         "stage_group": row.get("stage") or "",
                         "attempt": row.get("attempt"),
+                        "transport": transport_payload,
                     })
                     if incident_id:
                         row["incident_id"] = self._normalize_incident_id(

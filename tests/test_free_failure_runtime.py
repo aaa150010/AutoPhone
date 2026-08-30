@@ -355,6 +355,38 @@ class FreeFailureRuntimeTests(unittest.TestCase):
             self.assertNotIn(secret, persisted)
             self.assertNotIn(secret, task_persisted)
 
+    def test_successful_transport_observation_does_not_become_failure_root(self) -> None:
+        diagnostic_store = DiagnosticStore(self.data_dir / "diagnostics")
+        store = FreeLogStore(self.data_dir, diagnostic_store=diagnostic_store)
+        store.add(
+            "authorize 页面最终响应；HTTP 200；Content-Type application/json",
+            "info",
+            task_id="free-twofa-observation",
+            node_code="free_twofa_reauth",
+            node_label="Free 2FA 重认证诊断",
+            outcome="info",
+            http_status=200,
+            content_type="application/json",
+            request_stage="reauth_authorize",
+            transport={
+                "http_status": 200,
+                "content_type": "application/json",
+                "request_stage": "reauth_authorize",
+            },
+        )
+
+        rows = diagnostic_store.search({"task_id": "free-twofa-observation"})
+        self.assertEqual(len(rows), 1)
+        incident = diagnostic_store.incident(rows[0]["incident_id"])
+        self.assertIsNotNone(incident)
+        assert incident is not None
+        self.assertEqual(incident["first_node_code"], "")
+        self.assertEqual(incident["failure"], {})
+        self.assertEqual(
+            incident["events"][0]["transport"]["http_status"],
+            200,
+        )
+
     def test_legacy_phone_incident_ids_are_migrated_in_global_and_task_logs(self) -> None:
         task_id = "free-legacy-incident"
         legacy_id = "LOG-13800138000-ABC12345"

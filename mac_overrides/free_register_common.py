@@ -112,6 +112,7 @@ FREE_STAGE_LABELS = {
     "free_camoufox_challenge": "等待 Camoufox 安全验证",
     "oauth_create_node": "初始化 Node/Sentinel",
     "free_oauth_session": "Free OAuth 会话",
+    "free_twofa_reauth": "Free 2FA 重认证诊断",
     "free_oauth_security_challenge": "等待 Free OAuth 安全验证",
     "oauth_bootstrap_html": "识别 Free OAuth 授权页面",
     "free_email_identifier": "识别 Free 注册邮箱",

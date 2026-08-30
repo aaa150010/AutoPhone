@@ -789,6 +789,50 @@ class FreeProtocolRuntimeTests(unittest.TestCase):
         for key in ("failure", "twofa_failure", "twofa_error", "error", "password", "credential_line"):
             self.assertNotIn(key, result)
 
+    def test_reference_twofa_retry_warms_authenticated_session_before_enroll(self):
+        build_calls = []
+        manager = _Manager()
+        manager.pool = SimpleNamespace(result=lambda _row_id: {
+            "access_token": "saved-access-token",
+            "account_flow": "existing_login",
+        })
+        warmup_calls = []
+        enroll_calls = []
+
+        def fake_bootstrap(*_args, **_kwargs):
+            return {}, {}, {}
+
+        def fake_warmup(transport, config, access_token, **_kwargs):
+            warmup_calls.append((transport, dict(config), access_token))
+            raise RuntimeError("warmup unavailable")
+
+        def fake_enroll(transport, token, *_args):
+            enroll_calls.append((transport, token))
+            return {"twofa_status": "enabled"}
+
+        with (
+            patch.dict(sys.modules, _fake_modules(build_calls)),
+            patch.object(runtime, "build_free_mailbox_otp_provider", return_value=_Otp()),
+            patch.object(runtime, "_prepare_reference_http_session"),
+            patch.object(runtime, "_prepare_reference_session"),
+            patch.object(runtime, "_prepare_reference_bootstrap", side_effect=fake_bootstrap),
+            patch.object(runtime, "_reference_fingerprint", return_value={"country": "US"}),
+            patch.object(runtime, "_authenticated_warmup", side_effect=fake_warmup),
+            patch.object(_Manager, "_enroll_twofa", side_effect=fake_enroll),
+        ):
+            result = manager._run_protocol(
+                _task(), {"flow_profile": "reference"}, threading.Event(),
+                lambda *_args: None,
+                lambda *_args, **_kwargs: None,
+                twofa_retry=True,
+            )
+
+        self.assertEqual(result["twofa_status"], "enabled")
+        self.assertEqual(len(warmup_calls), 1)
+        self.assertEqual(warmup_calls[0][2], "saved-access-token")
+        self.assertEqual(len(enroll_calls), 1)
+        self.assertEqual(enroll_calls[0][1], "saved-access-token")
+
 
 if __name__ == "__main__":
     unittest.main()

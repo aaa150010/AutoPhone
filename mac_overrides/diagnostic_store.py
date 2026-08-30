@@ -55,7 +55,8 @@ _TRANSPORT_MAPPING_KEYS = (
     "failure_count", "total_count", "target_domain", "nodes",
     "http_statuses", "provider_statuses", "provider_codes",
     "declared_schemes", "effective_schemes", "proxy_fingerprints",
-    "health_write_failures",
+    "health_write_failures", "request_stage", "http_status", "content_type",
+    "authorize_url_present", "final_host", "final_path",
 )
 
 

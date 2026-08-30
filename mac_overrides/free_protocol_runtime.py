@@ -18,10 +18,11 @@ import secrets
 import threading
 import time
 from typing import Any, Callable, Mapping
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 import uuid
 
 try:
+    from .free_failure_runtime import sanitize_safe_page as _sanitize_safe_page
     from .free_mailbox_otp import MailboxUrlOtpProvider, build_free_mailbox_otp_provider
     from .free_protocol_bootstrap import (
         anonymous_warmup as _anonymous_warmup,
@@ -56,6 +57,7 @@ try:
         timezone_offset_minutes as _timezone_offset_minutes,
     )
 except ImportError:
+    from free_failure_runtime import sanitize_safe_page as _sanitize_safe_page  # type: ignore[no-redef]
     from free_mailbox_otp import MailboxUrlOtpProvider, build_free_mailbox_otp_provider  # type: ignore[no-redef]
     from free_protocol_bootstrap import (  # type: ignore[no-redef]
         anonymous_warmup as _anonymous_warmup,
@@ -105,6 +107,167 @@ def _response_status(response: Any) -> int | None:
         return int(raw) if raw is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def _response_content_type(response: Any) -> str:
+    """Return only the media type from a response-like value."""
+    raw: Any = ""
+    if isinstance(response, Mapping):
+        raw = response.get("_content_type") or response.get("content_type") or ""
+        if not raw:
+            headers = response.get("headers") or response.get("_headers")
+            if isinstance(headers, Mapping):
+                raw = headers.get("content-type") or headers.get("Content-Type") or ""
+    else:
+        headers = getattr(response, "headers", None)
+        if isinstance(headers, Mapping):
+            raw = headers.get("content-type") or headers.get("Content-Type") or ""
+        raw = raw or getattr(response, "content_type", "") or ""
+    media_type = str(raw or "").split(";", 1)[0].strip().lower()
+    if not re.fullmatch(r"[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+", media_type):
+        return ""
+    return media_type[:80]
+
+
+def _response_location_parts(response: Any) -> tuple[str, str]:
+    """Extract a response's final host/path without retaining its query."""
+    candidates: list[Any] = []
+    if isinstance(response, Mapping):
+        for key in ("_location", "_url", "location", "url"):
+            value = response.get(key)
+            if value:
+                candidates.append(value)
+    else:
+        value = getattr(response, "url", "")
+        if value:
+            candidates.append(value)
+    for candidate in candidates:
+        try:
+            parsed = urlsplit(str(candidate or ""))
+            host = str(parsed.hostname or "").strip().lower()
+            path = str(parsed.path or "/")
+            if host and re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]{0,253}[a-z0-9])?", host):
+                # Route paths are useful when diagnosing an auth redirect, but
+                # a hostile upstream can put a one-off token/OTP in the path.
+                # Reuse the shared page sanitizer so trusted OpenAI routes stay
+                # visible while untrusted hosts and sensitive path segments are
+                # reduced to a bounded placeholder.  The query/fragment are
+                # already excluded by taking ``parsed.path`` above.
+                safe_page = _sanitize_safe_page(f"https://{host}{path}")
+                if safe_page.startswith(("http://", "https://")):
+                    safe_path = str(urlsplit(safe_page).path or "/")
+                    safe_segments: list[str] = []
+                    for segment in safe_path.split("/"):
+                        if not segment:
+                            continue
+                        decoded = unquote(segment)
+                        # Keep ordinary route names, but hide dynamic path
+                        # values that commonly carry a token, code or state.
+                        # This is a second defense after query removal because
+                        # an upstream can place credentials directly in a URL
+                        # path (for example ``/callback/<token>``).
+                        sensitive_segment = bool(re.search(
+                            r"(?i)(?:^|[^a-z0-9])(?:token|secret|password|passwd|code|state|nonce|otp|verifier|key|credential)(?:$|[^a-z0-9])",
+                            decoded,
+                        ))
+                        high_entropy_segment = (
+                            len(decoded) >= 20
+                            and bool(re.fullmatch(r"[A-Za-z0-9._~-]+", decoded))
+                        )
+                        if (
+                            sensitive_segment
+                            or high_entropy_segment
+                            or bool(re.fullmatch(r"\d{6,}", decoded))
+                            or "@" in decoded
+                        ):
+                            safe_segments.append("[值已隐藏]")
+                        else:
+                            cleaned = re.sub(r"[^A-Za-z0-9._~-]", "_", decoded)[:80]
+                            safe_segments.append(cleaned or "[值已隐藏]")
+                    safe_path = "/" + "/".join(safe_segments)
+                else:
+                    safe_path = "/[路径已隐藏]"
+                return host, safe_path[:240]
+        except (TypeError, ValueError):
+            continue
+    return "", ""
+
+
+def _emit_twofa_reauth_observation(
+    transport: Any,
+    task_id: str,
+    message: str,
+    *,
+    response: Any = None,
+    request_stage: str = "",
+    include_location: bool = False,
+    transport_fields: Mapping[str, Any] | None = None,
+    outcome: str = "info",
+) -> None:
+    """Write a credential-free observation for one 2FA re-auth request."""
+    logger = getattr(transport, "log_fn", None)
+    if not callable(logger):
+        return
+    # Project optional caller metadata before invoking any logger. The built-in
+    # DiagnosticStore applies the same policy again, but third-party callbacks
+    # must never receive an unfiltered URL, proxy or credential-bearing field.
+    details: dict[str, Any] = {}
+    if isinstance(transport_fields, Mapping):
+        authorize_url_present = transport_fields.get("authorize_url_present")
+        if isinstance(authorize_url_present, bool):
+            details["authorize_url_present"] = authorize_url_present
+    safe_request_stage = str(request_stage or "").strip().lower()
+    if re.fullmatch(r"reauth_[a-z0-9_]{1,48}", safe_request_stage):
+        details["request_stage"] = safe_request_stage
+    status = _response_status(response)
+    content_type = _response_content_type(response)
+    if status is not None:
+        details.setdefault("http_status", status)
+    if content_type:
+        details.setdefault("content_type", content_type)
+    if include_location:
+        host, path = _response_location_parts(response)
+        if host:
+            details.setdefault("final_host", host)
+        if path:
+            details.setdefault("final_path", path)
+    rendered_parts = [str(message or "").strip()]
+    if status is not None and "HTTP " not in rendered_parts[0]:
+        rendered_parts.append(f"HTTP {status}")
+    if content_type and "Content-Type" not in rendered_parts[0]:
+        rendered_parts.append(f"Content-Type {content_type}")
+    if include_location:
+        host, path = _response_location_parts(response)
+        if host and path:
+            rendered_parts.append(f"落点 {host}{path}")
+    rendered = "；".join(part for part in rendered_parts if part)
+    fields: dict[str, Any] = {
+        "task_id": task_id,
+        "node_code": "free_twofa_reauth",
+        "node_label": "Free 2FA 重认证诊断",
+        "outcome": outcome,
+    }
+    if safe_request_stage:
+        fields["request_stage"] = safe_request_stage
+    if details:
+        fields["transport"] = details
+    try:
+        logger(
+            f"[{task_id}/Free 2FA 重认证诊断/free_twofa_reauth] {rendered}",
+            "warn" if outcome in {"warn", "skipped"} else "info",
+            **fields,
+        )
+    except TypeError:
+        # Older callbacks accept only the historic two positional arguments.
+        try:
+            logger(
+                f"[{task_id}/Free 2FA 重认证诊断/free_twofa_reauth] {rendered}",
+                "warn" if outcome in {"warn", "skipped"} else "info",
+            )
+        except Exception:
+            pass
+    except Exception:
+        pass
 
 
 def _response_provider_code(response: Any, data: Any = None) -> str:
@@ -625,6 +788,19 @@ class FreeProtocolMixin:
             # passive exit-IP validation log entry.
             return created
 
+        def run_authenticated_warmup(created: Any, access_token: str) -> None:
+            """Run the reference login bootstrap as a non-blocking diagnostic."""
+            try:
+                stage(task_id, "free_authenticated_warmup")
+                _authenticated_warmup(created, chain_config, access_token, log=log)
+            except Exception as exc:
+                # Warmup is deliberately best-effort.  A failed warmup must
+                # not erase an already valid account or prevent 2FA retry.
+                log(
+                    f"[{task_id}/认证预热/free_authenticated_warmup] 跳过：{type(exc).__name__}",
+                    "warn",
+                )
+
         def make_rebuilt_transport() -> Any:
             created = make_transport()
             if not reference_flow:
@@ -647,6 +823,11 @@ class FreeProtocolMixin:
                 token = str(saved.get("access_token") or "")
                 if not token:
                     raise FreeRegisterError("free_twofa_retry", "重试 Free 账号 2FA", "原账号没有可用 access token", retryable=False)
+                if reference_flow:
+                    # AutoRegister rehydrates the authenticated ChatGPT
+                    # context before starting password re-authentication.
+                    # Keep this best-effort and on the same proxy/session.
+                    run_authenticated_warmup(transport, token)
                 twofa = self._enroll_twofa(transport, token, task, password, config, otp_provider, stage)
                 result = dict(saved)
                 for key in ("failure", "error", "error_code", "error_node", "twofa_failure", "twofa_error"):
@@ -690,13 +871,7 @@ class FreeProtocolMixin:
                     error_code="free_access_token_missing",
                 )
             if reference_flow:
-                try:
-                    stage(task_id, "free_authenticated_warmup")
-                    _authenticated_warmup(transport, chain_config, token, log=log)
-                except Exception as exc:
-                    # Authenticated warmup is diagnostic and must never turn a
-                    # completed registration into a failed account.
-                    log(f"[{task_id}/认证预热/free_authenticated_warmup] 跳过：{type(exc).__name__}", "warn")
+                run_authenticated_warmup(transport, token)
             stage(task_id, "free_plan_check")
             try:
                 plan_type, eligible = self._plan_check(transport, token)
@@ -1039,9 +1214,23 @@ class FreeProtocolMixin:
                     )
                     csrf_data = csrf_response.json() if hasattr(csrf_response, "json") else {}
                 except Exception as exc:
+                    _emit_twofa_reauth_observation(
+                        transport,
+                        task_id,
+                        f"CSRF 请求异常（{type(exc).__name__}）",
+                        request_stage="reauth_csrf",
+                        outcome="warn",
+                    )
                     fail(f"2FA 重认证 CSRF 请求失败（{type(exc).__name__}）")
                 csrf_token = str(csrf_data.get("csrfToken") or "") if isinstance(csrf_data, Mapping) else ""
                 csrf_status = _response_status(csrf_response)
+                _emit_twofa_reauth_observation(
+                    transport,
+                    task_id,
+                    f"CSRF 响应{'已取得令牌' if csrf_token else '未取得令牌'}",
+                    response=csrf_response,
+                    request_stage="reauth_csrf",
+                )
                 if not csrf_token:
                     fail(
                         f"2FA 重认证 CSRF 响应无效（HTTP {csrf_status if csrf_status is not None else '-'}）",
@@ -1073,9 +1262,24 @@ class FreeProtocolMixin:
                     )
                     signin_data = signin_response.json() if hasattr(signin_response, "json") else {}
                 except Exception as exc:
+                    _emit_twofa_reauth_observation(
+                        transport,
+                        task_id,
+                        f"signin/openai 请求异常（{type(exc).__name__}）",
+                        request_stage="reauth_signin",
+                        outcome="warn",
+                    )
                     fail(f"2FA 重认证启动失败（{type(exc).__name__}）")
                 auth_url = str(signin_data.get("url") or "") if isinstance(signin_data, Mapping) else ""
                 signin_status = _response_status(signin_response)
+                _emit_twofa_reauth_observation(
+                    transport,
+                    task_id,
+                    f"signin/openai 响应，authorize 地址{'已返回' if auth_url else '未返回'}",
+                    response=signin_response,
+                    request_stage="reauth_signin",
+                    transport_fields={"authorize_url_present": bool(auth_url)},
+                )
                 if not auth_url:
                     fail(
                         f"2FA 重认证启动响应无效（HTTP {signin_status if signin_status is not None else '-'}）",
@@ -1083,7 +1287,7 @@ class FreeProtocolMixin:
                         signin_data,
                     )
                 try:
-                    session.get(
+                    authorize_response = session.get(
                         auth_url,
                         headers=_reauth_headers(
                             f"{chatgpt_origin}/",
@@ -1094,7 +1298,24 @@ class FreeProtocolMixin:
                         timeout=45,
                     )
                 except Exception as exc:
+                    _emit_twofa_reauth_observation(
+                        transport,
+                        task_id,
+                        f"authorize 页面请求异常（{type(exc).__name__}）",
+                        request_stage="reauth_authorize",
+                        transport_fields={"authorize_url_present": True},
+                        outcome="warn",
+                    )
                     fail(f"2FA 重认证页面请求失败（{type(exc).__name__}）")
+                _emit_twofa_reauth_observation(
+                    transport,
+                    task_id,
+                    "authorize 页面最终响应",
+                    response=authorize_response,
+                    request_stage="reauth_authorize",
+                    include_location=True,
+                    transport_fields={"authorize_url_present": True},
+                )
 
                 phase = (
                     "free_twofa_otp_send", "发送 Free 账号 2FA 邮箱验证码",
@@ -1117,13 +1338,20 @@ class FreeProtocolMixin:
                     timeout=30,
                 )
                 verified_status = _response_status(verified)
+                _emit_twofa_reauth_observation(
+                    transport,
+                    task_id,
+                    "邮箱 OTP validate 响应",
+                    response=verified,
+                    request_stage="reauth_otp_validate",
+                )
                 verified_ok = verified.get("ok") if isinstance(verified, Mapping) else None
                 if (verified_status is not None and not 200 <= verified_status < 300) or _explicit_false(verified_ok):
                     fail(f"重新认证 OTP 验证失败（HTTP {verified_status if verified_status is not None else '-'}）", verified)
                 continue_url = _response_continue_url(verified)
                 if continue_url:
                     try:
-                        session.get(
+                        callback_response = session.get(
                             continue_url,
                             headers=_reauth_headers(
                                 f"{auth_origin}/email-verification",
@@ -1134,7 +1362,22 @@ class FreeProtocolMixin:
                             timeout=45,
                         )
                     except Exception as exc:
+                        _emit_twofa_reauth_observation(
+                            transport,
+                            task_id,
+                            f"OAuth callback 请求异常（{type(exc).__name__}）",
+                            request_stage="reauth_callback",
+                            outcome="warn",
+                        )
                         fail(f"重新认证 OAuth 回调失败（{type(exc).__name__}）")
+                    _emit_twofa_reauth_observation(
+                        transport,
+                        task_id,
+                        "OAuth callback 最终响应",
+                        response=callback_response,
+                        request_stage="reauth_callback",
+                        include_location=True,
+                    )
                 else:
                     fail("重新认证 OTP 响应缺少 OAuth 回调地址", verified)
                 capture_token = getattr(transport, "chatgpt_access_token", None)
@@ -1165,6 +1408,13 @@ class FreeProtocolMixin:
                     )
                     sent = send_mfa_otp("")
                     sent_status = _response_status(sent)
+                    _emit_twofa_reauth_observation(
+                        transport,
+                        task_id,
+                        "兼容 2FA OTP 发送响应",
+                        response=sent,
+                        request_stage="reauth_otp_send",
+                    )
                     sent_ok = sent.get("ok") if isinstance(sent, Mapping) else None
                     if (sent_status is not None and not 200 <= sent_status < 300) or _explicit_false(sent_ok):
                         fail(f"重新认证 OTP 发送失败（HTTP {sent_status if sent_status is not None else '-'}）", sent)
@@ -1179,6 +1429,13 @@ class FreeProtocolMixin:
                     stage(task_id, "free_email_otp_validate")
                     verified = verify_mfa_otp(code)
                     verified_status = _response_status(verified)
+                    _emit_twofa_reauth_observation(
+                        transport,
+                        task_id,
+                        "兼容 2FA OTP validate 响应",
+                        response=verified,
+                        request_stage="reauth_otp_validate",
+                    )
                     verified_ok = verified.get("ok") if isinstance(verified, Mapping) else None
                     if (verified_status is not None and not 200 <= verified_status < 300) or _explicit_false(verified_ok):
                         fail(f"重新认证 OTP 验证失败（HTTP {verified_status if verified_status is not None else '-'}）", verified)
@@ -1189,6 +1446,14 @@ class FreeProtocolMixin:
                             fail("重新认证 OTP 响应包含 OAuth 回调，但传输会话不支持回调", verified)
                         callback = complete_callback(continue_url)
                         callback_status = _response_status(callback)
+                        _emit_twofa_reauth_observation(
+                            transport,
+                            task_id,
+                            "兼容 OAuth callback 响应",
+                            response=callback,
+                            request_stage="reauth_callback",
+                            include_location=True,
+                        )
                         callback_ok = callback.get("ok") if isinstance(callback, Mapping) else None
                         if (callback_status is not None and not 200 <= callback_status < 300) or _explicit_false(callback_ok):
                             fail(f"重新认证 OAuth 回调失败（HTTP {callback_status if callback_status is not None else '-'}）", callback)
