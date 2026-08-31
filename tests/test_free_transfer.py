@@ -9,7 +9,7 @@ import unittest
 import flask
 from flask import Flask, jsonify
 
-from mac_overrides.free_pool_routes import FreePoolRouteController
+from mac_overrides.free_pool_routes import FreePoolRouteController, import_free_mailboxes
 from mac_overrides.free_register_runtime import FreeRegisterManager
 from mac_overrides.free_register_store import FreeMailboxPool
 
@@ -49,6 +49,78 @@ class FreeTransferTests(unittest.TestCase):
 
     def _row(self, email: str):
         return next(row for row in self.pool.entries() if row.email == email)
+
+    def test_mailbox_import_legacy_signature_is_inspected_and_called_once(self) -> None:
+        calls: list[tuple[str]] = []
+
+        def legacy_importer(content: str):
+            calls.append((content,))
+            return {"imported": 1, "skipped": 0}
+
+        result = import_free_mailboxes(
+            legacy_importer,
+            "legacy@example.test----https://mail.example.test/legacy",
+            join_current_batch=True,
+            config={"driver": "protocol"},
+        )
+
+        self.assertEqual(result["imported"], 1)
+        self.assertEqual(
+            calls,
+            [("legacy@example.test----https://mail.example.test/legacy",)],
+        )
+
+    def test_mailbox_import_internal_type_error_is_not_retried(self) -> None:
+        calls: list[str] = []
+
+        def importer(content: str):
+            calls.append(content)
+            raise TypeError("importer implementation failed")
+
+        with self.assertRaisesRegex(TypeError, "implementation failed"):
+            import_free_mailboxes(importer, "one@example.test----https://mail.example.test/one")
+
+        self.assertEqual(calls, ["one@example.test----https://mail.example.test/one"])
+
+    def test_pool_import_route_falls_back_to_legacy_manager_signature(self) -> None:
+        calls: list[str] = []
+
+        def legacy_importer(content: str):
+            calls.append(content)
+            return {"imported": 2, "skipped": 1}
+
+        app = Flask(__name__)
+        manager = SimpleNamespace(pool=self.pool, import_mailboxes=legacy_importer)
+        config_store = SimpleNamespace(load=lambda: {"driver": "protocol"})
+        controller = FreePoolRouteController(
+            module=flask,
+            manager=manager,
+            config_store=config_store,
+            state=lambda: {"running": False},
+            mutation_conflict=lambda _action: None,
+            error_response=lambda exc, **_kwargs: (jsonify(ok=False, error=str(exc)), 400),
+            failure_response=lambda exc, **_kwargs: (jsonify(ok=False, error=str(exc)), 503),
+            request_lock=threading.Lock(),
+        )
+        app.add_url_rule("/import", view_func=controller.pool_import, methods=["POST"])
+
+        with app.test_client() as client:
+            response = client.post(
+                "/import",
+                json={
+                    "pool_content": "legacy@example.test----https://mail.example.test/legacy",
+                    "join_current_batch": True,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["imported"], 2)
+        self.assertEqual(payload["skipped"], 1)
+        self.assertEqual(
+            calls,
+            ["legacy@example.test----https://mail.example.test/legacy"],
+        )
 
     def test_build_transfer_content_emits_real_password_and_passwordless_shapes(self) -> None:
         row_ids = [row.row_id for row in self.pool.entries()[:4]]

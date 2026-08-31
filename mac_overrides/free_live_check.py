@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from concurrent.futures import Future, ThreadPoolExecutor
 import copy
+import re
 import secrets
 import threading
 import time
@@ -19,6 +20,7 @@ try:
         atomic_write,
         fingerprint,
         mask_proxy,
+        mask_email,
         plus_trial_from_accounts,
         proxy_error_code,
         proxy_error_label,
@@ -35,6 +37,7 @@ except ImportError:
         atomic_write,
         fingerprint,
         mask_proxy,
+        mask_email,
         plus_trial_from_accounts,
         proxy_error_code,
         proxy_error_label,
@@ -351,6 +354,26 @@ class FreeLiveCheckService:
             atomic_write(self.path, {"version": 1, "jobs": result})
         return result
 
+    def _subject_fingerprint(self, email: Any) -> str:
+        """Use the diagnostic HMAC for public correlation when available."""
+        value = str(email or "").strip()
+        if not value:
+            return ""
+        store = getattr(self.log_store, "diagnostic_store", None)
+        if store is None:
+            # Accept direct DiagnosticEventWriter injection as well as the
+            # historical FreeLogStore facade.
+            store = getattr(self.log_store, "store", None)
+        fingerprint_fn = getattr(store, "fingerprint", None)
+        if callable(fingerprint_fn):
+            try:
+                candidate = str(fingerprint_fn(value) or "").strip().lower()
+                if re.fullmatch(r"[0-9a-f]{32}", candidate):
+                    return candidate
+            except Exception:
+                pass
+        return fingerprint(value)
+
     def _save_jobs(self) -> None:
         atomic_write(self.path, {"version": 1, "jobs": self._jobs})
 
@@ -376,15 +399,40 @@ class FreeLiveCheckService:
 
     def _log(self, task_id: str, stage: str, message: str, level: str = "info") -> None:
         label = LIVE_STAGE_LABELS.get(stage, stage)
-        self.log_store.add(f"[{task_id}/{label}/{stage}] {safe_log_message(message)}", level)
+        text = f"[{task_id}/{label}/{stage}] {safe_log_message(message)}"
+        fields = {
+            "chain": "free",
+            "workflow": "live_check",
+            "driver": "free",
+            "task_id": str(task_id or ""),
+            "stage": str(stage or ""),
+            "stage_label": str(label or ""),
+            "node_code": str(stage or ""),
+            "node_label": str(label or ""),
+        }
+        try:
+            self.log_store.add(text, level, **fields)
+        except TypeError:
+            # Older injected sinks only implement ``add(message, level)``.
+            # Keep that compatibility surface while structured sinks receive
+            # an explicit workflow scope.
+            self.log_store.add(text, level)
 
     def _public_job(self, job: Mapping[str, Any]) -> dict[str, Any]:
         keys = (
-            "task_id", "row_id", "email", "mode", "status", "stage", "created_at",
+            "task_id", "row_id", "mode", "status", "stage", "created_at",
             "updated_at", "checked_at",
             "token_refreshed", "recovered",
         )
         result = {key: copy.deepcopy(job[key]) for key in keys if key in job}
+        # Live-check jobs share the same public-state boundary as registration
+        # tasks. Keep the historical ``email`` key for existing clients, but
+        # expose only a masked value and a short subject reference; the raw
+        # address remains in the private mailbox row used by the worker.
+        raw_email = str(job.get("email") or "").strip()
+        result["email"] = mask_email(raw_email)
+        result["email_masked"] = result["email"]
+        result["subject_ref_fingerprint"] = self._subject_fingerprint(raw_email)
         result["stage_label"] = LIVE_STAGE_LABELS.get(str(result.get("stage") or ""), str(result.get("stage") or ""))
         if isinstance(job.get("failure"), Mapping):
             result["failure"] = canonical_failure(job["failure"])
@@ -472,7 +520,11 @@ class FreeLiveCheckService:
                     "live_check_token_refreshed": False,
                 })
                 self.pool.save_result(row_id, updated)
-                self._log(task_id, "free_live_queued", f"{entry.email} 已加入{'快速' if selected_mode == 'fast' else '深度'}测活队列")
+                # Do not place the private mailbox address in free-form log
+                # text.  The log facade applies a second redaction pass, but
+                # masking at the producer keeps this safe for injected/legacy
+                # log sinks as well.
+                self._log(task_id, "free_live_queued", f"{mask_email(entry.email) or '<邮箱>'} 已加入{'快速' if selected_mode == 'fast' else '深度'}测活队列")
             self._save_jobs()
         for task_id in submit_ids:
             self._submit(task_id)

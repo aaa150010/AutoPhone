@@ -240,9 +240,13 @@ function mailboxStageType(row: FreeMailboxRow) {
 }
 
 async function copyEmail(row: FreeMailboxRow) {
-  if (!row.email) return
+  if (!row.row_id) return
   try {
-    await navigator.clipboard.writeText(row.email)
+    // Public mailbox rows intentionally expose only a masked address. Resolve
+    // the raw address through the existing on-demand secret boundary.
+    const value = (await getFreeSecret('email', { row_ids: [row.row_id] })).value
+    if (!value || !navigator.clipboard?.writeText) throw new Error('当前环境不支持复制')
+    await navigator.clipboard.writeText(value)
     ElMessage.success('已复制邮箱')
   } catch {
     ElMessage.error('邮箱复制失败')

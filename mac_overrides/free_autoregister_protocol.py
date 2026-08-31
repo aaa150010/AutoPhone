@@ -124,6 +124,42 @@ def _reference_authorize_url(
         return str(value or "")
 
 
+def _annotate_page_response(transport: Any, response: Any) -> dict[str, Any]:
+    """Normalize the HTML landing page into the same page envelope as JSON.
+
+    AutoRegister follows the authorize redirect as HTML, while the Free state
+    machine consumes JSON-like page envelopes.  Mapping only stable route
+    names keeps the transport difference isolated and avoids body scraping.
+    """
+    result = dict(response) if isinstance(response, Mapping) else {}
+    page = result.get("page")
+    page_type = str(page.get("type") or "") if isinstance(page, Mapping) else ""
+    locations = []
+    for key in ("url", "_url", "_location", "location"):
+        value = str(result.get(key) or "").strip()
+        if value and value not in locations:
+            locations.append(value)
+    path = " ".join(locations).casefold()
+    if not page_type:
+        if "/email-verification" in path or "/email-otp" in path:
+            page_type = "email_otp_verification"
+        elif "/log-in/password" in path or "/login/password" in path:
+            page_type = "login_password"
+        elif "/create-account/password" in path or "/signup/password" in path:
+            page_type = "signup_password"
+        elif "/about-you" in path or "/about_you" in path:
+            page_type = "profile"
+        if page_type:
+            result["page"] = {"type": page_type}
+    if page_type and not result.get("continue_url"):
+        for value in locations:
+            if value:
+                result["continue_url"] = value
+                break
+    result["_gptphone_autoregister_prelude"] = True
+    return result
+
+
 def _run_reference_chatgpt_prelude(transport: Any, email: str) -> Mapping[str, Any]:
     """Run AutoRegister's exact NextAuth prelude for the recovered transport."""
     session = getattr(transport, "session", None)
@@ -195,7 +231,6 @@ def _run_reference_chatgpt_prelude(transport: Any, email: str) -> Mapping[str, A
         device_id=device_id,
         auth_session_logging_id=auth_session_logging_id,
     )
-
     navigate_headers = {
         **page_headers,
         "referer": f"{chatgpt}/",
@@ -209,7 +244,7 @@ def _run_reference_chatgpt_prelude(transport: Any, email: str) -> Mapping[str, A
         allow_redirects=True,
         timeout=45,
     )
-    result = _json_response(transport, final_response)
+    result = _annotate_page_response(transport, _json_response(transport, final_response))
     result["url"] = str(getattr(final_response, "url", "") or authorize_url)
     result.setdefault("_url", result["url"])
     setattr(transport, "last_response", result)
@@ -275,6 +310,8 @@ def run_autoregister_prelude(
             raise _failed(response)
     setattr(transport, "_gptphone_autoregister_prelude", True)
     _log(log, "AutoRegister OAuth 前置会话建立完成，继续 Free OAuth 状态机", "success")
+    if isinstance(response, Mapping):
+        response = _annotate_page_response(transport, response)
     return response if isinstance(response, Mapping) else {"ok": True}
 
 

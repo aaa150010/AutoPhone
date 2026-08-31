@@ -293,6 +293,8 @@ export interface FreeMailboxRow {
   row_id: string
   line_no: number
   email: string
+  email_masked?: string
+  subject_ref_fingerprint?: string
   status: string
   cooldown_until?: number | null
   cooldown_remaining?: number
@@ -365,6 +367,8 @@ export interface FreeLiveCheckState {
     task_id: string
     row_id: string
     email: string
+    email_masked?: string
+    subject_ref_fingerprint?: string
     mode: 'fast' | 'deep' | string
     status: string
     stage?: string
@@ -391,6 +395,8 @@ export interface FreePlanCheckState {
     task_id: string
     row_id: string
     email: string
+    email_masked?: string
+    subject_ref_fingerprint?: string
     status: string
     created_at?: number
     updated_at?: number
@@ -469,7 +475,7 @@ export const preflightFreeProxies = (proxyContent: string, proxyProbeUrl?: strin
 export const getFreeProxies = () => api<{ ok: true; proxies: { count: number; rows: FreeProxyRow[]; groups: FreeProxySummary[]; countries: FreeProxySummary[] } }>('/api/free/proxies')
 export const updateFreeProxyGroup = (payload: { country: string; group: string; new_country?: string; new_group?: string; enabled?: boolean }) => api<{ ok: true; result: any; proxies: any }>('/api/free/proxies/group', payload)
 export const deleteFreeProxyGroup = (country: string, group: string) => api<{ ok: true; deleted: number; proxies: any }>('/api/free/proxies/group/delete', { country, group })
-export const getFreeSecret = (kind: 'token' | 'password' | 'totp' | 'proxy' | 'credential', ids: { task_ids?: string[]; row_ids?: string[] }) => api<{ ok: true; kind: string; value: string }>(
+export const getFreeSecret = (kind: 'token' | 'password' | 'totp' | 'proxy' | 'credential' | 'email', ids: { task_ids?: string[]; row_ids?: string[] }) => api<{ ok: true; kind: string; value: string }>(
   '/api/free/secrets',
   { kind, ...ids },
 )

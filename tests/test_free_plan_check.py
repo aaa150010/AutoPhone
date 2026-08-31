@@ -7,6 +7,8 @@ from unittest.mock import patch
 
 from mac_overrides import free_account_service
 from mac_overrides.free_account_service import plan_details_with_fallbacks
+from mac_overrides.diagnostic_store import DiagnosticStore
+from mac_overrides.free_log_runtime import FreeLogStore
 from mac_overrides.free_plan_check import FreePlanCheckError, FreePlanCheckService
 from mac_overrides.free_register_store import FreeMailboxPool
 
@@ -20,6 +22,79 @@ class FreePlanCheckTests(unittest.TestCase):
 
     def tearDown(self):
         self.temp.cleanup()
+
+    def test_public_plan_job_masks_email_and_exposes_only_fingerprint(self):
+        service = FreePlanCheckService(self.temp.name, pool=self.pool, workers=1, recover=False)
+        try:
+            public = service._public({
+                "task_id": "plan-task-1",
+                "row_id": self.row.row_id,
+                "email": "private@example.test",
+                "status": "queued",
+                "created_at": 1,
+                "updated_at": 1,
+            })
+            self.assertEqual(public["email"], "p***e@example.test")
+            self.assertEqual(public["email_masked"], "p***e@example.test")
+            self.assertNotIn("private@example.test", str(public))
+            self.assertRegex(public["subject_ref_fingerprint"], r"^[0-9a-f]{16}$")
+        finally:
+            service.shutdown()
+
+    def test_public_plan_job_uses_diagnostic_hmac_when_available(self):
+        diagnostics = DiagnosticStore(self.temp.name + "/diagnostics")
+        logs = FreeLogStore(self.temp.name, diagnostic_store=diagnostics, legacy_projection=False)
+        service = FreePlanCheckService(self.temp.name, pool=self.pool, log_store=logs, workers=1, recover=False)
+        try:
+            public = service._public({"email": "private@example.test", "status": "queued"})
+            self.assertEqual(public["subject_ref_fingerprint"], diagnostics.fingerprint("private@example.test"))
+        finally:
+            service.shutdown()
+
+    def test_plan_check_logs_declare_their_diagnostic_workflow(self):
+        class CaptureLog:
+            def __init__(self):
+                self.calls = []
+
+            def add(self, *args, **kwargs):
+                self.calls.append((args, kwargs))
+
+        capture = CaptureLog()
+        service = FreePlanCheckService(
+            self.temp.name,
+            pool=self.pool,
+            log_store=capture,
+            workers=1,
+            recover=False,
+        )
+        try:
+            service._log("free-plan-1", "queued")
+            self.assertEqual(capture.calls[-1][1]["workflow"], "plan_check")
+            self.assertEqual(capture.calls[-1][1]["driver"], "free")
+            self.assertEqual(capture.calls[-1][1]["task_id"], "free-plan-1")
+        finally:
+            service.shutdown()
+
+    def test_plan_check_log_falls_back_to_legacy_sink_signature(self):
+        calls = []
+
+        class LegacyLog:
+            def add(self, message, level):
+                calls.append((message, level))
+
+        service = FreePlanCheckService(
+            self.temp.name,
+            pool=self.pool,
+            log_store=LegacyLog(),
+            workers=1,
+            recover=False,
+        )
+        try:
+            service._log("free-plan-legacy", "queued")
+        finally:
+            service.shutdown()
+        self.assertEqual(len(calls), 1)
+        self.assertIn("free-plan-legacy", calls[0][0])
 
     def test_invalid_accounts_response_falls_back_to_me_then_usage(self):
         accounts = {"ok": True, "status": 200, "payload": {}}

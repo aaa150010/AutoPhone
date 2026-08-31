@@ -13,11 +13,15 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.94',
-  freeRuntimeVersion: '1.6.94',
-  title: 'Free Camoufox 注册耗时拆分',
-  releasedAt: '2026-08-30',
+  version: '1.6.95',
+  freeRuntimeVersion: '1.6.95',
+  title: 'Free 注册工程化存储与诊断重构',
+  releasedAt: '2026-08-31',
   sections: [
+    {
+      title: 'Free 注册工程化存储与诊断重构',
+      usage: 'Free protocol 与 Camoufox 任务现在使用独立 SQLite、原子任务状态迁移和两阶段邮箱租约；结构化诊断事件统一记录首个真实失败、重试、清理和浏览器生命周期。邮箱原文、取件地址、Token、密码和验证码继续只在受控接口按需读取。',
+    },
     {
       title: 'Free Camoufox 注册耗时拆分',
       usage: 'Camoufox 池 admission、context/page 创建、入口导航与表单跳转，以及认证 callback、Session、套餐和 2FA 请求会分别记录脱敏耗时，便于定位慢节点；本次不改变注册顺序、重试边界或等待窗口。',

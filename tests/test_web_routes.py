@@ -929,6 +929,10 @@ class WebRouteTests(unittest.TestCase):
                 "/api/free/secrets",
                 json={"kind": "token", "row_ids": ["row-free"]},
             )
+            email_secret = client.post(
+                "/api/free/secrets",
+                json={"kind": "email", "row_ids": ["row-free"]},
+            )
             retried = client.post("/api/free/2fa/retry", json={"task_id": "row-free"})
             password_retried = client.post(
                 "/api/free/password/retry", json={"task_id": "row-free"}
@@ -952,7 +956,12 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(imported_proxy.status_code, 200)
         self.assertEqual(secret.status_code, 200)
         self.assertEqual(secret.get_json()["value"], "secret-value")
-        self.assertEqual(free.secret_calls, [([], "token", ["row-free"])])
+        self.assertEqual(email_secret.status_code, 200)
+        self.assertEqual(email_secret.get_json()["kind"], "email")
+        self.assertEqual(
+            free.secret_calls,
+            [([], "token", ["row-free"]), ([], "email", ["row-free"])],
+        )
         self.assertEqual(retried.status_code, 200)
         self.assertEqual(free.retry_calls, ["row-free"])
         self.assertEqual(password_retried.status_code, 200)

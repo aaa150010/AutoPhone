@@ -47,6 +47,8 @@ DEFAULT_EVENT_SETTINGS = {
 
 QQ_SMTP_HOST = "smtp.qq.com"
 QQ_SMTP_PORT = 465
+_NOTIFICATION_PRODUCT_LABEL = "GPT 注册中心"
+_ORDINARY_FLOW_LABEL = "普通流程"
 _EVENT_LABELS = {
     EVENT_BATCH_COMPLETED: "批次完成",
     EVENT_UNEXPECTED_STOP: "异常结束",
@@ -565,7 +567,9 @@ def _build_message(settings: _SmtpSettings, notification: RunNotification) -> Em
     label = "运行异常（仍有任务未终态）" if is_unfinished_stop else _EVENT_LABELS[notification.event]
     aggregate = notification.aggregate
     message = EmailMessage()
-    subject_parts = [f"[自动接码机] {label}"]
+    subject_parts = [
+        f"[{_NOTIFICATION_PRODUCT_LABEL}][{_ORDINARY_FLOW_LABEL}] {label}"
+    ]
     if notification.batch_id:
         subject_parts.append(f"批次 {notification.batch_id}")
     if notification.event == EVENT_SMS_BALANCE_LOW:
@@ -580,6 +584,7 @@ def _build_message(settings: _SmtpSettings, notification: RunNotification) -> Em
     message["From"] = settings.sender
     message["To"] = ", ".join(settings.recipients)
     lines = [
+        f"链路：{_ORDINARY_FLOW_LABEL}",
         f"事件：{label}",
         f"处理总数：{aggregate.total}",
         f"成功：{aggregate.succeeded}",
@@ -646,13 +651,14 @@ def _build_connectivity_message(
     recovered = notification.kind == "recovery"
     label = "OpenAI 授权链路已恢复" if recovered else "OpenAI 授权链路异常"
     message = EmailMessage()
-    subject = f"[自动接码机] {label}"
+    subject = f"[{_NOTIFICATION_PRODUCT_LABEL}][{_ORDINARY_FLOW_LABEL}] {label}"
     if notification.batch_id:
         subject += f"｜批次 {notification.batch_id}"
     message["Subject"] = subject
     message["From"] = settings.sender
     message["To"] = ", ".join(settings.recipients)
     lines = [
+        f"链路：{_ORDINARY_FLOW_LABEL}",
         f"事件：{label}",
         "节点：OpenAI 授权链路 / openai_auth_connectivity",
         f"稳定原因码：{notification.reason_code}",
@@ -746,10 +752,13 @@ class SmtpNotificationSender:
 
     def send_test(self) -> None:
         message = EmailMessage()
-        message["Subject"] = "[自动接码机] 测试通知"
+        message["Subject"] = f"[{_NOTIFICATION_PRODUCT_LABEL}] 测试通知"
         message["From"] = self._settings.sender
         message["To"] = ", ".join(self._settings.recipients)
-        message.set_content("自动接码机邮件通知配置测试成功。")
+        message.set_content(
+            f"{_NOTIFICATION_PRODUCT_LABEL}邮件通知配置测试成功。\n"
+            f"链路：{_ORDINARY_FLOW_LABEL}"
+        )
         self._send_message(message)
 
     __call__ = send

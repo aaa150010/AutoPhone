@@ -357,6 +357,26 @@ def fingerprint(value: Any) -> str:
     return hashlib.sha256(str(value or "").strip().encode("utf-8")).hexdigest()[:16]
 
 
+def mask_email(value: Any) -> str:
+    """Return the stable display form used by every Free public projection.
+
+    Email addresses remain private worker data.  Public API callers may still
+    join rows by the masked value, while the dedicated reveal endpoints can
+    fetch the original address after an explicit action.
+    """
+    text = str(value or "").strip()
+    if "@" not in text:
+        return ""
+    local, domain = text.split("@", 1)
+    if len(local) <= 1:
+        masked = "*"
+    elif len(local) == 2:
+        masked = local[0] + "*"
+    else:
+        masked = local[0] + "***" + local[-1]
+    return f"{masked}@{domain}"
+
+
 def proxy_error_detail(error: BaseException) -> str:
     name = type(error).__name__
     parts: list[str] = []
@@ -688,7 +708,7 @@ __all__ = [
     "DEFAULT_FREE_PROXY_SCHEME", "DEFAULT_SOCKS5_DNS_MODE", "FIXED_PASSWORD", "FREE_PROXY_SCHEMES", "FREE_STAGE_LABELS",
     "FreeMailbox", "FreeRegisterError", "FreeTwoFaPending", "OTP_RE", "ProxyBinding",
     "SECRET_MASK", "TERMINAL_STATUSES", "atomic_write", "clean",
-    "configured_free_password", "fingerprint", "mask_proxy", "normalize_proxy_value", "parse_mailbox_line", "proxy_transport_value",
+    "configured_free_password", "fingerprint", "mask_email", "mask_proxy", "normalize_proxy_value", "parse_mailbox_line", "proxy_transport_value",
     "proxy_transport_config", "proxy_error_code", "proxy_error_label", "plus_trial_from_accounts", "proxy_error_detail", "random_birthdate", "random_display_name",
     "safe_log_message", "timezone_offset_minutes",
 ]

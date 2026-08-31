@@ -59,6 +59,44 @@ def import_free_proxies(
     raise TypeError("Free 代理导入器签名不兼容")
 
 
+def import_free_mailboxes(
+    importer: Callable[..., Any],
+    content: str,
+    *,
+    join_current_batch: bool = False,
+    config: Mapping[str, Any] | None = None,
+) -> Any:
+    """Invoke a Free mailbox importer using one inspected call shape.
+
+    The SQLite-backed manager accepts the ``join_current_batch`` and ``config``
+    keyword arguments, while integrations written against the original route
+    expose only ``import_mailboxes(content)``.  Inspect the callable before
+    invoking it so a signature mismatch never causes a second stateful import;
+    an importer which raises internally is called exactly once and its error is
+    allowed to propagate to the route failure mapper.
+    """
+    modern_kwargs = {
+        "join_current_batch": bool(join_current_batch),
+        "config": config if isinstance(config, Mapping) else {},
+    }
+    candidates = (
+        modern_kwargs,
+        {"join_current_batch": bool(join_current_batch)},
+        {"config": config if isinstance(config, Mapping) else {}},
+        {},
+    )
+    for kwargs in candidates:
+        accepts = signature_accepts_call(importer, content, **kwargs)
+        if accepts is True:
+            return importer(content, **kwargs)
+        if accepts is None:
+            # Builtins and some proxy callables do not expose a signature.  A
+            # single modern invocation preserves the current manager contract;
+            # importantly, an internal TypeError is not retried as legacy.
+            return importer(content, **modern_kwargs)
+    raise TypeError("Free 邮箱导入器签名不兼容")
+
+
 def _request_row_ids(data: Any) -> list[str]:
     """Normalize an explicit row selection without turning invalid input into all rows."""
     if not isinstance(data, Mapping) or not isinstance(data.get("row_ids"), list):
@@ -146,13 +184,27 @@ class FreePoolRouteController:
                         default_label="读取 Free 运行状态",
                         status=503,
                     )
-                result = importer(
+                result = import_free_mailboxes(
+                    importer,
                     content,
                     join_current_batch=join_current_batch,
                     config=self.config_store.load() if self.config_store is not None else {},
                 )
-                count = int(result.get("imported") or 0)
-                skipped = int(result.get("skipped") or 0)
+                # Modern managers return a mapping; older managers returned a
+                # ``(imported, skipped)`` tuple or a single count.  Normalize
+                # those shapes at this boundary so the HTTP contract remains
+                # stable without invoking an importer twice.
+                if isinstance(result, Mapping):
+                    result_payload = result
+                elif isinstance(result, (tuple, list)):
+                    result_payload = {
+                        "imported": result[0] if len(result) > 0 else 0,
+                        "skipped": result[1] if len(result) > 1 else 0,
+                    }
+                else:
+                    result_payload = {"imported": result, "skipped": 0}
+                count = int(result_payload.get("imported") or 0)
+                skipped = int(result_payload.get("skipped") or 0)
                 # Import may append tasks to the active batch, so the state
                 # captured before mutation is stale.  Return a fresh snapshot
                 # that accurately reflects queued/active slots and pool
@@ -170,11 +222,11 @@ class FreePoolRouteController:
                     ok=True,
                     imported=count,
                     skipped=skipped,
-                    queued=int(result.get("queued") or 0),
-                    active_batch_joined=int(result.get("active_batch_joined") or 0),
-                    next_batch=int(result.get("next_batch") or 0),
-                    reason=str(result.get("reason") or ""),
-                    skipped_items=result.get("skipped_items") or [],
+                    queued=int(result_payload.get("queued") or 0),
+                    active_batch_joined=int(result_payload.get("active_batch_joined") or 0),
+                    next_batch=int(result_payload.get("next_batch") or 0),
+                    reason=str(result_payload.get("reason") or ""),
+                    skipped_items=result_payload.get("skipped_items") or [],
                     rows=self.manager.pool.public_rows(),
                     state=current_state,
                 )
@@ -366,16 +418,16 @@ class FreePoolRouteController:
                 default_label="更新 Free 代理分组",
             )
         try:
-            result = self.manager.proxies.update_group(
-                str(data.get("country") or ""),
-                str(data.get("group") or ""),
-                new_country=str(data.get("new_country") or "").strip().upper() or None,
-                new_group=str(data.get("new_group") or "").strip() or None,
-                enabled=data.get("enabled") if isinstance(data.get("enabled"), bool) else None,
-            )
+            # Free registration uses one shared healthy_random pool. Keep the
+            # historical endpoint callable for old clients, but do not let a
+            # country/group mutation become a hidden allocation or disable
+            # strategy.
+            updater = getattr(self.manager.proxies, "update_group", None)
+            result = updater("", "") if callable(updater) else {"matched": 0, "modified": 0}
             return self.module.jsonify(
                 ok=True,
                 result=result,
+                deprecated=True,
                 proxies=self.manager.proxies.public(),
             )
         except Exception as exc:
@@ -399,13 +451,12 @@ class FreePoolRouteController:
                 default_label="删除 Free 代理分组",
             )
         try:
-            deleted = self.manager.proxies.delete_group(
-                str(data.get("country") or ""),
-                str(data.get("group") or ""),
-            )
+            deleter = getattr(self.manager.proxies, "delete_group", None)
+            deleted = int(deleter("", "")) if callable(deleter) else 0
             return self.module.jsonify(
                 ok=True,
                 deleted=deleted,
+                deprecated=True,
                 proxies=self.manager.proxies.public(),
             )
         except Exception as exc:
@@ -610,7 +661,7 @@ class FreePoolRouteController:
         raw_task_ids = data.get("task_ids") if isinstance(data.get("task_ids"), list) else [data.get("task_id")]
         task_ids = [str(value).strip() for value in raw_task_ids if str(value or "").strip()]
         kind = str(data.get("kind") or "").strip().lower()
-        if kind not in {"token", "password", "totp", "proxy", "credential"}:
+        if kind not in {"token", "password", "totp", "proxy", "credential", "email"}:
             return self.error_response(
                 ValueError("敏感字段类型无效"),
                 default_code="free_secret",
@@ -680,6 +731,7 @@ class FreePoolRouteController:
 
 __all__ = [
     "FreePoolRouteController",
+    "import_free_mailboxes",
     "import_free_proxies",
     "signature_accepts_call",
 ]

@@ -72,6 +72,386 @@ PASSWORD_PENDING_STATUSES = frozenset({
 })
 
 
+# Public task snapshots may contain progress objects supplied by an older
+# worker, a plugin, or a partially recovered JSON row.  Keep this schema
+# deliberately separate from the private timing representation: callers get
+# the fields the UI understands, while arbitrary nested values (for example a
+# token hidden under ``details``) are dropped before the response is built.
+_PUBLIC_PROGRESS_FIELDS = frozenset({
+    "code", "label", "group", "entered_at", "finished_at",
+    "stage_duration_ms", "total_elapsed_ms", "timing",
+    # Legacy aliases retained for old clients and persisted snapshots.
+    "stage", "stage_label", "stage_started_at", "started_at", "updated_at",
+})
+_PUBLIC_TIMING_FIELDS = frozenset({
+    "started_at", "queued_at", "execution_started_at", "finished_at",
+    "elapsed_ms", "elapsed_seconds", "queue_elapsed_seconds",
+    "execution_elapsed_seconds", "stages", "segments", "substeps",
+    "slowest_node",
+})
+_PUBLIC_STAGE_FIELDS = frozenset({
+    "code", "label", "group", "elapsed_seconds", "visits", "duration_ms",
+    "attempt", "started_at", "entered_at", "finished_at", "left_at",
+    "outcome", "failure_code", "retryable", "proxy_attempts",
+})
+_PUBLIC_SEGMENT_FIELDS = frozenset({
+    "code", "label", "elapsed_seconds", "visits",
+})
+_PUBLIC_SUBSTEP_FIELDS = frozenset({
+    "key", "stage_code", "stage_label", "code", "label", "duration_ms",
+    "elapsed_seconds", "first_duration_ms", "last_duration_ms",
+    "max_duration_ms", "visits", "outcome", "last_recorded_at",
+})
+_PUBLIC_SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$")
+_PUBLIC_SAFE_GROUP_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,31}$")
+_PUBLIC_EMAIL_RE = re.compile(
+    r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
+    r"[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?\.[A-Za-z]{2,63}$"
+)
+_PUBLIC_SENSITIVE_ID_RE = re.compile(
+    r"(?i)(?:^bearer(?:\s|:)|"
+    r"(?:token|password|passwd|secret|cookie|authorization|auth[_-]?code)\s*[:=]|"
+    r"(?:https?|socks4|socks5h?)://)"
+)
+_PUBLIC_PROXY_SCHEMES = frozenset({"http", "https", "socks4", "socks5", "socks5h"})
+_PUBLIC_BOOL_TRUE = frozenset({
+    "1", "true", "yes", "y", "on", "enabled", "active", "set",
+    "success", "succeeded", "complete", "completed",
+})
+_PUBLIC_BOOL_FALSE = frozenset({
+    "0", "false", "no", "n", "off", "disabled", "inactive", "unset",
+    "none", "null", "",
+})
+
+
+def _public_number(value: Any, *, integer: bool = False) -> int | float | None:
+    """Normalize finite timing values without allowing JSON NaN/Infinity."""
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not parsed == parsed or parsed in {float("inf"), float("-inf")}:
+        return None
+    parsed = max(0.0, min(parsed, 9_007_199_254_740_991.0))
+    return int(parsed) if integer else parsed
+
+
+def _public_id(value: Any, *, limit: int = 160) -> str:
+    text = str(value or "").strip()[:limit]
+    return text if _PUBLIC_SAFE_ID_RE.fullmatch(text) else ""
+
+
+def _public_group(value: Any) -> str:
+    text = str(value or "").strip()[:32]
+    return text if _PUBLIC_SAFE_GROUP_RE.fullmatch(text) else ""
+
+
+def _public_label(value: Any, *, limit: int = 240) -> str:
+    return sanitize_failure_text(value, limit) if value not in (None, "") else ""
+
+
+def sanitize_public_identifier(value: Any, *, limit: int = 160, default: str = "") -> str:
+    """Return an ASCII identifier safe for a public API field.
+
+    Public snapshots are built from persisted state that may have been
+    produced by an older worker or manually edited.  Do not stringify nested
+    mappings or URLs into identifiers: an explicit allowlist is easier to
+    reason about than trying to redact every possible credential format.
+    """
+    if value is None or isinstance(value, bool) or isinstance(value, (Mapping, list, tuple, set)):
+        return default
+    text = str(value).strip()
+    if not text or len(text) > max(1, int(limit)):
+        return default
+    if _PUBLIC_SENSITIVE_ID_RE.search(text):
+        return default
+    return text if _PUBLIC_SAFE_ID_RE.fullmatch(text) else default
+
+
+def sanitize_public_status(
+    value: Any,
+    *,
+    allowed: set[str] | frozenset[str] | tuple[str, ...] | None = None,
+    default: str = "",
+) -> str:
+    """Normalize a status-like value without exposing arbitrary payload text."""
+    candidate = sanitize_public_identifier(value, limit=80, default="").lower()
+    if not candidate:
+        return default
+    if allowed is not None and candidate not in {str(item).strip().lower() for item in allowed}:
+        return default
+    return candidate
+
+
+def sanitize_public_scheme(value: Any, *, default: str = "") -> str:
+    candidate = sanitize_public_identifier(value, limit=16, default="").lower()
+    return candidate if candidate in _PUBLIC_PROXY_SCHEMES else default
+
+
+def sanitize_public_bool(value: Any, *, default: bool = False) -> bool:
+    """Parse persisted booleans without the ``bool('false')`` trap."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        try:
+            return bool(int(value)) if float(value) in {0.0, 1.0} else default
+        except (TypeError, ValueError, OverflowError):
+            return default
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in _PUBLIC_BOOL_TRUE:
+            return True
+        if normalized in _PUBLIC_BOOL_FALSE:
+            return False
+    return default
+
+
+def sanitize_public_number(
+    value: Any,
+    *,
+    integer: bool = False,
+    minimum: float = 0.0,
+    maximum: float = 9_007_199_254_740_991.0,
+    default: int | float | None = None,
+) -> int | float | None:
+    """Keep finite bounded numbers used by public progress/status fields."""
+    if isinstance(value, bool):
+        return default
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return default
+    if parsed != parsed or parsed in {float("inf"), float("-inf")}:
+        return default
+    if parsed < float(minimum) or parsed > float(maximum):
+        return default
+    return int(parsed) if integer else parsed
+
+
+def sanitize_public_timestamp(value: Any, *, default: int | float | None = None) -> int | float | None:
+    """Normalize epoch timestamps; ISO strings are intentionally not echoed."""
+    return sanitize_public_number(value, integer=False, minimum=0.0, default=default)
+
+
+def sanitize_public_http_status(value: Any, *, default: int | None = None) -> int | None:
+    parsed = sanitize_public_number(value, integer=True, minimum=100, maximum=599, default=default)
+    return int(parsed) if parsed is not None else default
+
+
+def sanitize_public_email(value: Any) -> str:
+    """Mask a validated email while rejecting URL/path-shaped impostors."""
+    if value is None or isinstance(value, (Mapping, list, tuple, set)):
+        return ""
+    text = str(value).strip()
+    if not _PUBLIC_EMAIL_RE.fullmatch(text):
+        return ""
+    local, domain = text.split("@", 1)
+    if len(local) <= 1:
+        masked = "*"
+    elif len(local) == 2:
+        masked = local[0] + "*"
+    else:
+        masked = local[0] + "***" + local[-1]
+    return f"{masked}@{domain}"
+
+
+def sanitize_public_manual_prompt(value: Any) -> dict[str, Any]:
+    """Project a manual-verification prompt through its stable public shape."""
+    if not isinstance(value, Mapping):
+        return {}
+    result: dict[str, Any] = {}
+    input_kind = sanitize_public_status(
+        value.get("input_kind"),
+        allowed={"email_otp", "sms_otp", "totp"},
+    )
+    if input_kind:
+        result["input_kind"] = input_kind
+    generation = sanitize_public_number(value.get("generation"), integer=True, minimum=0, default=None)
+    if generation is not None:
+        result["generation"] = generation
+    for key in ("opened_at", "deadline_at", "remaining_seconds"):
+        parsed = sanitize_public_number(value.get(key), integer=True, minimum=0, maximum=9_007_199_254_740_991, default=None)
+        if parsed is not None:
+            result[key] = parsed
+    if isinstance(value.get("can_submit"), (bool, str, int, float)):
+        result["can_submit"] = sanitize_public_bool(value.get("can_submit"))
+    capabilities = value.get("capabilities")
+    if isinstance(capabilities, (list, tuple)):
+        safe_capabilities = [
+            safe
+            for item in list(capabilities)[:16]
+            if (safe := sanitize_public_identifier(item, limit=64))
+        ]
+        if safe_capabilities:
+            result["capabilities"] = safe_capabilities
+    return result
+
+
+def _public_timing_stage(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, Mapping):
+        return None
+    result: dict[str, Any] = {}
+    for key in _PUBLIC_STAGE_FIELDS:
+        if key not in value:
+            continue
+        raw = value.get(key)
+        if key in {"code", "failure_code"}:
+            safe = _public_id(raw)
+            if safe:
+                result[key] = safe
+        elif key in {"label"}:
+            safe = _public_label(raw)
+            if safe:
+                result[key] = safe
+        elif key == "group":
+            safe = _public_group(raw)
+            if safe:
+                result[key] = safe
+        elif key == "outcome":
+            safe = _public_id(raw, limit=80)
+            if safe:
+                result[key] = safe
+        elif key == "retryable":
+            if isinstance(raw, bool):
+                result[key] = raw
+        else:
+            number = _public_number(raw, integer=key not in {"elapsed_seconds"})
+            if number is not None:
+                result[key] = number
+    return result or None
+
+
+def _public_timing_segment(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, Mapping):
+        return None
+    result: dict[str, Any] = {}
+    for key in _PUBLIC_SEGMENT_FIELDS:
+        if key not in value:
+            continue
+        raw = value.get(key)
+        if key == "code":
+            safe = _public_id(raw)
+            if safe:
+                result[key] = safe
+        elif key == "label":
+            safe = _public_label(raw)
+            if safe:
+                result[key] = safe
+        elif key == "elapsed_seconds":
+            number = _public_number(raw)
+            if number is not None:
+                result[key] = number
+        else:
+            number = _public_number(raw, integer=True)
+            if number is not None:
+                result[key] = number
+    return result or None
+
+
+def _public_timing_substep(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, Mapping):
+        return None
+    result: dict[str, Any] = {}
+    for key in _PUBLIC_SUBSTEP_FIELDS:
+        if key not in value:
+            continue
+        raw = value.get(key)
+        if key in {"key", "stage_code", "code"}:
+            safe = _public_id(raw)
+            if safe:
+                result[key] = safe
+        elif key in {"stage_label", "label"}:
+            safe = _public_label(raw)
+            if safe:
+                result[key] = safe
+        elif key == "outcome":
+            safe = _public_id(raw, limit=80)
+            if safe:
+                result[key] = safe
+        elif key == "elapsed_seconds":
+            number = _public_number(raw)
+            if number is not None:
+                result[key] = number
+        else:
+            number = _public_number(raw, integer=True)
+            if number is not None:
+                result[key] = number
+    return result or None
+
+
+def sanitize_public_timing(value: Any) -> dict[str, Any]:
+    """Project a task timing snapshot through a fixed, credential-free schema."""
+    if not isinstance(value, Mapping):
+        return {}
+    result: dict[str, Any] = {}
+    for key in _PUBLIC_TIMING_FIELDS:
+        if key not in value:
+            continue
+        raw = value.get(key)
+        if key in {"stages", "segments", "substeps"}:
+            if not isinstance(raw, (list, tuple)):
+                continue
+            limit = 200 if key != "segments" else 100
+            converter = {
+                "stages": _public_timing_stage,
+                "segments": _public_timing_segment,
+                "substeps": _public_timing_substep,
+            }[key]
+            items = [converted for item in list(raw)[:limit] if (converted := converter(item))]
+            if items:
+                result[key] = items
+            continue
+        if key == "slowest_node":
+            converted = _public_timing_stage(raw)
+            if converted:
+                # ``slowest_node`` is a compact stage summary; retaining only
+                # these three fields keeps its historical shape stable.
+                result[key] = {
+                    name: converted[name]
+                    for name in ("code", "label", "duration_ms")
+                    if name in converted
+                }
+            continue
+        number = _public_number(raw, integer=key not in {"elapsed_seconds", "queue_elapsed_seconds", "execution_elapsed_seconds"})
+        if number is not None:
+            result[key] = number
+    return result
+
+
+def sanitize_public_progress(value: Any) -> dict[str, Any]:
+    """Return only UI-safe progress fields, recursively sanitizing timing."""
+    if not isinstance(value, Mapping):
+        return {}
+    result: dict[str, Any] = {}
+    for key in _PUBLIC_PROGRESS_FIELDS:
+        if key not in value:
+            continue
+        raw = value.get(key)
+        if key == "timing":
+            timing = sanitize_public_timing(raw)
+            if timing:
+                result[key] = timing
+        elif key in {"code", "stage"}:
+            safe = _public_id(raw)
+            if safe:
+                result[key] = safe
+        elif key in {"label", "stage_label"}:
+            safe = _public_label(raw)
+            if safe:
+                result[key] = safe
+        elif key == "group":
+            safe = _public_group(raw)
+            if safe:
+                result[key] = safe
+        else:
+            number = _public_number(raw, integer=True)
+            if number is not None:
+                result[key] = number
+    return result
+
+
 def _result_value_present(value: Any) -> bool:
     """Return whether a private result field contains usable data."""
     if value is None or value is False:
@@ -825,10 +1205,26 @@ class FreeFailureRuntimeMixin:
             prior_result = merge_account_result_fields(task_result, durable_result)
             payload = merge_account_result_fields(prior_result, payload)
             incident_id = ""
-            diagnostic_store = getattr(getattr(self, "log_store", None), "diagnostic_store", None)
+            log_store = getattr(self, "log_store", None)
+            diagnostic_store = getattr(log_store, "diagnostic_store", None)
             if diagnostic_store is not None:
                 try:
-                    incident_id = diagnostic_store.record({
+                    # Import lazily: diagnostic_writer itself uses the
+                    # failure sanitizers defined in this module.
+                    try:
+                        from .diagnostic_writer import DiagnosticEventWriter, LogContext
+                    except ImportError:  # pragma: no cover
+                        from diagnostic_writer import DiagnosticEventWriter, LogContext  # type: ignore[no-redef]
+                    writer = getattr(log_store, "diagnostic_writer", None)
+                    if writer is None:
+                        writer = DiagnosticEventWriter(
+                            diagnostic_store,
+                            context=LogContext(
+                                chain="free", workflow="register",
+                                driver=str(context.get("driver") or "free"),
+                            ),
+                        )
+                    incident_id = writer.record({
                         "level": "error",
                         "outcome": "error" if status == "failed" else status,
                         "task_id": task_id,
@@ -1008,6 +1404,15 @@ __all__ = [
     "plan_failure_from_result",
     "sanitize_failure_text",
     "sanitize_log_message",
+    "sanitize_public_bool",
+    "sanitize_public_email",
+    "sanitize_public_http_status",
+    "sanitize_public_identifier",
+    "sanitize_public_manual_prompt",
+    "sanitize_public_number",
     "sanitize_proxy_attempts",
+    "sanitize_public_scheme",
+    "sanitize_public_status",
     "sanitize_safe_page",
+    "sanitize_public_timestamp",
 ]

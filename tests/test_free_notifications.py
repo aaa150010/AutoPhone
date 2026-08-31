@@ -1,11 +1,88 @@
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
-from mac_overrides.free_notifications import summarize_free_batch
+from mac_overrides.free_notifications import (
+    FreeBatchNotificationAdapter,
+    summarize_free_batch,
+)
 
 
 class FreeNotificationSummaryTests(unittest.TestCase):
+    def test_batch_email_names_camoufox_chain(self) -> None:
+        sent: list[object] = []
+
+        class FakeSender:
+            def __init__(self, _config: object) -> None:
+                self._settings = SimpleNamespace(
+                    sender="notifier@example.test",
+                    recipients=("ops@example.test",),
+                )
+
+            def _send_message(self, message: object) -> None:
+                sent.append(message)
+
+        config = {
+            "enabled": True,
+            "username": "notifier@example.test",
+            "password": "smtp-secret",
+            "sender": "notifier@example.test",
+            "recipients": ["ops@example.test"],
+        }
+        with patch("mac_overrides.free_notifications.SmtpNotificationSender", FakeSender):
+            adapter = FreeBatchNotificationAdapter(lambda: config)
+            self.assertTrue(
+                adapter.submit(
+                    [{"row_id": "row-camoufox", "driver": "camoufox", "status": "success"}],
+                    batch_id="free-camoufox-email",
+                )
+            )
+            queue = adapter._queue
+            self.assertIsNotNone(queue)
+            assert queue is not None
+            self.assertTrue(queue.wait_until_idle(timeout=2))
+            adapter.close()
+
+        self.assertEqual(len(sent), 1)
+        message = sent[0]
+        self.assertEqual(
+            message["Subject"],
+            "[GPT 注册中心][Free · Camoufox] Free 注册批次汇总 free-camoufox-email",
+        )
+        self.assertIn("链路：Free / Camoufox", message.get_content())
+        self.assertNotIn("自动接码机", message.as_string())
+
+    def test_summary_identifies_free_driver_and_chain(self) -> None:
+        protocol = summarize_free_batch(
+            [{"row_id": "row-protocol", "driver": "protocol", "status": "success"}],
+            batch_id="free-protocol-batch",
+        )
+        camoufox = summarize_free_batch(
+            [{"row_id": "row-camoufox", "driver": "camoufox", "status": "success"}],
+            batch_id="free-camoufox-batch",
+        )
+
+        self.assertEqual(protocol["driver"], "protocol")
+        self.assertEqual(protocol["chain"], "Free / Protocol")
+        self.assertEqual(protocol["drivers"], ["protocol"])
+        self.assertEqual(camoufox["driver"], "camoufox")
+        self.assertEqual(camoufox["chain"], "Free / Camoufox")
+
+    def test_summary_does_not_guess_unsupported_or_missing_driver(self) -> None:
+        summary = summarize_free_batch(
+            [
+                {"row_id": "row-a", "driver": "roxybrowser", "status": "success"},
+                {"row_id": "row-b", "status": "failed"},
+            ],
+            batch_id="free-unknown-driver",
+        )
+
+        self.assertEqual(summary["driver"], "unknown")
+        self.assertEqual(summary["drivers"], ["unknown"])
+        self.assertEqual(summary["chain"], "Free / 未知链路")
+
     def test_summary_is_deduplicated_and_credential_free(self) -> None:
         tasks = [
             {

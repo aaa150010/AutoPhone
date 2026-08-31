@@ -44,6 +44,7 @@ except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
 try:
     from .free_register_common import FIXED_PASSWORD as _FREE_FIXED_PASSWORD, safe_log_message as _safe_free_message
     from .free_failure_runtime import canonical_failure as _canonical_free_failure, exception_to_failure as _free_exception_to_failure
+    from .diagnostic_writer import DiagnosticEventWriter, LogContext
     from .free_config_routes import FreeControlRouteController
     from .free_pool_routes import (
         FreePoolRouteController,
@@ -53,6 +54,7 @@ try:
 except ImportError:
     from free_register_common import FIXED_PASSWORD as _FREE_FIXED_PASSWORD, safe_log_message as _safe_free_message  # type: ignore[no-redef]
     from free_failure_runtime import canonical_failure as _canonical_free_failure, exception_to_failure as _free_exception_to_failure  # type: ignore[no-redef]
+    from diagnostic_writer import DiagnosticEventWriter, LogContext  # type: ignore[no-redef]
     from free_config_routes import FreeControlRouteController  # type: ignore[no-redef]
     from free_pool_routes import (  # type: ignore[no-redef]
         FreePoolRouteController,
@@ -493,6 +495,18 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         app.add_url_rule("/api/start-existing", "start_existing", start_existing, methods=["POST"])
 
     free_request_lock = threading.Lock()
+    # Route-level failures use the same structured writer as workers.  Keep a
+    # bound instance in the closure so this path cannot accidentally bypass
+    # field allowlists by calling ``DiagnosticStore.record`` directly.
+    free_route_diagnostic_writer = None
+    if diagnostic_store is not None:
+        try:
+            free_route_diagnostic_writer = DiagnosticEventWriter(
+                diagnostic_store,
+                context=LogContext(chain="free", workflow="route", driver="free"),
+            )
+        except Exception:
+            free_route_diagnostic_writer = None
 
     def free_state():
         return free_manager.public_state() if free_manager is not None else {"running": False, "tasks": [], "summary": {}}
@@ -570,7 +584,13 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         incident_id = ""
         if diagnostic_store is not None:
             try:
-                incident_id = diagnostic_store.record({
+                writer = free_route_diagnostic_writer
+                if writer is None:
+                    writer = DiagnosticEventWriter(
+                        diagnostic_store,
+                        context=LogContext(chain="free", workflow="route", driver="free"),
+                    )
+                incident_id = writer.record({
                     "level": "error",
                     "outcome": "error",
                     "chain": "free",

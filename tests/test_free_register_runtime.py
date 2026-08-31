@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import copy
+from concurrent.futures import Future
 from pathlib import Path
 import sys
 import tempfile
@@ -108,6 +109,27 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertEqual(consent["outcome"], "skipped")
         self.assertNotIn("654321", str(rows))
         self.assertTrue(any("子步骤完成" in message for message, _level, _fields in logs))
+
+    def test_task_log_infers_concrete_driver_for_diagnostic_scope(self):
+        diagnostics = DiagnosticStore(self.data_dir / "diagnostics")
+        manager = FreeRegisterManager(self.data_dir, diagnostic_store=diagnostics)
+        manager._tasks["free-driver-scope"] = {
+            "task_id": "free-driver-scope",
+            "driver": "camoufox",
+            "status": "running",
+        }
+
+        manager._log(
+            "[free-driver-scope/Free 入口/free_entry] 开始",
+            "info",
+        )
+
+        rows = diagnostics.search({"task_id": "free-driver-scope"})
+        self.assertEqual(len(rows), 1)
+        incident = diagnostics.incident(rows[0]["incident_id"])
+        assert incident is not None
+        self.assertEqual(incident["driver"], "camoufox")
+        self.assertEqual(incident["events"][0]["driver"], "camoufox")
 
     def test_free_adapter_substeps_use_bounded_task_store_checkpoints(self):
         manager = FreeRegisterManager(
@@ -241,7 +263,9 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertEqual(pool.results_dir.name, "free_register_results")
         self.assertFalse((self.data_dir / "mailbox_pool.txt").exists())
         rows = pool.public_rows()
-        self.assertEqual(rows[0]["email"], "first@example.test")
+        self.assertEqual(rows[0]["email"], "f***t@example.test")
+        self.assertEqual(rows[0]["email_masked"], rows[0]["email"])
+        self.assertNotIn("first@example.test", str(rows))
         self.assertNotIn("private", str(rows))
         self.assertNotIn("https://", str(rows))
         self.assertNotIn("private", str(rows))
@@ -255,8 +279,8 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
 
         self.assertEqual(imported, 2)
         self.assertEqual([row["email"] for row in pool.public_rows()], [
-            "first@example.test",
-            "second@example.test",
+            "f***t@example.test",
+            "s***d@example.test",
         ])
 
     def test_free_logs_keep_account_and_stage_identity_under_concurrency(self):
@@ -501,7 +525,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             runner=lambda *_args, **_kwargs: {},
             proxy_probe=lambda _proxy, _url: "203.0.113.20",
         )
-        self.assertEqual(manager.public_state()["runtime_version"], "1.6.94")
+        self.assertEqual(manager.public_state()["runtime_version"], "1.6.95")
         self.assertEqual(manager.preflight({"target_count": 1})["otp_parser_revision"], "pickup-dynamic-v6-samples")
 
     def test_close_camoufox_debug_passes_current_config_to_pool_helper(self):
@@ -1392,6 +1416,12 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertTrue(all("token-" not in str(row) for row in public))
         self.assertTrue(all(FIXED_PASSWORD not in str(row) for row in public))
         self.assertEqual(manager.secret([public[0]["task_id"]], "token"), "token-1")
+        # Public rows mask mailbox identity; the on-demand secret boundary
+        # still returns the raw address for explicit copy actions.
+        self.assertEqual(
+            manager.secret([], "email", row_ids=[public[0]["row_id"]]),
+            "a@example.test",
+        )
         detail_logs = [row for row in manager.public_logs() if "当前账号已进入 Token 节点" in row["message"]]
         self.assertEqual({row["task_id"] for row in detail_logs}, {row["task_id"] for row in public})
         self.assertTrue(all(row["stage"] == "free_access_token" for row in detail_logs))
@@ -1572,6 +1602,49 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertTrue(public["has_mailbox_url"])
         self.assertNotIn("mailbox_url", public)
 
+    def test_public_task_masks_email_and_exposes_only_subject_fingerprint(self):
+        manager = FreeRegisterManager(self.data_dir)
+        manager._tasks = {
+            "free-public-email": {
+                "task_id": "free-public-email",
+                "status": "failed",
+                "email": "private@example.test",
+                "row_id": "missing-row",
+            },
+        }
+        public = manager.public_tasks()[0]
+        self.assertEqual(public["email"], "p***e@example.test")
+        self.assertEqual(public["email_masked"], public["email"])
+        self.assertRegex(public["subject_ref_fingerprint"], r"^[0-9a-f]{16}$")
+        self.assertNotIn("private@example.test", str(public))
+
+    def test_public_task_uses_diagnostic_hmac_subject_fingerprint_when_available(self):
+        diagnostics = DiagnosticStore(self.data_dir / "diagnostics")
+        manager = FreeRegisterManager(self.data_dir, diagnostic_store=diagnostics)
+        manager._tasks = {
+            "free-public-email-hmac": {
+                "task_id": "free-public-email-hmac",
+                "status": "failed",
+                "email": "private@example.test",
+            },
+        }
+        public = manager.public_tasks()[0]
+        self.assertRegex(public["subject_ref_fingerprint"], r"^[0-9a-f]{32}$")
+        self.assertEqual(
+            public["subject_ref_fingerprint"],
+            diagnostics.fingerprint("private@example.test"),
+        )
+
+    def test_transfer_skipped_items_mask_email(self):
+        pool = FreeMailboxPool(self.data_dir)
+        pool.import_text("private@example.test----https://mail.example.test/pickup\n")
+        row_id = pool.entries()[0].row_id
+        prepared = pool.build_transfer_content([row_id])
+        self.assertEqual(prepared["skipped"], 1)
+        item = prepared["skipped_items"][0]
+        self.assertEqual(item["email"], "p***e@example.test")
+        self.assertNotIn("private@example.test", str(item))
+
     def test_public_tasks_normalize_legacy_progress_fields(self):
         """Legacy Free progress snapshots remain consumable by the shared UI."""
         class LegacyProgress:
@@ -1616,7 +1689,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertEqual(deleted, 1)
         self.assertNotIn("free-terminal", manager.task_store.load())
         self.assertEqual(manager.public_logs("free-terminal"), [])
-        self.assertEqual(manager.pool.public_rows()[0]["email"], "a@example.test")
+        self.assertEqual(manager.pool.public_rows()[0]["email"], "*@example.test")
 
     def test_delete_tasks_rejects_queued_or_running_history_atomically(self):
         manager = FreeRegisterManager(self.data_dir)
@@ -1662,6 +1735,45 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertCountEqual(seen, ["a@example.test", "b@example.test"])
         self.assertIsNone(manager._executor)
 
+    def test_executor_stays_owned_until_final_task_checkpoint(self):
+        """An idle signal must not race the callback's last disk write."""
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=lambda task, *_args, **_kwargs: {
+                "access_token": f"token-{task['ordinal']}",
+                "twofa_status": "enabled",
+            },
+            proxy_probe=lambda _proxy, _url: "203.0.113.88",
+        )
+        manager.pool.import_text(
+            "checkpoint@example.test----https://mail.example.test/checkpoint\n"
+        )
+        manager.proxies.import_text("http://proxy-checkpoint.test:8000\n")
+
+        checkpoint_started = threading.Event()
+        release_checkpoint = threading.Event()
+        original_save = manager._save_tasks_safely
+
+        def delayed_final_save(context="Free 任务状态"):
+            if context == "批次完成回调" and not checkpoint_started.is_set():
+                checkpoint_started.set()
+                self.assertTrue(release_checkpoint.wait(2))
+            return original_save(context)
+
+        manager._save_tasks_safely = delayed_final_save
+        manager.start({"target_count": 1})
+        self.assertTrue(checkpoint_started.wait(2))
+        # The callback is deliberately blocked in its final persistence step.
+        # Clearing this reference earlier would let callers remove the data
+        # directory while the callback can still create an atomic-write file.
+        self.assertIsNotNone(manager._executor)
+
+        release_checkpoint.set()
+        deadline = time.time() + 3
+        while manager._executor is not None and time.time() < deadline:
+            time.sleep(0.005)
+        self.assertIsNone(manager._executor)
+
     def test_registered_worker_cannot_finish_before_future_ownership(self):
         manager = FreeRegisterManager(self.data_dir, runner=lambda *_args, **_kwargs: {})
         manager._batch_id = "free-gate-test"
@@ -1686,6 +1798,150 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertEqual(observed, [(1, ["protocol"])])
         self.assertFalse(manager._futures)
         self.assertIsNone(manager._executor)
+
+    def test_batch_completion_waits_for_heartbeat_teardown(self):
+        """``running`` stays true while a background lease writer drains."""
+        heartbeat_started = threading.Event()
+        release_heartbeat = threading.Event()
+
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=lambda *_args, **_kwargs: {},
+            proxy_probe=lambda _proxy, _url: "203.0.113.77",
+        )
+
+        def blocked_heartbeat(_owner, _stop_event=None):
+            heartbeat_started.set()
+            release_heartbeat.wait(2)
+
+        # Replace only this instance's loop; no real network or browser work
+        # is involved in the lifecycle regression.
+        manager._heartbeat_loop = blocked_heartbeat
+        manager.pool.import_text("heartbeat@example.test----https://mail.example.test/h\n")
+        manager.proxies.import_text("http://proxy-heartbeat.test:8000\n")
+        manager.start({"target_count": 1})
+        self.assertTrue(heartbeat_started.wait(1))
+
+        deadline = time.time() + 1
+        while not manager._shutdown_pending and time.time() < deadline:
+            time.sleep(0.005)
+        self.assertTrue(manager._shutdown_pending)
+        self.assertTrue(manager.public_state()["running"])
+
+        release_heartbeat.set()
+        deadline = time.time() + 3
+        while manager.public_state()["running"] and time.time() < deadline:
+            time.sleep(0.005)
+        self.assertFalse(manager.public_state()["running"])
+        self.assertIsNone(manager._executor)
+        self.assertFalse(manager._heartbeat_thread is not None and manager._heartbeat_thread.is_alive())
+
+    def test_startup_executor_failure_rolls_back_all_reserved_resources(self):
+        """A failed executor construction must not strand startup leases."""
+        free_root = self.data_dir / "free_register"
+        free_root.mkdir()
+        manager = FreeRegisterManager(
+            free_root,
+            runner=lambda *_args, **_kwargs: {},
+            proxy_probe=lambda _proxy, _url: "203.0.113.78",
+        )
+
+        class FailingExecutor:
+            def __init__(self, *args, **kwargs):
+                raise RuntimeError("executor construction failed")
+
+        with patch("mac_overrides.free_register_runtime.PriorityExecutor", FailingExecutor):
+            with self.assertRaisesRegex(RuntimeError, "executor construction failed"):
+                manager.start(
+                    {"target_count": 1, "concurrency": 1},
+                    pool_content="startup-failure@example.test----https://mail.example.test/startup\n",
+                    proxy_content="http://proxy-startup-failure.test:8000\n",
+                )
+
+        self.assertEqual(manager._tasks, {})
+        self.assertEqual(manager.task_store.load(), {})
+        self.assertEqual(manager._batch_id, "")
+        self.assertIsNone(manager._executor)
+        self.assertFalse(
+            manager._heartbeat_thread is not None
+            and manager._heartbeat_thread.is_alive()
+        )
+        mailbox = manager.storage.list_mailboxes(limit=10)[0]
+        self.assertEqual(mailbox["status"], "available")
+        self.assertFalse(mailbox["lease_owner"])
+        self.assertEqual(manager.proxies.public()["rows"][0]["active_lease_count"], 0)
+        with manager.storage._connection() as db:  # noqa: SLF001 - lifecycle assertion
+            lease_count = db.execute("SELECT COUNT(*) FROM resource_leases").fetchone()[0]
+        self.assertEqual(lease_count, 0)
+
+    def test_startup_submit_failure_rolls_back_partial_future_and_leases(self):
+        """A later submit failure must also unwind an earlier queued Future."""
+        free_root = self.data_dir / "free_register"
+        free_root.mkdir()
+        manager = FreeRegisterManager(
+            free_root,
+            runner=lambda *_args, **_kwargs: {},
+            proxy_probe=lambda _proxy, _url: "203.0.113.79",
+        )
+
+        class FailingSubmitExecutor:
+            def __init__(self, *args, **kwargs):
+                self.calls = 0
+                self.future = None
+
+            def submit(self, *args, **kwargs):
+                self.calls += 1
+                if self.calls > 1:
+                    raise RuntimeError("worker submit failed")
+                self.future = Future()
+                return self.future
+
+            def shutdown(self, *args, **kwargs):
+                return None
+
+        with patch("mac_overrides.free_register_runtime.PriorityExecutor", FailingSubmitExecutor):
+            with self.assertRaisesRegex(RuntimeError, "worker submit failed"):
+                manager.start(
+                    {"target_count": 2, "concurrency": 1},
+                    pool_content=(
+                        "submit-failure-a@example.test----https://mail.example.test/a\n"
+                        "submit-failure-b@example.test----https://mail.example.test/b\n"
+                    ),
+                    proxy_content="http://proxy-submit-a.test:8000\nhttp://proxy-submit-b.test:8000\n",
+                )
+
+        self.assertEqual(manager._tasks, {})
+        self.assertIsNone(manager._executor)
+        self.assertFalse(
+            manager._heartbeat_thread is not None
+            and manager._heartbeat_thread.is_alive()
+        )
+        self.assertTrue(all(row["status"] == "available" for row in manager.storage.list_mailboxes(limit=10)))
+        self.assertTrue(all(row["active_lease_count"] == 0 for row in manager.proxies.public()["rows"]))
+
+    def test_startup_heartbeat_thread_failure_rolls_back_resources(self):
+        """A heartbeat thread start error must not strand the reserved batch."""
+        free_root = self.data_dir / "free_register"
+        free_root.mkdir()
+        manager = FreeRegisterManager(
+            free_root,
+            runner=lambda *_args, **_kwargs: {},
+            proxy_probe=lambda _proxy, _url: "203.0.113.80",
+        )
+
+        with patch.object(threading.Thread, "start", side_effect=RuntimeError("heartbeat start failed")):
+            with self.assertRaisesRegex(RuntimeError, "heartbeat start failed"):
+                manager.start(
+                    {"target_count": 1, "concurrency": 1},
+                    pool_content="heartbeat-failure@example.test----https://mail.example.test/hb\n",
+                    proxy_content="http://proxy-heartbeat-failure.test:8000\n",
+                )
+
+        self.assertEqual(manager._tasks, {})
+        self.assertIsNone(manager._executor)
+        self.assertIsNone(manager._heartbeat_thread)
+        self.assertEqual(manager.storage.list_mailboxes(limit=10)[0]["status"], "available")
+        self.assertEqual(manager.proxies.public()["rows"][0]["active_lease_count"], 0)
 
     def test_worker_persists_running_state_before_invoking_transport(self):
         FreeMailboxPool(self.data_dir).import_text(

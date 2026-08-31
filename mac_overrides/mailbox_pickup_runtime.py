@@ -30,6 +30,7 @@ try:
     from .mailbox_api798 import (
         allows_bare_code as _allows_bare_code,
         api798_embedded_html as _api798_embedded_html,
+        api798_get_code_response as _api798_get_code_response,
         api798_received_at as _api798_received_at,
         mailbox_provider_strategy as _mailbox_provider_strategy,
     )
@@ -44,6 +45,7 @@ except ImportError:
     from mailbox_api798 import (  # type: ignore[no-redef]
         allows_bare_code as _allows_bare_code,
         api798_embedded_html as _api798_embedded_html,
+        api798_get_code_response as _api798_get_code_response,
         api798_received_at as _api798_received_at,
         mailbox_provider_strategy as _mailbox_provider_strategy,
     )
@@ -779,7 +781,39 @@ def _merge_messages(messages: Iterable[MailboxMessage]) -> tuple[MailboxMessage,
     return tuple((with_code + without_code)[:MAX_MESSAGES])
 
 
+def _parse_api798_get_code_payload(
+    raw: str,
+    source_url: str,
+) -> tuple[tuple[MailboxMessage, ...], tuple[str, ...]] | None:
+    response = _api798_get_code_response(raw, source_url)
+    if response is None:
+        return None
+    if not response.success:
+        return (), ()
+    message_text = decode_mail_body(response.message)
+    if not message_text:
+        return (), ()
+    code_match = extract_mailbox_code(
+        message_text,
+        decoder=decode_mail_body,
+        allow_bare_code=True,
+    )
+    message = MailboxMessage(
+        identity=_safe_identity(source_url, "api798_get_code", message_text),
+        subject=message_text[:500],
+        body=message_text,
+        code=code_match.code,
+        code_source=code_match.source,
+        explicit_code=bool(code_match.code),
+        field_sources=("api798_get_code",),
+    )
+    return (message,), ()
+
+
 def parse_mailbox_payload(raw: str, source_url: str) -> tuple[tuple[MailboxMessage, ...], tuple[str, ...]]:
+    api798_payload = _parse_api798_get_code_payload(raw, source_url)
+    if api798_payload is not None:
+        return api798_payload
     try:
         parsed = json.loads(raw)
     except RecursionError as exc:

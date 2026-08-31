@@ -18,6 +18,15 @@ try:
         merge_account_result_fields,
         normalize_password_result,
         sanitize_failure_text,
+        sanitize_public_bool,
+        sanitize_public_email,
+        sanitize_public_http_status,
+        sanitize_public_identifier,
+        sanitize_public_number,
+        sanitize_public_progress,
+        sanitize_public_scheme,
+        sanitize_public_status,
+        sanitize_public_timestamp,
     )
     from .free_register_common import (
         DEFAULT_FREE_PROXY_SCHEME,
@@ -28,6 +37,7 @@ try:
         TERMINAL_STATUSES,
         atomic_write,
         fingerprint,
+        mask_email,
         mask_proxy,
         normalize_proxy_value,
         parse_mailbox_line,
@@ -40,6 +50,15 @@ except ImportError:
         merge_account_result_fields,
         normalize_password_result,
         sanitize_failure_text,
+        sanitize_public_bool,
+        sanitize_public_email,
+        sanitize_public_http_status,
+        sanitize_public_identifier,
+        sanitize_public_number,
+        sanitize_public_progress,
+        sanitize_public_scheme,
+        sanitize_public_status,
+        sanitize_public_timestamp,
     )
     from free_register_common import (  # type: ignore[no-redef]
         DEFAULT_FREE_PROXY_SCHEME,
@@ -50,6 +69,7 @@ except ImportError:
         TERMINAL_STATUSES,
         atomic_write,
         fingerprint,
+        mask_email,
         mask_proxy,
         normalize_proxy_value,
         parse_mailbox_line,
@@ -427,7 +447,7 @@ class FreeMailboxPool:
             for row in self.entries():
                 current = state.get(row.row_id, {})
                 result = self.result(row.row_id)
-                current_status = str(current.get("status") or "available")
+                current_status = sanitize_public_status(current.get("status"), default="available")
                 if result:
                     result = normalize_password_result(result)
                 if current_status in ACTIVE_POOL_STATUSES:
@@ -448,60 +468,96 @@ class FreeMailboxPool:
                 # the private source row.  Do not require a persisted
                 # ``credential_line`` (which deliberately omits that URL).
                 has_credential = bool(result.get("credential_line")) or has_totp or has_password
+                email_masked = sanitize_public_email(row.email)
+                public_row_id = sanitize_public_identifier(row.row_id)
+                public_line_no = sanitize_public_number(row.line_no, integer=True, minimum=1, default=0)
+                public_stage = sanitize_public_identifier(current.get("stage"), limit=120)
+                public_batch_id = sanitize_public_identifier(current.get("batch_id"), limit=160)
+                public_driver = sanitize_public_identifier(
+                    result.get("driver") or current.get("driver"), limit=40
+                )
+                public_proxy_fingerprint = sanitize_public_identifier(
+                    current.get("proxy_fingerprint"), limit=160
+                )
+                public_proxy_id = sanitize_public_identifier(current.get("proxy_id"), limit=160)
+                public_proxy_scheme = sanitize_public_scheme(current.get("proxy_scheme"))
+                public_plan_status = sanitize_public_status(result.get("plan_check_status"))
+                public_plan_task_id = sanitize_public_identifier(result.get("plan_check_task_id"), limit=160)
+                public_plan_checked_at = sanitize_public_timestamp(result.get("plan_checked_at"), default="")
+                public_plan_retry_until = sanitize_public_timestamp(result.get("plan_retry_after_until"), default=None)
+                public_plan_http_status = sanitize_public_http_status(result.get("plan_http_status"), default=None)
+                public_live_status = sanitize_public_status(result.get("live_check_status"))
+                public_live_mode = sanitize_public_status(result.get("live_check_mode"))
+                public_live_task_id = sanitize_public_identifier(result.get("live_check_task_id"), limit=160)
+                public_live_checked_at = sanitize_public_timestamp(result.get("live_checked_at"), default="")
+                public_live_http_status = sanitize_public_http_status(result.get("live_check_http_status"), default=None)
+                public_twofa_status = sanitize_public_status(result.get("twofa_status"))
                 output.append({
-                    "row_id": row.row_id,
-                    "line_no": row.line_no,
-                    "email": row.email,
+                    "row_id": public_row_id,
+                    "line_no": public_line_no,
+                    # ``email`` is retained as a UI-compatible alias, but it
+                    # is never the raw mailbox address in a public row.
+                    "email": email_masked,
+                    "email_masked": email_masked,
+                    "subject_ref_fingerprint": fingerprint(row.email),
                     "status": current_status,
                     "cooldown_until": _cooldown_timestamp(current.get("cooldown_until")) or None,
                     "cooldown_remaining": max(0, int(_cooldown_timestamp(current.get("cooldown_until")) - time.time())),
-                    "stage": current.get("stage", ""),
-                    "batch_id": current.get("batch_id", ""),
-                    "driver": result.get("driver") or current.get("driver", ""),
+                    "stage": public_stage,
+                    "batch_id": public_batch_id,
+                    "driver": public_driver,
                     "proxy_masked": sanitize_failure_text(current.get("proxy_masked", ""), 300),
-                    "proxy_fingerprint": current.get("proxy_fingerprint", ""),
-                    "proxy_id": current.get("proxy_id", ""),
-                    "proxy_scheme": current.get("proxy_scheme", ""),
-                    "proxy_country": current.get("proxy_country", ""),
-                    "proxy_group": current.get("proxy_group", ""),
+                    "proxy_fingerprint": public_proxy_fingerprint,
+                    "proxy_id": public_proxy_id,
+                    "proxy_scheme": public_proxy_scheme,
+                    # The Free allocator is a single healthy_random pool;
+                    # retired country/group dimensions are never projected.
+                    "proxy_country": "",
+                    "proxy_group": "",
                     "profile_summary": sanitize_failure_text(result.get("profile_summary", ""), 300),
                     "account_flow": sanitize_failure_text(result.get("account_flow", ""), 120),
                     "plan_type": sanitize_failure_text(result.get("plan_type", ""), 120),
                     "subscription_plan": sanitize_failure_text(result.get("subscription_plan", ""), 120),
-                    "has_active_subscription": bool(result.get("has_active_subscription", False)),
-                    "plus_trial_eligible": bool(result.get("plus_trial_eligible", False)),
-                    "eligible_campaign_id": sanitize_failure_text(result.get("eligible_campaign_id", ""), 160),
-                    "plan_check_status": result.get("plan_check_status", ""),
-                    "plan_check_task_id": result.get("plan_check_task_id", ""),
+                    "has_active_subscription": sanitize_public_bool(result.get("has_active_subscription", False)),
+                    "plus_trial_eligible": sanitize_public_bool(result.get("plus_trial_eligible", False)),
+                    "eligible_campaign_id": sanitize_public_identifier(result.get("eligible_campaign_id", ""), limit=160),
+                    "plan_check_status": public_plan_status,
+                    "plan_check_task_id": public_plan_task_id,
                     "plan_source": sanitize_failure_text(result.get("plan_source", ""), 80),
-                    "plan_checked_at": result.get("plan_checked_at", ""),
-                    "plan_retry_after_until": result.get("plan_retry_after_until"),
-                    "plan_error_code": sanitize_failure_text(result.get("plan_error_code", ""), 160),
-                    "plan_http_status": result.get("plan_http_status"),
+                    "plan_checked_at": public_plan_checked_at,
+                    "plan_retry_after_until": public_plan_retry_until,
+                    "plan_error_code": sanitize_public_identifier(result.get("plan_error_code", ""), limit=160),
+                    "plan_http_status": public_plan_http_status,
                     "plan_failure": plan_failure,
-                    "live_check_status": result.get("live_check_status", ""),
-                    "live_check_mode": result.get("live_check_mode", ""),
-                    "live_check_task_id": result.get("live_check_task_id", ""),
-                    "live_checked_at": result.get("live_checked_at", ""),
-                    "live_check_token_refreshed": bool(result.get("live_check_token_refreshed", False)),
-                    "live_check_http_status": result.get("live_check_http_status"),
+                    "live_check_status": public_live_status,
+                    "live_check_mode": public_live_mode,
+                    "live_check_task_id": public_live_task_id,
+                    "live_checked_at": public_live_checked_at,
+                    "live_check_token_refreshed": sanitize_public_bool(result.get("live_check_token_refreshed", False)),
+                    "live_check_http_status": public_live_http_status,
                     "live_check_failure": live_failure,
-                    "twofa_status": result.get("twofa_status", ""),
+                    "twofa_status": public_twofa_status,
                     "twofa_error": sanitize_failure_text(result.get("twofa_error", ""), 300),
                     "has_access_token": bool(result.get("access_token")),
                     "has_password": has_password,
                     "has_totp": has_totp,
                     "has_credential": has_credential,
-                    "rebind_email": sanitize_failure_text(result.get("rebind_email", ""), 320),
-                    "rebind_task_id": sanitize_failure_text(result.get("rebind_task_id", ""), 120),
-                    "rebind_status": sanitize_failure_text(result.get("rebind_status", ""), 64),
-                    "rebind_plan_type": sanitize_failure_text(result.get("rebind_plan_type", ""), 120),
-                    "rebind_plus_trial_eligible": bool(result.get("rebind_plus_trial_eligible", False)),
+                    "rebind_email": sanitize_public_email(result.get("rebind_email", "")),
+                    "rebind_email_masked": sanitize_public_email(result.get("rebind_email", "")),
+                    "rebind_task_id": sanitize_public_identifier(result.get("rebind_task_id", ""), limit=160),
+                    "rebind_status": sanitize_public_status(result.get("rebind_status", "")),
+                    "rebind_plan_type": sanitize_public_identifier(result.get("rebind_plan_type", ""), limit=120),
+                    "rebind_plus_trial_eligible": sanitize_public_bool(result.get("rebind_plus_trial_eligible", False)),
                     "has_mailbox_url": True,
-                    "task_id": result.get("task_id", ""),
+                    "task_id": sanitize_public_identifier(result.get("task_id", ""), limit=160),
                     "error": failure.get("public_message", "") if failure else sanitize_failure_text(current.get("error", "")),
                     "failure": failure,
-                    "progress": copy.deepcopy(current.get("progress")) if isinstance(current.get("progress"), Mapping) else None,
+                    # State rows can contain snapshots written by older
+                    # workers. Keep the progress shape compatible while
+                    # projecting nested timing through the shared public
+                    # allowlist; private credentials must never ride along
+                    # in a mailbox-list response.
+                    "progress": sanitize_public_progress(current.get("progress")) if isinstance(current.get("progress"), Mapping) else None,
                 })
             return output
 
@@ -541,6 +597,7 @@ class FreeMailboxPool:
                 "skipped_items": [{
                     "row_id": "",
                     "email": "",
+                    "email_masked": "",
                     "reason": "没有提供有效的 Free 邮箱选择",
                 }],
             }
@@ -554,15 +611,15 @@ class FreeMailboxPool:
             current = state.get(row.row_id, {}) if isinstance(state, Mapping) else {}
             status = str(current.get("status") or "available").strip().lower()
             if status in ACTIVE_POOL_STATUSES:
-                skipped.append({"row_id": row.row_id, "email": row.email, "reason": "该 Free 邮箱仍在注册或测活任务中"})
+                skipped.append({"row_id": row.row_id, "email": mask_email(row.email), "email_masked": mask_email(row.email), "subject_ref_fingerprint": fingerprint(row.email), "reason": "该 Free 邮箱仍在注册或测活任务中"})
                 continue
             result = self.result(row.row_id)
             live_status = str(result.get("live_check_status") or "").strip().lower()
             if live_status in {"queued", "running"}:
-                skipped.append({"row_id": row.row_id, "email": row.email, "reason": "该 Free 邮箱仍在测活中"})
+                skipped.append({"row_id": row.row_id, "email": mask_email(row.email), "email_masked": mask_email(row.email), "subject_ref_fingerprint": fingerprint(row.email), "reason": "该 Free 邮箱仍在测活中"})
                 continue
             if not result:
-                skipped.append({"row_id": row.row_id, "email": row.email, "reason": "该 Free 邮箱没有注册结果，暂不可传输"})
+                skipped.append({"row_id": row.row_id, "email": mask_email(row.email), "email_masked": mask_email(row.email), "subject_ref_fingerprint": fingerprint(row.email), "reason": "该 Free 邮箱没有注册结果，暂不可传输"})
                 continue
             line = _account_material_line(
                 row.email,
@@ -573,9 +630,9 @@ class FreeMailboxPool:
             if line:
                 lines.append(line)
             else:
-                skipped.append({"row_id": row.row_id, "email": row.email, "reason": "该 Free 邮箱缺少可用账号凭据"})
+                skipped.append({"row_id": row.row_id, "email": mask_email(row.email), "email_masked": mask_email(row.email), "subject_ref_fingerprint": fingerprint(row.email), "reason": "该 Free 邮箱缺少可用账号凭据"})
         requested_missing = selected - {row.row_id for row in self.entries()}
-        skipped.extend({"row_id": row_id, "email": "", "reason": "Free 邮箱行不存在或已变化"} for row_id in sorted(requested_missing))
+        skipped.extend({"row_id": row_id, "email": "", "email_masked": "", "reason": "Free 邮箱行不存在或已变化"} for row_id in sorted(requested_missing))
         return {
             "content": "\n".join(lines),
             "selected": len(requested) if requested else len(lines),

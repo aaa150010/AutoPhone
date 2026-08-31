@@ -548,6 +548,10 @@ def _transport_node(method: str) -> tuple[str, str]:
         "register_user": ("free_email_password", "提交 Free 注册密码"),
         "verify_password": ("free_email_password", "验证 Free 登录密码"),
         "send_email_otp": ("free_email_otp_wait", "派发 Free 邮箱验证码"),
+        # A login-password page exposes a separate one-time-code action in
+        # the maintained AutoRegister flow.  Keep its node in the existing
+        # login-OTP bucket so diagnostics and retry policy remain stable.
+        "send_passwordless_otp": ("free_existing_login_otp", "派发已有账号一次性验证码"),
         "send_mfa_otp": ("free_existing_login_otp", "派发已有账号登录验证码"),
         "verify_email_otp": ("free_email_otp_validate", "验证 Free 邮箱验证码"),
         "verify_mfa_otp": ("free_email_otp_validate", "验证已有账号登录验证码"),
@@ -567,18 +571,34 @@ def _call_transport(
     flow: str = "authorize_continue",
     stop_requested: Callable[[], bool] | None = None,
     log: Callable[..., Any] | None = None,
+    on_not_started: Callable[[], Any] | None = None,
 ) -> Any:
-    _check_stopped(stop_requested)
-    _reset_sentinel(transport, flow)
-    function = getattr(transport, method, None)
-    if not callable(function):
-        raise FreeRegisterError(
-            "free_oauth_session",
-            "Free OAuth 会话",
-            f"Transport 缺少 {method} 方法",
-            retryable=False,
-            error_code="free_transport_method_missing",
-        )
+    try:
+        _check_stopped(stop_requested)
+        _reset_sentinel(transport, flow)
+        function = getattr(transport, method, None)
+        if not callable(function):
+            raise FreeRegisterError(
+                "free_oauth_session",
+                "Free OAuth 会话",
+                f"Transport 缺少 {method} 方法",
+                retryable=False,
+                error_code="free_transport_method_missing",
+            )
+    except BaseException:
+        # No transport callable has been entered, so a confirmation made
+        # immediately before this helper may be safely undone. Never let an
+        # abort-hook failure replace the original transport failure.
+        if callable(on_not_started):
+            try:
+                on_not_started()
+            except Exception as abort_exc:
+                _log(
+                    log,
+                    f"邮箱租约确认撤销失败（{type(abort_exc).__name__}），保留为已确认",
+                    "warn",
+                )
+        raise
     try:
         result = function(*args)
         _check_stopped(stop_requested)
@@ -597,7 +617,9 @@ def _call_transport(
         ):
             return result
         node, label = _transport_node(method)
-        if flow == "password_verify" and method in {"send_email_otp", "verify_email_otp"}:
+        if flow == "password_verify" and method in {
+            "send_email_otp", "send_passwordless_otp", "verify_email_otp"
+        }:
             action = "派发" if method.startswith("send_") else "验证"
             node, label = "free_existing_login_otp", f"{action}已有账号登录验证码"
         # A challenge can be returned by initiate, authorize/continue, OTP,
@@ -655,7 +677,9 @@ def _call_transport(
         raise
     except Exception as exc:
         node, label = _transport_node(method)
-        if flow == "password_verify" and method in {"send_email_otp", "verify_email_otp"}:
+        if flow == "password_verify" and method in {
+            "send_email_otp", "send_passwordless_otp", "verify_email_otp"
+        }:
             action = "派发" if method.startswith("send_") else "验证"
             node, label = "free_existing_login_otp", f"{action}已有账号登录验证码"
         if _contains(exc, ("rate_limit", "rate limit", "ratelimit", "too many requests")):
@@ -685,6 +709,46 @@ def _call_transport(
             action_hint=f"检查 {label} 的网络与服务端状态后重试",
             diagnostic=f"transport={method}; exception={type(exc).__name__}",
         ) from exc
+
+
+def _invoke_mailbox_hook(
+    callback: Callable[..., Any] | None,
+    *,
+    task_id: str,
+    email: str,
+    driver: str,
+    stage: str,
+    submission_definitely_not_started: bool | None = None,
+) -> Any:
+    """Invoke a mailbox lease callback exactly once after signature binding."""
+    if not callable(callback):
+        return None
+    keyword_context: dict[str, Any] = {
+        "task_id": task_id,
+        "email": email,
+        "driver": driver,
+        "stage": stage,
+    }
+    if submission_definitely_not_started is not None:
+        keyword_context["submission_definitely_not_started"] = bool(
+            submission_definitely_not_started
+        )
+    candidates = (
+        ((), keyword_context),
+        ((task_id,), {}),
+        ((), {}),
+    )
+    try:
+        signature = inspect.signature(callback)
+    except (TypeError, ValueError):
+        return callback(**keyword_context)
+    for args, kwargs in candidates:
+        try:
+            signature.bind(*args, **kwargs)
+        except TypeError:
+            continue
+        return callback(*args, **kwargs)
+    raise TypeError("unsupported mailbox lease callback signature")
 
 
 def _wait_code(otp_provider: Any, email: str, **kwargs: Any) -> str:
@@ -875,6 +939,9 @@ def _run_once(
     force_otp_snapshot: bool = False,
     otp_resend_budget: dict[str, int] | None = None,
     stop_requested: Callable[[], bool] | None = None,
+    confirm_mailbox: Callable[..., Any] | None = None,
+    abort_mailbox_confirmation: Callable[..., Any] | None = None,
+    prelude: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
     ok, page_type, continue_url, error_text, _session_invalid = _chain_helpers()
     context = _oauth_context(oauth_context)
@@ -894,9 +961,66 @@ def _run_once(
     # Capture the mailbox baseline before any request in this phase.
     _reset_otp_request(otp_provider)
     _prepare_otp(otp_provider, "free_email_otp_wait", force_snapshot=force_otp_snapshot)
-    # Use the task's own Codex authorize URL and PKCE context as one session.
-    # A separate ChatGPT/NextAuth signup prelude creates a second cookie and
-    # CSRF state, which can make authorize/continue reject this task's state.
+    mailbox_confirmed_for_submit = False
+
+    def confirm_mailbox_for_submission() -> None:
+        nonlocal mailbox_confirmed_for_submit
+        if mailbox_confirmed_for_submit or not callable(confirm_mailbox):
+            return
+        try:
+            confirmed = _invoke_mailbox_hook(
+                confirm_mailbox,
+                task_id=task_id,
+                email=email,
+                driver="protocol",
+                stage="free_email_identifier",
+            )
+        except FreeRegisterError:
+            raise
+        except Exception as exc:
+            raise FreeRegisterError(
+                "free_mailbox_lease",
+                "确认 Free 邮箱租约",
+                "提交邮箱前确认租约失败",
+                retryable=True,
+                error_code="free_mailbox_lease_confirm_failed",
+                diagnostic=f"callback={type(exc).__name__}",
+            ) from exc
+        if confirmed is False:
+            raise FreeRegisterError(
+                "free_mailbox_lease",
+                "确认 Free 邮箱租约",
+                "提交邮箱前邮箱租约已失效或被其他任务占用",
+                retryable=True,
+                error_code="free_mailbox_lease_conflict",
+            )
+        mailbox_confirmed_for_submit = True
+
+    def abort_if_transport_not_started() -> None:
+        if not mailbox_confirmed_for_submit or not callable(abort_mailbox_confirmation):
+            return
+        outcome = _invoke_mailbox_hook(
+            abort_mailbox_confirmation,
+            task_id=task_id,
+            email=email,
+            driver="protocol",
+            stage="free_email_identifier",
+            submission_definitely_not_started=True,
+        )
+        if outcome is False:
+            _log(log, "邮箱提交尚未开始，但租约确认未撤销；保守保留已确认状态", "warn")
+
+    # ``prelude`` remains in the keyword signature for older callers, but is
+    # intentionally ignored.  The ChatGPT/NextAuth prelude has its own CSRF
+    # and cookie session and cannot be mixed with this task's Codex PKCE
+    # context.  Keeping the argument as a no-op avoids breaking facades while
+    # making the session boundary explicit and testable.
+    if callable(prelude):
+        _log(log, "忽略不兼容的 AutoRegister OAuth 前置；沿用当前任务 Codex PKCE 会话", "warn")
+
+    # The Free protocol flow always owns one Codex OAuth session.  In
+    # particular, do not replace this pair with a ChatGPT/NextAuth prelude:
+    # the returned continuation must remain bound to ``oauth_context``.
     start = _call_transport(
         transport,
         "initiate_oauth",
@@ -931,12 +1055,14 @@ def _run_once(
     _log(log, f"OAuth 会话建立成功（HTTP {_status(start) or '-'}，Content-Type {_content_type(start) or '-'}）", "success")
 
     _stage(stage, task_id, "free_email_identifier")
+    confirm_mailbox_for_submission()
     response = _call_transport(
         transport,
         "submit_email_identifier",
         email,
         stop_requested=stop_requested,
         log=log,
+        on_not_started=abort_if_transport_not_started,
     )
     identifier_status = _status(response)
     if identifier_status is None or not 200 <= int(identifier_status) < 300:
@@ -1034,6 +1160,20 @@ def _run_once(
                 )
                 registration_password_used = True
             else:
+                # AutoRegister's browser path treats ``login_password`` as a
+                # passwordless-capable entry page: it clicks the explicit
+                # one-time-code action before waiting for mail.  The
+                # recovered HTTP response may advertise an email-OTP send
+                # URL as ``continue_url`` even when that action was not
+                # selected, so do not let that URL choose the endpoint here.
+                # A transport that predates the dedicated adapter method
+                # keeps the old fallback for compatibility with test doubles
+                # and older recovered runtimes.
+                passwordless_sender = (
+                    "send_passwordless_otp"
+                    if callable(getattr(transport, "send_passwordless_otp", None))
+                    else "send_email_otp"
+                )
                 account_flow = "existing_login"
                 _reset_otp_request(otp_provider)
                 _prepare_otp(otp_provider, "free_existing_login_otp", force_snapshot=False)
@@ -1046,7 +1186,7 @@ def _run_once(
                     stage=stage,
                     log=log,
                     stage_code="free_existing_login_otp",
-                    send_method="send_email_otp",
+                    send_method=passwordless_sender,
                     verify_method="verify_email_otp",
                     send_before_wait=True,
                     resend_budget=otp_resend_budget,
@@ -1316,6 +1456,9 @@ def run_free_protocol_flow(
     stage: Callable[[str, str], None],
     log: Callable[..., Any] | None = None,
     stop_requested: Callable[[], bool] | None = None,
+    confirm_mailbox: Callable[..., Any] | None = None,
+    abort_mailbox_confirmation: Callable[..., Any] | None = None,
+    prelude: Callable[..., Any] | None = None,
 ) -> tuple[dict[str, Any], Any]:
     """Run Free protocol registration and rebuild a stale HTTP session once.
 
@@ -1327,6 +1470,49 @@ def run_free_protocol_flow(
     active = transport
     current_oauth_context = _oauth_context(oauth_context)
     otp_resend_budget = {"used": 0}
+    # A lease confirmation is the durable hand-off boundary for the mailbox.
+    # Once the transport callable has been entered, its response may be
+    # ambiguous (for example, a connection can close after the server writes
+    # the identifier).  In that case a session rebuild would replay the email
+    # POST.  Track the boundary at this outer scope so the one-shot recovery
+    # decision can fail closed without changing legacy callers that do not
+    # provide lease callbacks.
+    mailbox_boundary_crossed = {"value": False}
+
+    def tracked_confirm(*args: Any, **kwargs: Any) -> Any:
+        outcome = _invoke_mailbox_hook(
+            confirm_mailbox,
+            task_id=str(kwargs.get("task_id") or (args[0] if args else "")),
+            email=str(kwargs.get("email") or email),
+            driver=str(kwargs.get("driver") or "protocol"),
+            stage=str(kwargs.get("stage") or "free_email_identifier"),
+        )
+        # ``_run_once`` treats every result except an explicit ``False`` as a
+        # successful confirmation. Mirror that compatibility rule, but keep
+        # the outer recovery guard conservative when an adapter returns None.
+        if outcome is not False:
+            mailbox_boundary_crossed["value"] = True
+        return outcome
+
+    def tracked_abort(*args: Any, **kwargs: Any) -> Any:
+        outcome = _invoke_mailbox_hook(
+            abort_mailbox_confirmation,
+            task_id=str(kwargs.get("task_id") or (args[0] if args else "")),
+            email=str(kwargs.get("email") or email),
+            driver=str(kwargs.get("driver") or "protocol"),
+            stage=str(kwargs.get("stage") or "free_email_identifier"),
+            submission_definitely_not_started=kwargs.get(
+                "submission_definitely_not_started"
+            ),
+        )
+        if outcome:
+            mailbox_boundary_crossed["value"] = False
+        return outcome
+
+    tracked_confirm_callback = tracked_confirm if callable(confirm_mailbox) else None
+    tracked_abort_callback = (
+        tracked_abort if callable(abort_mailbox_confirmation) else None
+    )
     while True:
         try:
             result = _run_once(
@@ -1341,6 +1527,9 @@ def run_free_protocol_flow(
                 force_otp_snapshot=session_rebuilds > 0,
                 otp_resend_budget=otp_resend_budget,
                 stop_requested=stop_requested,
+                confirm_mailbox=tracked_confirm_callback,
+                abort_mailbox_confirmation=tracked_abort_callback,
+                prelude=prelude,
             )
             result["oauth_session_rebuilds"] = session_rebuilds
             return result, active
@@ -1349,6 +1538,11 @@ def run_free_protocol_flow(
                 session_rebuilds == 0
                 and str(exc.error_code or "") in {"oauth_session_invalid", "oauth_bootstrap_html"}
                 and bool(transport_factory)
+                # Legacy callers without a mailbox callback retain the
+                # historical rebuild behavior.  Lease-aware callers must
+                # preserve an ambiguous confirmed submission as pending
+                # instead of replaying the identifier POST.
+                and not mailbox_boundary_crossed["value"]
             )
             if not should_rebuild:
                 exc.session_rebuilds = session_rebuilds

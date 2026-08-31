@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import urlsplit
 
+from mac_overrides.diagnostic_store import DiagnosticStore
 from mac_overrides.free_live_check import FreeLiveCheckService
 from mac_overrides.free_log_runtime import FreeLogStore
 from mac_overrides.free_register_common import FreeRegisterError
@@ -102,6 +103,59 @@ class FreeLiveCheckTests(unittest.TestCase):
                 return state
             time.sleep(0.01)
         self.fail("Free 测活任务未在测试时限内结束")
+
+    def test_public_live_job_masks_email_and_exposes_only_fingerprint(self):
+        pool, proxies, logs = self._resources()
+        service = self._service(pool, proxies, logs)
+        job = {
+            "task_id": "live-task-1",
+            "row_id": "row-1",
+            "email": "private@example.test",
+            "mode": "fast",
+            "status": "queued",
+            "stage": "free_live_queued",
+        }
+
+        public = service._public_job(job)
+
+        self.assertEqual(public["email"], "p***e@example.test")
+        self.assertEqual(public["email_masked"], "p***e@example.test")
+        self.assertNotIn("private@example.test", str(public))
+        self.assertRegex(public["subject_ref_fingerprint"], r"^[0-9a-f]{16}$")
+
+    def test_public_live_job_uses_diagnostic_hmac_when_available(self):
+        pool, proxies, logs = self._resources()
+        diagnostics = DiagnosticStore(self.data_dir / "diagnostics")
+        logs.diagnostic_store = diagnostics
+        service = self._service(pool, proxies, logs)
+        public = service._public_job({"email": "private@example.test", "status": "queued"})
+        self.assertEqual(public["subject_ref_fingerprint"], diagnostics.fingerprint("private@example.test"))
+
+    def test_live_check_logs_declare_their_diagnostic_workflow(self):
+        pool, proxies, _logs = self._resources()
+
+        class CaptureLog:
+            def __init__(self):
+                self.calls = []
+
+            def add(self, *args, **kwargs):
+                self.calls.append((args, kwargs))
+
+        capture = CaptureLog()
+        service = FreeLiveCheckService(
+            self.data_dir,
+            pool=pool,
+            proxies=proxies,
+            log_store=capture,
+            recover=False,
+        )
+        self.services.append(service)
+
+        service._log("free-live-1", "free_live_queued", "queued")
+
+        self.assertEqual(capture.calls[-1][1]["workflow"], "live_check")
+        self.assertEqual(capture.calls[-1][1]["driver"], "free")
+        self.assertEqual(capture.calls[-1][1]["task_id"], "free-live-1")
 
     def test_fast_check_uses_registration_proxy_and_preserves_registration_status(self):
         pool, proxies, logs = self._resources()
@@ -567,6 +621,18 @@ class FreeLiveCheckTests(unittest.TestCase):
         self.assertNotIn("old-token-1", text)
         self.assertNotIn("password-1", text)
         self.assertNotIn("secret1", text)
+
+    def test_enqueue_log_masks_mailbox_address(self):
+        pool, proxies, logs = self._resources()
+        service = self._service(pool, proxies, logs, fast_runner=lambda _context, _config: {"status": "live"})
+        row = pool.entries()[0]
+
+        started = service.enqueue([row.row_id], "fast")
+
+        messages = "\n".join(item["message"] for item in logs.snapshot(started["accepted"][0]["task_id"]))
+        self.assertNotIn(row.email, messages)
+        self.assertTrue("a***1@example.test" in messages or "<邮箱>" in messages)
+        self._wait(service)
 
     def test_deep_default_runner_handles_email_otp_and_refreshes_session_token(self):
         pool, proxies, logs = self._resources()

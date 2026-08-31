@@ -20,15 +20,21 @@ from typing import Any, Callable, Mapping, Sequence
 from urllib.parse import urljoin
 
 try:
-    from .free_failure_runtime import canonical_failure, exception_to_failure, sanitize_log_message
+    from .free_failure_runtime import canonical_failure, exception_to_failure, sanitize_failure_text, sanitize_log_message
     from .free_mailbox_otp import build_free_mailbox_otp_provider
     from .free_register_common import FreeRegisterError, atomic_write, fingerprint, mask_proxy, proxy_transport_value
     from .free_rebind_store import RebindMailboxPool
+    from .free_rebind_storage import RebindRevisionConflict, RebindSQLiteStore, RebindStorageError, _coerce_timestamp
+    from .diagnostic_writer import DiagnosticEventWriter, LogContext
+    from .free_register_common import mask_email
 except ImportError:  # pragma: no cover - top-level runtime loading
-    from free_failure_runtime import canonical_failure, exception_to_failure, sanitize_log_message  # type: ignore[no-redef]
+    from free_failure_runtime import canonical_failure, exception_to_failure, sanitize_failure_text, sanitize_log_message  # type: ignore[no-redef]
     from free_mailbox_otp import build_free_mailbox_otp_provider  # type: ignore[no-redef]
     from free_register_common import FreeRegisterError, atomic_write, fingerprint, mask_proxy, proxy_transport_value  # type: ignore[no-redef]
     from free_rebind_store import RebindMailboxPool  # type: ignore[no-redef]
+    from free_rebind_storage import RebindRevisionConflict, RebindSQLiteStore, RebindStorageError, _coerce_timestamp  # type: ignore[no-redef]
+    from diagnostic_writer import DiagnosticEventWriter, LogContext  # type: ignore[no-redef]
+    from free_register_common import mask_email  # type: ignore[no-redef]
 
 
 REBIND_STAGE_LABELS = {
@@ -147,6 +153,43 @@ def _call_wait(provider: Any, email: str, stage_code: str) -> str:
     return str(waiter(email, stage_code=stage_code) or "").strip()
 
 
+def _invoke_otp_factory(
+    factory: Callable[..., Any],
+    mailbox_url: str,
+    proxy: str,
+    config: Mapping[str, Any],
+    *,
+    task_id: str,
+    stage_fn: Callable[[str, str], None],
+) -> Any:
+    """Call an injected OTP factory while retaining old narrow signatures.
+
+    Production uses the shared mailbox strategy and receives an explicit
+    ``free_rebind`` workflow.  A few integrations still provide a factory
+    accepting only the historical keyword set, so inspect the signature before
+    choosing the invocation shape; an implementation TypeError is never
+    mistaken for a compatibility mismatch.
+    """
+    modern = {
+        "config": config,
+        "task_id": task_id,
+        "stage_fn": stage_fn,
+        "workflow": "free_rebind",
+        "driver": "protocol",
+    }
+    legacy = {key: modern[key] for key in ("config", "task_id", "stage_fn")}
+    try:
+        signature = inspect.signature(factory)
+    except (TypeError, ValueError):
+        signature = None
+    if signature is not None:
+        try:
+            signature.bind(mailbox_url, proxy, **modern)
+        except TypeError:
+            return factory(mailbox_url, proxy, **legacy)
+    return factory(mailbox_url, proxy, **modern)
+
+
 class FreeRebindService:
     """Persistent, manually paired rebind queue."""
 
@@ -160,9 +203,12 @@ class FreeRebindService:
         transport_factory: Callable[..., Any] | None = None,
         otp_provider_factory: Callable[..., Any] | None = None,
         workers: int = 1,
+        diagnostic_store: Any = None,
+        diagnostic_writer: Any = None,
     ) -> None:
         self.data_dir = Path(data_dir).expanduser().resolve()
         self.pool = RebindMailboxPool(self.data_dir)
+        self.storage = getattr(self.pool, "storage", None) or RebindSQLiteStore(self.data_dir)
         self.tasks_path = self.pool.data_dir / "tasks.json"
         self.free_manager = free_manager
         self.config_provider = config_provider
@@ -170,22 +216,135 @@ class FreeRebindService:
         self.transport_factory = transport_factory
         self.otp_provider_factory = otp_provider_factory
         self.workers = max(1, min(2, int(workers or 1)))
+        # Rebind has a separate workflow identity even though it shares the
+        # process-wide diagnostic SQLite database with Free registration.  A
+        # bound writer keeps every event on the same append-only path while
+        # preventing the legacy manager callback from creating a second event.
+        log_store = getattr(free_manager, "log_store", None)
+        self.diagnostic_store = diagnostic_store or getattr(log_store, "diagnostic_store", None)
+        writer = diagnostic_writer or getattr(log_store, "diagnostic_writer", None)
+        if writer is not None and callable(getattr(writer, "bind", None)):
+            try:
+                writer = writer.bind(chain="free", workflow="rebind", driver="protocol")
+            except Exception:
+                # A third-party writer may expose ``bind`` with a narrower
+                # signature.  It is still safe to use it as-is below.
+                pass
+        if writer is None and self.diagnostic_store is not None:
+            writer = DiagnosticEventWriter(
+                self.diagnostic_store,
+                context=LogContext(chain="free", workflow="rebind", driver="protocol"),
+            )
+        self.diagnostic_writer = writer
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._executor: ThreadPoolExecutor | None = None
         self._futures: set[Future[Any]] = set()
+        self._task_revisions: dict[str, int] = {}
+        self._task_persisted: dict[str, dict[str, Any]] = {}
         self._tasks = self._load_tasks()
         self._recover_interrupted_tasks()
 
     def _load_tasks(self) -> dict[str, dict[str, Any]]:
+        storage = getattr(self, "storage", None)
+        if storage is not None:
+            loader = getattr(storage, "list_tasks", None)
+            if not callable(loader):
+                raise RebindStorageError("换绑 SQLite 存储缺少 list_tasks 接口")
+            # SQLite is the sole source of truth after migration.  Do not
+            # silently resurrect stale tasks from ``tasks.json`` when the
+            # database is unavailable or malformed; surfacing the original
+            # storage exception keeps startup failures diagnosable.
+            result: dict[str, dict[str, Any]] = {}
+            for row in loader(limit=100_000):
+                if not isinstance(row, Mapping):
+                    continue
+                task_id = str(row.get("task_id") or "").strip()
+                if not task_id:
+                    continue
+                task = dict(row)
+                result[task_id] = task
+                try:
+                    self._task_revisions[task_id] = int(row.get("revision") or 0)
+                except (TypeError, ValueError):
+                    self._task_revisions[task_id] = 0
+                self._task_persisted[task_id] = copy.deepcopy(task)
+            return result
         try:
             payload = json.loads(self.tasks_path.read_text(encoding="utf-8"))
         except (FileNotFoundError, OSError, UnicodeError, json.JSONDecodeError):
             return {}
         tasks = payload.get("tasks") if isinstance(payload, Mapping) else {}
-        return {str(key): dict(value) for key, value in tasks.items() if isinstance(value, Mapping)} if isinstance(tasks, Mapping) else {}
+        result = {str(key): dict(value) for key, value in tasks.items() if isinstance(value, Mapping)} if isinstance(tasks, Mapping) else {}
+        for task_id, task in result.items():
+            task["created_at"] = _coerce_timestamp(task.get("created_at"), int(time.time()))
+            task["updated_at"] = _coerce_timestamp(task.get("updated_at"), task["created_at"])
+            self._task_revisions.setdefault(task_id, int(task.get("revision") or 0) if str(task.get("revision") or "0").lstrip("-").isdigit() else 0)
+            self._task_persisted.setdefault(task_id, copy.deepcopy(task))
+        return result
 
     def _save_tasks(self) -> None:
+        storage = getattr(self, "storage", None)
+        if storage is not None and callable(getattr(storage, "save_task", None)):
+            # Remove rows that were persisted by an earlier snapshot but are
+            # no longer present in memory (for example an executor admission
+            # rollback).  This is an internal consistency operation; public
+            # deletion still rejects queued/running tasks.
+            persisted_ids = set(self._task_persisted)
+            current_ids = {
+                str(task_id or task.get("task_id") or "").strip()
+                for task_id, task in self._tasks.items()
+                if isinstance(task, Mapping)
+            }
+            removed_ids = sorted(value for value in persisted_ids - current_ids if value)
+            if removed_ids:
+                delete_tasks = getattr(storage, "delete_tasks")
+                # Older injected stores expose only ``delete_tasks(ids)``.
+                # Inspect the callable before choosing the compatibility
+                # shape so an implementation TypeError is never mistaken for
+                # an unsupported keyword (and therefore never silently
+                # swallowed).
+                try:
+                    delete_signature = inspect.signature(delete_tasks)
+                except (TypeError, ValueError):
+                    delete_signature = None
+                supports_active = bool(
+                    delete_signature is None
+                    or "allow_active" in delete_signature.parameters
+                    or any(
+                        parameter.kind is inspect.Parameter.VAR_KEYWORD
+                        for parameter in delete_signature.parameters.values()
+                    )
+                )
+                if supports_active:
+                    delete_tasks(removed_ids, allow_active=True)
+                else:
+                    delete_tasks(removed_ids)
+                for removed_id in removed_ids:
+                    self._task_persisted.pop(removed_id, None)
+                    self._task_revisions.pop(removed_id, None)
+            for task_id, task in list(self._tasks.items()):
+                if not isinstance(task, Mapping):
+                    continue
+                normalized_id = str(task_id or task.get("task_id") or "").strip()
+                if not normalized_id:
+                    continue
+                current = dict(task)
+                if self._task_persisted.get(normalized_id) == current:
+                    continue
+                expected = self._task_revisions.get(normalized_id)
+                try:
+                    saved = storage.save_task(
+                        normalized_id,
+                        current,
+                        expected_revision=expected,
+                    )
+                except RebindRevisionConflict:
+                    raise
+                self._tasks[normalized_id] = dict(saved)
+                self._task_revisions[normalized_id] = int(saved.get("revision") or 0)
+                self._task_persisted[normalized_id] = copy.deepcopy(dict(saved))
+            return
         atomic_write(self.tasks_path, {"version": 1, "tasks": self._tasks})
 
     def _recover_interrupted_tasks(self) -> None:
@@ -202,10 +361,32 @@ class FreeRebindService:
         for task in self._tasks.values():
             if str(task.get("status") or "") not in ACTIVE_REBIND_STATUSES:
                 continue
+            task_id = str(task.get("task_id") or "").strip()
+            # A process can exit after acquiring a shared Free proxy and
+            # before the worker's ``finally`` block runs.  Release by owner
+            # before marking the task terminal so a replacement worker can
+            # use the proxy immediately.  The adapter owns the atomic
+            # owner-scoped delete and preserves leases belonging to peers.
+            proxy_pool = getattr(self.free_manager, "proxies", None)
+            release_owner = getattr(proxy_pool, "release_owner", None)
+            if task_id and callable(release_owner):
+                try:
+                    release_owner(task_id)
+                except Exception as exc:
+                    # Resource cleanup is an associated diagnostic; it must
+                    # never replace the original process-recovery cause.
+                    self._log(
+                        f"[{task_id}/释放换绑代理/free_rebind_proxy_release] 代理租约释放失败",
+                        "warn",
+                        task_id=task_id,
+                        node_code="free_rebind_proxy_release",
+                        node_label="释放换绑代理",
+                        error_type=type(exc).__name__,
+                    )
             task.update({"status": "failed", "stage": "free_rebind_process_recovery", "error": failure["public_message"], "failure": failure, "updated_at": int(time.time())})
             target_id = str(task.get("target_row_id") or "")
             if target_id:
-                self.pool.update(target_id, status="failed", task_id=str(task.get("task_id") or ""), error=failure["public_message"], failure=failure)
+                self.pool.update(target_id, status="failed", task_id=task_id, error=failure["public_message"], failure=failure)
             changed = True
         if changed:
             self._save_tasks()
@@ -217,15 +398,89 @@ class FreeRebindService:
             value = {}
         return dict(value) if isinstance(value, Mapping) else {}
 
-    def _log(self, message: str, level: str = "info", **fields: Any) -> None:
-        if not callable(self.log_fn):
-            return
+    def _log(self, message: str, level: str = "info", **fields: Any) -> str:
+        """Emit one redacted event, returning its incident id when available.
+
+        The structured writer is authoritative whenever it is configured.  A
+        callback-only service retains the historical ``(message, level, ...)``
+        contract for lightweight integrations and tests.
+        """
         fields = dict(fields)
         fields.setdefault("chain", "free_rebind")
         fields.setdefault("workflow", "rebind")
         fields.setdefault("driver", "protocol")
+        fields.setdefault("message", message)
+        fields.setdefault("level", level)
+        task_id = str(fields.get("task_id") or "").strip()
+        if task_id:
+            with self._lock:
+                task_snapshot = dict(self._tasks.get(task_id) or {})
+            # The writer hashes ``subject_ref`` before persistence.  Supplying
+            # it here gives stage and cleanup events the same account grouping
+            # as terminal failures without exposing the address to callbacks.
+            if not fields.get("subject_ref"):
+                subject = str(
+                    fields.get("target_email")
+                    or task_snapshot.get("target_email")
+                    or task_snapshot.get("source_email")
+                    or ""
+                ).strip()
+                if subject:
+                    fields["subject_ref"] = subject
+                    fields.setdefault("subject_kind", "email")
+        writer = getattr(self, "diagnostic_writer", None)
+        if writer is not None and callable(getattr(writer, "record", None)):
+            try:
+                incident_id = str(writer.record(fields) or "")
+                if incident_id and task_id:
+                    with self._lock:
+                        task = self._tasks.get(task_id)
+                        should_bind = isinstance(task, dict) and not task.get("incident_id")
+                        if should_bind:
+                            task["incident_id"] = incident_id
+                            task["updated_at"] = int(time.time())
+                    if should_bind:
+                        try:
+                            self._save_tasks()
+                        except Exception:
+                            # The event is already durable; inability to enrich
+                            # the task projection must not turn a successful
+                            # diagnostic write into a workflow failure.
+                            pass
+                return incident_id
+            except Exception:
+                # Diagnostics are best effort by design; the writer records
+                # its own health failure.  Do not make a rebind worker fail
+                # merely because its audit sink is unavailable.
+                return ""
+        if not callable(self.log_fn):
+            return ""
+        # Legacy callback integrations predate the structured writer and may
+        # persist arbitrary keyword arguments.  Do not pass raw account or
+        # mailbox material through that compatibility path; the canonical
+        # writer above is the only component allowed to receive a raw subject
+        # for HMAC fingerprinting.
+        callback_fields: dict[str, Any] = {}
+        private_keys = {
+            "subject_ref", "email", "account", "source_email", "target_email",
+            "mailbox_url", "proxy", "access_token", "refresh_token", "id_token",
+            "password", "totp_secret", "code", "otp", "token",
+        }
+        for key, value in fields.items():
+            # ``message`` and ``level`` are already positional arguments in
+            # the historical callback signature; forwarding them as
+            # keywords would raise a duplicate-argument TypeError and cause
+            # the compatibility fallback to silently drop all metadata.
+            if key in private_keys or key in {"message", "level"}:
+                continue
+            if key == "failure":
+                normalized = canonical_failure(value if isinstance(value, Mapping) else None)
+                if normalized is not None:
+                    callback_fields[key] = normalized
+                continue
+            callback_fields[key] = value
         try:
-            self.log_fn(sanitize_log_message(str(message)), level, **fields)
+            self.log_fn(sanitize_log_message(str(message)), level, **callback_fields)
         except TypeError:
             try:
                 self.log_fn(sanitize_log_message(str(message)), level)
@@ -233,6 +488,7 @@ class FreeRebindService:
                 pass
         except Exception:
             pass
+        return ""
 
     def _diagnostic_subject_fields(self, email: Any) -> dict[str, str]:
         """Return only safe subject metadata for the shared diagnostic sink."""
@@ -243,8 +499,7 @@ class FreeRebindService:
         if diagnostic_store is None:
             return {}
         try:
-            local, at, domain = value.partition("@")
-            masked = f"{local[:1]}***@{domain[:80]}" if at and local and domain else "已脱敏账号"
+            masked = mask_email(value) or "已脱敏账号"
             return {
                 "subject_kind": "email",
                 "subject_ref_fingerprint": diagnostic_store.fingerprint(value),
@@ -252,6 +507,22 @@ class FreeRebindService:
             }
         except Exception:
             return {}
+
+    def _public_subject_fingerprint(self, email: Any) -> str:
+        """Return the diagnostic HMAC when available, else a short hash."""
+        value = str(email or "").strip()
+        if not value:
+            return ""
+        diagnostic_store = getattr(getattr(self.free_manager, "log_store", None), "diagnostic_store", None)
+        fingerprint_fn = getattr(diagnostic_store, "fingerprint", None)
+        if callable(fingerprint_fn):
+            try:
+                candidate = str(fingerprint_fn(value) or "").strip().lower()
+                if re.fullmatch(r"[0-9a-f]{32}", candidate):
+                    return candidate
+            except Exception:
+                pass
+        return fingerprint(value)
 
     def _set_task(self, task_id: str, **values: Any) -> dict[str, Any]:
         with self._lock:
@@ -291,9 +562,15 @@ class FreeRebindService:
             source_status = str(private.get("status") or "available")
             if source_status not in {"success", "partial_success", "available"}:
                 continue
+            source_email = str(saved.get("rebind_email") or row.email).strip()
+            rebind_email = str(saved.get("rebind_email") or "").strip()
             result_rows.append({
                 "row_id": row.row_id,
-                "email": str(saved.get("rebind_email") or row.email),
+                # Keep legacy display keys, but never return the private
+                # source address from a public state response.
+                "email": mask_email(source_email),
+                "email_masked": mask_email(source_email),
+                "subject_ref_fingerprint": self._public_subject_fingerprint(source_email),
                 "driver": str(saved.get("driver") or private.get("driver") or ""),
                 "status": source_status,
                 "plan_type": str(saved.get("subscription_plan") or saved.get("plan_type") or ""),
@@ -301,7 +578,9 @@ class FreeRebindService:
                 "has_password": True,
                 "has_totp": True,
                 "proxy_masked": mask_proxy(saved.get("proxy") or private.get("proxy") or ""),
-                "rebind_email": str(saved.get("rebind_email") or ""),
+                "rebind_email": mask_email(rebind_email),
+                "rebind_email_masked": mask_email(rebind_email),
+                "rebind_email_fingerprint": self._public_subject_fingerprint(rebind_email),
                 "rebind_status": str(saved.get("rebind_status") or ""),
             })
         return result_rows
@@ -313,20 +592,36 @@ class FreeRebindService:
     def public_tasks(self) -> list[dict[str, Any]]:
         with self._lock:
             rows: list[dict[str, Any]] = []
-            for task in sorted(self._tasks.values(), key=lambda item: int(item.get("created_at") or 0), reverse=True):
+            for task in sorted(self._tasks.values(), key=lambda item: _coerce_timestamp(item.get("created_at"), 0), reverse=True):
+                source_email = str(task.get("source_email") or "").strip()
+                target_email = str(task.get("target_email") or "").strip()
+                bound_email = str(task.get("new_bound_email") or "").strip()
                 public = {key: copy.deepcopy(task.get(key)) for key in (
-                    "task_id", "source_row_id", "source_email", "target_row_id", "target_email",
-                    "new_bound_email", "status", "stage", "created_at", "updated_at", "proxy_masked",
+                    "task_id", "incident_id", "source_row_id", "target_row_id", "status", "stage", "created_at", "updated_at", "proxy_masked",
                     "plan_type", "subscription_plan", "plus_trial_eligible", "plan_check_status",
                     "plan_failure",
                 ) if key in task}
+                # The old field names remain for UI compatibility, while all
+                # address values are masked and accompanied by a stable
+                # non-reversible fingerprint for diagnostics/correlation.
+                public.update({
+                    "source_email": mask_email(source_email),
+                    "source_email_masked": mask_email(source_email),
+                    "source_email_fingerprint": self._public_subject_fingerprint(source_email),
+                    "target_email": mask_email(target_email),
+                    "target_email_masked": mask_email(target_email),
+                    "target_email_fingerprint": self._public_subject_fingerprint(target_email),
+                    "new_bound_email": mask_email(bound_email),
+                    "new_bound_email_masked": mask_email(bound_email),
+                    "new_bound_email_fingerprint": self._public_subject_fingerprint(bound_email),
+                })
                 public["stage_label"] = REBIND_STAGE_LABELS.get(str(public.get("stage") or ""), str(public.get("stage") or ""))
                 failure = canonical_failure(task.get("failure") if isinstance(task.get("failure"), Mapping) else None)
                 if failure:
                     public["failure"] = failure
                     public["error"] = failure.get("public_message", "")
                 elif task.get("error"):
-                    public["error"] = str(task.get("error"))[:300]
+                    public["error"] = sanitize_failure_text(task.get("error"), 300)
                 rows.append(public)
             return rows
 
@@ -472,20 +767,38 @@ class FreeRebindService:
 
     def _choose_proxy(self, source: Mapping[str, Any], config: Mapping[str, Any], task_id: str) -> tuple[str, Any | None]:
         original = str(source.get("proxy") or "").strip()
-        if original:
-            return original, None
+        # Rebind is a Free workflow and must use the same single
+        # ``healthy_random`` pool as registration.  A proxy persisted on the
+        # source account may be stale or belong to a retired allocation; do
+        # not silently pin a new protocol session to it when the shared pool
+        # is available.  The source value remains a narrow compatibility
+        # fallback for injected/legacy managers that do not expose a pool.
         proxies = getattr(self.free_manager, "proxies", None)
         binder = getattr(proxies, "bind", None)
-        if not callable(binder):
-            raise FreeRegisterError("free_rebind_proxy", "准备换绑协议代理", "源账号没有注册代理且共享 Free 代理池不可用", retryable=False)
-        bindings = binder(1, probe=getattr(self.free_manager, "proxy_probe", None), probe_url=str(config.get("proxy_probe_url") or "https://chatgpt.com/"), driver="protocol", perform_probe=False)
-        if not bindings:
-            raise FreeRegisterError("free_rebind_proxy", "准备换绑协议代理", "共享 Free 代理池没有健康代理", retryable=False)
-        binding = bindings[0]
-        lease = getattr(proxies, "lease", None)
-        if callable(lease) and str(getattr(binding, "proxy_id", "") or ""):
-            lease(binding, owner=task_id, batch_id=task_id, task_id=task_id, lease_seconds=300)
-        return str(binding.proxy), binding
+        if callable(binder):
+            bindings = binder(
+                1,
+                probe=getattr(self.free_manager, "proxy_probe", None),
+                probe_url=str(config.get("proxy_probe_url") or "https://chatgpt.com/"),
+                driver="protocol",
+                perform_probe=False,
+            )
+            if not bindings:
+                raise FreeRegisterError(
+                    "free_rebind_proxy", "准备换绑协议代理",
+                    "共享 Free 代理池没有健康代理", retryable=False,
+                )
+            binding = bindings[0]
+            lease = getattr(proxies, "lease", None)
+            if callable(lease) and str(getattr(binding, "proxy_id", "") or ""):
+                lease(binding, owner=task_id, batch_id=task_id, task_id=task_id, lease_seconds=300)
+            return str(binding.proxy), binding
+        if original:
+            return original, None
+        raise FreeRegisterError(
+            "free_rebind_proxy", "准备换绑协议代理",
+            "共享 Free 代理池不可用", retryable=False,
+        )
 
     def _build_transport(self, email: str, proxy: str, config: Mapping[str, Any], task_id: str, log: Callable[..., Any]) -> tuple[Any, str, dict[str, Any]]:
         if self.transport_factory is not None:
@@ -681,7 +994,27 @@ class FreeRebindService:
                 raise FreeRegisterError("free_rebind_eligibility", "检查换绑资格", "账号当前不满足 change_email eligibility", retryable=False, provider_status=_status(eligibility), error_code="free_rebind_not_eligible")
 
             self._stage(task_id, "free_rebind_begin")
-            otp = (self.otp_provider_factory(target.mailbox_url, proxy, config=config, task_id=task_id, stage_fn=lambda _task, code: self._stage(task_id, code)) if self.otp_provider_factory else build_free_mailbox_otp_provider(target.mailbox_url, proxy, config, log_fn=log, task_id=task_id, stage_fn=lambda _task, code: self._stage(task_id, code)))
+            stage_fn = lambda _task, code: self._stage(task_id, code)
+            if self.otp_provider_factory:
+                otp = _invoke_otp_factory(
+                    self.otp_provider_factory,
+                    target.mailbox_url,
+                    proxy,
+                    config,
+                    task_id=task_id,
+                    stage_fn=stage_fn,
+                )
+            else:
+                otp = build_free_mailbox_otp_provider(
+                    target.mailbox_url,
+                    proxy,
+                    config,
+                    log_fn=log,
+                    task_id=task_id,
+                    workflow="free_rebind",
+                    driver="protocol",
+                    stage_fn=stage_fn,
+                )
             prepare = getattr(otp, "prepare", None)
             if callable(prepare):
                 prepare("free_rebind_otp", force_snapshot=True)
@@ -779,6 +1112,17 @@ class FreeRebindService:
                 "rebind_plan_type": result.get("plan_type", ""),
                 "rebind_plus_trial_eligible": bool(result.get("plus_trial_eligible")),
             })
+            # The post-rebind login creates a fresh ChatGPT session.  Keep the
+            # new token in the private account result so subsequent relogin,
+            # plan checks, and another rebind use the current session rather
+            # than the token issued for the old email.  Never copy it into
+            # the public task projection below.
+            refreshed_token = str(result.get("access_token") or "").strip()
+            if refreshed_token:
+                source_saved["access_token"] = refreshed_token
+            refreshed_refresh_token = str(result.get("refresh_token") or "").strip()
+            if refreshed_refresh_token:
+                source_saved["refresh_token"] = refreshed_refresh_token
             self.free_manager.pool.save_result(str(source["row_id"]), source_saved)
             self._set_task(task_id, status=task_status, stage="free_rebind_result", new_bound_email=target.email, plan_type=result.get("plan_type", ""), subscription_plan=result.get("subscription_plan", ""), plus_trial_eligible=bool(result.get("plus_trial_eligible")), plan_check_status=result.get("plan_check_status", ""), plan_failure=result.get("plan_failure"), result={key: value for key, value in result.items() if key != "access_token"})
             self.pool.update(target.row_id, status="success", task_id=task_id, error="")

@@ -5,12 +5,14 @@ import json
 from html import escape
 import unittest
 
+from mac_overrides.mailbox_pickup_runtime import ClientMailboxApi
 from mac_overrides.mailbox_url_runtime import (
     MAX_MESSAGES,
     MailboxRequestState,
     MailboxResponse,
     MailboxUrlClient,
     MailboxUrlError,
+    _parse_client_mailbox_payload,
     extract_openai_code,
     masked_mailbox_url_row,
     parse_mailbox_payload,
@@ -268,6 +270,135 @@ class MailboxUrlRuntimeTests(unittest.TestCase):
             "https://api798.com/latest?auth_code=private-access",
         )
         self.assertFalse(any(message.code for message in bare_page))
+
+    def test_api798_get_code_success_false_is_an_empty_mailbox(self):
+        source_url = (
+            "https://api798.com/get_code?"
+            "email=user%40example.test&auth_code=private-access"
+        )
+
+        messages, detail_urls = parse_mailbox_payload(
+            json.dumps({"success": False, "message": "未找到匹配的邮件"}, ensure_ascii=False),
+            source_url,
+        )
+
+        self.assertEqual(messages, ())
+        self.assertEqual(detail_urls, ())
+        selection = MailboxUrlClient(
+            source_url,
+            fetcher=lambda url: json_response(
+                url,
+                {"success": False, "message": "未找到匹配的邮件"},
+            ),
+        ).latest_code()
+        self.assertEqual(selection.code, "")
+        self.assertEqual(selection.reason, "mailbox_empty")
+
+    def test_api798_get_code_success_message_accepts_contextual_and_bare_code(self):
+        source_url = (
+            "https://api798.com/get_code?"
+            "email=user%40example.test&auth_code=private-access"
+        )
+        for provider_message in (
+            "ChatGPT verification code: 731904",
+            "731904",
+        ):
+            with self.subTest(provider_message=provider_message):
+                messages, detail_urls = parse_mailbox_payload(
+                    json.dumps({"success": True, "message": provider_message}),
+                    source_url,
+                )
+
+                self.assertEqual(detail_urls, ())
+                self.assertEqual([message.code for message in messages], ["731904"])
+
+    def test_api798_get_code_client_payload_accepts_scalar_message(self):
+        source_url = (
+            "https://api798.com/get_code?"
+            "email=user%40example.test&auth_code=private-access"
+        )
+        for provider_message in (
+            "ChatGPT verification code: 731904",
+            "731904",
+        ):
+            with self.subTest(provider_message=provider_message):
+                parsed = _parse_client_mailbox_payload(
+                    json.dumps({"success": True, "message": provider_message}),
+                    source_url,
+                )
+                messages, detail_urls, smtp_inbound, refreshing, error_code, status = parsed
+                self.assertEqual([message.code for message in messages], ["731904"])
+                self.assertEqual(detail_urls, ())
+                self.assertFalse(smtp_inbound)
+                self.assertFalse(refreshing)
+                self.assertEqual(error_code, "")
+                self.assertIsNone(status)
+
+    def test_api798_get_code_client_payload_success_false_is_empty(self):
+        source_url = (
+            "https://api798.com/get_code?"
+            "email=user%40example.test&auth_code=private-access"
+        )
+        parsed = _parse_client_mailbox_payload(
+            json.dumps({"success": False, "message": "未找到匹配的邮件"}, ensure_ascii=False),
+            source_url,
+        )
+        self.assertEqual(parsed, ((), (), False, False, "", None))
+
+    def test_api798_get_code_client_path_reaches_latest_code(self):
+        source_url = (
+            "https://api798.com/get_code?"
+            "email=user%40example.test&auth_code=private-access"
+        )
+        client = MailboxUrlClient(
+            source_url,
+            fetcher=lambda url: json_response(
+                url,
+                {"success": True, "message": "731904"},
+            ),
+        )
+        # A previously discovered API is an ordinary runtime state after a
+        # redirect or retry; keep the provider-specific parser effective there.
+        client._client_mailbox_api = ClientMailboxApi(
+            payload_url=source_url,
+            cache_url=source_url,
+            refresh_url=source_url,
+            deep_refresh_url=source_url,
+        )
+
+        selection = client.latest_code()
+
+        self.assertEqual(selection.code, "731904")
+        self.assertEqual(selection.reason, "code_found")
+
+    def test_api798_get_code_never_reads_auth_code_query_value(self):
+        source_url = (
+            "https://api798.com/get_code?"
+            "email=user%40example.test&auth_code=731904"
+        )
+
+        for payload in (
+            {"success": False, "message": "未找到匹配的邮件"},
+            {"success": True, "message": "邮件正在投递"},
+        ):
+            with self.subTest(payload=payload):
+                messages, _links = parse_mailbox_payload(
+                    json.dumps(payload, ensure_ascii=False),
+                    source_url,
+                )
+                self.assertFalse(any(message.code for message in messages))
+                self.assertNotIn("731904", repr(messages))
+
+    def test_non_api798_get_code_does_not_accept_bare_message_code(self):
+        payload = json.dumps({"success": True, "message": "731904"})
+
+        for source_url in (
+            "https://mail.example.test/get_code?auth_code=private-access",
+            "https://api798.com/other?auth_code=private-access",
+        ):
+            with self.subTest(source_url=source_url):
+                messages, _links = parse_mailbox_payload(payload, source_url)
+                self.assertFalse(any(message.code for message in messages))
 
     def test_unicode_full_width_digits_are_normalized_before_otp_matching(self):
         messages, _links = parse_mailbox_payload(

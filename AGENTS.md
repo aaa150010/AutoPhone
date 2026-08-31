@@ -41,6 +41,19 @@ Free 账号换绑统一使用纯协议链路：无论账号来自哪条历史注
 
 ## 编辑边界和数据隔离
 
+### Free 工程模块边界
+
+- Free 新建只允许 `protocol` 与 `camoufox`；不得新增 Remail 或恢复 Roxy 新建驱动。
+- Camoufox 的可维护边界在 `mac_overrides/free_camoufox/`（contracts、transport、state machine、browser pool、debug artifacts、runner）；`free_camoufox_runtime.py` 只保留兼容 facade 和恢复层。
+- Free 任务编排边界在 `mac_overrides/free_register/`（contracts、repository、scheduler、retry、worker、timing、manager）；`free_register_runtime.py` 只做兼容组合，不得把状态机、池管理、路由或日志继续堆回大文件。
+- Free 持久化使用 `free_storage.py`/适配器提供的独立 SQLite；普通短信/OAuth 目录和数据库不得共享。换绑使用独立 `free_rebind.sqlite3`（或等价独立 repository），不得与注册任务表混用。
+- 邮箱来源解析、请求前基线、旧码排除、消息身份判断、时间过滤、轮询、重发和阶段隔离只能复用 `mailbox_otp_service.py` 的策略模式；驱动不得另造 provider。
+- 所有新诊断事件必须经过 `DiagnosticEventWriter` 写入 `DiagnosticStore`；`FreeLogStore` 只作为兼容 facade，不得创建私有日志格式或覆盖首个真实失败。
+- 旧 `logs.json` 与 `task_logs/*.json` 只允许由 `free_log_migration` 在 Free 目录内幂等清理；不删除诊断库、任务结果、邮箱池、代理池或账号数据。
+- 新增节点必须同步登记稳定代码、中文名称、重试规则、处理建议和 focused contract test。任何跨模块改动先定位首个真实失败节点，再做定向测试、完整测试和 `git diff --check`。
+- 真实邮箱、代理、Camoufox 浏览器和安全挑战只允许在用户明确授权的单次验收中执行；静态测试或环境错误不得伪装为链路成功。任务创建的临时副本、临时目录和验证清单在本次任务结束前删除。
+- 前端源代码变化后必须运行类型检查、构建并更新版本控制中的 `frontend/dist/`。
+
 ## 日志中心与故障审计
 
 - 所有普通流程、Free protocol/Camoufox（以及历史 Roxy 只读记录）、Free 换绑、支付和网络诊断错误都必须产生可引用的 `incident_id`（日志中心显示为 `LOG-日期-短标识`）；排查优先使用日志 ID、稳定任务/批次/账号标识和时间范围，不要求人工翻阅自由文本日志。

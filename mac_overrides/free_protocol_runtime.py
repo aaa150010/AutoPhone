@@ -714,9 +714,10 @@ class FreeProtocolMixin:
         chain_config.update({
             "run_mode": "free_register",
             "codex_chain_mode": "real",
-            # Free protocol uses the authorize/continue state machine below;
-            # the recovered NextAuth + user/register prelude is intentionally
-            # disabled because it can retain a stale sign-in session.
+            # Free protocol owns the post-auth state machine below.  The
+            # standalone AutoRegister/NextAuth prelude is deliberately not
+            # injected here: it creates a separate CSRF/cookie context and
+            # cannot be combined with this task's Codex PKCE state.
             "run_chatgpt_signup_phase": False,
             # Free owns session rebuild and security-page stopping. The
             # recovered transport uses this marker to disable its hidden
@@ -1014,6 +1015,13 @@ class FreeProtocolMixin:
                     stage=stage,
                     log=log,
                     stop_requested=stop_event.is_set,
+                    confirm_mailbox=config.get("_confirm_mailbox_lease")
+                    if callable(config.get("_confirm_mailbox_lease")) else None,
+                    abort_mailbox_confirmation=config.get(
+                        "_abort_mailbox_lease_confirmation"
+                    )
+                    if callable(config.get("_abort_mailbox_lease_confirmation"))
+                    else None,
                 )
             except FreeRegisterError:
                 raise
@@ -1158,6 +1166,7 @@ class FreeProtocolMixin:
             "start_chatgpt_signup_authorize": "free_oauth_session",
             "register_user": "free_email_password",
             "verify_password": "free_email_password",
+            "send_passwordless_otp": "free_existing_login_otp",
             "send_mfa_otp": "free_existing_login_otp",
             "verify_signup_email_otp": "free_email_otp_validate",
             "verify_mfa_otp": "free_existing_login_otp",

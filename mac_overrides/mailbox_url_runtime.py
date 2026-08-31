@@ -33,6 +33,7 @@ try:
         _merge_messages,
         _messages_from_json,
         _message_from_mapping,
+        _mailbox_provider_strategy,
         _response_too_complex,
         _safe_http_status,
         _safe_identity,
@@ -61,6 +62,7 @@ except ImportError:  # Loaded as a top-level runtime override.
         _merge_messages,
         _messages_from_json,
         _message_from_mapping,
+        _mailbox_provider_strategy,
         _response_too_complex,
         _safe_http_status,
         _safe_identity,
@@ -77,6 +79,23 @@ def _parse_client_mailbox_payload(
     include_messages: bool = True,
 ) -> tuple[tuple[MailboxMessage, ...], tuple[str, ...], bool, bool, str, int | None]:
     """Keep provider refresh metadata beside the URL client state machine."""
+    # api798's /get_code endpoint is a deliberately narrow provider strategy:
+    # its top-level ``message`` is the mailbox body, not a message collection.
+    # Handle it before the generic envelope parser interprets that scalar as
+    # an invalid ``messages`` value.  This also covers redirects or a client
+    # that has already discovered a shell API for the same mailbox.
+    if _mailbox_provider_strategy(source_url) == "api798_get_code":
+        if not include_messages:
+            return (), (), False, False, "", None
+        messages, detail_urls = parse_mailbox_payload(raw, source_url)
+        return (
+            _merge_messages(messages),
+            tuple(dict.fromkeys(detail_urls[:MAX_MESSAGES])),
+            False,
+            False,
+            "",
+            None,
+        )
     try:
         parsed = json.loads(raw)
     except RecursionError as exc:

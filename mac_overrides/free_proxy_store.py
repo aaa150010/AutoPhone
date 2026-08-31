@@ -841,6 +841,9 @@ class FreeProxyPool:
                 "count": len(rows),
                 "allocation_mode": self.allocation_mode,
                 "rows": [self._public_row(row, index) for index, row in enumerate(rows, 1)],
+                # Keep one unclassified aggregate for response compatibility.
+                # Its empty labels are intentional: historical country/group
+                # values are never restored and cannot become selectors.
                 "groups": self.group_summaries(),
                 "countries": self.country_summaries(),
             }
@@ -1659,25 +1662,32 @@ class FreeProxyPool:
     def update_group(self, country: str, group: str, *, new_country: str | None = None, new_group: str | None = None, enabled: bool | None = None) -> dict[str, int]:
         with self._lock:
             rows = self._load()
+            # Country/group are no longer allocation dimensions.  Preserve
+            # the legacy endpoint only for an explicit shared-pool toggle
+            # (the canonical empty labels), which keeps existing operators'
+            # disable/enable control without reintroducing classification.
+            # Requests carrying historical labels remain a no-op and cannot
+            # mutate or delete the shared pool by accident.
+            labels = (str(country or "").strip(), str(group or "").strip())
+            replacement_labels = (
+                str(new_country or "").strip(), str(new_group or "").strip()
+            )
+            if any(labels) or any(replacement_labels) or enabled is None:
+                return {"matched": 0, "modified": 0, "deprecated": 1}
             matched = len(rows)
             modified = 0
             for row in rows:
-                before = (bool(row.get("enabled")), row.get("country"), row.get("group"))
-                row["country"] = SINGLE_POOL_COUNTRY
-                row["group"] = SINGLE_POOL_GROUP
-                if enabled is not None:
-                    row["enabled"] = bool(enabled)
-                modified += int(before != (bool(row.get("enabled")), row.get("country"), row.get("group")))
+                before = bool(row.get("enabled", True))
+                row["enabled"] = bool(enabled)
+                modified += int(before != bool(enabled))
             if modified:
                 self._save(rows)
-            return {"matched": matched, "modified": modified}
+            return {"matched": matched, "modified": modified, "deprecated": 1}
 
     def delete_group(self, country: str, group: str) -> int:
         with self._lock:
-            rows = self._load()
-            # A legacy group-delete request must never delete the shared pool.
-            if any(row.get("country") or row.get("group") for row in rows):
-                self._save([{**row, "country": SINGLE_POOL_COUNTRY, "group": SINGLE_POOL_GROUP} for row in rows])
+            # A legacy group-delete request must never delete or rewrite the
+            # shared pool.  The integer return preserves the old signature.
             return 0
 
 

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import atexit
 from concurrent.futures import Future
 import copy
+import os
 from pathlib import Path
 import re
 import secrets
@@ -13,6 +15,7 @@ from typing import Any, Callable, Mapping, Sequence
 from urllib.parse import urlsplit
 
 try:
+    from .diagnostic_writer import DiagnosticEventWriter, LogContext
     from .free_failure_runtime import (
         FreeFailureRuntimeMixin,
         PRIVATE_ACCOUNT_RESULT_KEYS,
@@ -24,7 +27,18 @@ try:
         normalize_password_result,
         sanitize_failure_text,
         sanitize_log_message,
+        sanitize_public_bool,
+        sanitize_public_email,
+        sanitize_public_http_status,
+        sanitize_public_identifier,
+        sanitize_public_manual_prompt,
+        sanitize_public_number,
         sanitize_proxy_attempts,
+        sanitize_public_scheme,
+        sanitize_public_status,
+        sanitize_public_progress,
+        sanitize_public_timestamp,
+        sanitize_public_timing,
     )
     from .free_mailbox_otp import MailboxUrlOtpProvider
     from .free_proxy_health import is_proxy_health_failure
@@ -37,6 +51,7 @@ try:
         ProxyBinding,
         TERMINAL_STATUSES,
         fingerprint as _fingerprint,
+        mask_email as _mask_email,
         mask_proxy as _mask_proxy,
         proxy_transport_value,
         random_birthdate,
@@ -47,11 +62,15 @@ try:
     from .free_runtime_info import runtime_info
     from .free_timing import FREE_TIMING_SUBSTEPS
     from .free_register_store import FreeMailboxPool, FreeProxyPool, FreeTaskStore, _account_material_line
+    from .free_storage_adapters import build_free_storage_adapters
+    from .free_storage import ManagerOwnerConflict
+    from .free_register.mailbox_lease import MailboxLeaseCoordinator
     from .free_register_scheduler import FreeRegisterSchedulerMixin
     from .free_log_runtime import FreeLogStore
     from .free_live_check import build_free_live_check_service
     from .free_plan_check import build_free_plan_check_service
     from .free_protocol_runtime import FreeProtocolMixin
+    from .free_camoufox.runner import CamoufoxRunner
     from .free_camoufox_runtime import (
         CamoufoxRegistrationRunner,
         annotate_camoufox_debug_session,
@@ -61,6 +80,7 @@ try:
     from .free_notifications import FreeBatchNotificationAdapter
     from .free_priority_executor import PriorityExecutor
 except ImportError:
+    from diagnostic_writer import DiagnosticEventWriter, LogContext  # type: ignore[no-redef]
     from free_failure_runtime import (  # type: ignore[no-redef]
         FreeFailureRuntimeMixin,
         PRIVATE_ACCOUNT_RESULT_KEYS,
@@ -72,14 +92,25 @@ except ImportError:
         normalize_password_result,
         sanitize_failure_text,
         sanitize_log_message,
+        sanitize_public_bool,
+        sanitize_public_email,
+        sanitize_public_http_status,
+        sanitize_public_identifier,
+        sanitize_public_manual_prompt,
+        sanitize_public_number,
         sanitize_proxy_attempts,
+        sanitize_public_scheme,
+        sanitize_public_status,
+        sanitize_public_progress,
+        sanitize_public_timestamp,
+        sanitize_public_timing,
     )
     from free_mailbox_otp import MailboxUrlOtpProvider  # type: ignore[no-redef]
     from free_proxy_health import is_proxy_health_failure  # type: ignore[no-redef]
     from free_register_common import (  # type: ignore[no-redef]
         FREE_STAGE_LABELS, FIXED_PASSWORD, FreeMailbox, FreeRegisterError, FreeTwoFaPending,
         ProxyBinding, TERMINAL_STATUSES,
-        fingerprint as _fingerprint, mask_proxy as _mask_proxy,
+        fingerprint as _fingerprint, mask_email as _mask_email, mask_proxy as _mask_proxy,
         proxy_transport_value,
         random_birthdate, random_display_name, safe_log_message as _safe_log_message,
     )
@@ -87,11 +118,15 @@ except ImportError:
     from free_runtime_info import runtime_info  # type: ignore[no-redef]
     from free_timing import FREE_TIMING_SUBSTEPS  # type: ignore[no-redef]
     from free_register_store import FreeMailboxPool, FreeProxyPool, FreeTaskStore, _account_material_line  # type: ignore[no-redef]
+    from free_storage_adapters import build_free_storage_adapters  # type: ignore[no-redef]
+    from free_storage import ManagerOwnerConflict  # type: ignore[no-redef]
+    from free_register.mailbox_lease import MailboxLeaseCoordinator  # type: ignore[no-redef]
     from free_register_scheduler import FreeRegisterSchedulerMixin  # type: ignore[no-redef]
     from free_log_runtime import FreeLogStore  # type: ignore[no-redef]
     from free_live_check import build_free_live_check_service  # type: ignore[no-redef]
     from free_plan_check import build_free_plan_check_service  # type: ignore[no-redef]
     from free_protocol_runtime import FreeProtocolMixin  # type: ignore[no-redef]
+    from free_camoufox.runner import CamoufoxRunner  # type: ignore[no-redef]
     from free_camoufox_runtime import (  # type: ignore[no-redef]
         CamoufoxRegistrationRunner,
         annotate_camoufox_debug_session,
@@ -112,12 +147,60 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         "free_camoufox_dependency", "oauth_create_node", "free_proxy_geo", "free_protocol_preflight", "free_protocol_warmup",
     })
 
-    def __init__(self, data_dir: str | Path, *, progress: Any = None, log_fn: Callable[[str, str], None] | None = None, runner: Callable[..., Mapping[str, Any]] | None = None, proxy_probe: Callable[[str, str], str] | None = None, proxy_chatgpt_probe: Callable[[str], int] | None = None, diagnostic_store: Any = None, manual_broker: Any = None, notification_config_getter: Callable[[], Any] | None = None, config_provider: Callable[[], Mapping[str, Any]] | None = None) -> None:
+    def __init__(self, data_dir: str | Path, *, progress: Any = None, log_fn: Callable[[str, str], None] | None = None, runner: Callable[..., Mapping[str, Any]] | None = None, proxy_probe: Callable[[str, str], str] | None = None, proxy_chatgpt_probe: Callable[[str], int] | None = None, diagnostic_store: Any = None, manual_broker: Any = None, notification_config_getter: Callable[[], Any] | None = None, config_provider: Callable[[], Mapping[str, Any]] | None = None, storage_adapters: Any = None) -> None:
         self.data_dir = Path(data_dir).expanduser().resolve()
-        self.pool = FreeMailboxPool(self.data_dir)
-        self.proxies = FreeProxyPool(self.data_dir)
-        self.task_store = FreeTaskStore(self.data_dir)
-        self.log_store = FreeLogStore(self.data_dir, diagnostic_store=diagnostic_store)
+        # Production Free data lives under an explicitly isolated
+        # ``free_register`` directory.  It uses one shared SQLite store for
+        # mailbox, proxy, task and result state; arbitrary temporary/custom
+        # directories retain the historical JSON stores unless a caller
+        # injects adapters explicitly.
+        if storage_adapters is None and self.data_dir.name == "free_register":
+            storage_adapters = build_free_storage_adapters(self.data_dir)
+        self.storage_adapters = storage_adapters
+        self.storage = getattr(storage_adapters, "storage", None)
+        self.mailbox_leases = None
+        if storage_adapters is not None:
+            try:
+                self.pool = storage_adapters.mailboxes
+                self.proxies = storage_adapters.proxies
+                self.task_store = storage_adapters.tasks
+            except AttributeError as exc:
+                raise TypeError(
+                    "storage_adapters must expose mailboxes, proxies and tasks"
+                ) from exc
+            self.task_repository = getattr(storage_adapters, "task_repository", None)
+            if self.task_repository is None and self.storage is not None:
+                try:
+                    from .free_register.task_repository import FreeTaskRepository
+                except ImportError:  # pragma: no cover
+                    from free_register.task_repository import FreeTaskRepository  # type: ignore[no-redef]
+                self.task_repository = FreeTaskRepository(
+                    self.data_dir,
+                    storage=self.storage,
+                )
+            if self.storage is not None:
+                self.mailbox_leases = MailboxLeaseCoordinator(self.storage)
+        else:
+            self.pool = FreeMailboxPool(self.data_dir)
+            self.proxies = FreeProxyPool(self.data_dir)
+            self.task_store = FreeTaskStore(self.data_dir)
+            self.task_repository = None
+        # Structured diagnostics are the source of truth for the production
+        # Free manager.  Keep the legacy JSON projection available only for
+        # callers that do not provide a DiagnosticStore (older integrations
+        # and focused unit tests still rely on that callback contract).
+        log_options: dict[str, Any] = {}
+        if diagnostic_store is not None and self.data_dir.name == "free_register":
+            log_options.update({
+                "legacy_projection": False,
+                "cleanup_legacy": True,
+                "strict_diagnostic_reads": True,
+            })
+        self.log_store = FreeLogStore(
+            self.data_dir,
+            diagnostic_store=diagnostic_store,
+            **log_options,
+        )
         self.progress = progress
         self.log_fn = log_fn or self.log_store.add
         self.runner = runner or self._run_protocol
@@ -135,6 +218,14 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         # previous batch's global configuration.
         self._future_drivers: dict[Future[Any], str] = {}
         self._tasks: dict[str, dict[str, Any]] = self.task_store.load()
+        if self.mailbox_leases is not None:
+            # Expired claims are recovered before dispatch.  This only clears
+            # leases owned by this isolated Free database and never changes
+            # proxy health or ordinary registration state.
+            try:
+                self.mailbox_leases.recover()
+            except Exception:
+                pass
         self._batch_id = ""
         self._circuit_stop_requested = False
         self._user_stop_requested = False
@@ -149,8 +240,33 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         self._retry_leases: dict[str, str] = {}
         self._heartbeat_stop = threading.Event()
         self._heartbeat_thread: threading.Thread | None = None
+        # Process-level fencing is intentionally lazy: constructing a second
+        # manager for an idle/test directory must not claim the runtime, while
+        # a real batch must have one durable owner shared across processes.
+        self._manager_owner_id = f"free-manager-{os.getpid()}-{secrets.token_hex(8)}"
+        self._manager_owner_epoch = 0
+        self._manager_owner_acquired = False
+        self._manager_owner_fence_reported = False
+        self._runtime_fenced = False
+        if self._owner_storage() is not None:
+            atexit.register(self._release_runtime_owner)
+        # Set while ``start`` is assembling a new batch.  The manager keeps
+        # the previous completed batch id for UI history, so using
+        # ``_batch_id`` alone cannot identify which rows belong to a failed
+        # startup rollback.
+        self._startup_batch_id = ""
+        # Set while the final Future callback is joining executor/heartbeat
+        # threads. This closes the small window where no Future remains but a
+        # new start/retry could otherwise replace the still-draining handles.
+        self._shutdown_pending = False
         self._reconcile_account_results_from_history()
-        self._recover_interrupted_tasks()
+        # Do not classify active rows as interrupted while another live
+        # manager still owns the database.  This is the critical handoff
+        # guard for LaunchAgent reloads: the old worker gets time to drain,
+        # and a new manager cannot rewrite its task history underneath it.
+        self._runtime_fenced = self._runtime_owner_is_live()
+        if not self._runtime_fenced:
+            self._recover_interrupted_tasks()
         for existing_id, existing_task in self._tasks.items():
             if str(existing_task.get("status") or "") in {"queued", "running"} and existing_task.get("retry_key"):
                 self._retry_leases[str(existing_task["retry_key"])] = str(existing_id)
@@ -178,6 +294,129 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             if isinstance(value, Mapping):
                 return value
         return self._last_config
+
+    # ------------------------------------------------------------------
+    # Process owner fencing
+    # ------------------------------------------------------------------
+    def _owner_storage(self) -> Any | None:
+        storage = getattr(self, "storage", None)
+        if storage is None or not callable(getattr(storage, "acquire_manager_owner", None)):
+            return None
+        return storage
+
+    def _runtime_owner_is_live(self) -> bool:
+        """Return whether another manager currently fences this database."""
+        storage = self._owner_storage()
+        if storage is None:
+            return False
+        try:
+            status = storage.manager_owner_status()
+        except Exception:
+            # An unavailable metadata read must not make a fresh process
+            # overwrite active task rows. Treat the runtime as fenced until a
+            # later explicit start can establish ownership atomically.
+            return True
+        return bool(isinstance(status, Mapping) and status.get("active"))
+
+    def _acquire_runtime_owner(self) -> None:
+        """Claim the isolated Free database before reserving any resources."""
+        storage = self._owner_storage()
+        if storage is None:
+            return
+        if self._manager_owner_acquired:
+            if self._owner_current():
+                return
+            self._runtime_fenced = True
+            raise FreeRegisterError(
+                "free_process_owner",
+                "Free 进程所有权",
+                "当前 Free 进程已失去数据库所有权，拒绝继续写入",
+                retryable=True,
+                error_code="free_manager_epoch_mismatch",
+                action_hint="停止当前服务并等待旧任务退出后重新启动",
+            )
+        try:
+            owner = storage.acquire_manager_owner(
+                self._manager_owner_id,
+                pid=os.getpid(),
+            )
+        except ManagerOwnerConflict as exc:
+            self._runtime_fenced = True
+            raise FreeRegisterError(
+                "free_process_owner",
+                "Free 进程所有权",
+                "已有 Free 注册进程正在运行，请先等待上一批任务停止",
+                retryable=True,
+                error_code="free_manager_already_running",
+                action_hint="调用停止并等待任务完成，或确认旧进程已退出后重试",
+                provider_code=str(exc.owner.get("pid") or ""),
+            ) from exc
+        except Exception as exc:
+            raise FreeRegisterError(
+                "free_process_owner",
+                "Free 进程所有权",
+                "Free 进程所有权暂时无法建立",
+                retryable=True,
+                error_code="free_manager_owner_store_failed",
+                action_hint="检查 Free SQLite 数据库权限和锁状态后重试",
+                provider_code=type(exc).__name__,
+            ) from exc
+        self._manager_owner_epoch = int(owner.get("epoch") or 0)
+        self._manager_owner_acquired = True
+        self._runtime_fenced = False
+        self._manager_owner_fence_reported = False
+
+    def _ensure_runtime_owner(self) -> None:
+        """Require a valid owner for retry/continuation writes."""
+        self._acquire_runtime_owner()
+
+    def _owner_current(self) -> bool:
+        storage = self._owner_storage()
+        if storage is None or not self._manager_owner_acquired:
+            return True
+        try:
+            return bool(
+                storage.manager_owner_is_current(
+                    self._manager_owner_id,
+                    self._manager_owner_epoch,
+                )
+            )
+        except Exception:
+            return False
+
+    def _record_owner_fenced(self, *, task_id: str = "") -> None:
+        """Emit one credential-free event when a stale worker is fenced."""
+        if self._manager_owner_fence_reported:
+            return
+        self._manager_owner_fence_reported = True
+        try:
+            self._log(
+                f"[{task_id or 'free'}/Free 进程所有权/free_process_owner] "
+                "旧 worker 写入被拒绝，数据库已由新进程接管",
+                "warn",
+                task_id=task_id,
+                node_code="free_process_owner",
+                node_label="Free 进程所有权",
+                outcome="stale_writer_rejected",
+                error_code="free_manager_epoch_mismatch",
+                workflow="lifecycle",
+            )
+        except Exception:
+            pass
+
+    def _release_runtime_owner(self) -> None:
+        storage = self._owner_storage()
+        if storage is None or not self._manager_owner_acquired:
+            return
+        owner_id = self._manager_owner_id
+        epoch = self._manager_owner_epoch
+        self._manager_owner_acquired = False
+        try:
+            storage.release_manager_owner(owner_id, epoch)
+        except Exception:
+            # Process exit/cleanup is best effort; a dead PID and TTL let the
+            # next manager reclaim the fence even if this write fails.
+            pass
 
     def _reconcile_account_results_from_history(self) -> int:
         """Restore missing private result fields from immutable task history.
@@ -261,8 +500,28 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
 
     def _log(self, message: str, level: str = "info", **fields: Any) -> None:
         if callable(self.log_fn):
+            # Keep task-scoped lifecycle events on the same diagnostic scope
+            # as the terminal failure.  The facade's fallback driver is
+            # ``free`` for manager-level messages, but a concrete task knows
+            # whether it is running protocol or Camoufox.
+            payload = dict(fields)
+            task_id = str(payload.get("task_id") or "").strip()
+            if not task_id:
+                match = re.match(r"^\[([^/\]]+)(?:/|\])", str(message or ""))
+                candidate = str(match.group(1) or "").strip() if match else ""
+                if candidate.startswith("free-"):
+                    task_id = candidate
+            if task_id and not payload.get("driver"):
+                try:
+                    with self._lock:
+                        task = self._tasks.get(task_id)
+                    driver = str(task.get("driver") or "").strip() if isinstance(task, Mapping) else ""
+                    if driver:
+                        payload["driver"] = driver
+                except Exception:
+                    pass
             try:
-                self.log_fn(sanitize_log_message(message), level, **fields)
+                self.log_fn(sanitize_log_message(message), level, **payload)
             except TypeError:
                 # Third-party callbacks from older integrations only accept
                 # (message, level); retain compatibility while the built-in
@@ -677,6 +936,12 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         observable, but it must not prevent Future bookkeeping and executor
         cleanup from running.
         """
+        # A worker from a superseded manager may still unwind after a
+        # controlled reload. Never let its in-memory snapshot overwrite the
+        # new owner's task state.
+        if self._manager_owner_acquired and not self._owner_current():
+            self._record_owner_fenced()
+            return False
         save_error: Exception | None = None
         with self._lock:
             try:
@@ -686,6 +951,19 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 # persisted task table backwards.
                 snapshot = copy.deepcopy(self._tasks)
                 self.task_store.save(snapshot)
+                # SQLite adapters advance a durable revision on every write.
+                # Copy the returned CAS metadata back into the manager's
+                # in-memory map so the next callback does not repeatedly write
+                # an intentionally stale snapshot. Legacy JSON stores do not
+                # return revisions and are left untouched.
+                if self.storage_adapters is not None:
+                    for task_id, saved in snapshot.items():
+                        current = self._tasks.get(task_id)
+                        if not isinstance(current, dict) or not isinstance(saved, Mapping):
+                            continue
+                        for key in ("revision", "created_at", "updated_at", "status"):
+                            if key in saved:
+                                current[key] = copy.deepcopy(saved[key])
             except Exception as exc:
                 save_error = exc
         if save_error is None:
@@ -876,22 +1154,112 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 result = merge_account_result_fields(result, durable_result)
         if result:
             result = normalize_password_result(result)
-        public = {key: copy.deepcopy(task[key]) for key in ("task_id", "incident_id", "ordinal", "slot_id", "slot_index", "concurrency_limit", "status", "created_at", "updated_at", "batch_id", "run_mode", "driver", "email", "row_id", "stage", "mailbox_verification", "proxy_masked", "proxy_fingerprint", "profile_summary", "proxy_id", "proxy_scheme", "proxy_effective_scheme", "proxy_country", "proxy_group", "proxy_attempts", "cleanup_status", "retry_of", "retry_attempt", "retry_task_id", "retry_status", "retry_resolved", "retry_updated_at") if key in task}
+        # Keep the worker's raw address private.  ``email`` remains in the
+        # public shape for old UI clients, but is always the masked display
+        # value; callers that need the credential must use an explicit secret
+        # or reveal endpoint keyed by ``row_id``.
+        private_email = str(task.get("email") or "").strip()
+        if not private_email and row_id:
+            try:
+                mailbox = self.pool.entry(row_id)
+                private_email = str(getattr(mailbox, "email", "") or "").strip() if mailbox is not None else ""
+            except Exception:
+                private_email = ""
+        email_masked = sanitize_public_email(private_email)
+        subject_fingerprint = ""
+        diagnostic_store = getattr(getattr(self, "log_store", None), "diagnostic_store", None)
+        fingerprint_fn = getattr(diagnostic_store, "fingerprint", None)
+        if callable(fingerprint_fn) and private_email:
+            try:
+                subject_fingerprint = str(fingerprint_fn(private_email) or "").strip().lower()
+            except Exception:
+                subject_fingerprint = ""
+        if not re.fullmatch(r"[0-9a-f]{32}", subject_fingerprint):
+            subject_fingerprint = _fingerprint(private_email) if private_email else ""
+        public: dict[str, Any] = {}
+        # Every scalar copied from a task snapshot is normalized by its
+        # semantic type.  This keeps a malformed/hand-edited row from
+        # smuggling a URL or credential through an otherwise innocuous field.
+        identifier_fields = {
+            "task_id", "incident_id", "slot_id", "batch_id", "run_mode",
+            "driver", "row_id", "stage", "proxy_fingerprint", "proxy_id",
+            "retry_of", "retry_task_id",
+        }
+        status_fields = {"status", "cleanup_status", "retry_status"}
+        number_fields = {
+            "ordinal", "slot_index", "concurrency_limit", "created_at",
+            "updated_at", "retry_attempt", "retry_updated_at",
+        }
+        for key in identifier_fields:
+            if key in task:
+                limit = 40 if key == "driver" else 160
+                safe = sanitize_public_identifier(task.get(key), limit=limit)
+                public[key] = safe
+        for key in status_fields:
+            if key in task:
+                safe = sanitize_public_status(task.get(key))
+                public[key] = safe
+        for key in number_fields:
+            if key in task:
+                safe = sanitize_public_number(
+                    task.get(key), integer=True, minimum=0, default=None
+                )
+                public[key] = 0 if safe is None else safe
+        if "proxy_scheme" in task:
+            safe_scheme = sanitize_public_scheme(task.get("proxy_scheme"))
+            public["proxy_scheme"] = safe_scheme
+        if "proxy_effective_scheme" in task:
+            safe_scheme = sanitize_public_scheme(task.get("proxy_effective_scheme"))
+            public["proxy_effective_scheme"] = safe_scheme
+        for key in ("proxy_masked", "profile_summary"):
+            if key in task:
+                public[key] = sanitize_failure_text(task.get(key), 300)
+        if "proxy_attempts" in task:
+            public["proxy_attempts"] = sanitize_proxy_attempts(task.get("proxy_attempts"))
+        if "retry_resolved" in task:
+            public["retry_resolved"] = sanitize_public_bool(task.get("retry_resolved"))
+        # These keys remain in the legacy response shape, but their retired
+        # allocation dimensions are deliberately blank for the shared pool.
+        if "proxy_country" in task:
+            public["proxy_country"] = ""
+        if "proxy_group" in task:
+            public["proxy_group"] = ""
+        public["email"] = email_masked
+        public["email_masked"] = email_masked
+        public["subject_ref_fingerprint"] = subject_fingerprint
+        # Free uses one shared healthy_random proxy pool.  Keep the legacy
+        # response keys for clients, but never expose historical country/group
+        # values as if they were still allocation dimensions.
+        if "proxy_country" in public:
+            public["proxy_country"] = ""
+        if "proxy_group" in public:
+            public["proxy_group"] = ""
         verification = public.get("mailbox_verification")
         if isinstance(verification, Mapping):
-            phase = str(verification.get("phase") or "").strip().lower()
-            try:
-                opened_at = max(0, int(verification.get("opened_at") or 0))
-                deadline_at = max(opened_at, int(verification.get("deadline_at") or 0))
-            except (TypeError, ValueError):
-                public.pop("mailbox_verification", None)
-            else:
+            phase = sanitize_public_status(
+                verification.get("phase"),
+                allowed={"automatic", "manual"},
+                default="automatic",
+            )
+            opened_value = sanitize_public_number(
+                verification.get("opened_at"), integer=True, minimum=0, default=0
+            )
+            deadline_value = sanitize_public_number(
+                verification.get("deadline_at"), integer=True, minimum=0, default=0
+            )
+            if opened_value is not None and deadline_value is not None:
+                opened_at = int(opened_value)
+                deadline_at = max(opened_at, int(deadline_value))
                 public["mailbox_verification"] = {
-                    "phase": phase if phase in {"automatic", "manual"} else "automatic",
-                    "stage": str(verification.get("stage") or public.get("stage") or "")[:100],
+                    "phase": phase,
+                    "stage": sanitize_public_identifier(
+                        verification.get("stage") or public.get("stage"), limit=120
+                    ),
                     "opened_at": opened_at,
                     "deadline_at": deadline_at,
                 }
+            else:
+                public.pop("mailbox_verification", None)
         if not public.get("incident_id"):
             diagnostic_store = getattr(getattr(self, "log_store", None), "diagnostic_store", None)
             if diagnostic_store is not None:
@@ -902,10 +1270,15 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                         "limit": 1,
                     })
                     if matches:
-                        public["incident_id"] = str(matches[0].get("incident_id") or "")
+                        incident_id = sanitize_public_identifier(matches[0].get("incident_id"), limit=160)
+                        if incident_id:
+                            public["incident_id"] = incident_id
                 except Exception:
                     pass
-        public["account"] = public.get("email", "")
+        # ``account`` is a legacy alias consumed by a few clients.  It must
+        # follow the same masked representation and never reintroduce the
+        # private address.
+        public["account"] = email_masked
         mailbox_url = str(task.get("mailbox_url") or "").strip()
         if not mailbox_url and task.get("row_id"):
             try:
@@ -916,25 +1289,51 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         # Expose only availability; the credential-bearing URL is revealed by
         # the dedicated endpoint after an explicit user action.
         public["has_mailbox_url"] = bool(mailbox_url)
-        public["stage_label"] = FREE_STAGE_LABELS.get(str(public.get("stage") or ""), str(public.get("stage") or ""))
-        public["result"] = {
-            key: copy.deepcopy(result[key])
-            for key in (
-                "account_flow", "plan_type", "subscription_plan", "has_active_subscription",
-                "plus_trial_eligible", "eligible_campaign_id", "plan_check_status",
-                "plan_check_task_id", "plan_checked_at", "plan_error_code", "plan_http_status",
-                "plan_retry_after_until", "password_status", "password_set_after_registration",
-                "twofa_status", "twofa_error", "has_access_token",
-            )
-            if key in result
+        public["stage_label"] = FREE_STAGE_LABELS.get(
+            str(public.get("stage") or ""), str(public.get("stage") or "")
+        )
+        public["result"] = {}
+        result_identifier_fields = {
+            "account_flow", "plan_type", "subscription_plan", "eligible_campaign_id",
+            "plan_check_task_id", "plan_error_code",
         }
-        public["result"]["has_access_token"] = bool(result.get("access_token"))
+        result_status_fields = {"plan_check_status", "password_status", "twofa_status"}
+        result_text_fields = {"twofa_error"}
+        for key in result_identifier_fields:
+            if key in result:
+                safe = sanitize_public_identifier(result.get(key), limit=160)
+                public["result"][key] = safe
+        for key in result_status_fields:
+            if key in result:
+                safe = sanitize_public_status(result.get(key))
+                public["result"][key] = safe
+        for key in result_text_fields:
+            if key in result:
+                public["result"][key] = sanitize_failure_text(result.get(key), 300)
+        for key in ("has_active_subscription", "plus_trial_eligible", "password_set_after_registration"):
+            if key in result:
+                public["result"][key] = sanitize_public_bool(result.get(key))
+        if "plan_checked_at" in result:
+            public["result"]["plan_checked_at"] = sanitize_public_timestamp(
+                result.get("plan_checked_at"), default=None
+            )
+        if "plan_retry_after_until" in result:
+            public["result"]["plan_retry_after_until"] = sanitize_public_timestamp(
+                result.get("plan_retry_after_until"), default=None
+            )
+        if "plan_http_status" in result:
+            public["result"]["plan_http_status"] = sanitize_public_http_status(
+                result.get("plan_http_status"), default=None
+            )
+        # Capability markers are derived from private evidence rather than
+        # copied credentials.  Explicit persisted booleans are accepted only
+        # when they parse cleanly.
+        public["result"]["has_access_token"] = sanitize_public_bool(
+            result.get("has_access_token"), default=bool(result.get("access_token"))
+        )
         public["result"]["has_password"] = bool(result.get("password"))
         public["result"]["has_totp"] = bool(result.get("totp_secret"))
         public["result"]["has_credential"] = bool(result.get("credential_line"))
-        for key, value in tuple(public["result"].items()):
-            if isinstance(value, str):
-                public["result"][key] = sanitize_failure_text(value, 300)
         if "proxy_attempts" in public:
             public["proxy_attempts"] = sanitize_proxy_attempts(public["proxy_attempts"])
         for key in ("profile_summary", "proxy_masked", "cleanup_status"):
@@ -947,7 +1346,11 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             except Exception:
                 progress = None
         if isinstance(progress, Mapping):
-            progress_public = copy.deepcopy(dict(progress))
+            # Progress providers are extension points and may return legacy
+            # arbitrary mappings. Project them before adding compatibility
+            # aliases so a nested token/mailbox URL can never cross the API
+            # boundary through ``progress`` or its embedded timing object.
+            progress_public = sanitize_public_progress(progress)
             # The Free store historically called these fields ``stage`` and
             # ``stage_started_at`` while the shared progress component uses
             # ``code``, ``label`` and ``entered_at``. Normalize only the
@@ -958,9 +1361,9 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             progress_public.setdefault("entered_at", progress_public.get("stage_started_at") or progress_public.get("started_at"))
             public["progress"] = progress_public
             if isinstance(progress_public.get("timing"), Mapping):
-                public["timing"] = copy.deepcopy(progress_public["timing"])
+                public["timing"] = sanitize_public_timing(progress_public["timing"])
         elif isinstance(task.get("progress"), Mapping):
-            progress_public = copy.deepcopy(dict(task["progress"]))
+            progress_public = sanitize_public_progress(task["progress"])
             progress_code = str(progress_public.get("code") or progress_public.get("stage") or public.get("stage") or "")
             progress_public.setdefault("code", progress_code)
             progress_public.setdefault("label", FREE_STAGE_LABELS.get(progress_code, progress_code))
@@ -971,18 +1374,29 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 prompt = self.manual_broker.public(str(task.get("task_id") or ""))
             except Exception:
                 prompt = {}
-            if isinstance(prompt, Mapping) and prompt.get("input_kind"):
-                public["manual_verification"] = copy.deepcopy(dict(prompt))
+            prompt_public = sanitize_public_manual_prompt(prompt)
+            if prompt_public.get("input_kind"):
+                public["manual_verification"] = prompt_public
                 public["capabilities"] = ["submit_manual_verification"]
                 verification = public.get("mailbox_verification") if isinstance(public.get("mailbox_verification"), Mapping) else {}
+                opened_value = sanitize_public_number(
+                    prompt_public.get("opened_at") or verification.get("opened_at"),
+                    integer=True, minimum=0, default=0,
+                )
+                deadline_value = sanitize_public_number(
+                    prompt_public.get("deadline_at") or verification.get("deadline_at"),
+                    integer=True, minimum=0, default=0,
+                )
                 public["mailbox_verification"] = {
                     "phase": "manual",
-                    "stage": str(verification.get("stage") or task.get("stage") or "")[:100],
-                    "opened_at": int(prompt.get("opened_at") or verification.get("opened_at") or 0),
-                    "deadline_at": int(prompt.get("deadline_at") or verification.get("deadline_at") or 0),
+                    "stage": sanitize_public_identifier(
+                        verification.get("stage") or task.get("stage"), limit=120
+                    ),
+                    "opened_at": int(opened_value or 0),
+                    "deadline_at": max(int(opened_value or 0), int(deadline_value or 0)),
                 }
         if isinstance(task.get("timing"), Mapping):
-            public["timing"] = copy.deepcopy(task["timing"])
+            public["timing"] = sanitize_public_timing(task["timing"])
         if isinstance(task.get("failure"), Mapping):
             failure = canonical_failure(task["failure"])
             if failure is not None:
@@ -995,16 +1409,37 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             tasks = sorted(
                 self._tasks.values(),
                 key=lambda item: (
-                    -int(item.get("created_at") or 0),
+                    -int(
+                        sanitize_public_number(
+                            item.get("created_at"), integer=True, minimum=0, default=0
+                        )
+                        or 0
+                    ),
                     0 if item.get("retry_of") else 1,
-                    int(item.get("ordinal") or 0),
-                    str(item.get("task_id") or ""),
+                    int(
+                        sanitize_public_number(
+                            item.get("ordinal"), integer=True, minimum=0, default=0
+                        )
+                        or 0
+                    ),
+                    sanitize_public_identifier(item.get("task_id"), limit=160),
                 ),
             )
             return [self._public_task(task) for task in tasks]
 
     def public_logs(self, task_id: str = "") -> list[dict[str, Any]]:
-        return self.log_store.snapshot(task_id)
+        driver = ""
+        if task_id:
+            with self._lock:
+                task = self._tasks.get(str(task_id))
+            if isinstance(task, Mapping):
+                driver = sanitize_public_identifier(task.get("driver"), limit=40).lower()
+        try:
+            return self.log_store.snapshot(task_id, workflow="register", driver=driver)
+        except TypeError:
+            # Third-party compatibility facades may still expose the legacy
+            # one-argument snapshot signature.
+            return self.log_store.snapshot(task_id)
 
     def delete_tasks(self, task_ids: Sequence[str]) -> int:
         selected = {str(task_id or "").strip() for task_id in task_ids}
@@ -1056,7 +1491,15 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             )
             slowest_node = None
             first_failure = None
-            for task in sorted(tasks, key=lambda item: int(item.get("created_at") or 0)):
+            for task in sorted(
+                tasks,
+                key=lambda item: int(
+                    sanitize_public_number(
+                        item.get("created_at"), integer=True, minimum=0, default=0
+                    )
+                    or 0
+                ),
+            ):
                 if task.get("retry_resolved"):
                     continue
                 failure = task.get("failure") if isinstance(task.get("failure"), Mapping) else None
@@ -1089,17 +1532,42 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 # terminal task statuses races teardown and can leave an
                 # atomic log temp file being written after a caller observes
                 # running=False.
-                "running": bool(self._executor and self._futures),
-                "batch_id": self._batch_id,
+                # A final Future callback keeps the executor reference while
+                # joining worker threads and the heartbeat. Do not report an
+                # idle batch until those background writers have actually
+                # stopped; callers commonly use this flag before tearing
+                # down a temporary data directory.
+                "running": bool(
+                    self._executor
+                    or (
+                        self._heartbeat_thread is not None
+                        and self._heartbeat_thread.is_alive()
+                    )
+                ),
+                "batch_id": sanitize_public_identifier(self._batch_id, limit=160),
                 "tasks": tasks,
                 "pool": {
                     "total": len(self.pool.entries()),
                     "available": self._available_count(),
                     "proxies": len(self.proxies.values()),
                 },
-                "proxy_groups": self.proxies.group_summaries() if callable(getattr(self.proxies, "group_summaries", None)) else [],
+                # Free registration has one shared healthy_random pool;
+                # country/group summaries are retained only by unrelated
+                # network-tool flows and are intentionally absent here.
+                "proxy_groups": [],
                 "proxy_selection": {"country": "", "group": ""},
-                "driver": str(next((task.get("driver") for task in reversed(list(self._tasks.values())) if task.get("batch_id") == self._batch_id), "protocol") or "protocol"),
+                "driver": sanitize_public_identifier(
+                    next(
+                        (
+                            task.get("driver")
+                            for task in reversed(list(self._tasks.values()))
+                            if task.get("batch_id") == self._batch_id
+                        ),
+                        "protocol",
+                    ),
+                    limit=40,
+                    default="protocol",
+                ) or "protocol",
                 "scheduler": {
                     "concurrency": max(1, min(int(self._last_config.get("concurrency") or self._last_config.get("free_concurrency") or 3), 16)),
                     "active_slots": sum(1 for task in tasks if task.get("status") == "running"),
@@ -1217,7 +1685,14 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             before = {str(row.row_id) for row in self.pool.entries()}
             imported, skipped = self.pool.import_text_with_stats(str(content or ""))
             added_rows = [row for row in self.pool.entries() if str(row.row_id) not in before]
-            running = bool(self._executor and self._futures)
+            running = bool(
+                self._executor
+                or self._shutdown_pending
+                or (
+                    self._heartbeat_thread is not None
+                    and self._heartbeat_thread.is_alive()
+                )
+            )
             result: dict[str, Any] = {
                 "imported": int(imported),
                 "skipped": int(skipped),
@@ -1257,6 +1732,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 binding: ProxyBinding | None = None
                 task_id = ""
                 reserved = False
+                mailbox_lease_acquired = False
                 submitted = False
                 try:
                     bindings = self.proxies.bind(
@@ -1306,6 +1782,22 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     }
                     self.pool.reserve([row], batch_id)
                     reserved = True
+                    if self.mailbox_leases is not None:
+                        lease = self.mailbox_leases.acquire(
+                            row.row_id,
+                            task_id=task_id,
+                            batch_id=batch_id,
+                            driver=driver,
+                        )
+                        if lease is None:
+                            raise FreeRegisterError(
+                                "free_mailbox_lease",
+                                "预留 Free 邮箱租约",
+                                "Free 邮箱租约已被其他任务占用",
+                                retryable=True,
+                                error_code="free_mailbox_lease_conflict",
+                            )
+                        mailbox_lease_acquired = True
                     self.proxies.lease(binding, owner=task_id, batch_id=batch_id, task_id=task_id)
                     self.pool.update(
                         row.row_id,
@@ -1346,6 +1838,11 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                         result["skipped_items"].append({"row_id": row.row_id, "reason": "已提交到当前批次"})
                         continue
                     self._tasks.pop(task_id, None)
+                    if mailbox_lease_acquired and self.mailbox_leases is not None:
+                        try:
+                            self.mailbox_leases.release(task_id=task_id, reusable=True)
+                        except Exception:
+                            pass
                     if binding is not None:
                         try:
                             self.proxies.release(binding, owner=task_id or batch_id)
@@ -1401,7 +1898,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         )
         camoufox_result = {"driver": driver}
         if driver == "camoufox" and not self._custom_runner:
-            camoufox_result = CamoufoxRegistrationRunner.preflight(config)
+                camoufox_result = CamoufoxRunner.preflight(config)
         return {
             **runtime_info(),
             "driver": driver,
@@ -1705,11 +2202,22 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             return result
         result.update({"failure_count": failure_count, "failure": aggregate_failure})
 
-        diagnostic_store = getattr(getattr(self, "log_store", None), "diagnostic_store", None)
+        log_store = getattr(self, "log_store", None)
+        diagnostic_store = getattr(log_store, "diagnostic_store", None)
         incident_id = ""
         if diagnostic_store is not None:
             try:
-                incident_id = diagnostic_store.record({
+                writer = getattr(log_store, "diagnostic_writer", None)
+                if writer is None:
+                    writer = DiagnosticEventWriter(
+                        diagnostic_store,
+                        context=LogContext(
+                            chain="free",
+                            workflow="proxy_preflight",
+                            driver=str(driver or "protocol"),
+                        ),
+                    )
+                incident_id = writer.record({
                     "level": "error",
                     "outcome": "error",
                     "chain": "free",
@@ -1766,18 +2274,179 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 error_code="free_driver_unsupported",
             )
         normalized_config["driver"] = requested_driver
+        start_attempted = False
+        try:
+            with self._lock:
+                # Keep the production manager boundary aligned with the Free
+                # contract even for callers that bypass the HTTP config store.
+                if self.public_state().get("running"):
+                    raise FreeRegisterError("free_run_start", "启动 Free 注册", "已有 Free 注册任务运行中", retryable=False)
+                start_attempted = True
+                self._last_config = copy.deepcopy(normalized_config)
+                return self._start_locked(
+                    normalized_config,
+                    pool_content=pool_content,
+                    proxy_content=proxy_content,
+                    row_ids=row_ids,
+                )
+        except Exception:
+            # ``_start_locked`` owns the manager lock while reserving rows and
+            # creating the worker runtime.  Drain any partially-created
+            # runtime only after that lock has been released; joining a worker
+            # here would deadlock when it is waiting to enter ``_worker``.
+            if start_attempted:
+                self._rollback_failed_startup()
+                with self._lock:
+                    idle_owner = not self._futures and self._executor is None
+                if idle_owner:
+                    self._release_runtime_owner()
+            raise
+
+    def _rollback_failed_startup(self) -> None:
+        """Drain a batch whose executor/heartbeat could not be assembled.
+
+        A normal worker completion owns its own cleanup path.  Startup is
+        different: a constructor or submit failure can happen after only a
+        subset of tasks has been registered, so this method first detaches
+        Future callbacks, waits for the executor, and then releases every
+        task's leases.  It is intentionally idempotent and only acts on the
+        batch marker set by the current ``start`` call.
+        """
         with self._lock:
-            # Keep the production manager boundary aligned with the Free
-            # contract even for callers that bypass the HTTP config store.
-            if self.public_state().get("running"):
-                raise FreeRegisterError("free_run_start", "启动 Free 注册", "已有 Free 注册任务运行中", retryable=False)
-            self._last_config = copy.deepcopy(normalized_config)
-            return self._start_locked(
-                normalized_config,
-                pool_content=pool_content,
-                proxy_content=proxy_content,
-                row_ids=row_ids,
-            )
+            batch_id = str(self._startup_batch_id or "").strip()
+            if not batch_id:
+                return
+            self._stop.set()
+            self._user_stop_requested = True
+            heartbeat_stop = self._heartbeat_stop
+            heartbeat_stop.set()
+            heartbeat_thread = self._heartbeat_thread
+            executor = self._executor
+            # Detach callbacks before cancelling.  ``Future.cancel`` invokes
+            # callbacks synchronously for an already-queued future; leaving
+            # them in ``_futures`` could recursively enter normal batch
+            # teardown while this startup rollback is still collecting rows.
+            futures = tuple(self._futures)
+            self._futures.clear()
+            self._future_drivers.clear()
+            task_ids = [
+                str(task.get("task_id") or task_id)
+                for task_id, task in self._tasks.items()
+                if str(task.get("batch_id") or "") == batch_id
+            ]
+            self._shutdown_pending = True
+
+        for future in futures:
+            try:
+                future.cancel()
+            except Exception:
+                pass
+        if executor is not None:
+            try:
+                executor.shutdown(wait=True, cancel_futures=True)
+            except TypeError:
+                try:
+                    executor.shutdown(wait=True)
+                except Exception:
+                    pass
+            except Exception:
+                # The worker state and lease cleanup below remain authoritative
+                # even when an injected/third-party executor cannot shut down
+                # cleanly.
+                pass
+        if heartbeat_thread is not None and heartbeat_thread is not threading.current_thread():
+            try:
+                heartbeat_thread.join(timeout=5)
+            except Exception:
+                pass
+
+        # A running worker may switch to a replacement proxy or confirm the
+        # mailbox while the executor drains.  Refresh the task snapshots after
+        # the wait so cleanup targets the worker's latest durable binding.
+        with self._lock:
+            tasks = [
+                copy.deepcopy(self._tasks[task_id])
+                for task_id in task_ids
+                if task_id in self._tasks
+            ]
+        for task in tasks:
+            try:
+                self._release_task_lease(task)
+            except Exception as exc:
+                self._log(
+                    f"[{task.get('task_id', '')}/启动回滚/free_startup_rollback] "
+                    f"资源释放失败（{type(exc).__name__}）",
+                    "warn",
+                    task_id=str(task.get("task_id") or ""),
+                    node_code="free_startup_rollback",
+                    node_label="Free 启动回滚",
+                    outcome="cleanup_failed",
+                )
+            # The legacy JSON pool has no mailbox lease coordinator.  Its
+            # startup rows were not yet submitted to a transport, so return
+            # them explicitly after the proxy release above.  SQLite-backed
+            # pools use ``MailboxLeaseCoordinator`` as the source of truth.
+            if self.mailbox_leases is None and str(task.get("status") or "").strip().lower() in {"queued", "reserved"}:
+                row_id = str(task.get("row_id") or "").strip()
+                if row_id:
+                    try:
+                        self.pool.update(
+                            row_id,
+                            status="available",
+                            batch_id="",
+                            stage="",
+                            driver="",
+                            proxy="",
+                            proxy_masked="",
+                            proxy_fingerprint="",
+                            proxy_id="",
+                            proxy_scheme="",
+                            proxy_country="",
+                            proxy_group="",
+                            expected_exit_ip="",
+                            registration_ip="",
+                            exit_ip="",
+                        )
+                    except Exception:
+                        pass
+
+        with self._lock:
+            # Mark rows terminal for one save before removing them.  The
+            # SQLite compatibility adapter intentionally deletes only terminal
+            # stale rows, so this first checkpoint makes the subsequent empty
+            # snapshot eligible to remove a partially-created startup task.
+            for task_id, task in list(self._tasks.items()):
+                if str(task.get("batch_id") or "") != batch_id:
+                    continue
+                task["status"] = "stopped"
+                task["cleanup_status"] = task.get("cleanup_status") or "released"
+                task["updated_at"] = int(time.time())
+        self._save_tasks_safely("启动失败回滚终态")
+        with self._lock:
+            for task_id, task in list(self._tasks.items()):
+                if str(task.get("batch_id") or "") == batch_id:
+                    self._tasks.pop(task_id, None)
+            if self._executor is executor:
+                self._executor = None
+            if self._heartbeat_thread is heartbeat_thread:
+                self._heartbeat_thread = None
+            self._shutdown_pending = False
+            self._startup_batch_id = ""
+            self._batch_id = ""
+            self._stage_started_mono = {
+                key: value for key, value in self._stage_started_mono.items()
+                if key in self._tasks
+            }
+            self._task_started_mono = {
+                key: value for key, value in self._task_started_mono.items()
+                if key in self._tasks
+            }
+            self._timing_checkpoint_mono = {
+                key: value for key, value in self._timing_checkpoint_mono.items()
+                if key in self._tasks
+            }
+        self._save_tasks_safely("启动失败回滚")
+        self._release_runtime_owner()
 
     def _start_locked(
         self,
@@ -1794,6 +2463,10 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         the running check and mailbox/proxy reservation allowed two concurrent
         start requests to both pass the check.
         """
+        # Establish process ownership before protocol/Camoufox preflight or
+        # any pool mutation.  A second Flask/LaunchAgent instance therefore
+        # fails cleanly without touching the old worker's rows.
+        self._acquire_runtime_owner()
         # Validate the full-protocol bridge before importing or leasing any
         # mailbox/proxy rows. Custom runners are test/integration adapters
         # and intentionally retain their existing contract.
@@ -1893,7 +2566,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             if driver not in {"protocol", "camoufox"}:
                 raise FreeRegisterError("free_config", "启动 Free 注册", "Free 注册链路无效", retryable=False)
             if driver == "camoufox" and not self._custom_runner:
-                CamoufoxRegistrationRunner.preflight(config)
+                CamoufoxRunner.preflight(config)
             # Import pasted proxies only after mailbox/result guards pass.  A
             # rejected duplicate-registration attempt must not mutate the
             # shared proxy pool or its health history.
@@ -1917,10 +2590,12 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 health_probe_ttl_seconds=int(config["proxy_health_probe_ttl_seconds"]) if "proxy_health_probe_ttl_seconds" in config else 0,
             )
             batch_id = f"free-{int(time.time())}-{secrets.token_hex(4)}"
+            self._startup_batch_id = batch_id
             now = int(time.time())
             workers = max(1, min(int(config.get("concurrency") or config.get("free_concurrency") or 3), target_count, 16))
             leased_bindings: list[ProxyBinding] = []
             created_task_ids: list[str] = []
+            leased_mailboxes: list[str] = []
             reserved = False
             try:
                 self.pool.reserve(rows, batch_id)
@@ -1930,6 +2605,22 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     self._tasks[task_id] = {"task_id": task_id, "ordinal": ordinal, "slot_id": f"{batch_id}-slot-{((ordinal - 1) % workers) + 1}", "slot_index": ((ordinal - 1) % workers) + 1, "concurrency_limit": workers, "status": "queued", "created_at": now, "updated_at": now, "batch_id": batch_id, "run_mode": "free_register", "driver": driver, "proxy_allocation_mode": str(config.get("proxy_allocation_mode") or "healthy_random"), "email": row.email, "row_id": row.row_id, "mailbox_url": row.mailbox_url, "proxy": binding.proxy, "proxy_id": binding.proxy_id, "proxy_scheme": binding.scheme, "proxy_effective_scheme": getattr(binding, "effective_scheme", "") or binding.scheme, "proxy_country": binding.country, "proxy_group": binding.group, "proxy_masked": binding.masked, "proxy_fingerprint": binding.fingerprint, "expected_exit_ip": binding.exit_ip, "registration_ip": "", "exit_ip": binding.exit_ip, "proxy_attempts": [], "cleanup_status": "pending", "progress": {"stage": "free_oauth_session", "group": "free", "started_at": now, "updated_at": now, "finished_at": None}, "result": {"twofa_status": "", "driver": driver, "expected_exit_ip": binding.exit_ip, "proxy_country": binding.country, "proxy_group": binding.group}}
                     self._tasks[task_id]["device_id"] = f"free-{secrets.token_hex(16)}"
                     created_task_ids.append(task_id)
+                    if self.mailbox_leases is not None:
+                        lease = self.mailbox_leases.acquire(
+                            row.row_id,
+                            task_id=task_id,
+                            batch_id=batch_id,
+                            driver=driver,
+                        )
+                        if lease is None:
+                            raise FreeRegisterError(
+                                "free_mailbox_lease",
+                                "预留 Free 邮箱租约",
+                                "Free 邮箱租约已被其他任务占用",
+                                retryable=True,
+                                error_code="free_mailbox_lease_conflict",
+                            )
+                        leased_mailboxes.append(task_id)
                     self.proxies.lease(binding, owner=task_id, batch_id=batch_id, task_id=task_id)
                     leased_bindings.append(binding)
                     self.pool.update(row.row_id, status="queued", batch_id=batch_id, driver=driver, proxy=binding.proxy, proxy_masked=binding.masked, proxy_fingerprint=binding.fingerprint, expected_exit_ip=binding.exit_ip, exit_ip=binding.exit_ip, proxy_id=binding.proxy_id, proxy_country=binding.country, proxy_group=binding.group)
@@ -1937,6 +2628,12 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     # expose a successful validation stage in task logs.
                 self._save_tasks_safely("启动任务初始状态")
             except Exception:
+                if self.mailbox_leases is not None:
+                    for task_id in reversed(leased_mailboxes):
+                        try:
+                            self.mailbox_leases.release(task_id=task_id, reusable=True)
+                        except Exception:
+                            pass
                 for index, binding in reversed(list(enumerate(leased_bindings))):
                     try:
                         owner = created_task_ids[index] if index < len(created_task_ids) else batch_id
@@ -1957,8 +2654,13 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             self._circuit_stop_requested = False
             self._user_stop_requested = False
             self._stop.clear()
-            self._heartbeat_stop.clear()
-            self._heartbeat_thread = threading.Thread(target=self._heartbeat_loop, args=(batch_id,), name=f"free-proxy-heartbeat-{batch_id[-8:]}", daemon=True)
+            # Each batch owns its own event. Reusing one shared Event lets a
+            # newly started batch clear the stop signal before an old
+            # heartbeat thread has observed it, so the old thread can resume
+            # renewing released leases.
+            heartbeat_stop = threading.Event()
+            self._heartbeat_stop = heartbeat_stop
+            self._heartbeat_thread = threading.Thread(target=self._heartbeat_loop, args=(batch_id, heartbeat_stop), name=f"free-proxy-heartbeat-{batch_id[-8:]}", daemon=True)
             self._heartbeat_thread.start()
             self._executor = PriorityExecutor(max_workers=workers, thread_name_prefix="free-register")
             for task_id in list(self._tasks):
@@ -1971,6 +2673,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     driver=driver,
                     priority=10,
                 )
+            self._startup_batch_id = ""
             self._log(f"[启动 Free 注册/free_run_start] 已准备 {target_count} 个邮箱，{workers} 并发", "success")
             return {
                 "batch_id": batch_id,
@@ -1981,6 +2684,9 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
     def _future_done(self, future: Future[Any]) -> None:
         executor: PriorityExecutor | None = None
         completed_batch_id = ""
+        heartbeat_thread: threading.Thread | None = None
+        heartbeat_stop: threading.Event | None = None
+        is_last = False
         with self._lock:
             if future not in self._futures:
                 return
@@ -1992,24 +2698,54 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             self._future_drivers.pop(future, None)
             is_last = not self._futures
             if is_last:
-                self._heartbeat_stop.set()
+                self._shutdown_pending = True
+                heartbeat_stop = self._heartbeat_stop
+                heartbeat_thread = self._heartbeat_thread
+                heartbeat_stop.set()
             # Completion callbacks must always continue into Future and
             # executor cleanup even when the task store is temporarily
             # unavailable.
             self._save_tasks_safely("任务完成回调")
-        # Keep the shared Camoufox pool alive across batches.  Shutting it down
-        # from this callback races a new start request: the next worker can
-        # acquire the pool after the callback releases ``self._lock`` but
-        # before the browser thread finishes closing, yielding a stale closed
-        # pool (``camoufox_pool_shutdown_pending``) or a disconnected browser.
-        # Explicit debug/config cleanup and process-exit shutdown still release
-        # idle pools; normal batch completion only releases task resources.
+        if not is_last:
+            return
+        # Wait outside the manager lock. Other executor workers may still be
+        # unwinding, and the heartbeat can be finishing a diagnostic callback
+        # that needs the same lock. Keeping the lock while joining would turn
+        # a normal shutdown into a deadlock.
+        if executor is not None:
+            try:
+                executor.shutdown(wait=True, cancel_futures=False)
+            except Exception:
+                # The worker result and task state are already durable; a
+                # best-effort shutdown failure must not strand the manager.
+                pass
+        if heartbeat_thread is not None and heartbeat_thread is not threading.current_thread():
+            try:
+                heartbeat_thread.join(timeout=2)
+            except Exception:
+                pass
         with self._lock:
-            if not self._futures and self._executor is executor and executor is not None:
+            if not self._futures and self._executor is executor:
                 completed_batch_id = str(self._batch_id or "")
-                executor.shutdown(wait=False, cancel_futures=False)
-                self._executor = None
+                # Keep the executor reference (and ``running`` state) visible
+                # until the final durable checkpoint has completed.  The
+                # checkpoint can still emit a structured storage-warning log;
+                # publishing ``None`` first lets callers tear down a temporary
+                # data directory while that callback is writing ``tasks.json``
+                # or ``logs.json``.
                 self._save_tasks_safely("批次完成回调")
+                # No new batch/retry may enter while ``_shutdown_pending`` is
+                # true.  Re-check ownership after the checkpoint so a future
+                # lifecycle change cannot clear a replacement executor.
+                if not self._futures and self._executor is executor:
+                    self._executor = None
+                    if self._heartbeat_thread is heartbeat_thread and (
+                        heartbeat_thread is None or not heartbeat_thread.is_alive()
+                    ):
+                        self._heartbeat_thread = None
+                    self._shutdown_pending = False
+        if completed_batch_id:
+            self._release_runtime_owner()
         if completed_batch_id and self._free_notification is not None:
             try:
                 with self._lock:
@@ -2024,8 +2760,39 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 # persisted registration result or retry queue.
                 pass
 
-    def _heartbeat_loop(self, owner: str) -> None:
-        while not self._heartbeat_stop.wait(20):
+    def _heartbeat_loop(self, owner: str, stop_event: threading.Event | None = None) -> None:
+        # ``stop_event`` is captured by the thread so a later batch cannot
+        # clear this batch's shutdown signal. The optional argument preserves
+        # compatibility for integrations that call the private helper.
+        event = stop_event or self._heartbeat_stop
+        while not event.wait(20):
+            if self._manager_owner_acquired:
+                if not self._owner_current():
+                    self._record_owner_fenced()
+                    break
+                storage = self._owner_storage()
+                if storage is not None:
+                    try:
+                        if not storage.renew_manager_owner(
+                            self._manager_owner_id,
+                            self._manager_owner_epoch,
+                            pid=os.getpid(),
+                        ):
+                            self._record_owner_fenced()
+                            break
+                    except Exception:
+                        self._log(
+                            f"[{owner}/Free 进程所有权/free_process_owner] 进程租约续期失败，等待 TTL 恢复",
+                            "warn",
+                            node_code="free_process_owner",
+                            node_label="Free 进程所有权",
+                            outcome="renew_failed",
+                            workflow="lifecycle",
+                        )
+                        # Do not renew resource leases after losing the
+                        # process fence; a replacement must be able to take
+                        # them over safely.
+                        break
             try:
                 heartbeat_batch = getattr(self.proxies, "heartbeat_batch", None)
                 if callable(heartbeat_batch):
@@ -2034,6 +2801,73 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     self.proxies.heartbeat(owner, lease_seconds=180)
             except Exception:
                 self._log(f"[{owner}/Free 代理租约/free_proxy_lease] 租约续期失败，任务将依靠过期时间恢复", "warn")
+            # Mailbox claims are held while queued/running workers prepare the
+            # transport. Keep them alive for long queues and slow browser
+            # startup, and let the coordinator refresh its CAS revision so a
+            # later email-submit confirmation remains valid.
+            coordinator = self.mailbox_leases
+            if coordinator is None:
+                continue
+            with self._lock:
+                mailbox_leases = [
+                    (
+                        str(task.get("task_id") or ""),
+                        str(task.get("row_id") or ""),
+                    )
+                    for task in self._tasks.values()
+                    if str(task.get("batch_id") or "") == str(owner or "")
+                    and str(task.get("status") or "").strip().lower()
+                    in {"queued", "running"}
+                    # Continuation tasks (2FA/password retries) reuse the
+                    # account session and deliberately do not claim a fresh
+                    # mailbox.  Only registration tasks have a lease to
+                    # renew; filtering here also avoids a warning every
+                    # heartbeat for those continuations.
+                    and str(task.get("retry_mode") or "registration").strip().lower()
+                    == "registration"
+                    and str(task.get("task_id") or "").strip()
+                    and str(task.get("row_id") or "").strip()
+                ]
+            for task_id, row_id in mailbox_leases:
+                try:
+                    if not coordinator.renew(
+                        task_id=task_id,
+                        row_id=row_id,
+                        lease_seconds=180,
+                    ):
+                        self._log(
+                            f"[{task_id}/Free 邮箱租约/free_mailbox_lease] "
+                            "邮箱租约续期未成功，任务将依靠过期时间恢复",
+                            "warn",
+                            task_id=task_id,
+                            node_code="free_mailbox_lease",
+                            node_label="续期 Free 邮箱租约",
+                            outcome="renew_failed",
+                            failure={
+                                "error_code": "free_mailbox_lease_renew_failed",
+                                "technical_summary": "邮箱租约续期未成功",
+                                "retryable": True,
+                                "action_hint": "检查 Free 邮箱数据库状态；过期租约会自动恢复。",
+                            },
+                            workflow="cleanup",
+                        )
+                except Exception as exc:
+                    self._log(
+                        f"[{task_id}/Free 邮箱租约/free_mailbox_lease] "
+                        f"邮箱租约续期失败（{type(exc).__name__}）",
+                        "warn",
+                        task_id=task_id,
+                        node_code="free_mailbox_lease",
+                        node_label="续期 Free 邮箱租约",
+                        outcome="renew_failed",
+                        failure={
+                            "error_code": "free_mailbox_lease_renew_failed",
+                            "technical_summary": f"邮箱租约续期失败（{type(exc).__name__}）",
+                            "retryable": True,
+                            "action_hint": "检查 Free 邮箱数据库状态；过期租约会自动恢复。",
+                        },
+                        workflow="cleanup",
+                    )
 
     def stop(self) -> None:
         self._stop.set()
@@ -2059,6 +2893,10 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     self._release_task_lease(task)
             self._save_tasks_safely("停止任务状态")
         self._log("[停止 Free 注册/free_stop] 已请求停止，运行中的账号不切换代理", "warn")
+        with self._lock:
+            idle = not self._futures and self._executor is None
+        if idle:
+            self._release_runtime_owner()
 
     def rerun(self, task_id: str, config: Mapping[str, Any]) -> dict[str, Any]:
         """Queue a failed account without starting a competing Free batch."""
@@ -2185,6 +3023,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         row_id = str(original.get("row_id") or "").strip()
         if not row_id:
             raise FreeRegisterError("free_rerun", "重跑 Free 账号", "任务没有绑定 Free 邮箱", retryable=False)
+        self._ensure_runtime_owner()
         retry_key = f"{row_id}:{retry_node}"
         with self._lock:
             active_id = self._retry_leases.get(retry_key)
@@ -2256,7 +3095,25 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                         error_code="free_password_retry_active",
                     )
 
-            active_batch = bool(self._executor and self._futures)
+            active_batch = bool(
+                self._executor
+                or self._shutdown_pending
+                or (
+                    self._heartbeat_thread is not None
+                    and self._heartbeat_thread.is_alive()
+                )
+            )
+            if active_batch and (self._executor is None or not self._futures):
+                # The final callback has begun executor shutdown. Its queue
+                # already contains sentinels, so a continuation cannot be
+                # submitted safely until the batch is fully drained.
+                raise FreeRegisterError(
+                    "free_retry",
+                    "重试 Free 任务",
+                    "Free 批次正在收尾，请稍后重试",
+                    retryable=True,
+                    error_code="free_batch_shutdown_pending",
+                )
             batch_id = str(self._batch_id or "") if active_batch else f"free-retry-{int(time.time())}-{secrets.token_hex(4)}"
             driver = str(original.get("driver") or config.get("driver") or "protocol").strip().lower()
             # 2FA is a continuation of an already-created account.  Keep it
@@ -2272,6 +3129,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             if mailbox is None:
                 raise FreeRegisterError("free_rerun", "重跑 Free 账号", "Free 邮箱记录不存在", retryable=False)
             reserved = False
+            mailbox_lease_acquired = False
             if not continuation:
                 self.pool.reserve([mailbox], batch_id)
                 reserved = True
@@ -2365,6 +3223,22 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     binding = bindings[0]
                 now = int(time.time())
                 retry_id = f"{batch_id}-{secrets.token_hex(3)}"
+                if not continuation and self.mailbox_leases is not None:
+                    lease = self.mailbox_leases.acquire(
+                        row_id,
+                        task_id=retry_id,
+                        batch_id=batch_id,
+                        driver=driver,
+                    )
+                    if lease is None:
+                        raise FreeRegisterError(
+                            "free_mailbox_lease",
+                            "预留 Free 邮箱租约",
+                            "Free 邮箱租约已被其他任务占用",
+                            retryable=True,
+                            error_code="free_mailbox_lease_conflict",
+                        )
+                    mailbox_lease_acquired = True
                 workers = max(1, min(int(config.get("concurrency") or self._last_config.get("concurrency") or 3), 16))
                 # A task snapshot may intentionally expose only capability
                 # flags after restart, while the private result file still
@@ -2438,8 +3312,9 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     self._batch_id = batch_id
                     self._stop.clear()
                     self._user_stop_requested = False
-                    self._heartbeat_stop.clear()
-                    self._heartbeat_thread = threading.Thread(target=self._heartbeat_loop, args=(batch_id,), name=f"free-proxy-heartbeat-{batch_id[-8:]}", daemon=True)
+                    heartbeat_stop = threading.Event()
+                    self._heartbeat_stop = heartbeat_stop
+                    self._heartbeat_thread = threading.Thread(target=self._heartbeat_loop, args=(batch_id, heartbeat_stop), name=f"free-proxy-heartbeat-{batch_id[-8:]}", daemon=True)
                     self._heartbeat_thread.start()
                     self._executor = PriorityExecutor(max_workers=workers, thread_name_prefix="free-retry")
                 self._submit_registered_worker(
@@ -2461,6 +3336,11 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 if submitted:
                     raise
                 self._tasks.pop(retry_id, None)
+                if mailbox_lease_acquired and self.mailbox_leases is not None:
+                    try:
+                        self.mailbox_leases.release(task_id=retry_id, reusable=True)
+                    except Exception:
+                        pass
                 if binding is not None:
                     try:
                         self.proxies.release(binding, owner=retry_id or batch_id)
@@ -2481,7 +3361,11 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                         pass
                     if self._executor is not None:
                         try:
-                            self._executor.shutdown(wait=False, cancel_futures=True)
+                            # No worker was submitted on this rollback path;
+                            # wait for the idle executor threads so a caller
+                            # can safely tear down a temporary data directory
+                            # immediately after the exception.
+                            self._executor.shutdown(wait=True, cancel_futures=True)
                         except Exception:
                             pass
                     self._executor = None
@@ -2489,6 +3373,8 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     self._batch_id = previous_batch_id
                     self._last_config = previous_last_config
                 self._save_tasks_safely("重试任务回滚")
+                if created_executor and not self._futures:
+                    self._release_runtime_owner()
                 raise
 
     def retry_twofa(self, task_id: str, config: Mapping[str, Any]) -> dict[str, Any]:
@@ -2632,7 +3518,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         ))
 
     def secret(self, task_ids: Sequence[str], kind: str, *, row_ids: Sequence[str] = ()) -> str:
-        if kind not in {"token", "password", "totp", "proxy", "credential"}:
+        if kind not in {"token", "password", "totp", "proxy", "credential", "email"}:
             raise FreeRegisterError("free_secret", "读取 Free 敏感字段", "不支持的敏感字段类型", retryable=False)
         values: list[str] = []
         seen_rows: set[str] = set()
@@ -2644,7 +3530,12 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 row_id = str(task.get("row_id") or "").strip()
                 seen_rows.add(row_id)
                 result = task.get("result") if isinstance(task.get("result"), Mapping) else {}
-                if kind == "credential":
+                if kind == "email":
+                    mailbox = self.pool.entry(row_id) if row_id else None
+                    # Prefer the private pool row: a recovered/legacy task may
+                    # carry a masked public projection in ``task.email``.
+                    value = getattr(mailbox, "email", "") or task.get("email", "")
+                elif kind == "credential":
                     mailbox = self.pool.entry(row_id) if row_id else None
                     value = _account_material_line(
                         str(task.get("email") or getattr(mailbox, "email", "")),
@@ -2661,7 +3552,10 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     continue
                 result = self.pool.result(normalized)
                 private_state = self.pool._row_state(normalized)
-                if kind == "credential":
+                if kind == "email":
+                    mailbox = self.pool.entry(normalized)
+                    value = getattr(mailbox, "email", "") or result.get("email", "")
+                elif kind == "credential":
                     mailbox = self.pool.entry(normalized)
                     value = _account_material_line(
                         str(getattr(mailbox, "email", "") or result.get("email") or ""),
@@ -2744,7 +3638,108 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         """Compatibility hook: shared proxy allocation permits batch collisions."""
         _ = task
 
+    def _mailbox_lease_callbacks(
+        self,
+        task: Mapping[str, Any],
+    ) -> tuple[Callable[..., bool] | None, Callable[..., bool] | None]:
+        """Build paired confirm/abort callbacks for the email-submit boundary.
+
+        The transport adapters deliberately know nothing about SQLite or the
+        manager. The abort half is intentionally narrower than generic
+        cleanup: it succeeds only for the just-created confirmation and only
+        when the adapter explicitly proves its submit primitive never began.
+        """
+        coordinator = self.mailbox_leases
+        if coordinator is None:
+            return None, None
+        task_id = str(task.get("task_id") or "").strip()
+        row_id = str(task.get("row_id") or "").strip()
+        batch_id = str(task.get("batch_id") or "").strip()
+        driver = str(task.get("driver") or "protocol").strip().lower() or "protocol"
+        if not task_id or not row_id:
+            return None, None
+        state = {"confirmed": False, "abortable": False}
+
+        def callback_task_id(args: tuple[Any, ...], kwargs: Mapping[str, Any]) -> str:
+            return str(
+                kwargs.get("task_id")
+                or (args[0] if args else task_id)
+                or task_id
+            ).strip()
+
+        def confirm(*args: Any, **kwargs: Any) -> bool:
+            # Accept the modern keyword contract and the legacy positional
+            # task-id callback shape used by a few integrations.
+            if callback_task_id(args, kwargs) != task_id:
+                return False
+            # A confirmation recovered from SQLite or reused by a later
+            # transport attempt is no longer reversible. This read also
+            # prevents stale in-memory callback state from authorizing abort.
+            if coordinator.is_confirmed(task_id=task_id, row_id=row_id):
+                state["confirmed"] = True
+                state["abortable"] = False
+                return True
+            outcome = coordinator.confirm(
+                task_id=task_id,
+                row_id=row_id,
+                batch_id=batch_id,
+                driver=driver,
+            )
+            state["confirmed"] = bool(outcome)
+            state["abortable"] = bool(outcome)
+            return bool(outcome)
+
+        def abort(*args: Any, **kwargs: Any) -> bool:
+            if callback_task_id(args, kwargs) != task_id:
+                return False
+            if kwargs.get("submission_definitely_not_started") is not True:
+                return False
+            if not state["confirmed"] or not state["abortable"]:
+                return False
+            # Consume the one-shot authorization before touching storage. If
+            # the CAS fails, conservatively retain the confirmed marker.
+            state["abortable"] = False
+            outcome = coordinator.abort_confirmation(
+                task_id=task_id,
+                row_id=row_id,
+                submission_definitely_not_started=True,
+            )
+            if outcome:
+                state["confirmed"] = False
+            return bool(outcome)
+
+        return confirm, abort
+
+    def _mailbox_confirm_callback(self, task: Mapping[str, Any]) -> Callable[..., bool] | None:
+        """Compatibility accessor for integrations that only accept confirm."""
+        confirm, _abort = self._mailbox_lease_callbacks(task)
+        return confirm
+
+    def _mailbox_confirmed(self, task: Mapping[str, Any]) -> bool:
+        coordinator = self.mailbox_leases
+        if coordinator is None:
+            return False
+        try:
+            task_id = str(task.get("task_id") or "")
+            row_id = str(task.get("row_id") or "")
+            # Prefer the explicit durable lookup.  It remains valid after the
+            # temporary resource lease expires or its sidecar is removed.
+            durable_checker = getattr(coordinator, "is_confirmed_durable", None)
+            if callable(durable_checker):
+                return bool(durable_checker(task_id=task_id, row_id=row_id))
+            return bool(coordinator.is_confirmed(task_id=task_id, row_id=row_id))
+        except Exception:
+            # An unreadable confirmation marker is not proof that submission
+            # never started.  Keep the mailbox protected and disable proxy
+            # replay until storage health is restored.
+            return True
+
     def _release_task_lease(self, task: Mapping[str, Any]) -> None:
+        # A stale worker must not release a lease that a replacement manager
+        # has already acquired for the same task id.
+        if self._manager_owner_acquired and not self._owner_current():
+            self._record_owner_fenced(task_id=str(task.get("task_id") or ""))
+            return
         task_id = str(task.get("task_id") or "")
         release_error: Exception | None = None
         try:
@@ -2762,7 +3757,21 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             # failure handling or executor bookkeeping.
             release_error = exc
 
-        cleanup_status = "released" if release_error is None else f"release_failed:{type(release_error).__name__}"
+        mailbox_release_error: Exception | None = None
+        if self.mailbox_leases is not None and task_id:
+            try:
+                # The coordinator decides whether the row is still reusable
+                # from its confirmed marker and current durable status.
+                self.mailbox_leases.release(
+                    task_id=task_id,
+                    row_id=str(task.get("row_id") or ""),
+                    reusable=True,
+                )
+            except Exception as exc:
+                mailbox_release_error = exc
+
+        cleanup_error = release_error or mailbox_release_error
+        cleanup_status = "released" if cleanup_error is None else f"release_failed:{type(cleanup_error).__name__}"
         with self._lock:
             current = self._tasks.get(task_id)
             if current is not None:
@@ -2782,6 +3791,22 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     "technical_summary": f"代理租约释放失败（{type(release_error).__name__}）",
                     "retryable": True,
                     "action_hint": "检查代理池状态，过期租约会自动恢复。",
+                },
+                workflow="cleanup",
+            )
+        if mailbox_release_error is not None:
+            self._log(
+                f"[{task_id}/释放 Free 邮箱/free_mailbox_release] 邮箱租约释放失败（{type(mailbox_release_error).__name__}）",
+                "warn",
+                task_id=task_id,
+                node_code="free_mailbox_release",
+                node_label="释放 Free 邮箱",
+                outcome="cleanup_failed",
+                failure={
+                    "error_code": "free_mailbox_release_failed",
+                    "technical_summary": f"邮箱租约释放失败（{type(mailbox_release_error).__name__}）",
+                    "retryable": True,
+                    "action_hint": "检查 Free 邮箱租约状态，过期租约会自动恢复。",
                 },
                 workflow="cleanup",
             )
@@ -2878,6 +3903,21 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         row_id = str(task.get("row_id") or "")
         if not row_id:
             return
+        # Re-check immediately before the lifecycle write.  The caller may
+        # have classified the failure before another process persisted the
+        # email-submit confirmation; in that case making the row available
+        # would allow a second task to reuse an already-consumed address.
+        if self._mailbox_confirmed(task):
+            self._log(
+                f"[{task.get('task_id', '')}/Free 邮箱待重跑/free_mailbox_pending_rerun] "
+                "检测到已确认的邮箱提交，跳过自动恢复为可用",
+                "warn",
+                task_id=str(task.get("task_id") or ""),
+                node_code="free_mailbox_pending_rerun",
+                node_label="Free 邮箱待重跑",
+                outcome="protected",
+            )
+            return
         try:
             provider_status = int(failure.get("http_status") or 0)
         except (TypeError, ValueError):
@@ -2923,7 +3963,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             return self.runner
         if str(config.get("driver") or "protocol").strip().lower() == "camoufox":
             camoufox_artifact_dir = self.data_dir / "camoufox_debug"
-            return CamoufoxRegistrationRunner(
+            return CamoufoxRunner(
                 lifecycle_store_path=str(self.data_dir / "camoufox_cleanup.json"),
                 debug_artifact_dir=str(camoufox_artifact_dir),
             )
@@ -3013,6 +4053,9 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 "2FA 重试和密码重试不能同时提交",
                 retryable=False, error_code="free_retry_modes_conflict",
             )
+        if self._manager_owner_acquired and not self._owner_current():
+            self._record_owner_fenced(task_id=str(task_id or ""))
+            return
         with self._lock:
             task = self._tasks.get(task_id)
             if not task:
@@ -3033,6 +4076,12 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             task_config["_manual_verification_broker"] = self.manual_broker
             task_config["_manual_generation_getter"] = self._manual_generation
         task_config["_mailbox_verification_state_fn"] = self._mailbox_verification_state
+        if not twofa_retry and not password_retry:
+            confirm_mailbox, abort_mailbox = self._mailbox_lease_callbacks(snapshot)
+            if confirm_mailbox is not None:
+                task_config["_confirm_mailbox_lease"] = confirm_mailbox
+            if abort_mailbox is not None:
+                task_config["_abort_mailbox_lease_confirmation"] = abort_mailbox
         start_node = "free_password_enroll" if password_retry else "free_twofa_enroll" if twofa_retry else "free_oauth_session"
         self._log(f"[{task_id}/{start_node}] Free 任务开始", "info")
         task_log = lambda message, level="info", **fields: self._task_log(task_id, message, level, **fields)
@@ -3085,10 +4134,18 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                         and str(getattr(exc, "error_code", "") or "") == "camoufox_context_create_failed"
                         and camoufox_proxy_retryable
                     )
+                    # A proxy retry is safe only before the mailbox submit
+                    # boundary.  Once the durable confirmation exists, a
+                    # route-level error must terminate as pending_rerun rather
+                    # than replaying registration on another proxy.
+                    durable_mailbox_confirmed = self._mailbox_confirmed(snapshot)
                     can_retry_pre_email = (
-                        (protocol_pre_email and network_failure)
-                        or (protocol_pre_email and bool(getattr(exc, "proxy_retryable", False)))
-                        or camoufox_pre_email
+                        not durable_mailbox_confirmed
+                        and (
+                            (protocol_pre_email and network_failure)
+                            or (protocol_pre_email and bool(getattr(exc, "proxy_retryable", False)))
+                            or camoufox_pre_email
+                        )
                     )
                     if not can_retry_pre_email or attempt >= retry_limit or self._stop.is_set():
                         raise
@@ -3107,6 +4164,9 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                         # the same proxy when no healthy replacement exists.
                         raise
                     self._log(f"[{task_id}/Free 预注册重试/{exc.node_code}] 代理连接异常，{'切换备用代理' if switched else '重试当前代理'}（第 {attempt + 1} 次）", "warn")
+            if self._manager_owner_acquired and not self._owner_current():
+                self._record_owner_fenced(task_id=task_id)
+                return
             post_registration_failure = None
             verified_exit_ip = ""
             result.update({
@@ -3162,6 +4222,9 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             result_label = "完成" if status == "success" else f"注册完成，{failure_identity}{'待重试' if status == 'twofa_pending' else '待处理'}"
             self._log(f"[{task_id}/free_result_save] Free 任务{result_label}", "success" if status == "success" else "warn")
         except FreeRegisterError as exc:
+            if self._manager_owner_acquired and not self._owner_current():
+                self._record_owner_fenced(task_id=task_id)
+                return
             node_code = str(exc.node_code or "free_protocol")
             node_label = str(exc.node_label or FREE_STAGE_LABELS.get(node_code, node_code))
             action_hint = str(getattr(exc, "action_hint", "") or "")
@@ -3228,6 +4291,20 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     error=failure["public_message"], failure=failure,
                     reusable_after_failure=False,
                 )
+            elif self._mailbox_confirmed(snapshot):
+                # Confirmation is the irreversible email-submit boundary. A
+                # transport response such as 429 after that point must never
+                # return the address to the fresh-registration pool.
+                self.pool.update(
+                    snapshot["row_id"], status="pending_rerun", stage=exc.node_code,
+                    error=failure["public_message"], failure=failure,
+                    reusable_after_failure=False,
+                )
+                self._log(
+                    f"[{task_id}/Free 邮箱待重跑/free_mailbox_pending_rerun] "
+                    "邮箱已提交，保留 pending_rerun 供显式重跑",
+                    "warn",
+                )
             elif self._can_reuse_mailbox_after_failure(exc.node_code, exc):
                 self._restore_mailbox_after_pre_registration_failure(snapshot, failure)
             else:
@@ -3276,6 +4353,9 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 artifact_id=failure.get("artifact_id") or failure.get("debug_artifact_id"),
             )
         except FreeTwoFaPending as pending:
+            if self._manager_owner_acquired and not self._owner_current():
+                self._record_owner_fenced(task_id=task_id)
+                return
             # A retry can fail after the account and token already exist. Keep
             # the task retryable and persist the token/plan context instead of
             # turning the recoverable 2FA state into a generic protocol error.
@@ -3324,6 +4404,9 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 content_type=failure.get("content_type"), session_rebuilds=failure.get("session_rebuilds"),
             )
         except Exception as exc:
+            if self._manager_owner_acquired and not self._owner_current():
+                self._record_owner_fenced(task_id=task_id)
+                return
             failure, classified_exc, current_stage, current_label = (
                 self._persist_unexpected_task_failure(
                     task_id,

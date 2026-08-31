@@ -1,13 +1,16 @@
-"""Provider strategy for the api798 ``/latest`` mailbox page.
+"""Provider strategy for api798 mailbox responses.
 
-The api798 page is a JavaScript shell that embeds a message body in an
-``htmlContent`` assignment.  Keeping its URL trust policy and inert string
-decoder separate prevents the general mailbox parser from broadening its
-bare-code rules for unrelated providers.
+The ``/latest`` page is a JavaScript shell that embeds a message body in an
+``htmlContent`` assignment.  The ``/get_code`` endpoint returns a small JSON
+envelope.  Keeping both URL trust policies and decoders here prevents the
+general mailbox parser from broadening its bare-code rules for unrelated
+providers.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import dataclass
 import json
 import re
 from typing import Any
@@ -16,9 +19,18 @@ import urllib.parse
 
 _API798_HOST = "api798.com"
 _API798_LATEST_PATH = "/latest"
+_API798_GET_CODE_PATH = "/get_code"
 _TRUSTED_OTP_PATH_PATTERN = re.compile(
     r"(?i)(?:^|/)(?:pickup|mail-api|mail-code|api/messages?)(?:/|$)"
 )
+
+
+@dataclass(frozen=True, slots=True)
+class Api798GetCodeResponse:
+    """Strict, body-only projection of an api798 ``/get_code`` response."""
+
+    success: bool
+    message: str = ""
 _API798_HTML_CONTENT_PATTERNS = (
     re.compile(r'(?is)\bhtmlContent\s*=\s*"((?:\\.|[^"\\])*)"'),
     re.compile(r"(?is)\bhtmlContent\s*=\s*'((?:\\.|[^'\\])*)'"),
@@ -37,15 +49,49 @@ def mailbox_provider_strategy(source_url: str) -> str:
         parsed = urllib.parse.urlsplit(source_url)
     except (TypeError, ValueError):
         return ""
-    if (
-        parsed.scheme.lower() in {"http", "https"}
-        and (parsed.hostname or "").casefold() == _API798_HOST
-        and parsed.path.rstrip("/").casefold() == _API798_LATEST_PATH
-    ):
-        return "api798_latest"
+    if parsed.scheme.lower() in {"http", "https"} and (
+        parsed.hostname or ""
+    ).casefold() == _API798_HOST:
+        path = parsed.path.rstrip("/").casefold()
+        if path == _API798_LATEST_PATH:
+            return "api798_latest"
+        if path == _API798_GET_CODE_PATH:
+            return "api798_get_code"
     if _TRUSTED_OTP_PATH_PATTERN.search(parsed.path):
         return "trusted_path"
     return ""
+
+
+def _top_level_scalar(value: Any) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value).strip()
+    return ""
+
+
+def api798_get_code_response(
+    raw: str,
+    source_url: str,
+) -> Api798GetCodeResponse | None:
+    """Parse only the documented top-level ``success/message`` envelope.
+
+    ``None`` means the URL is not the exact api798 endpoint.  Once the URL is
+    recognized, malformed data is kept as an unsuccessful empty response so
+    it cannot fall through to broader JSON traversal.  Query parameters are
+    intentionally never inspected here.
+    """
+    if mailbox_provider_strategy(source_url) != "api798_get_code":
+        return None
+    try:
+        parsed = json.loads(str(raw or ""))
+    except (RecursionError, TypeError, ValueError):
+        return Api798GetCodeResponse(False)
+    if not isinstance(parsed, Mapping):
+        return Api798GetCodeResponse(False)
+    if parsed.get("success") is not True:
+        return Api798GetCodeResponse(False)
+    return Api798GetCodeResponse(True, _top_level_scalar(parsed.get("message")))
 
 
 def _decode_javascript_string(value: str) -> str:
@@ -116,8 +162,10 @@ def allows_bare_code(source_url: str) -> bool:
 
 
 __all__ = [
+    "Api798GetCodeResponse",
     "allows_bare_code",
     "api798_embedded_html",
+    "api798_get_code_response",
     "api798_received_at",
     "mailbox_provider_strategy",
 ]

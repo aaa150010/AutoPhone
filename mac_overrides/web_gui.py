@@ -61,6 +61,7 @@ import mailbox_parser_sample_store as _mailbox_parser_sample_store_ext
 import mailbox_retention as _mailbox_retention_ext
 import free_register_runtime as _free_register_runtime_ext
 import free_register_config as _free_register_config_ext
+import free_storage_adapters as _free_storage_adapters_ext
 import phone_risk_runtime as _phone_risk_runtime_ext
 import phone_binding_runtime as _phone_binding_runtime_ext
 import performance_runtime as _performance_runtime_ext
@@ -1123,6 +1124,75 @@ def _real_send_email_otp(self, continue_url=""):
         self,
         lambda: _ORIGINAL_REAL_SEND_EMAIL_OTP(self, continue_url),
     )
+
+
+def _real_send_passwordless_otp(self, continue_url=""):
+    """Send the explicit one-time-code action from a login-password page.
+
+    The Auth UI can return ``/api/accounts/email-otp/send`` as a continuation
+    URL while the visible page is ``login_password``.  AutoRegister instead
+    submits the page's passwordless action, which maps to the dedicated
+    ``passwordless/send-otp`` endpoint.  Keep this adapter scoped to Free so
+    ordinary SMS/OAuth callers retain the recovered transport behavior.
+    """
+    _set_current_task_stage("email_code_waiting")
+    if not _is_free_transport(self):
+        return _ORIGINAL_REAL_SEND_EMAIL_OTP(self, continue_url)
+
+    provider = getattr(self, "sentinel_provider", None)
+    reset = getattr(provider, "reset", None)
+    if callable(reset):
+        reset("password_verify")
+
+    endpoint = f"{_codex_oauth_chain.AUTH}/api/accounts/passwordless/send-otp"
+    # This action is rendered on ``/log-in/password``.  Reusing the generic
+    # email-verification header flow produces a syntactically valid Sentinel
+    # token for the wrong server-side transition and Auth responds with
+    # ``invalid_state``.  Keep the request aligned with AutoRegister's
+    # password-page contract: password_verify token + password-page referer.
+    referer = f"{_codex_oauth_chain.AUTH}/log-in/password"
+
+    def request() -> dict[str, object]:
+        try:
+            try:
+                headers = self._headers("password_verify", referer)
+            except Exception:
+                headers = {
+                    **getattr(_codex_oauth_chain, "PAGE_HEADERS", {}),
+                    "referer": referer,
+                    "sec-fetch-site": "same-origin",
+                }
+            response = self.session.post(
+                endpoint,
+                json={},
+                headers=headers,
+                allow_redirects=True,
+                timeout=30,
+            )
+            parser = getattr(self, "_gptphone_json_response", None)
+            if not callable(parser):
+                parser = getattr(_codex_oauth_chain, "_json_response", None)
+            data = parser(response) if callable(parser) else {}
+            if not isinstance(data, dict):
+                data = {}
+        except Exception as exc:
+            data = {
+                "_status": 0,
+                "error": f"passwordless_otp_send_failed: {type(exc).__name__}",
+            }
+        try:
+            self.last_response = data
+        except Exception:
+            pass
+        if _codex_oauth_chain._is_success_response(data):
+            _call_log(
+                getattr(self, "log_fn", None),
+                "  [Codex] 一次性验证码发送入口成功: /api/accounts/passwordless/send-otp",
+                "info",
+            )
+        return data
+
+    return _with_transport_protocol_lease(self, request)
 
 
 def _real_visit_continue(self, continue_url, referer):
@@ -3732,6 +3802,7 @@ _codex_oauth_chain.RealCodexTransport.import_phase1_session = _real_import_phase
 _codex_oauth_chain.RealCodexTransport._headers = _real_headers
 _codex_oauth_chain.RealCodexTransport._post_auth_json = _real_post_auth_json
 _codex_oauth_chain.RealCodexTransport.send_email_otp = _real_send_email_otp
+_codex_oauth_chain.RealCodexTransport.send_passwordless_otp = _real_send_passwordless_otp
 _codex_oauth_chain.RealCodexTransport.submit_email_identifier = _real_submit_email_identifier
 _codex_oauth_chain.RealCodexTransport.verify_password = _real_verify_password
 _codex_oauth_chain.RealCodexTransport.verify_email_otp = _real_verify_email_otp
@@ -3882,6 +3953,7 @@ _RUN_BATCH_MANIFEST = _run_batch_runtime_ext.RunBatchManifestStore(
 _FREE_REGISTER = _free_register_runtime_ext.FreeRegisterManager(
     _FREE_DATA_DIR,
     diagnostic_store=_DIAGNOSTIC_STORE,
+    storage_adapters=_free_storage_adapters_ext.build_free_storage_adapters(_FREE_DATA_DIR),
     manual_broker=_MANUAL_VERIFICATION,
     config_provider=_FREE_CONFIG_STORE.load,
     notification_config_getter=lambda: (_read_local_config() or {}).get("email_notification", {}),

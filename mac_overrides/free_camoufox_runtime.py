@@ -1392,15 +1392,43 @@ async def _wait_for_submit_enabled(page: Any, selectors: tuple[str, ...], *, tim
     return None
 
 
-async def _submit_visible_form(page: Any, selector: str) -> bool:
+async def _submit_visible_form(page: Any, selector: str) -> bool | None:
+    """Press Enter and report ``None`` when dispatch outcome is uncertain.
+
+    ``False`` is reserved for failures before Playwright was asked to press
+    the key.  An exception raised by ``press`` itself can happen after the
+    browser dispatched the event, so callers must not treat it as proof that
+    submission did not start.
+    """
+    action_started = False
     try:
-        await page.locator(selector).first.press("Enter")
+        locator = page.locator(selector).first
+        action_started = True
+        # The state loop observes the resulting page itself.  Waiting for a
+        # navigation inside Playwright can raise after Enter was dispatched
+        # when the auth shell is slow, so request dispatch-only semantics.
+        press = getattr(locator, "press")
+        try:
+            signature = inspect.signature(press)
+        except (TypeError, ValueError):
+            signature = None
+        if signature is None:
+            await press("Enter", no_wait_after=True)
+        else:
+            try:
+                signature.bind("Enter", no_wait_after=True)
+            except TypeError:
+                # Keep lightweight test doubles and older Playwright builds
+                # usable while preferring the non-waiting API when available.
+                await press("Enter")
+            else:
+                await press("Enter", no_wait_after=True)
         return True
     except Exception:
-        return False
+        return None if action_started else False
 
 
-async def _click_visible_submit(page: Any, selector: str) -> bool:
+async def _click_visible_submit(page: Any, selector: str) -> bool | None:
     """Click a previously identified safe submit control.
 
     The DOM can be replaced between the JS preparation pass and the click, so
@@ -1408,15 +1436,22 @@ async def _click_visible_submit(page: Any, selector: str) -> bool:
     """
     if not selector:
         return False
+    action_started = False
     try:
         locator = page.locator(selector).first
         await locator.wait_for(state="visible", timeout=1500)
         if hasattr(locator, "is_enabled") and not await locator.is_enabled(timeout=500):
             return False
-        await locator.click(timeout=3000)
+        action_started = True
+        # The auth shell can take longer than the action timeout to finish its
+        # navigation.  Waiting for navigation here turns a successful click
+        # into a TimeoutError and incorrectly marks the mailbox as consumed
+        # with an ``uncertain`` failure.  The state loop below owns transition
+        # waiting, so return as soon as Playwright dispatches the click.
+        await locator.click(timeout=3000, no_wait_after=True)
         return True
     except Exception:
-        return False
+        return None if action_started else False
 
 
 async def _auth_error_text(page: Any) -> str:
@@ -2032,6 +2067,54 @@ def _invoke_otp_callback(
     raise TypeError("unsupported OTP callback signature")
 
 
+def _invoke_mailbox_lease_callback(
+    callback: Callable[..., Any],
+    *,
+    task_id: str,
+    email: str,
+    driver: str = "camoufox",
+    stage: str = "free_camoufox_signup_email",
+    submission_definitely_not_started: bool | None = None,
+) -> Any:
+    """Invoke a mailbox lease hook once across legacy callback signatures."""
+    try:
+        signature = inspect.signature(callback)
+    except (TypeError, ValueError):
+        keyword_context: dict[str, Any] = {
+            "task_id": task_id,
+            "email": email,
+            "driver": driver,
+            "stage": stage,
+        }
+        if submission_definitely_not_started is not None:
+            keyword_context["submission_definitely_not_started"] = bool(
+                submission_definitely_not_started
+            )
+        return callback(**keyword_context)
+    keyword_context = {
+        "task_id": task_id,
+        "email": email,
+        "driver": driver,
+        "stage": stage,
+    }
+    if submission_definitely_not_started is not None:
+        keyword_context["submission_definitely_not_started"] = bool(
+            submission_definitely_not_started
+        )
+    candidates = (
+        ((), keyword_context),
+        ((task_id,), {}),
+        ((), {}),
+    )
+    for args, kwargs in candidates:
+        try:
+            signature.bind(*args, **kwargs)
+        except TypeError:
+            continue
+        return callback(*args, **kwargs)
+    raise TypeError("unsupported mailbox lease callback signature")
+
+
 async def _await_otp_callback(
     callback: Callable[..., Any],
     stage_code: str,
@@ -2201,6 +2284,10 @@ async def _browser_flow(
     entry_recovery = "none"
     entry_form_present = False
     entry_submit_selector = ""
+    mailbox_lease_confirmed = False
+    mailbox_confirmation_abortable = False
+    mailbox_lease_callback = config.get("_confirm_mailbox_lease")
+    mailbox_abort_callback = config.get("_abort_mailbox_lease_confirmation")
     # Once an OTP/password/profile/auth page is observed, returning to the
     # email entry shell is a terminal navigation inconsistency. Re-submitting
     # the address could consume another OTP or duplicate account creation.
@@ -2231,6 +2318,81 @@ async def _browser_flow(
     def set_stage(code: str) -> None:
         if callable(stage_fn):
             stage_fn(str(config.get("task_id") or ""), code)
+
+    async def confirm_mailbox_before_submit() -> None:
+        """Confirm the mailbox only after a visible entry form is prepared."""
+        nonlocal mailbox_lease_confirmed, mailbox_confirmation_abortable
+        if mailbox_lease_confirmed or not callable(mailbox_lease_callback):
+            return
+        try:
+            outcome = await asyncio.to_thread(
+                _invoke_mailbox_lease_callback,
+                mailbox_lease_callback,
+                task_id=str(config.get("task_id") or ""),
+                email=email,
+                driver="camoufox",
+                stage="free_camoufox_signup_email",
+            )
+        except FreeRegisterError:
+            raise
+        except Exception as exc:
+            raise CamoufoxBrowserError(
+                "free_mailbox_lease",
+                "确认 Free 邮箱租约",
+                "提交邮箱前确认租约失败",
+                retryable=True,
+                error_code="free_mailbox_lease_confirm_failed",
+                diagnostic=f"callback={type(exc).__name__}",
+                safe_page=_safe_url(page),
+                page_type="entry",
+            ) from exc
+        if outcome is False:
+            raise CamoufoxBrowserError(
+                "free_mailbox_lease",
+                "确认 Free 邮箱租约",
+                "提交邮箱前邮箱租约已失效或被其他任务占用",
+                retryable=True,
+                error_code="free_mailbox_lease_conflict",
+                safe_page=_safe_url(page),
+                page_type="entry",
+            )
+        mailbox_lease_confirmed = True
+        mailbox_confirmation_abortable = True
+
+    async def abort_mailbox_confirmation_before_submit() -> bool:
+        """Undo only the confirmation for a submit that provably never ran."""
+        nonlocal mailbox_lease_confirmed, mailbox_confirmation_abortable
+        if (
+            not mailbox_lease_confirmed
+            or not mailbox_confirmation_abortable
+            or not callable(mailbox_abort_callback)
+        ):
+            return False
+        # The authorization is one-shot. An exception or failed CAS leaves
+        # the durable confirmation intact and therefore conservatively keeps
+        # the mailbox pending for an explicit rerun.
+        mailbox_confirmation_abortable = False
+        try:
+            outcome = await asyncio.to_thread(
+                _invoke_mailbox_lease_callback,
+                mailbox_abort_callback,
+                task_id=str(config.get("task_id") or ""),
+                email=email,
+                driver="camoufox",
+                stage="free_camoufox_signup_email",
+                submission_definitely_not_started=True,
+            )
+        except Exception as exc:
+            log(
+                f"Camoufox 邮箱租约确认撤销失败（{type(exc).__name__}），保留为已确认",
+                "warn",
+            )
+            return False
+        if outcome is False:
+            log("Camoufox 邮箱租约确认未撤销，保守保留已确认状态", "warn")
+            return False
+        mailbox_lease_confirmed = False
+        return True
 
     async def prepare_otp(stage_code: str, *, notify_stage: bool = True) -> None:
         if not callable(otp_prepare):
@@ -2346,6 +2508,7 @@ async def _browser_flow(
 
     async def submit_entry_email(selector: str, *, recovery: bool = False) -> dict[str, Any]:
         nonlocal entry_form_present, entry_submit_selector, entry_recovery
+        nonlocal mailbox_confirmation_abortable
         result = await _submit_email_form_stable(page, email)
         entry_form_present = bool(result.get("form_present"))
         prepared_input_selector = str(result.get("input_selector") or selector).strip()
@@ -2353,7 +2516,31 @@ async def _browser_flow(
             result.get("submit_selector"), 500,
         )
         if result.get("ok"):
-            clicked = await _click_visible_submit(page, entry_submit_selector)
+            await confirm_mailbox_before_submit()
+            try:
+                clicked = await _click_visible_submit(page, entry_submit_selector)
+            except BaseException:
+                # The click helper may have dispatched an event before its
+                # failure surfaced, so this path is intentionally irreversible.
+                mailbox_confirmation_abortable = False
+                raise
+            if clicked is None:
+                # ``None`` means the click call was entered but its outcome is
+                # unknown. Do not fall back to Enter or revoke the lease.
+                mailbox_confirmation_abortable = False
+                raise CamoufoxBrowserError(
+                    "free_camoufox_signup_email", "填写 Camoufox 注册邮箱",
+                    "邮箱提交动作结果不确定，已停止自动回退",
+                    error_code="camoufox_email_submit_uncertain",
+                    diagnostic=json.dumps({
+                        "phase": "entry", "reason": "click_outcome_unknown",
+                        "form_present": entry_form_present,
+                        "submit_selector": clean(entry_submit_selector, 120),
+                    }, ensure_ascii=False),
+                    safe_page=_safe_url(page), page_type="entry",
+                )
+            if clicked:
+                mailbox_confirmation_abortable = False
             fallback_input_selector = prepared_input_selector
             if not clicked:
                 # The submit control can go stale while React hydrates the
@@ -2369,18 +2556,39 @@ async def _browser_flow(
                     # one used by the preparation script. This also restores
                     # the framework input state before pressing Enter.
                     await _fill_input_like_user(page, fallback_input_selector, email)
-            if not clicked and not await _submit_visible_form(page, fallback_input_selector):
-                raise CamoufoxBrowserError(
-                    "free_camoufox_signup_email", "填写 Camoufox 注册邮箱",
-                    "邮箱表单未能提交", error_code="camoufox_email_submit_failed",
-                    diagnostic=json.dumps({
-                        "phase": "entry",
-                        "reason": "prepared_but_enter_failed",
-                        "form_present": entry_form_present,
-                        "input_selector": clean(fallback_input_selector, 120),
-                    }, ensure_ascii=False),
-                    safe_page=_safe_url(page), page_type="entry",
-                )
+            if not clicked:
+                try:
+                    entered = await _submit_visible_form(page, fallback_input_selector)
+                except BaseException:
+                    mailbox_confirmation_abortable = False
+                    raise
+                if entered is None:
+                    mailbox_confirmation_abortable = False
+                    raise CamoufoxBrowserError(
+                        "free_camoufox_signup_email", "填写 Camoufox 注册邮箱",
+                        "邮箱回车提交动作结果不确定，已停止自动回退",
+                        error_code="camoufox_email_submit_uncertain",
+                        diagnostic=json.dumps({
+                            "phase": "entry", "reason": "enter_outcome_unknown",
+                            "form_present": entry_form_present,
+                            "input_selector": clean(fallback_input_selector, 120),
+                        }, ensure_ascii=False),
+                        safe_page=_safe_url(page), page_type="entry",
+                    )
+                if not entered:
+                    await abort_mailbox_confirmation_before_submit()
+                    raise CamoufoxBrowserError(
+                        "free_camoufox_signup_email", "填写 Camoufox 注册邮箱",
+                        "邮箱表单未能提交", error_code="camoufox_email_submit_failed",
+                        diagnostic=json.dumps({
+                            "phase": "entry",
+                            "reason": "prepared_but_enter_failed",
+                            "form_present": entry_form_present,
+                            "input_selector": clean(fallback_input_selector, 120),
+                        }, ensure_ascii=False),
+                        safe_page=_safe_url(page), page_type="entry",
+                    )
+                mailbox_confirmation_abortable = False
             if not clicked:
                 entry_submit_selector = clean(fallback_input_selector, 120)
             entry_recovery = "form_resubmit" if recovery else entry_recovery
@@ -2401,7 +2609,27 @@ async def _browser_flow(
                 "free_camoufox_signup_email", "填写 Camoufox 注册邮箱",
                 "邮箱输入框写入失败", error_code="camoufox_email_fill_failed",
             )
-        if not await _submit_visible_form(page, selector):
+        await confirm_mailbox_before_submit()
+        try:
+            entered = await _submit_visible_form(page, selector)
+        except BaseException:
+            mailbox_confirmation_abortable = False
+            raise
+        if entered is None:
+            mailbox_confirmation_abortable = False
+            raise CamoufoxBrowserError(
+                "free_camoufox_signup_email", "填写 Camoufox 注册邮箱",
+                "邮箱回车提交动作结果不确定，已停止自动回退",
+                error_code="camoufox_email_submit_uncertain",
+                diagnostic=json.dumps({
+                    "phase": "entry", "reason": "enter_outcome_unknown",
+                    "form_present": entry_form_present,
+                    "input_selector": clean(selector, 120),
+                }, ensure_ascii=False),
+                safe_page=_safe_url(page), page_type="entry",
+            )
+        if not entered:
+            await abort_mailbox_confirmation_before_submit()
             raise CamoufoxBrowserError(
                 "free_camoufox_signup_email", "填写 Camoufox 注册邮箱",
                 "邮箱表单未能提交", error_code="camoufox_email_submit_failed",
@@ -2413,6 +2641,7 @@ async def _browser_flow(
                 }, ensure_ascii=False),
                 safe_page=_safe_url(page), page_type="entry",
             )
+        mailbox_confirmation_abortable = False
         entry_submit_selector = clean(selector, 120)
         entry_recovery = "form_resubmit" if recovery else entry_recovery
         fallback = {
@@ -5532,4 +5761,40 @@ __all__ = [
     "CamoufoxBrowserError", "CamoufoxDependencyError", "CamoufoxRegistrationRunner",
     "CamoufoxBrowserPool", "annotate_camoufox_debug_session", "shutdown_camoufox_pools",
     "browser_add_password",
+    # New composable boundaries are lazy compatibility exports; importing
+    # them does not initialize a browser or alter the legacy globals.
+    "CamoufoxFlowCheckpoint", "CamoufoxFlowContext", "CamoufoxFlowState",
+    "CamoufoxPoolSnapshot", "CamoufoxRegistrationRequest",
+    "CamoufoxRegistrationResult", "CamoufoxRunner", "CamoufoxStateMachine",
+    "CamoufoxFlowCoordinator", "FlowWaitResult",
+    "CamoufoxTransport", "CamoufoxTransportError", "DebugArtifactService",
+    "DebugEventBuffer", "BrowserPoolGateway", "InvalidTransitionError",
+    "PageTransportContract", "StateTransition",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    """Lazily expose the composable package boundaries from the old entrypoint.
+
+    The live helpers above intentionally remain local: existing tests and
+    integrations patch those globals directly.  New code can import the
+    smaller contracts/adapters through either ``mac_overrides.free_camoufox``
+    or this compatibility module without eagerly importing Camoufox.
+    """
+
+    boundary_names = {
+        "CamoufoxFlowCheckpoint", "CamoufoxFlowContext", "CamoufoxFlowState",
+        "CamoufoxPoolSnapshot", "CamoufoxRegistrationRequest",
+        "CamoufoxRegistrationResult", "CamoufoxRunner", "CamoufoxStateMachine",
+        "CamoufoxFlowCoordinator", "FlowWaitResult",
+        "CamoufoxTransport", "CamoufoxTransportError", "DebugArtifactService",
+        "DebugEventBuffer", "BrowserPoolGateway", "InvalidTransitionError",
+        "PageTransportContract", "StateTransition",
+    }
+    if name not in boundary_names:
+        raise AttributeError(name)
+    try:
+        from . import free_camoufox as boundaries
+    except ImportError:  # pragma: no cover - top-level recovery import
+        import free_camoufox as boundaries  # type: ignore
+    return getattr(boundaries, name)

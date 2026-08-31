@@ -1091,6 +1091,64 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertTrue(transport._gptphone_initial_email_otp_send_confirmed)
         self.assertTrue(any("首次邮箱验证码发送接口已确认" in message for message, _level in logs))
 
+    def test_free_passwordless_sender_uses_dedicated_endpoint(self):
+        module = self.module
+        calls = []
+        resets = []
+        logs = []
+
+        class Response:
+            status_code = 202
+            headers = {"content-type": "application/json"}
+            url = "https://auth.openai.com/email-verification"
+            text = "{}"
+
+            @staticmethod
+            def json():
+                return {
+                    "page": {"type": "email_otp_verification"},
+                    "continue_url": "/email-verification",
+                }
+
+        class Session:
+            def post(self, *args, **kwargs):
+                calls.append((args, kwargs))
+                return Response()
+
+        transport = SimpleNamespace(
+            config={"free_protocol_state_machine": True},
+            session=Session(),
+            sentinel_provider=SimpleNamespace(reset=lambda flow="": resets.append(flow)),
+            _headers=lambda flow, referer: {"x-flow": flow, "referer": referer},
+            log_fn=lambda message, level="info": logs.append((message, level)),
+        )
+        original_lease = module._with_transport_protocol_lease
+        module._with_transport_protocol_lease = lambda _transport, callback: callback()
+        try:
+            result = module._real_send_passwordless_otp(
+                transport,
+                "https://auth.openai.com/api/accounts/email-otp/send",
+            )
+        finally:
+            module._with_transport_protocol_lease = original_lease
+
+        self.assertEqual(result["page"]["type"], "email_otp_verification")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(
+            calls[0][0][0],
+            "https://auth.openai.com/api/accounts/passwordless/send-otp",
+        )
+        self.assertEqual(calls[0][1]["json"], {})
+        self.assertTrue(calls[0][1]["allow_redirects"])
+        self.assertEqual(calls[0][1]["timeout"], 30)
+        self.assertEqual(resets, ["password_verify"])
+        self.assertEqual(calls[0][1]["headers"]["x-flow"], "password_verify")
+        self.assertEqual(
+            calls[0][1]["headers"]["referer"],
+            "https://auth.openai.com/log-in/password",
+        )
+        self.assertTrue(any("passwordless/send-otp" in message for message, _level in logs))
+
     def test_email_otp_page_type_aliases_all_send_before_url_mailbox_wait(self):
         module = self.module
         original_submit = module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER

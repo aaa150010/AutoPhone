@@ -122,6 +122,18 @@ class _ChatgptPreludeTransport(_Transport):
         return {"_status": 200, "url": "https://auth.openai.com/log-in"}
 
 
+class _AutoRegisterTransport(_Transport):
+    def start_chatgpt_signup_authorize(self, email):
+        self.calls.append(f"prelude:{email}")
+        return {
+            "_status": 200,
+            "_content_type": "text/html",
+            "_url": "https://auth.openai.com/email-verification",
+            "page": {"type": "email_otp_verification"},
+            "continue_url": "https://auth.openai.com/email-verification",
+        }
+
+
 def _oauth_context(*, state="state-private", code_verifier="verifier-private"):
     return {
         "url": "https://auth.example.test/authorize?client_id=client-private&state=" + state,
@@ -152,12 +164,124 @@ def _run(transport, *, otp=None, transport_factory=None, oauth_context_factory=N
 
 
 class FreeProtocolFlowTests(unittest.TestCase):
+    def test_autoregister_prelude_is_ignored_for_codex_pkce_session(self):
+        transport = _AutoRegisterTransport()
+        prelude_calls = []
+
+        def prelude(*_args, **_kwargs):
+            prelude_calls.append(True)
+            raise AssertionError("the NextAuth prelude must not replace Codex OAuth")
+
+        result, _active = _run(
+            transport,
+            prelude=prelude,
+        )
+
+        self.assertTrue(result["registration_completed"])
+        self.assertEqual(prelude_calls, [])
+        self.assertEqual(transport.calls, ["initiate_oauth", "submit_email_identifier", "verify_email_otp", "create_account_profile", "follow_continue_until_code", "exchange_code"])
+        self.assertEqual(transport.exchange_args[1:], (
+            "verifier-private",
+            "client-private",
+            "http://localhost:1455/auth/callback",
+            "user@example.test",
+        ))
+
+    def test_prelude_compatibility_argument_does_not_change_callback_context(self):
+        transport = _AutoRegisterTransport()
+        callback_contexts = []
+
+        def prelude(*_args, **_kwargs):
+            raise AssertionError("prelude callback should remain unused")
+
+        original_follow = transport.follow_continue_until_code
+
+        def follow(continue_url, oauth_params):
+            callback_contexts.append(dict(oauth_params))
+            return original_follow(continue_url, oauth_params)
+
+        transport.follow_continue_until_code = follow
+        result, _active = _run(transport, prelude=prelude)
+        self.assertTrue(result["registration_completed"])
+        self.assertEqual(callback_contexts[0]["state"], "state-private")
+        self.assertEqual(transport.calls[:2], ["initiate_oauth", "submit_email_identifier"])
+
     def test_task_oauth_session_precedes_email_identifier(self):
         transport = _ChatgptPreludeTransport()
         result, _active = _run(transport)
         self.assertTrue(result["registration_completed"])
         self.assertEqual(transport.calls[:2], ["initiate_oauth", "submit_email_identifier"])
         self.assertNotIn("prelude:user@example.test", transport.calls)
+
+    def test_mailbox_lease_callback_runs_once_before_email_submit(self):
+        transport = _Transport()
+        events = []
+
+        def confirm_mailbox(**kwargs):
+            events.append(("confirm", kwargs.get("stage"), kwargs.get("driver")))
+            return True
+
+        result, _active = _run(transport, confirm_mailbox=confirm_mailbox)
+        self.assertTrue(result["registration_completed"])
+        self.assertEqual(events, [("confirm", "free_email_identifier", "protocol")])
+        self.assertEqual(transport.calls[0:2], ["initiate_oauth", "submit_email_identifier"])
+
+    def test_mailbox_lease_conflict_stops_before_email_submit(self):
+        transport = _Transport()
+
+        with self.assertRaises(FreeRegisterError) as raised:
+            _run(transport, confirm_mailbox=lambda **_kwargs: False)
+
+        self.assertEqual(raised.exception.error_code, "free_mailbox_lease_conflict")
+        self.assertEqual(transport.calls, ["initiate_oauth"])
+
+    def test_missing_submit_method_aborts_confirmation_before_call_starts(self):
+        class MissingSubmitTransport(_Transport):
+            submit_email_identifier = None
+
+        events = []
+
+        def confirm_mailbox(**_kwargs):
+            events.append("confirm")
+            return True
+
+        def abort_mailbox(**kwargs):
+            self.assertTrue(kwargs.get("submission_definitely_not_started"))
+            events.append("abort")
+            return True
+
+        transport = MissingSubmitTransport()
+        with self.assertRaises(FreeRegisterError) as raised:
+            _run(
+                transport,
+                confirm_mailbox=confirm_mailbox,
+                abort_mailbox_confirmation=abort_mailbox,
+            )
+
+        self.assertEqual(raised.exception.error_code, "free_transport_method_missing")
+        self.assertEqual(events, ["confirm", "abort"])
+        self.assertEqual(transport.calls, ["initiate_oauth"])
+
+    def test_submit_exception_keeps_confirmation_when_request_is_uncertain(self):
+        class UncertainSubmitTransport(_Transport):
+            def submit_email_identifier(self, _email):
+                self.calls.append("submit_email_identifier")
+                raise RuntimeError("connection closed after write")
+
+        events = []
+        transport = UncertainSubmitTransport()
+        with self.assertRaises(FreeRegisterError) as raised:
+            _run(
+                transport,
+                confirm_mailbox=lambda **_kwargs: events.append("confirm") or True,
+                abort_mailbox_confirmation=lambda **_kwargs: events.append("abort") or True,
+            )
+
+        self.assertEqual(raised.exception.error_code, "free_email_identifier_transport_failed")
+        self.assertEqual(events, ["confirm"])
+        self.assertEqual(
+            transport.calls, ["initiate_oauth", "submit_email_identifier"]
+        )
 
     def test_known_email_page_type_is_valid_even_when_transport_returns_html(self):
         transport = _Transport(email={
@@ -324,6 +448,30 @@ class FreeProtocolFlowTests(unittest.TestCase):
         self.assertEqual(result["oauth_session_rebuilds"], 1)
         self.assertEqual(len(created), 1)
         self.assertEqual(first.calls, ["initiate_oauth", "submit_email_identifier"])
+
+    def test_confirmed_mailbox_blocks_session_rebuild_after_email_submit_failure(self):
+        """A possibly-written email POST must never be replayed in a new session."""
+        first = _Transport(email={"_status": 400, "error": "Your sign-in session is no longer valid."})
+        second = _Transport()
+        created = []
+        events = []
+
+        with self.assertRaises(FreeRegisterError) as raised:
+            _run(
+                first,
+                transport_factory=lambda: created.append(second) or second,
+                confirm_mailbox=lambda **_kwargs: events.append("confirm") or True,
+                abort_mailbox_confirmation=lambda **_kwargs: events.append("abort") or True,
+            )
+
+        self.assertEqual(raised.exception.error_code, "oauth_session_invalid")
+        self.assertEqual(raised.exception.session_rebuilds, 0)
+        self.assertEqual(created, [])
+        self.assertEqual(events, ["confirm"])
+        self.assertEqual(
+            first.calls,
+            ["initiate_oauth", "submit_email_identifier"],
+        )
 
     def test_session_rebuild_keeps_original_pkce_context(self):
         first = _Transport(email={"_status": 400, "error": "Your sign-in session is no longer valid."})
@@ -626,6 +774,68 @@ class FreeProtocolFlowTests(unittest.TestCase):
         self.assertNotIn("verify_password", transport.calls)
         self.assertEqual(transport.calls.count("send_email_otp"), 1)
         self.assertEqual(transport.calls.count("verify_email_otp"), 1)
+
+    def test_login_password_uses_explicit_passwordless_sender_and_reclassifies_signup(self):
+        """Mirror AutoRegister's login-password page one-time-code action.
+
+        The provider may return a login-password page for a mailbox that can
+        still take the passwordless signup path.  The dedicated transport
+        method must win over the generic email sender, and the profile page
+        returned after OTP must reclassify the result as a signup.
+        """
+        class PasswordlessSignup(_Transport):
+            def __init__(self):
+                super().__init__(email={
+                    "_status": 200,
+                    "page": {"type": "login_password"},
+                    # This URL is intentionally misleading, matching the
+                    # production response that triggered the regression.
+                    "continue_url": "/api/accounts/email-otp/send",
+                })
+
+            def send_passwordless_otp(self, _url=""):
+                self.calls.append("send_passwordless_otp")
+                return {
+                    "_status": 200,
+                    "page": {"type": "email_otp_verification"},
+                    "continue_url": "/email-verification",
+                }
+
+        transport = PasswordlessSignup()
+        result, _ = _run(transport)
+
+        self.assertTrue(result["registration_completed"])
+        self.assertEqual(result["account_flow"], "signup")
+        self.assertEqual(transport.calls.count("send_passwordless_otp"), 1)
+        self.assertEqual(transport.calls.count("send_email_otp"), 0)
+        self.assertEqual(transport.calls.count("verify_email_otp"), 1)
+
+    def test_passwordless_sender_failure_stays_at_login_otp_node(self):
+        class FailedPasswordlessSender(_Transport):
+            def __init__(self):
+                super().__init__(email={
+                    "_status": 200,
+                    "page": {"type": "login_password"},
+                    "continue_url": "/api/accounts/email-otp/send",
+                })
+
+            def send_passwordless_otp(self, _url=""):
+                self.calls.append("send_passwordless_otp")
+                return {
+                    "_status": 503,
+                    "error": "passwordless send unavailable",
+                    "error_code": "otp_send_unavailable",
+                }
+
+        transport = FailedPasswordlessSender()
+        with self.assertRaises(FreeRegisterError) as raised:
+            _run(transport)
+
+        self.assertEqual(raised.exception.node_code, "free_existing_login_otp")
+        self.assertEqual(raised.exception.error_code, "free_existing_login_otp_send_failed")
+        self.assertEqual(raised.exception.provider_code, "otp_send_unavailable")
+        self.assertEqual(transport.calls.count("send_passwordless_otp"), 1)
+        self.assertEqual(transport.calls.count("send_email_otp"), 0)
 
     def test_existing_account_email_login_uses_password_verify_sentinel(self):
         class ExistingEmailFallback(_Transport):

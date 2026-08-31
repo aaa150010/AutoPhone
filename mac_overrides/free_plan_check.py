@@ -11,6 +11,7 @@ from __future__ import annotations
 from concurrent.futures import Future, ThreadPoolExecutor
 import copy
 import json
+import re
 from pathlib import Path
 import secrets
 import threading
@@ -29,6 +30,8 @@ try:
     from .free_register_common import (
         FreeRegisterError,
         atomic_write,
+        fingerprint,
+        mask_email,
         proxy_transport_value,
         timezone_offset_minutes,
     )
@@ -44,6 +47,8 @@ except ImportError:  # pragma: no cover - recovery import
     from free_register_common import (  # type: ignore[no-redef]
         FreeRegisterError,
         atomic_write,
+        fingerprint,
+        mask_email,
         proxy_transport_value,
         timezone_offset_minutes,
     )
@@ -153,15 +158,47 @@ class FreePlanCheckService:
         for task_id in submit:
             self._submit(task_id)
 
+    def _subject_fingerprint(self, email: Any) -> str:
+        """Use the diagnostic HMAC for public correlation when available."""
+        value = str(email or "").strip()
+        if not value:
+            return ""
+        store = getattr(self.log_store, "diagnostic_store", None)
+        if store is None:
+            # Accept direct DiagnosticEventWriter injection as well as the
+            # historical FreeLogStore facade.
+            store = getattr(self.log_store, "store", None)
+        fingerprint_fn = getattr(store, "fingerprint", None)
+        if callable(fingerprint_fn):
+            try:
+                candidate = str(fingerprint_fn(value) or "").strip().lower()
+                if re.fullmatch(r"[0-9a-f]{32}", candidate):
+                    return candidate
+            except Exception:
+                pass
+        return fingerprint(value)
+
     def _public(self, job: Mapping[str, Any]) -> dict[str, Any]:
-        return {
+        result = {
             key: copy.deepcopy(job[key])
             for key in (
-                "task_id", "row_id", "email", "status", "created_at", "updated_at",
+                "task_id", "row_id", "status", "created_at", "updated_at",
                 "checked_at", "retry_after_until", "http_status", "source", "recovered",
             )
             if key in job
-        } | ({"failure": canonical_failure(job["failure"], default_node_code=PLAN_STAGE, default_node_label=PLAN_LABEL)} if isinstance(job.get("failure"), Mapping) else {})
+        }
+        raw_email = str(job.get("email") or "").strip()
+        result["email"] = mask_email(raw_email)
+        result["email_masked"] = result["email"]
+        result["subject_ref_fingerprint"] = self._subject_fingerprint(raw_email)
+        if isinstance(job.get("failure"), Mapping):
+            # Preserve the historical optional ``failure`` key (including a
+            # canonical ``None`` for malformed snapshots) while keeping the
+            # payload strictly redacted.
+            result["failure"] = canonical_failure(
+                job["failure"], default_node_code=PLAN_STAGE, default_node_label=PLAN_LABEL
+            )
+        return result
 
     def public_state(self) -> dict[str, Any]:
         with self._lock:
@@ -179,7 +216,30 @@ class FreePlanCheckService:
     def _log(self, task_id: str, message: str, level: str = "info") -> None:
         if self.log_store is not None and callable(getattr(self.log_store, "add", None)):
             try:
-                self.log_store.add(f"[{task_id}/{PLAN_LABEL}/{PLAN_STAGE}] {message}", level)
+                text = f"[{task_id}/{PLAN_LABEL}/{PLAN_STAGE}] {message}"
+                self.log_store.add(
+                    text,
+                    level,
+                    chain="free",
+                    workflow="plan_check",
+                    driver="free",
+                    task_id=str(task_id or ""),
+                    stage=PLAN_STAGE,
+                    stage_label=PLAN_LABEL,
+                    node_code=PLAN_STAGE,
+                    node_label=PLAN_LABEL,
+                )
+            except TypeError:
+                # Older injected sinks only implement ``add(message, level)``;
+                # preserve their logging behavior while structured sinks get
+                # the explicit plan-check scope above.
+                try:
+                    self.log_store.add(
+                        f"[{task_id}/{PLAN_LABEL}/{PLAN_STAGE}] {message}",
+                        level,
+                    )
+                except Exception:
+                    pass
             except Exception:
                 pass
 

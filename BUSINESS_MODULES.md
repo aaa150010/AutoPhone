@@ -41,17 +41,77 @@ These files were selected from the PyInstaller/PYZ extraction as likely first-pa
 
 ## Maintained Runtime Overrides
 
-- `mac_overrides/free_register_runtime.py`: Free controller compatibility facade and public runtime assembly.
+- `mac_overrides/free_register/`: Free task contracts, revisioned repository,
+  mailbox leases, scheduler, retry policy, worker timing and composition root.
+- `mac_overrides/free_register_runtime.py`: Free controller compatibility facade
+  and recovered-call-signature assembly. New task, lease, retry or timing policy
+  belongs in `free_register/`, not in this facade.
 - `mac_overrides/free_protocol_runtime.py`: isolated Free full-protocol driver.
-- `mac_overrides/free_camoufox_runtime.py`: optional Camoufox browser pool and browser registration state machine.
+- `mac_overrides/free_camoufox/`: typed flow contracts, page transport,
+  transition validation, browser-pool boundary, debug artifact sanitization and
+  runner composition for the Camoufox chain.
+- `mac_overrides/free_camoufox_runtime.py`: recovered Camoufox compatibility
+  facade. New page behavior must enter through the package transport/state
+  boundaries instead of adding another private flow here.
+- `mac_overrides/free_storage.py`: Free-only SQLite transaction boundary for
+  mailboxes, shared healthy proxies, tasks, results, revisions and leases.
+- `mac_overrides/free_storage_adapters.py`: compatibility adapters that project
+  the SQLite repositories through the historical pool/task APIs.
+- `mac_overrides/free_rebind_storage.py`: independent SQLite repository for
+  protocol-only account rebind jobs; it never shares task tables with Free
+  registration.
 - `mac_overrides/free_register_config.py`: `${GPTPHONE_DATA_DIR}/free_register/` configuration, defaults, masking and migration.
-- `mac_overrides/free_proxy_runtime.py`: structured Free proxy pool, country/group selection, leases, health and quarantine.
+- `mac_overrides/free_proxy_runtime.py`: structured Free proxy pool using one shared `healthy_random` allocator, leases, health and quarantine; legacy country/group fields are migration-only and never a selection strategy.
 - `mac_overrides/free_live_check.py`: fast and deep account liveness checks using the account's saved registration proxy.
+- `mac_overrides/diagnostic_writer.py`: the single structured-event adapter;
+  binds task/batch/driver context, applies field allowlists and subject HMAC
+  masking, and keeps diagnostic outages best-effort.
+- `mac_overrides/free_log_migration.py`: one-shot, idempotent cleanup for
+  obsolete Free `logs.json` and `task_logs/*.json`; completion is marked in the
+  Free-owned `free_register.sqlite3` `storage_meta` table.
 - `mac_overrides/mailbox_otp_service.py`: shared mailbox OTP source registry, network transport, baseline/old-code exclusion, polling and credential-safe diagnostics.
 - `mac_overrides/mailbox_code_parser.py`: shared HTML/JSON/Base64/Japanese OTP field normalization and context-aware six-digit extraction.
 - `mac_overrides/mailbox_pickup_runtime.py`: `/pickup` and `/latest` JavaScript shell discovery, same-origin `/api/messages` and detail endpoint construction.
 - `mac_overrides/mailbox_request_runtime.py`: request baseline, old-code exclusion, bounded fallback polling and mailbox diagnostics state.
 - `mac_overrides/free_mailbox_otp.py`: Free compatibility wrapper; mailbox retrieval uses Free's explicit local-proxy/direct policy and never the registration residential proxy.
+
+### Free diagnostic data flow
+
+New runtime events flow through `DiagnosticEventWriter` into the append-only
+`DiagnosticStore` (`diagnostics.sqlite3`). `FreeLogStore` remains an API
+compatibility facade. New runtime assembly should set `legacy_projection=False`;
+compatibility rows are then projected from the structured event chain and no
+JSON logs are created. Legacy JSON files are not migrated and can be removed
+once with:
+
+```sh
+mac_runtime/.venv/bin/python -m mac_overrides.free_log_migration \
+  --data-dir "$GPTPHONE_DATA_DIR/free_register"
+```
+
+The command targets only the exact legacy files and records completion in
+`storage_meta`; mailbox, proxy, task, account-result and diagnostic data are
+outside its deletion scope.
+
+### Free persistence boundaries
+
+```text
+${GPTPHONE_DATA_DIR}/free_register/free_register.sqlite3
+  mailboxes + healthy_random proxies + registration tasks/results + storage_meta
+
+${GPTPHONE_DATA_DIR}/free_register/rebind/free_rebind.sqlite3
+  protocol-only rebind jobs/results + rebind migration metadata
+
+${GPTPHONE_DATA_DIR}/diagnostics/diagnostics.sqlite3
+  redacted append-only incidents/events and integrity metadata only
+```
+
+Registration and rebind credentials stay in their owning repository's private
+payload columns and are returned only by explicit secret endpoints. The
+diagnostic database stores only allowlisted redacted fields and HMAC
+fingerprints; it is not a bridge for sharing mailbox, proxy, task or account
+state. Legacy JSON/TXT task, pool and result data is imported once under a
+`storage_meta` marker and is no longer the runtime write path.
 
 ## 独立工具模块
 

@@ -315,10 +315,11 @@ class TransportTests(unittest.TestCase):
         )
         message, from_addr, to_addrs = client.messages[0]
         body = message.get_content()
-        self.assertIn("[自动接码机] 批次完成", message["Subject"])
+        self.assertIn("[GPT 注册中心][普通流程] 批次完成", message["Subject"])
         self.assertEqual(from_addr, "notifier@qq.com")
         self.assertEqual(to_addrs, ["ops@example.test"])
         self.assertIn("处理总数：7", body)
+        self.assertIn("链路：普通流程", body)
         self.assertIn("成功：4", body)
         self.assertNotIn("smtp-password-never-in-mail", message.as_string())
 
@@ -344,7 +345,8 @@ class TransportTests(unittest.TestCase):
         message = ssl_factory.clients[0].messages[0][0]
         rendered = message.as_string()
         body = message.get_content()
-        self.assertIn("OpenAI 授权链路异常", message["Subject"])
+        self.assertIn("[GPT 注册中心][普通流程] OpenAI 授权链路异常", message["Subject"])
+        self.assertIn("链路：普通流程", body)
         self.assertIn("openai_tls_connection_failure", body)
         self.assertIn("中文原因：OpenAI TLS 握手失败", body)
         self.assertIn("sha256:0123456789abcdef", body)
@@ -486,8 +488,9 @@ class TransportTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "sent")
         message = factory.clients[0].messages[0][0]
-        self.assertEqual(message["Subject"], "[自动接码机] 测试通知")
+        self.assertEqual(message["Subject"], "[GPT 注册中心] 测试通知")
         self.assertIn("配置测试成功", message.get_content())
+        self.assertIn("普通流程", message.get_content())
         self.assertNotIn("smtp-secret", message.as_string())
 
 

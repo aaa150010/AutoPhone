@@ -529,6 +529,63 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         self.assertIn("beforeinput", page.script)
         self.assertNotIn("button:has-text('Continue')", page.script)
 
+    def test_email_submit_click_does_not_wait_for_navigation(self):
+        """A slow auth redirect must not turn a dispatched click into failure."""
+        calls = []
+
+        class Locator:
+            first = None
+
+            def __init__(self):
+                self.first = self
+
+            async def wait_for(self, **_kwargs):
+                return None
+
+            async def is_enabled(self, **_kwargs):
+                return True
+
+            async def click(self, **kwargs):
+                calls.append(dict(kwargs))
+                # A real Playwright click can raise while waiting for a slow
+                # navigation when this flag is omitted.  Require the helper
+                # to make the non-waiting contract explicit.
+                if kwargs.get("no_wait_after") is not True:
+                    raise TimeoutError("navigation did not finish")
+
+        class Page:
+            def locator(self, _selector):
+                return Locator()
+
+        self.assertTrue(
+            asyncio.run(runtime._click_visible_submit(Page(), "#entry-submit"))
+        )
+        self.assertEqual(calls, [{"timeout": 3000, "no_wait_after": True}])
+
+    def test_email_submit_enter_does_not_wait_for_navigation(self):
+        """The Enter fallback must use the same dispatch-only contract."""
+        calls = []
+
+        class Locator:
+            first = None
+
+            def __init__(self):
+                self.first = self
+
+            async def press(self, key, **kwargs):
+                calls.append({"key": key, **kwargs})
+                if kwargs.get("no_wait_after") is not True:
+                    raise TimeoutError("navigation did not finish")
+
+        class Page:
+            def locator(self, _selector):
+                return Locator()
+
+        self.assertTrue(
+            asyncio.run(runtime._submit_visible_form(Page(), "#entry-email"))
+        )
+        self.assertEqual(calls, [{"key": "Enter", "no_wait_after": True}])
+
     def test_entry_submission_prefers_safe_button_and_waits_for_async_navigation(self):
         stable_result = {
             "ok": True,
@@ -610,6 +667,110 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         fill.assert_awaited_once_with(ANY, "#fresh-email", "user@example.test")
         enter_submit.assert_awaited_once_with(ANY, "#fresh-email")
         self.assertEqual(wait_selector.await_count, 2)
+
+    def test_entry_submit_false_aborts_only_the_fresh_confirmation(self):
+        stable_result = {
+            "ok": True,
+            "reason": "form_prepared",
+            "form_present": True,
+            "input_selector": "#entry-email",
+            "submit_selector": "#entry-submit",
+        }
+        events = []
+
+        def confirm(**_kwargs):
+            events.append("confirm")
+            return True
+
+        def abort(**kwargs):
+            self.assertTrue(kwargs.get("submission_definitely_not_started"))
+            events.append("abort")
+            return True
+
+        with (
+            patch.object(runtime.asyncio, "sleep", new=AsyncMock()),
+            patch.object(runtime, "_goto_with_retry", new=AsyncMock()),
+            patch.object(
+                runtime, "_wait_for_any_selector",
+                new=AsyncMock(return_value="#entry-email"),
+            ),
+            patch.object(
+                runtime, "_submit_email_form_stable",
+                new=AsyncMock(return_value=stable_result),
+            ),
+            patch.object(
+                runtime, "_click_visible_submit", new=AsyncMock(return_value=False),
+            ),
+            patch.object(
+                runtime, "_fill_input_like_user", new=AsyncMock(return_value=True),
+            ),
+            patch.object(
+                runtime, "_submit_visible_form", new=AsyncMock(return_value=False),
+            ),
+            patch.object(runtime, "_page_state", new=AsyncMock(return_value="entry")),
+        ):
+            with self.assertRaises(runtime.CamoufoxBrowserError) as raised:
+                asyncio.run(
+                    runtime._browser_flow(
+                        _EntryPage(), email="user@example.test", password="password",
+                        otp_callback=lambda: "", config={
+                            "registration_timeout_seconds": 60,
+                            "task_id": "task-abort",
+                            "_confirm_mailbox_lease": confirm,
+                            "_abort_mailbox_lease_confirmation": abort,
+                        },
+                        log=lambda *_args: None, otp_prepare=Mock(), otp_mark_sent=Mock(),
+                    )
+                )
+
+        self.assertEqual(raised.exception.error_code, "camoufox_email_submit_failed")
+        self.assertEqual(events, ["confirm", "abort"])
+
+    def test_entry_submit_exception_does_not_abort_uncertain_confirmation(self):
+        stable_result = {
+            "ok": True,
+            "reason": "form_prepared",
+            "form_present": True,
+            "input_selector": "#entry-email",
+            "submit_selector": "#entry-submit",
+        }
+        events = []
+        with (
+            patch.object(runtime.asyncio, "sleep", new=AsyncMock()),
+            patch.object(runtime, "_goto_with_retry", new=AsyncMock()),
+            patch.object(
+                runtime, "_wait_for_any_selector",
+                new=AsyncMock(return_value="#entry-email"),
+            ),
+            patch.object(
+                runtime, "_submit_email_form_stable",
+                new=AsyncMock(return_value=stable_result),
+            ),
+            patch.object(
+                runtime, "_click_visible_submit",
+                new=AsyncMock(side_effect=RuntimeError("click result unknown")),
+            ),
+            patch.object(runtime, "_page_state", new=AsyncMock(return_value="entry")),
+        ):
+            with self.assertRaises(RuntimeError):
+                asyncio.run(
+                    runtime._browser_flow(
+                        _EntryPage(), email="user@example.test", password="password",
+                        otp_callback=lambda: "", config={
+                            "registration_timeout_seconds": 60,
+                            "task_id": "task-uncertain",
+                            "_confirm_mailbox_lease": (
+                                lambda **_kwargs: events.append("confirm") or True
+                            ),
+                            "_abort_mailbox_lease_confirmation": (
+                                lambda **_kwargs: events.append("abort") or True
+                            ),
+                        },
+                        log=lambda *_args: None, otp_prepare=Mock(), otp_mark_sent=Mock(),
+                    )
+                )
+
+        self.assertEqual(events, ["confirm"])
 
     def test_unknown_shell_is_polled_until_auth_state_after_entry_submit(self):
         """A transient post-submit shell must not be classified as stuck."""

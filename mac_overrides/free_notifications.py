@@ -24,6 +24,30 @@ except ImportError:  # pragma: no cover
 
 _BATCH_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$")
 _INCIDENT_RE = re.compile(r"^LOG-[A-Za-z0-9._:-]{1,80}$")
+_FREE_DRIVER_LABELS = {
+    "protocol": "Protocol",
+    "camoufox": "Camoufox",
+}
+
+
+def _safe_free_driver(value: Any) -> str:
+    candidate = str(value or "").strip().lower()
+    return candidate if candidate in _FREE_DRIVER_LABELS else "unknown"
+
+
+def _free_chain_display(drivers: Any) -> str:
+    values = {
+        _safe_free_driver(item)
+        for item in (drivers or ())
+    }
+    if not values:
+        values = {"unknown"}
+    labels = [
+        _FREE_DRIVER_LABELS.get(driver, "未知链路")
+        for driver in ("protocol", "camoufox", "unknown")
+        if driver in values
+    ]
+    return f"Free / {' + '.join(labels)}"
 
 
 def _mask_email(value: Any) -> str:
@@ -68,6 +92,11 @@ def summarize_free_batch(tasks: Any, *, batch_id: str = "") -> dict[str, Any]:
         if rank >= previous_rank:
             latest[key] = item
     rows = list(latest.values())
+    driver_codes = sorted({_safe_free_driver(item.get("driver")) for item in rows})
+    if not driver_codes:
+        driver_codes = ["unknown"]
+    driver = driver_codes[0] if len(driver_codes) == 1 else "mixed"
+    chain = _free_chain_display(driver_codes)
     safe_batch = str(batch_id or "").strip()
     if not _BATCH_RE.fullmatch(safe_batch):
         safe_batch = ""
@@ -125,6 +154,9 @@ def summarize_free_batch(tasks: Any, *, batch_id: str = "") -> dict[str, Any]:
         batch_duration_ms = (wall_finish - wall_start) * 1000
     return {
         "batch_id": safe_batch,
+        "driver": driver,
+        "drivers": driver_codes,
+        "chain": chain,
         **counts,
         "duration_ms": batch_duration_ms,
         "duration_seconds": round(batch_duration_ms / 1000, 3),
@@ -155,13 +187,19 @@ class FreeBatchNotificationAdapter:
 
         def send(summary: Mapping[str, Any]) -> None:
             message = EmailMessage()
-            message["Subject"] = f"[自动接码机] Free 注册批次汇总 {summary.get('batch_id') or '-'}"
+            chain = str(summary.get("chain") or "Free / 未知链路")
+            subject_chain = chain.replace(" / ", " · ", 1)
+            message["Subject"] = (
+                f"[GPT 注册中心][{subject_chain}] Free 注册批次汇总 "
+                f"{summary.get('batch_id') or '-'}"
+            )
             settings = sender._settings
             message["From"] = settings.sender
             message["To"] = ", ".join(settings.recipients)
             slowest = summary.get("slowest_node") or {}
             failure = summary.get("first_failure") or {}
             lines = [
+                f"链路：{chain}",
                 f"批次：{summary.get('batch_id') or '-'}",
                 f"账号：{summary.get('total', 0)}，成功 {summary.get('success', 0)}，失败 {summary.get('failed', 0)}，部分成功 {summary.get('partial', 0)}，2FA 待重试 {summary.get('twofa_pending', 0)}，停止 {summary.get('stopped', 0)}",
                 f"总耗时：{summary.get('duration_seconds', 0)} 秒",

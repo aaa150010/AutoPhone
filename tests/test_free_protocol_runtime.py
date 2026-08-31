@@ -393,6 +393,34 @@ class FreeProtocolRuntimeTests(unittest.TestCase):
         self.assertFalse(transport.config["run_chatgpt_signup_phase"])
         self.assertEqual(_Transport.phone_calls, 0)
 
+    def test_protocol_runtime_keeps_autoregister_prelude_out_of_codex_flow(self):
+        build_calls = []
+        observed = {}
+        otp = _Otp()
+
+        def run_flow(transport, *, oauth_context, **kwargs):
+            observed["kwargs"] = dict(kwargs)
+            observed["transport"] = transport
+            observed["context"] = dict(oauth_context)
+            transport.initiate_oauth(oauth_context["url"])
+            return _result(), transport
+
+        with (
+            patch.dict(sys.modules, _fake_modules(build_calls)),
+            patch.object(runtime, "build_free_mailbox_otp_provider", return_value=otp),
+            patch.object(runtime, "run_free_protocol_flow", side_effect=run_flow),
+        ):
+            result = _Manager()._run_protocol(
+                _task(), {"flow_profile": "legacy", "auto_set_2fa": False},
+                threading.Event(), lambda *_args: None, lambda *_args, **_kwargs: None,
+            )
+
+        self.assertEqual(result["twofa_status"], "disabled")
+        self.assertNotIn("prelude", observed["kwargs"])
+        self.assertIs(observed["transport"], _Transport.instances[0])
+        self.assertEqual(observed["context"]["state"], "state-private")
+        self.assertEqual(observed["context"]["code_verifier"], "verifier-private")
+
     def test_protocol_signup_passes_configured_password_to_recovered_flow(self):
         build_calls = []
         observed = {}

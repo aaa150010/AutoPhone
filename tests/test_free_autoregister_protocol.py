@@ -97,6 +97,9 @@ class AutoRegisterPreludeTests(unittest.TestCase):
         transport = RealLike()
         result = run_autoregister_prelude(transport, "user@example.test")
         self.assertEqual(result["url"], "https://auth.openai.com/email-verification")
+        self.assertEqual(result["page"]["type"], "email_otp_verification")
+        self.assertEqual(result["continue_url"], "https://auth.openai.com/email-verification")
+        self.assertTrue(result["_gptphone_autoregister_prelude"])
         self.assertEqual([path for path, _kwargs in transport.get_calls], [
             "/api/auth/providers",
             "/api/auth/csrf",

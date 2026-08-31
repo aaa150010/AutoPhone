@@ -39,6 +39,79 @@ class DiagnosticStoreTests(unittest.TestCase):
         self.assertNotIn("private", self.store.export([incident_id], "markdown"))
         self.assertNotIn("a@example.test", self.store.export([incident_id], "json"))
 
+    def test_reused_task_id_isolated_by_workflow_and_driver(self) -> None:
+        register_id = self.store.record({
+            "event_id": "scope-register", "task_id": "scope-reused",
+            "chain": "free", "workflow": "register", "driver": "protocol",
+            "level": "error", "outcome": "failed", "node_code": "oauth_callback",
+        })
+        rebind_id = self.store.record({
+            "event_id": "scope-rebind", "task_id": "scope-reused",
+            "chain": "free", "workflow": "rebind", "driver": "protocol",
+            "level": "error", "outcome": "failed", "node_code": "change_email",
+        })
+        camoufox_id = self.store.record({
+            "event_id": "scope-camoufox", "task_id": "scope-reused",
+            "chain": "free", "workflow": "register", "driver": "camoufox",
+            "level": "error", "outcome": "failed", "node_code": "oauth_callback",
+        })
+
+        self.assertNotEqual(register_id, rebind_id)
+        self.assertNotEqual(register_id, camoufox_id)
+        self.assertNotEqual(rebind_id, camoufox_id)
+        self.assertEqual(len(self.store.incident(register_id)["events"]), 1)
+        self.assertEqual(len(self.store.incident(rebind_id)["events"]), 1)
+        self.assertEqual(len(self.store.incident(camoufox_id)["events"]), 1)
+
+    def test_cleanup_phase_attaches_to_existing_business_incident(self) -> None:
+        business_id = self.store.record({
+            "event_id": "business-before-cleanup", "task_id": "cleanup-after",
+            "chain": "free", "workflow": "register", "driver": "protocol",
+            "level": "error", "outcome": "failed", "node_code": "oauth_callback",
+        })
+        cleanup_id = self.store.record({
+            "event_id": "cleanup-after-business", "task_id": "cleanup-after",
+            "chain": "free", "workflow": "cleanup", "driver": "protocol",
+            "level": "error", "outcome": "cleanup_failed", "node_code": "proxy_release",
+        })
+        self.assertEqual(cleanup_id, business_id)
+        incident = self.store.incident(business_id)
+        assert incident is not None
+        self.assertEqual(incident["event_count"], 2)
+        self.assertEqual(incident["first_node_code"], "oauth_callback")
+
+    def test_maintenance_cleanup_attaches_to_existing_business_incident(self) -> None:
+        """Maintenance cleanup must remain an associated event, not a new root."""
+        business_id = self.store.record({
+            "event_id": "business-before-maintenance", "task_id": "maintenance-after",
+            "chain": "free", "workflow": "register", "driver": "protocol",
+            "level": "error", "outcome": "failed", "node_code": "oauth_callback",
+        })
+        cleanup_id = self.store.record({
+            "event_id": "maintenance-after-business", "task_id": "maintenance-after",
+            "chain": "free", "workflow": "maintenance", "driver": "protocol",
+            "level": "error", "outcome": "cleanup_failed", "node_code": "free_log_cleanup",
+        })
+        self.assertEqual(cleanup_id, business_id)
+        incident = self.store.incident(business_id)
+        assert incident is not None
+        self.assertEqual(incident["event_count"], 2)
+        self.assertEqual(incident["first_node_code"], "oauth_callback")
+
+    def test_search_supports_workflow_filter(self) -> None:
+        register_id = self.store.record({
+            "event_id": "search-register", "task_id": "search-register",
+            "chain": "free", "workflow": "register", "driver": "protocol",
+            "level": "error", "outcome": "failed", "node_code": "register_node",
+        })
+        self.store.record({
+            "event_id": "search-rebind", "task_id": "search-rebind",
+            "chain": "free", "workflow": "rebind", "driver": "protocol",
+            "level": "error", "outcome": "failed", "node_code": "rebind_node",
+        })
+        found = self.store.search({"workflow": "register"})
+        self.assertEqual([row["incident_id"] for row in found], [register_id])
+
     def test_diagnostic_write_failure_is_visible_in_health(self) -> None:
         with patch.object(self.store, "_record", side_effect=sqlite3.OperationalError("locked")):
             with self.assertRaises(sqlite3.OperationalError):

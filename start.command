@@ -236,13 +236,95 @@ LAUNCH_AGENT_OUT="$LAUNCH_AGENT_DIR/$LAUNCH_AGENT_LABEL.out.log"
 LAUNCH_AGENT_ERR="$LAUNCH_AGENT_DIR/$LAUNCH_AGENT_LABEL.err.log"
 mkdir -p "$LAUNCH_AGENT_DIR"
 
-# The launcher is intentionally a user service.  Unload the previous label
-# before replacing its generated plist so a second click cannot create two
-# Flask instances or a launch loop.
+is_owned_webui_pid() {
+  local pid="$1"
+  local command_line
+  [[ "$pid" == <-> ]] || return 1
+  command_line="$(/bin/ps -p "$pid" -o command= 2>/dev/null || true)"
+  [[ "$command_line" == *"$APP_DIR/plus_launcher.pyc"* ]] \
+    && [[ "$command_line" == *"--port $PORT"* ]]
+}
+
+owned_webui_pids() {
+  local pid
+  for pid in "$@"; do
+    if is_owned_webui_pid "$pid"; then
+      print -r -- "$pid"
+    fi
+  done
+}
+
+launch_agent_pids() {
+  local job_snapshot pid
+  job_snapshot="$(/bin/launchctl print "gui/$USER_ID/$LAUNCH_AGENT_LABEL" 2>/dev/null || true)"
+  while IFS= read -r pid; do
+    if [[ "$pid" == <-> ]]; then
+      print -r -- "$pid"
+    fi
+  done <<< "$(print -r -- "$job_snapshot" | /usr/bin/sed -nE 's/^[[:space:]]*pid = ([0-9]+).*$/\1/p')"
+}
+
+# The launcher is intentionally a user service. Capture the current job PID
+# before bootout: a failed Flask worker can stop listening before launchd
+# removes it, so a port-only check would let two SQLite owners overlap.
 USER_ID="$(id -u)"
+LAUNCH_AGENT_PIDS="$(launch_agent_pids)"
+typeset -a LAUNCH_AGENT_PID_ARRAY
+LAUNCH_AGENT_PID_ARRAY=()
+if [ -n "$LAUNCH_AGENT_PIDS" ]; then
+  LAUNCH_AGENT_PID_ARRAY=("${(@f)LAUNCH_AGENT_PIDS}")
+fi
 /bin/launchctl bootout "gui/$USER_ID/$LAUNCH_AGENT_LABEL" >/dev/null 2>&1 || true
 
-PORT_PIDS="$(/usr/sbin/lsof -nP -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)"
+# Explicitly stop the captured worker even when it no longer owns the HTTP
+# listener. Only signal it after re-checking the command, which avoids
+# affecting a reused PID or an unrelated process.
+if [ ${#LAUNCH_AGENT_PID_ARRAY[@]} -gt 0 ]; then
+  OLD_AGENT_PIDS="$(owned_webui_pids "${LAUNCH_AGENT_PID_ARRAY[@]}")"
+  if [ -n "$OLD_AGENT_PIDS" ]; then
+    typeset -a OLD_AGENT_PID_ARRAY
+    OLD_AGENT_PID_ARRAY=("${(@f)OLD_AGENT_PIDS}")
+    echo "Waiting for previous WebUI LaunchAgent process to exit..."
+    kill -TERM "${OLD_AGENT_PID_ARRAY[@]}" 2>/dev/null || true
+    for attempt in {1..120}; do
+      if [ -z "$(owned_webui_pids "${LAUNCH_AGENT_PID_ARRAY[@]}")" ]; then
+        break
+      fi
+      sleep 0.25
+    done
+    if [ -n "$(owned_webui_pids "${LAUNCH_AGENT_PID_ARRAY[@]}")" ]; then
+      echo "旧 WebUI LaunchAgent 进程在 TERM 等待窗口内未退出，已停止重载以保护 Free SQLite 状态。"
+      echo "请检查 $LAUNCH_AGENT_ERR，并确认旧进程已退出后重试。"
+      exit 1
+    fi
+  fi
+fi
+
+# Wait until launchd has removed the old service record. ``bootout`` can
+# return while the worker is unwinding browser and async resources.
+for attempt in {1..120}; do
+  if ! /bin/launchctl print "gui/$USER_ID/$LAUNCH_AGENT_LABEL" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.25
+done
+if /bin/launchctl print "gui/$USER_ID/$LAUNCH_AGENT_LABEL" >/dev/null 2>&1; then
+  echo "旧 WebUI LaunchAgent 在等待窗口内未退出，已停止重载以避免重复实例。"
+  echo "请检查 $LAUNCH_AGENT_ERR，并稍后重试。"
+  exit 1
+fi
+
+owned_port_pids() {
+  local raw pid
+  raw="$(/usr/sbin/lsof -nP -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)"
+  while IFS= read -r pid; do
+    if is_owned_webui_pid "$pid"; then
+      print -r -- "$pid"
+    fi
+  done <<< "$raw"
+}
+
+PORT_PIDS="$(owned_port_pids)"
 typeset -a PIDS_TO_STOP_ARRAY
 PIDS_TO_STOP_ARRAY=()
 if [ -n "$PORT_PIDS" ]; then
@@ -251,26 +333,34 @@ fi
 if [ ${#PIDS_TO_STOP_ARRAY[@]} -gt 0 ]; then
   echo "Stopping previous WebUI on port $PORT..."
   kill "${PIDS_TO_STOP_ARRAY[@]}" 2>/dev/null || true
-  for attempt in {1..20}; do
-    if [ -z "$(/usr/sbin/lsof -nP -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)" ]; then
+  # Give the Python process enough time to close Camoufox contexts and its
+  # event loop.  A short hard-kill window leaves pending browser tasks behind
+  # and causes the next generation to report false recovery failures.
+  for attempt in {1..120}; do
+    if [ -z "$(owned_port_pids)" ]; then
       break
     fi
-    sleep 0.1
+    sleep 0.25
   done
-  STILL_LISTENING="$(/usr/sbin/lsof -nP -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)"
+  STILL_LISTENING="$(owned_port_pids)"
   if [ -n "$STILL_LISTENING" ]; then
     typeset -a STILL_LISTENING_ARRAY
     STILL_LISTENING_ARRAY=("${(@f)STILL_LISTENING}")
     kill -9 "${STILL_LISTENING_ARRAY[@]}" 2>/dev/null || true
-    for attempt in {1..50}; do
-      if [ -z "$(/usr/sbin/lsof -nP -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)" ]; then
+    for attempt in {1..40}; do
+      if [ -z "$(owned_port_pids)" ]; then
         break
       fi
-      sleep 0.1
+      sleep 0.25
     done
+    if [ -n "$(owned_port_pids)" ]; then
+      echo "旧 WebUI 进程未能退出，LaunchAgent 未重新加载。"
+      exit 1
+    fi
   fi
-  if [ -n "$(/usr/sbin/lsof -nP -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)" ]; then
-    echo "Port $PORT is still occupied after stopping its listener; LaunchAgent was not started."
+  REMAINING_PORT_PIDS="$(/usr/sbin/lsof -nP -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)"
+  if [ -n "$REMAINING_PORT_PIDS" ]; then
+    echo "Port $PORT is still occupied after stopping the gptPhone listener; LaunchAgent was not started."
     exit 1
   fi
 fi
