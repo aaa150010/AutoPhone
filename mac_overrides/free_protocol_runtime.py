@@ -34,6 +34,7 @@ try:
         _reference_navigation_headers,
     )
     from .free_protocol_flow import run_free_protocol_flow
+    from .free_autoregister_protocol import run_autoregister_prelude
     from .free_protocol_reference import (
         REFERENCE_FLOW_PROFILE,
         REFERENCE_SENTINEL_VERSION as _REFERENCE_SENTINEL_VERSION,
@@ -74,6 +75,7 @@ except ImportError:
         _reference_navigation_headers,
     )
     from free_protocol_flow import run_free_protocol_flow  # type: ignore[no-redef]
+    from free_autoregister_protocol import run_autoregister_prelude  # type: ignore[no-redef]
     from free_protocol_reference import (  # type: ignore[no-redef]
         REFERENCE_FLOW_PROFILE,
         REFERENCE_SENTINEL_VERSION as _REFERENCE_SENTINEL_VERSION,
@@ -714,11 +716,11 @@ class FreeProtocolMixin:
         auth_session_logging_id = str(uuid.uuid4())
 
         def build_oauth_context() -> dict[str, Any]:
-            # The Windows reference enters a fresh mailbox through its
-            # explicit signup authorize branch.  Password/2FA retries are
-            # existing-account continuations and must retain the mixed login
-            # context so they do not get redirected into signup again.
-            screen_hint = "login_or_signup" if (password_retry or twofa_retry) else "signup"
+            # AutoRegister and the Windows browser flow both enter the
+            # ChatGPT/NextAuth login_or_signup surface. Keep a PKCE context
+            # for compatibility callers, but do not force the direct Codex
+            # signup surface for a new mailbox.
+            screen_hint = "login_or_signup"
             oauth_url, state, code_verifier = codex_chain_runner.build_oauth_url(
                 login_hint=email,
                 screen_hint=screen_hint,
@@ -745,10 +747,10 @@ class FreeProtocolMixin:
         chain_config.update({
             "run_mode": "free_register",
             "codex_chain_mode": "real",
-            # Free protocol owns the post-auth state machine below.  The
-            # standalone AutoRegister/NextAuth prelude is deliberately not
-            # injected here: it creates a separate CSRF/cookie context and
-            # cannot be combined with this task's Codex PKCE state.
+            # Free protocol owns the post-auth state machine below. The
+            # AutoRegister/NextAuth prelude is injected through the same
+            # task-scoped transport and only hands back a recognized page;
+            # compatibility callers can still fall back to the PKCE context.
             "run_chatgpt_signup_phase": False,
             # Free owns session rebuild and security-page stopping. The
             # recovered transport uses this marker to disable its hidden
@@ -828,9 +830,8 @@ class FreeProtocolMixin:
             json_response = getattr(codex_oauth_chain, "_json_response", None)
             if callable(json_response):
                 setattr(created, "_gptphone_json_response", json_response)
-            # Keep the task-scoped value available for the standalone
-            # AutoRegister-compatible prelude module. The Free protocol main
-            # flow does not invoke that separate NextAuth session anymore.
+            # Keep the task-scoped value available for the AutoRegister-
+            # compatible prelude, which runs on this exact transport/session.
             setattr(created, "_gptphone_auth_session_logging_id", auth_session_logging_id)
             setattr(created, "_gptphone_free_protocol_state_machine", True)
             if reference_flow:
@@ -881,6 +882,17 @@ class FreeProtocolMixin:
                     f"[{task_id}/认证预热/free_authenticated_warmup] 跳过：{type(exc).__name__}",
                     "warn",
                 )
+
+        def run_protocol_prelude(created: Any) -> Mapping[str, Any] | None:
+            """Enter the ChatGPT/NextAuth surface on the active transport."""
+            return run_autoregister_prelude(
+                created,
+                email,
+                task_id=task_id,
+                stage=stage,
+                log=log,
+                stop_requested=stop_event.is_set,
+            )
 
         def make_rebuilt_transport() -> Any:
             created = make_transport()
@@ -1053,6 +1065,7 @@ class FreeProtocolMixin:
                     )
                     if callable(config.get("_abort_mailbox_lease_confirmation"))
                     else None,
+                    prelude=run_protocol_prelude,
                 )
             except FreeRegisterError:
                 raise

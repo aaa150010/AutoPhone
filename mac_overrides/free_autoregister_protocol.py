@@ -149,6 +149,8 @@ def _annotate_page_response(transport: Any, response: Any) -> dict[str, Any]:
             page_type = "signup_password"
         elif "/about-you" in path or "/about_you" in path:
             page_type = "profile"
+        elif "/add-phone" in path or "/phone" in path or "contact-verification" in path:
+            page_type = "add_phone"
         if page_type:
             result["page"] = {"type": page_type}
     if page_type and not result.get("continue_url"):
@@ -174,17 +176,7 @@ def _run_reference_chatgpt_prelude(transport: Any, email: str) -> Mapping[str, A
     chatgpt = str(getattr(chain, "CHATGPT", "https://chatgpt.com"))
     page_headers = dict(getattr(chain, "PAGE_HEADERS", {}) or {})
     page_headers.setdefault("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-    login_response = session.get(
-        f"{chatgpt}/auth/login",
-        headers=page_headers,
-        allow_redirects=True,
-        timeout=30,
-    )
-    login_data = _json_response(transport, login_response)
-    login_status = response_status(login_data)
-    if login_status is not None and not 200 <= login_status < 400:
-        raise _failed(login_data)
-    csrf_data = json_get("/api/auth/csrf", referer=f"{chatgpt}/auth/login", timeout=30)
+    csrf_data = json_get("/api/auth/csrf", referer=f"{chatgpt}/", timeout=30)
     csrf_status = response_status(csrf_data)
     if csrf_status is not None and not 200 <= csrf_status < 400:
         raise _failed(csrf_data)
@@ -219,6 +211,7 @@ def _run_reference_chatgpt_prelude(transport: Any, email: str) -> Mapping[str, A
         signin_url,
         headers=signin_headers,
         data=urlencode({"callbackUrl": f"{chatgpt}/", "csrfToken": csrf, "json": "true"}),
+        allow_redirects=False,
         timeout=30,
     )
     data = _json_response(transport, response)
@@ -281,7 +274,7 @@ def run_autoregister_prelude(
         # response body out of diagnostics.
         providers_get = getattr(transport, "_chatgpt_json_get", None)
         if callable(providers_get):
-            providers = providers_get("/api/auth/providers", referer="https://chatgpt.com/auth/login", timeout=30)
+            providers = providers_get("/api/auth/providers", referer="https://chatgpt.com/", timeout=30)
             provider_status = response_status(providers)
             if provider_status is not None and not 200 <= provider_status < 400:
                 raise _failed(providers)

@@ -226,7 +226,7 @@ class FreeProtocolRuntimeTests(unittest.TestCase):
 
         self.assertEqual(result["twofa_status"], "disabled")
         self.assertEqual(len(build_calls), 1)
-        self.assertEqual(build_calls[0]["screen_hint"], "signup")
+        self.assertEqual(build_calls[0]["screen_hint"], "login_or_signup")
         self.assertEqual(build_calls[0]["login_hint"], _task()["email"])
         self.assertEqual(build_calls[0]["prompt"], "login")
         self.assertIn("prompt=login", contexts[0]["url"])
@@ -393,21 +393,28 @@ class FreeProtocolRuntimeTests(unittest.TestCase):
         self.assertFalse(transport.config["run_chatgpt_signup_phase"])
         self.assertEqual(_Transport.phone_calls, 0)
 
-    def test_protocol_runtime_keeps_autoregister_prelude_out_of_codex_flow(self):
+    def test_protocol_runtime_passes_autoregister_prelude_to_protocol_flow(self):
         build_calls = []
         observed = {}
+        prelude_calls = []
         otp = _Otp()
 
         def run_flow(transport, *, oauth_context, **kwargs):
             observed["kwargs"] = dict(kwargs)
             observed["transport"] = transport
             observed["context"] = dict(oauth_context)
+            kwargs["prelude"](transport)
             transport.initiate_oauth(oauth_context["url"])
             return _result(), transport
+
+        def run_prelude(transport, email, **_kwargs):
+            prelude_calls.append((transport, email))
+            return None
 
         with (
             patch.dict(sys.modules, _fake_modules(build_calls)),
             patch.object(runtime, "build_free_mailbox_otp_provider", return_value=otp),
+            patch.object(runtime, "run_autoregister_prelude", side_effect=run_prelude),
             patch.object(runtime, "run_free_protocol_flow", side_effect=run_flow),
         ):
             result = _Manager()._run_protocol(
@@ -416,8 +423,10 @@ class FreeProtocolRuntimeTests(unittest.TestCase):
             )
 
         self.assertEqual(result["twofa_status"], "disabled")
-        self.assertNotIn("prelude", observed["kwargs"])
+        self.assertIn("prelude", observed["kwargs"])
+        self.assertTrue(callable(observed["kwargs"]["prelude"]))
         self.assertIs(observed["transport"], _Transport.instances[0])
+        self.assertEqual(prelude_calls, [(_Transport.instances[0], _task()["email"])])
         self.assertEqual(observed["context"]["state"], "state-private")
         self.assertEqual(observed["context"]["code_verifier"], "verifier-private")
 

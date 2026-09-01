@@ -1,10 +1,9 @@
 """Free protocol registration state machine.
 
-The recovered chain contains a legacy ChatGPT signup prelude which combines a
-NextAuth page bootstrap with ``user/register``.  That prelude is too eager to
-reuse a stale login session.  This module keeps the Free workflow in a small,
-testable state machine and uses the transport's ordinary OAuth endpoints in
-the same order as the maintained protocol implementations.
+The flow consumes the AutoRegister-compatible NextAuth prelude when the
+transport can return a recognized page, then continues through the shared
+mailbox OTP, profile, callback and access-token states.  Older transports keep
+the local PKCE initiate/submit path as a compatibility fallback.
 """
 
 from __future__ import annotations
@@ -451,6 +450,25 @@ def _is_callback_destination(value: str, redirect_uri: str = "") -> bool:
         and parsed.netloc.casefold() == expected.netloc.casefold()
         and actual_path == expected_path
     )
+
+
+def _prelude_state_ready(response: Any) -> bool:
+    """Return whether a NextAuth prelude already yielded a state-machine page.
+
+    ``run_autoregister_prelude`` may return a generic login landing page when
+    the recovered transport cannot follow the authorize redirect.  That page
+    is only a bootstrap hint and must fall back to the legacy initiate/submit
+    pair.  Recognized page envelopes, including an explicit phone stop, are
+    safe to feed directly into the Free state machine.
+    """
+    if not isinstance(response, Mapping):
+        return False
+    page = str(_page_type_value(response) or "").strip().casefold().replace("-", "_")
+    if page in (_PASSWORD_PAGE_TYPES | _OTP_PAGE_TYPES | _PROFILE_PAGE_TYPES | _CALLBACK_READY_PAGE_TYPES):
+        return True
+    if _is_profile(response) or _is_phone(response):
+        return True
+    return False
 
 
 def _check_stopped(stop_requested: Callable[[], bool] | None) -> None:
@@ -956,14 +974,10 @@ def _run_once(
     ok, page_type, continue_url, error_text, _session_invalid = _chain_helpers()
     context = _oauth_context(oauth_context)
     oauth_url = context["url"]
-    if not all(context.get(key) for key in ("url", "code_verifier", "state", "client_id", "redirect_uri")):
-        raise FreeRegisterError(
-            "free_oauth_session",
-            "Free OAuth 会话",
-            "OAuth PKCE 上下文不完整，缺少授权地址、state、verifier、client_id 或 redirect_uri",
-            retryable=False,
-            error_code="free_oauth_context_incomplete",
-        )
+    pkce_context_complete = all(
+        context.get(key)
+        for key in ("url", "code_verifier", "state", "client_id", "redirect_uri")
+    )
 
     _stage(stage, task_id, "free_oauth_session")
     _log(log, "创建全新 OAuth HTTP 会话并开始授权", "info")
@@ -1020,84 +1034,107 @@ def _run_once(
         if outcome is False:
             _log(log, "邮箱提交尚未开始，但租约确认未撤销；保守保留已确认状态", "warn")
 
-    # ``prelude`` remains in the keyword signature for older callers, but is
-    # intentionally ignored.  The ChatGPT/NextAuth prelude has its own CSRF
-    # and cookie session and cannot be mixed with this task's Codex PKCE
-    # context.  Keeping the argument as a no-op avoids breaking facades while
-    # making the session boundary explicit and testable.
+    # The maintained AutoRegister route starts with a NextAuth providers/CSRF
+    # session and follows its authorize redirect.  When that prelude returns
+    # a recognized page, feed it directly into this state machine so the
+    # mailbox identifier is not submitted a second time.  Generic login HTML
+    # remains a compatibility hint and falls back to the legacy pair below.
+    response: Any = None
+    prelude_used = False
     if callable(prelude):
-        _log(log, "忽略不兼容的 AutoRegister OAuth 前置；沿用当前任务 Codex PKCE 会话", "warn")
-
-    # The Free protocol flow always owns one Codex OAuth session.  In
-    # particular, do not replace this pair with a ChatGPT/NextAuth prelude:
-    # the returned continuation must remain bound to ``oauth_context``.
-    start = _call_transport(
-        transport,
-        "initiate_oauth",
-        oauth_url,
-        flow="oauth_authorize",
-        stop_requested=stop_requested,
-        log=log,
-    )
-    trusted_start = _trusted_html_bootstrap(start, "initiate_oauth")
-    if not ok(start) and not trusted_start:
-        _raise_response(start, node="free_oauth_session", label="Free OAuth 会话", stage="free_oauth_session")
-    if _page_is_html(start):
-        if _is_security_challenge_response(start):
-            raise FreeRegisterError(
-                "free_oauth_security_challenge",
-                "等待 Free OAuth 安全验证",
-                "OAuth 授权返回安全验证页面，已停止自动流程",
-                retryable=False,
-                error_code="free_oauth_security_challenge",
+        prelude_response = prelude(transport)
+        if _prelude_state_ready(prelude_response):
+            response = prelude_response
+            prelude_used = True
+            _log(
+                log,
+                f"AutoRegister OAuth 前置已返回页面（页面={_page_type_value(response) or '-'}），跳过重复邮箱提交",
+                "success",
             )
-        if not _trusted_oauth_bootstrap_location(start):
-            failure = FreeRegisterError(
+        elif prelude_response is not None:
+            _log(log, "AutoRegister OAuth 前置未返回可识别页面，回退兼容授权入口", "warn")
+
+    if not prelude_used:
+        if not pkce_context_complete:
+            raise FreeRegisterError(
                 "free_oauth_session",
                 "Free OAuth 会话",
-                f"OAuth 授权返回无法识别的 HTML（{_response_detail(start)}）",
+                "OAuth PKCE 上下文不完整，缺少授权地址、state、verifier、client_id 或 redirect_uri",
+                retryable=False,
+                error_code="free_oauth_context_incomplete",
+            )
+        start = _call_transport(
+            transport,
+            "initiate_oauth",
+            oauth_url,
+            flow="oauth_authorize",
+            stop_requested=stop_requested,
+            log=log,
+        )
+        trusted_start = _trusted_html_bootstrap(start, "initiate_oauth")
+        if not ok(start) and not trusted_start:
+            _raise_response(start, node="free_oauth_session", label="Free OAuth 会话", stage="free_oauth_session")
+        if _page_is_html(start):
+            if _is_security_challenge_response(start):
+                raise FreeRegisterError(
+                    "free_oauth_security_challenge",
+                    "等待 Free OAuth 安全验证",
+                    "OAuth 授权返回安全验证页面，已停止自动流程",
+                    retryable=False,
+                    error_code="free_oauth_security_challenge",
+                )
+            if not _trusted_oauth_bootstrap_location(start):
+                failure = FreeRegisterError(
+                    "free_oauth_session",
+                    "Free OAuth 会话",
+                    f"OAuth 授权返回无法识别的 HTML（{_response_detail(start)}）",
+                    error_code="oauth_bootstrap_html",
+                )
+                if _pre_auth_html_response(start, "free_oauth_session"):
+                    setattr(failure, "proxy_retryable", True)
+                raise failure
+            _log(log, "OAuth 授权返回受信任 Auth HTML 起始页，继续使用当前会话提交邮箱", "info")
+        _log(log, f"OAuth 会话建立成功（HTTP {_status(start) or '-'}，Content-Type {_content_type(start) or '-'}）", "success")
+
+        _stage(stage, task_id, "free_email_identifier")
+        confirm_mailbox_for_submission()
+        response = _call_transport(
+            transport,
+            "submit_email_identifier",
+            email,
+            stop_requested=stop_requested,
+            log=log,
+            on_not_started=abort_if_transport_not_started,
+        )
+        identifier_status = _status(response)
+        if identifier_status is None or not 200 <= int(identifier_status) < 300:
+            _raise_response(response, node="free_email_identifier", label="识别 Free 注册邮箱", stage="free_email_identifier")
+        current_page = str(page_type(response) or _page_type_value(response) or "").strip().casefold().replace("-", "_")
+        known_html_page = current_page in (_PASSWORD_PAGE_TYPES | _OTP_PAGE_TYPES | _PROFILE_PAGE_TYPES | _CALLBACK_READY_PAGE_TYPES)
+        if _page_is_html(response) and not known_html_page:
+            if _is_security_challenge_response(response):
+                raise FreeRegisterError(
+                    "free_oauth_security_challenge",
+                    "等待 Free OAuth 安全验证",
+                    "邮箱识别返回安全验证页面，已停止自动流程",
+                    retryable=False,
+                    error_code="free_oauth_security_challenge",
+                )
+            failure = FreeRegisterError(
+                "free_email_identifier",
+                "识别 Free 注册邮箱",
+                f"邮箱识别返回 HTML（{_response_detail(response)}），授权会话未建立",
                 error_code="oauth_bootstrap_html",
             )
-            if _pre_auth_html_response(start, "free_oauth_session"):
+            if _pre_auth_html_response(response, "free_email_identifier"):
                 setattr(failure, "proxy_retryable", True)
             raise failure
-        _log(log, "OAuth 授权返回受信任 Auth HTML 起始页，继续使用当前会话提交邮箱", "info")
-    _log(log, f"OAuth 会话建立成功（HTTP {_status(start) or '-'}，Content-Type {_content_type(start) or '-'}）", "success")
-
-    _stage(stage, task_id, "free_email_identifier")
-    confirm_mailbox_for_submission()
-    response = _call_transport(
-        transport,
-        "submit_email_identifier",
-        email,
-        stop_requested=stop_requested,
-        log=log,
-        on_not_started=abort_if_transport_not_started,
-    )
-    identifier_status = _status(response)
-    if identifier_status is None or not 200 <= int(identifier_status) < 300:
-        _raise_response(response, node="free_email_identifier", label="识别 Free 注册邮箱", stage="free_email_identifier")
-    current_page = str(page_type(response) or _page_type_value(response) or "").strip().casefold().replace("-", "_")
-    known_html_page = current_page in (_PASSWORD_PAGE_TYPES | _OTP_PAGE_TYPES | _PROFILE_PAGE_TYPES | _CALLBACK_READY_PAGE_TYPES)
-    if _page_is_html(response) and not known_html_page:
-        if _is_security_challenge_response(response):
-            raise FreeRegisterError(
-                "free_oauth_security_challenge",
-                "等待 Free OAuth 安全验证",
-                "邮箱识别返回安全验证页面，已停止自动流程",
-                retryable=False,
-                error_code="free_oauth_security_challenge",
-            )
-        failure = FreeRegisterError(
-            "free_email_identifier",
-            "识别 Free 注册邮箱",
-            f"邮箱识别返回 HTML（{_response_detail(response)}），授权会话未建立",
-            error_code="oauth_bootstrap_html",
-        )
-        if _pre_auth_html_response(response, "free_email_identifier"):
-            setattr(failure, "proxy_retryable", True)
-        raise failure
-    _log(log, f"邮箱提交成功（页面={current_page or '-'}，continue={'yes' if _next_url(response) else 'no'}）", "info")
+        _log(log, f"邮箱提交成功（页面={current_page or '-'}，continue={'yes' if _next_url(response) else 'no'}）", "info")
+    else:
+        # Prelude responses are already state-machine envelopes.  Keep the
+        # same terminal security-page handling as transport responses without
+        # issuing any duplicate identifier request.
+        _raise_security_page(response)
 
     # Keep advancing through the finite authorization state machine. Providers
     # can return another OTP/password envelope after a successful transition;
@@ -1307,56 +1344,19 @@ def _run_once(
             error_code="free_oauth_callback_missing",
         )
     _stage(stage, task_id, "free_oauth_callback")
-    callback_url = str(_call_transport(
-        transport,
-        "follow_continue_until_code",
-        next_url,
-        context["params"],
-        flow="oauth_callback",
-        stop_requested=stop_requested,
-        log=log,
-    ) or "").strip()
-    callback_error, callback_error_description = _callback_error(callback_url)
-    if callback_error:
-        raise FreeRegisterError(
-            "free_oauth_callback", "Free OAuth 回调",
-            f"OAuth 回调返回错误：{callback_error_description or safe_log_message(callback_error)}",
-            retryable=False, error_code="oauth_callback_provider_error",
-            provider_code=callback_error,
-            safe_page=_safe_callback_label(callback_url),
-            action_hint="检查授权同意状态和账号风控后重新发起 OAuth",
-        )
-    if not _callback_matches_redirect(callback_url, context["redirect_uri"]):
-        raise FreeRegisterError(
-            "free_oauth_callback", "Free OAuth 回调",
-            f"OAuth 回调落点与当前 redirect_uri 不匹配（落点={_safe_callback_label(callback_url)}）",
-            retryable=False, error_code="oauth_callback_redirect_mismatch",
-            safe_page=_safe_callback_label(callback_url),
-            action_hint="检查 OAuth 客户端 redirect_uri 配置，不要继续交换 Token",
-        )
-    code, callback_state = _callback_code_and_state(callback_url)
-    if not code:
-        raise FreeRegisterError(
-            "free_oauth_callback",
-            "Free OAuth 回调",
-            f"OAuth 回调未返回 authorization code（落点={_safe_callback_label(callback_url)}）",
-            error_code="oauth_callback_missing_code",
-        )
-    if not callback_state or not hmac.compare_digest(callback_state, context["state"]):
-        raise FreeRegisterError(
-            "free_oauth_callback",
-            "Free OAuth 回调",
-            "OAuth 回调 state 缺失或与当前任务不匹配，已停止 Token 交换",
-            retryable=False,
-            error_code="oauth_callback_state_mismatch",
-        )
-    _log(log, "OAuth 回调 code/state 校验完成（内容不写入日志）", "success")
-
-    _stage(stage, task_id, "free_access_token")
-    session_token = ""
     complete_callback = getattr(transport, "complete_chatgpt_callback", None)
     capture_session_token = getattr(transport, "chatgpt_access_token", None)
-    if callable(complete_callback) and callable(capture_session_token):
+    nextauth_mode = prelude_used and callable(complete_callback) and callable(capture_session_token)
+    callback_url = ""
+    code = ""
+    callback_state = ""
+    session_token = ""
+
+    if nextauth_mode:
+        # AutoRegister's continuation is a ChatGPT callback URL, not the
+        # local PKCE redirect URI. Complete it on the same NextAuth session
+        # and read /api/auth/session accessToken; no local code/state exchange
+        # is involved in this path.
         callback_result = _call_transport(
             transport,
             "complete_chatgpt_callback",
@@ -1379,26 +1379,112 @@ def _run_once(
                     label="完成 ChatGPT OAuth 回调",
                     stage="free_oauth_callback",
                 )
+        callback_url = next_url
         session_token = str(capture_session_token() or "").strip()
-
-    if session_token:
+        if not session_token:
+            raise FreeRegisterError(
+                "free_access_token",
+                "获取 Free access token",
+                "ChatGPT OAuth callback 完成后未返回 session access token",
+                error_code="free_chatgpt_session_token_missing",
+            )
+        _log(log, "ChatGPT OAuth callback 完成并取得 Session access token（敏感内容不写入日志）", "success")
         tokens: Mapping[str, Any] = {
             "access_token": session_token,
             "token_source": "chatgpt_session",
         }
     else:
-        tokens = _call_transport(
+        # Compatibility transports still expose the local PKCE callback and
+        # token exchange. Preserve that behavior when no usable NextAuth
+        # prelude/session methods are available.
+        callback_url = str(_call_transport(
             transport,
-            "exchange_code",
-            code,
-            context["code_verifier"],
-            context["client_id"],
-            context["redirect_uri"],
-            email,
-            flow="oauth_token_exchange",
+            "follow_continue_until_code",
+            next_url,
+            context["params"],
+            flow="oauth_callback",
             stop_requested=stop_requested,
             log=log,
-        )
+        ) or "").strip()
+        callback_error, callback_error_description = _callback_error(callback_url)
+        if callback_error:
+            raise FreeRegisterError(
+                "free_oauth_callback", "Free OAuth 回调",
+                f"OAuth 回调返回错误：{callback_error_description or safe_log_message(callback_error)}",
+                retryable=False, error_code="oauth_callback_provider_error",
+                provider_code=callback_error,
+                safe_page=_safe_callback_label(callback_url),
+                action_hint="检查授权同意状态和账号风控后重新发起 OAuth",
+            )
+        if not _callback_matches_redirect(callback_url, context["redirect_uri"]):
+            raise FreeRegisterError(
+                "free_oauth_callback", "Free OAuth 回调",
+                f"OAuth 回调落点与当前 redirect_uri 不匹配（落点={_safe_callback_label(callback_url)}）",
+                retryable=False, error_code="oauth_callback_redirect_mismatch",
+                safe_page=_safe_callback_label(callback_url),
+                action_hint="检查 OAuth 客户端 redirect_uri 配置，不要继续交换 Token",
+            )
+        code, callback_state = _callback_code_and_state(callback_url)
+        if not code:
+            raise FreeRegisterError(
+                "free_oauth_callback",
+                "Free OAuth 回调",
+                f"OAuth 回调未返回 authorization code（落点={_safe_callback_label(callback_url)}）",
+                error_code="oauth_callback_missing_code",
+            )
+        if not callback_state or not hmac.compare_digest(callback_state, context["state"]):
+            raise FreeRegisterError(
+                "free_oauth_callback",
+                "Free OAuth 回调",
+                "OAuth 回调 state 缺失或与当前任务不匹配，已停止 Token 交换",
+                retryable=False,
+                error_code="oauth_callback_state_mismatch",
+            )
+        _log(log, "OAuth 回调 code/state 校验完成（内容不写入日志）", "success")
+
+        if callable(complete_callback) and callable(capture_session_token):
+            callback_result = _call_transport(
+                transport,
+                "complete_chatgpt_callback",
+                next_url,
+                flow="oauth_callback",
+                stop_requested=stop_requested,
+                log=log,
+            )
+            if isinstance(callback_result, Mapping):
+                callback_status = _status(callback_result)
+                callback_ok = callback_result.get("ok")
+                callback_failed = callback_ok is False or (
+                    isinstance(callback_ok, str)
+                    and callback_ok.strip().casefold() in {"false", "0", "no", "failed", "failure", "error"}
+                )
+                if (callback_status is not None and not 200 <= callback_status < 300) or callback_failed:
+                    _raise_response(
+                        callback_result,
+                        node="free_oauth_callback",
+                        label="完成 ChatGPT OAuth 回调",
+                        stage="free_oauth_callback",
+                    )
+            session_token = str(capture_session_token() or "").strip()
+
+        if session_token:
+            tokens = {
+                "access_token": session_token,
+                "token_source": "chatgpt_session",
+            }
+        else:
+            tokens = _call_transport(
+                transport,
+                "exchange_code",
+                code,
+                context["code_verifier"],
+                context["client_id"],
+                context["redirect_uri"],
+                email,
+                flow="oauth_token_exchange",
+                stop_requested=stop_requested,
+                log=log,
+            )
     # Some replay/compatibility transports return an HTTP envelope instead of
     # raising for a failed token endpoint. Preserve that provider status and
     # error node rather than collapsing it into a missing-token result.
@@ -1435,8 +1521,9 @@ def _run_once(
         "ok": True,
         "registration_completed": True,
         "oauth_callback_completed": True,
-        "oauth_code_received": True,
-        "local_oauth_exchange_ok": True,
+        "oauth_code_received": bool(code),
+        "local_oauth_exchange_ok": not nextauth_mode,
+        "token_source": "chatgpt_session" if nextauth_mode or session_token else "pkce_exchange",
         "access_token": token,
         "has_access_token": True,
         # Public task state only needs the callback destination. Query values

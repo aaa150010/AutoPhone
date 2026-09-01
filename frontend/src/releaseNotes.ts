@@ -13,14 +13,18 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.98',
-  freeRuntimeVersion: '1.6.98',
-  title: 'Free 协议新建入口对齐 Windows 链路',
-  releasedAt: '2026-09-01',
+  version: '1.6.99',
+  freeRuntimeVersion: '1.6.99',
+  title: 'Free 协议 NextAuth 前置与 Token 修复',
+  releasedAt: '2026-09-02',
   sections: [
     {
       title: 'Free 协议新建入口对齐 Windows 链路',
-      usage: '首次 Free protocol 注册使用 Windows 参考包的 signup authorize 入口，避免全新邮箱被送入 login_or_signup 混合分支后错误进入手机号节点；密码和 2FA 重试继续使用 login_or_signup，Camoufox 链路保持隔离不变。',
+      usage: 'Free protocol 注册按 AutoRegister/Windows 参考顺序复用同一任务的 providers、CSRF、signin/openai(login_or_signup) 和 authorize 会话；邮箱 OTP 后直接进入资料页，避免错误落入 login_password 或手机号分支。Camoufox 链路保持隔离不变。',
+    },
+    {
+      title: 'Free protocol Session access token 修复',
+      usage: '资料提交后的 ChatGPT OAuth callback 直接读取 Session accessToken，不再走本地 PKCE code exchange，也不保存 refresh/id token；兼容页面已返回邮箱 OTP 时跳过重复邮箱提交。手机号页面仍以 free_phone_required 停止且不会调用接码平台。',
     },
     {
       title: 'Free 协议链路 Token 与手机号边界修复',
@@ -164,7 +168,7 @@ export const currentRelease: ReleaseNotes = {
     },
     {
       title: '协议 OAuth 会话混用修复',
-      usage: '全协议注册现在始终从当前任务自己的 Codex authorize URL 和 PKCE 上下文开始，再提交邮箱；不再额外建立 ChatGPT NextAuth 前置会话，避免 OAuth state、Cookie 和 CSRF 状态混用导致 session invalid 或重复请求触发限流。',
+      usage: '全协议注册的 AutoRegister NextAuth 前置与后续页面状态机现在共用当前任务的 HTTP session；不会创建第二套 CSRF/Cookie 会话，也不会把 Camoufox 的浏览器状态带入 protocol。',
     },
     {
       title: '协议限流与 2FA Token 刷新',

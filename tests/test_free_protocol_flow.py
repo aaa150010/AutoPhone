@@ -135,6 +135,27 @@ class _AutoRegisterTransport(_Transport):
         }
 
 
+class _NextAuthTransport(_Transport):
+    def __init__(self):
+        super().__init__()
+        self.email_response = {
+            "_status": 200,
+            "page": {"type": "email_otp_verification"},
+            "continue_url": "/verify",
+        }
+
+    def complete_chatgpt_callback(self, continue_url):
+        self.calls.append(f"complete:{continue_url}")
+        return {"_status": 200, "ok": True}
+
+    def chatgpt_access_token(self):
+        self.calls.append("chatgpt_access_token")
+        return "chatgpt-session-token"
+
+    def exchange_code(self, *_args, **_kwargs):
+        raise AssertionError("NextAuth callback must not use local PKCE exchange")
+
+
 def _oauth_context(*, state="state-private", code_verifier="verifier-private"):
     return {
         "url": "https://auth.example.test/authorize?client_id=client-private&state=" + state,
@@ -165,35 +186,57 @@ def _run(transport, *, otp=None, transport_factory=None, oauth_context_factory=N
 
 
 class FreeProtocolFlowTests(unittest.TestCase):
-    def test_autoregister_prelude_is_ignored_for_codex_pkce_session(self):
+    def test_autoregister_prelude_uses_existing_otp_page_without_duplicate_email_submit(self):
+        transport = _NextAuthTransport()
+        prelude_calls = []
+
+        def prelude(active):
+            prelude_calls.append(active)
+            return {
+                "_status": 200,
+                "page": {"type": "email_otp_verification"},
+                "continue_url": "/verify",
+                "_gptphone_autoregister_prelude": True,
+            }
+
+        result, _active = _run(transport, prelude=prelude)
+
+        self.assertTrue(result["registration_completed"])
+        self.assertEqual(prelude_calls, [transport])
+        self.assertEqual(
+            transport.calls,
+            ["verify_email_otp", "create_account_profile", "complete:/callback", "chatgpt_access_token"],
+        )
+        self.assertNotIn("initiate_oauth", transport.calls)
+        self.assertNotIn("submit_email_identifier", transport.calls)
+        self.assertNotIn("follow_continue_until_code", transport.calls)
+        self.assertEqual(result["access_token"], "chatgpt-session-token")
+        self.assertFalse(result["oauth_code_received"])
+        self.assertFalse(result["local_oauth_exchange_ok"])
+
+    def test_generic_prelude_falls_back_to_legacy_identifier_submission(self):
         transport = _AutoRegisterTransport()
         prelude_calls = []
 
-        def prelude(*_args, **_kwargs):
-            prelude_calls.append(True)
-            raise AssertionError("the NextAuth prelude must not replace Codex OAuth")
+        def prelude(active):
+            prelude_calls.append(active)
+            return {"_status": 200, "url": "https://auth.openai.com/log-in"}
 
-        result, _active = _run(
-            transport,
-            prelude=prelude,
-        )
+        result, _active = _run(transport, prelude=prelude)
 
         self.assertTrue(result["registration_completed"])
-        self.assertEqual(prelude_calls, [])
-        self.assertEqual(transport.calls, ["initiate_oauth", "submit_email_identifier", "verify_email_otp", "create_account_profile", "follow_continue_until_code", "exchange_code"])
-        self.assertEqual(transport.exchange_args[1:], (
-            "verifier-private",
-            "client-private",
-            "http://localhost:1455/auth/callback",
-            "user@example.test",
-        ))
+        self.assertEqual(prelude_calls, [transport])
+        self.assertEqual(
+            transport.calls,
+            ["initiate_oauth", "submit_email_identifier", "verify_email_otp", "create_account_profile", "follow_continue_until_code", "exchange_code"],
+        )
 
-    def test_prelude_compatibility_argument_does_not_change_callback_context(self):
+    def test_prelude_compatibility_argument_preserves_pkce_callback_when_falling_back(self):
         transport = _AutoRegisterTransport()
         callback_contexts = []
 
-        def prelude(*_args, **_kwargs):
-            raise AssertionError("prelude callback should remain unused")
+        def prelude(_active):
+            return {"_status": 200, "url": "https://auth.openai.com/log-in"}
 
         original_follow = transport.follow_continue_until_code
 
@@ -209,10 +252,13 @@ class FreeProtocolFlowTests(unittest.TestCase):
 
     def test_task_oauth_session_precedes_email_identifier(self):
         transport = _ChatgptPreludeTransport()
-        result, _active = _run(transport)
+        result, _active = _run(
+            transport,
+            prelude=lambda active: active.start_chatgpt_signup_authorize("user@example.test"),
+        )
         self.assertTrue(result["registration_completed"])
-        self.assertEqual(transport.calls[:2], ["initiate_oauth", "submit_email_identifier"])
-        self.assertNotIn("prelude:user@example.test", transport.calls)
+        self.assertEqual(transport.calls[:3], ["prelude:user@example.test", "initiate_oauth", "submit_email_identifier"])
+        self.assertIn("prelude:user@example.test", transport.calls)
 
     def test_mailbox_lease_callback_runs_once_before_email_submit(self):
         transport = _Transport()
@@ -764,6 +810,30 @@ class FreeProtocolFlowTests(unittest.TestCase):
             _run(transport)
         self.assertEqual(raised.exception.node_code, "free_phone_required")
         self.assertEqual(transport.phone_calls, 0)
+
+    def test_prelude_phone_page_stops_without_identifier_or_sms(self):
+        class PreludePhoneTransport(_Transport):
+            def __init__(self):
+                super().__init__()
+                self.phone_calls = 0
+
+            def send_phone_number_otp(self, *_args, **_kwargs):
+                self.phone_calls += 1
+                raise AssertionError("Free protocol must not consume a phone provider")
+
+        transport = PreludePhoneTransport()
+        with self.assertRaises(FreeRegisterError) as raised:
+            _run(
+                transport,
+                prelude=lambda _active: {
+                    "_status": 200,
+                    "page": {"type": "add_phone"},
+                    "continue_url": "/phone",
+                },
+            )
+        self.assertEqual(raised.exception.node_code, "free_phone_required")
+        self.assertEqual(transport.phone_calls, 0)
+        self.assertNotIn("submit_email_identifier", transport.calls)
 
     def test_explicit_profile_state_wins_over_stale_phone_continuation(self):
         response = {

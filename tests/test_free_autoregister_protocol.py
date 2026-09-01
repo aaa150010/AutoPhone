@@ -66,11 +66,13 @@ class AutoRegisterPreludeTests(unittest.TestCase):
                 return self.payload
 
         class Session:
-            def __init__(self):
+            def __init__(self, events):
                 self.calls = []
+                self.events = events
 
             def get(self, url, **kwargs):
                 self.calls.append(("GET", url, kwargs))
+                self.events.append(("GET", urlsplit(url).path))
                 return Response(
                     url="https://auth.openai.com/email-verification",
                     content_type="text/html",
@@ -78,11 +80,13 @@ class AutoRegisterPreludeTests(unittest.TestCase):
 
             def post(self, url, **kwargs):
                 self.calls.append(("POST", url, kwargs))
+                self.events.append(("POST", urlsplit(url).path))
                 return Response(payload={"url": "https://auth.openai.com/authorize?state=state"})
 
         class RealLike:
             def __init__(self):
-                self.session = Session()
+                self.events = []
+                self.session = Session(self.events)
                 self.device_id = "device-private"
                 self._gptphone_auth_session_logging_id = "auth-log-private"
                 self.get_calls = []
@@ -92,6 +96,7 @@ class AutoRegisterPreludeTests(unittest.TestCase):
 
             def _chatgpt_json_get(self, path, **kwargs):
                 self.get_calls.append((path, kwargs))
+                self.events.append(("GET", path))
                 return {"_status": 200, "csrfToken": "csrf-private"}
 
         transport = RealLike()
@@ -103,6 +108,12 @@ class AutoRegisterPreludeTests(unittest.TestCase):
         self.assertEqual([path for path, _kwargs in transport.get_calls], [
             "/api/auth/providers",
             "/api/auth/csrf",
+        ])
+        self.assertEqual(transport.events, [
+            ("GET", "/api/auth/providers"),
+            ("GET", "/api/auth/csrf"),
+            ("POST", "/api/auth/signin/openai"),
+            ("GET", "/authorize"),
         ])
         signin = next(item for item in transport.session.calls if item[0] == "POST")
         query = parse_qs(urlsplit(signin[1]).query)

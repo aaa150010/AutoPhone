@@ -17,6 +17,7 @@ Free 账号换绑统一使用纯协议链路：无论账号来自哪条历史注
 对照位置：
 
 - 协议注册第一基准：`/Users/lwh/projects/New_V1.11.18_win`（重点查看 `browser_flow/runner/src/browserService.js`、`browser_flow/runner/register_runner.js`、`browser_flow/runner/src/protocolCapture.js` 和包内测试）。
+- protocol 当前注册入口必须按同一 HTTP session 执行 `providers → csrf → signin/openai(screen_hint=login_or_signup) → auth authorize → email OTP → about_you → create_account → ChatGPT callback → /api/auth/session accessToken`；已返回可识别 OTP/资料页时不得重复提交邮箱，手机号页只停止并不得调用接码平台。
 - 协议注册补充对照：`/Users/lwh/projects/AutoRegister/core/chatgpt_auth.py`、`core/openai_auth.py`、`core/sentinel_runner.py`、`main.py`；仅在 Windows 包没有对应实现时使用。
 - Camoufox 注册：`/Users/lwh/projects/aBaiFreeGPT`（仅作只读行为对照）。
 - 只吸收实现逻辑，不复制任何账号、邮箱密码、Cookie、Token、验证码、代理凭据、运行数据或第三方授权信息。
