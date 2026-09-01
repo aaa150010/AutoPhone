@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import threading
+import time
 from urllib.parse import parse_qs, urlsplit
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
@@ -11,13 +13,182 @@ from mac_overrides import free_account_service as service
 class _Page:
     def __init__(self) -> None:
         self.goto_calls: list[str] = []
+        self.goto_options: list[dict] = []
 
-    async def goto(self, url: str, **_kwargs):
+    async def goto(self, url: str, **kwargs):
         self.goto_calls.append(url)
+        self.goto_options.append(dict(kwargs))
         return None
 
 
 class FreeAccountServiceTests(unittest.TestCase):
+    def test_account_otp_worker_stops_when_async_flow_is_cancelled(self):
+        started = threading.Event()
+        stopped = threading.Event()
+
+        def blocking_callback(_stage, *, stop_requested, deadline_monotonic):
+            self.assertGreater(deadline_monotonic, time.monotonic())
+            started.set()
+            while not stop_requested():
+                time.sleep(0.005)
+            stopped.set()
+            return ""
+
+        async def run():
+            task = asyncio.create_task(
+                service._await_account_otp_callback(
+                    blocking_callback,
+                    "free_twofa_enroll",
+                    deadline_monotonic=time.monotonic() + 30,
+                )
+            )
+            for _ in range(100):
+                if started.is_set():
+                    break
+                await asyncio.sleep(0.005)
+            self.assertTrue(started.is_set())
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+
+        asyncio.run(run())
+        self.assertTrue(stopped.wait(1.0))
+
+    def test_account_otp_worker_honors_stop_callback(self):
+        started = threading.Event()
+        stopped = threading.Event()
+        stop = threading.Event()
+
+        def blocking_callback(_stage, *, stop_requested):
+            started.set()
+            while not stop_requested():
+                time.sleep(0.005)
+            stopped.set()
+            return ""
+
+        async def run():
+            task = asyncio.create_task(
+                service._await_account_otp_callback(
+                    blocking_callback,
+                    "free_password_otp_wait",
+                    stop_requested=stop,
+                )
+            )
+            for _ in range(100):
+                if started.is_set():
+                    break
+                await asyncio.sleep(0.005)
+            self.assertTrue(started.is_set())
+            stop.set()
+            with self.assertRaises(service.FreeRegisterError) as raised:
+                await task
+            self.assertEqual(raised.exception.error_code, "free_run_stop")
+
+        asyncio.run(run())
+        self.assertTrue(stopped.wait(1.0))
+
+    def test_account_async_otp_callback_is_closed_when_cancelled(self):
+        started = threading.Event()
+        closed = threading.Event()
+
+        async def callback(_stage, *, stop_requested):
+            started.set()
+            try:
+                await asyncio.sleep(30)
+            finally:
+                closed.set()
+
+        async def run():
+            task = asyncio.create_task(
+                service._await_account_otp_callback(
+                    callback,
+                    "free_twofa_enroll",
+                    deadline_monotonic=time.monotonic() + 30,
+                )
+            )
+            for _ in range(100):
+                if started.is_set():
+                    break
+                await asyncio.sleep(0.005)
+            self.assertTrue(started.is_set())
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+
+        asyncio.run(run())
+        self.assertTrue(closed.wait(1.0))
+
+    def test_account_otp_partial_deadline_controller_uses_absolute_fallback(self):
+        class PartialController:
+            @staticmethod
+            def is_paused():
+                return False
+
+        async def run():
+            return await service._await_account_otp_callback(
+                lambda _stage, **_kwargs: "246810",
+                "free_password_otp_wait",
+                deadline_monotonic=time.monotonic() + 2,
+                deadline_controller=PartialController(),
+            )
+
+        self.assertEqual(asyncio.run(run()), "246810")
+
+    def test_account_otp_controller_failures_still_drain_worker(self):
+        started = threading.Event()
+        stopped = threading.Event()
+
+        class BrokenController:
+            def begin_otp_wait(self):
+                raise RuntimeError("begin unavailable")
+
+            def end_otp_wait(self):
+                raise RuntimeError("end unavailable")
+
+            def is_paused(self):
+                raise RuntimeError("pause unavailable")
+
+            def remaining(self):
+                raise RuntimeError("remaining unavailable")
+
+        def callback(_stage, *, stop_requested, **_kwargs):
+            started.set()
+            while not stop_requested():
+                time.sleep(0.005)
+            stopped.set()
+            return ""
+
+        async def run():
+            with self.assertRaises(service.FreeRegisterError) as raised:
+                await service._await_account_otp_callback(
+                    callback,
+                    "free_password_otp_wait",
+                    deadline_monotonic=time.monotonic() + 0.03,
+                    deadline_controller=BrokenController(),
+                )
+            return raised.exception
+
+        failure = asyncio.run(run())
+        self.assertTrue(started.is_set())
+        self.assertTrue(stopped.wait(1.0))
+        self.assertEqual(failure.error_code, "free_password_otp_wait_mailbox_code_timeout")
+
+    def test_account_otp_callback_awaits_nested_coroutine_result(self):
+        async def inner():
+            return "071618"
+
+        async def callback(_stage, **_kwargs):
+            return inner()
+
+        async def run():
+            return await service._await_account_otp_callback(
+                callback,
+                "free_password_otp_wait",
+                deadline_monotonic=time.monotonic() + 1,
+            )
+
+        self.assertEqual(asyncio.run(run()), "071618")
+
     def test_browser_json_fetch_records_timing_without_exposing_request_data(self):
         class EvalPage:
             async def evaluate(self, _script, _args):
@@ -74,6 +245,17 @@ class FreeAccountServiceTests(unittest.TestCase):
         page = _Page()
         events: list[tuple[str, str]] = []
         timing_events: list[tuple[str, str, int, str]] = []
+
+        class DeadlineController:
+            @staticmethod
+            def remaining():
+                return 12.0
+
+            @staticmethod
+            def is_paused():
+                return False
+
+        controller = DeadlineController()
         def record_prepare(*args, **kwargs):
             events.append(("prepare", str((args, kwargs))))
 
@@ -147,6 +329,11 @@ class FreeAccountServiceTests(unittest.TestCase):
                     otp_prepare=prepare,
                     otp_mark_sent=mark_sent,
                     device_id="device-1",
+                    # The absolute value represents the pre-pause deadline.
+                    # Once a controller is present its shifted budget is the
+                    # authoritative source for post-manual navigation.
+                    deadline_monotonic=0.0,
+                    deadline_controller=controller,
                     timing_fn=lambda *event: timing_events.append(event),
                 )
             )
@@ -156,6 +343,8 @@ class FreeAccountServiceTests(unittest.TestCase):
         self.assertEqual(result["access_token"], "fresh-token")
         self.assertEqual(page.goto_calls[0], "https://auth.openai.com/authorize?state=reauth")
         self.assertEqual(page.goto_calls[1], "https://chatgpt.com/api/auth/callback/openai?state=done")
+        self.assertEqual([item.get("timeout") for item in page.goto_options], [12_000, 12_000])
+        self.assertIs(otp.call_args.kwargs.get("deadline_controller"), controller)
         self.assertTrue(
             any(event[0:2] == ("free_twofa_reauth_callback", "oauth_callback_navigation") for event in timing_events)
         )

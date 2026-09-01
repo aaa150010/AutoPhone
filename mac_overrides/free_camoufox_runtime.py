@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from datetime import date
 import inspect
 import json
+import math
 import os
 from pathlib import Path
 import random
@@ -175,6 +176,201 @@ def _profile_transition_timing_outcome(state: str) -> str:
 
 class CamoufoxBrowserError(FreeRegisterError):
     pass
+
+
+# Manual verification is deliberately bounded.  A registration can encounter
+# one entry OTP plus independent password and 2FA OTPs, so pool watchdogs
+# reserve room for all three windows and a short post-submit handoff.
+MANUAL_OTP_WINDOW_SECONDS = 300
+MANUAL_OTP_HANDOFF_GRACE_SECONDS = 2.0
+MANUAL_OTP_POST_SUBMIT_GRACE_SECONDS = 30.0
+MAX_MANUAL_OTP_WINDOWS = 3
+
+_DEADLINE_CONTROLLER_MISSING = object()
+
+
+def _deadline_controller_call(
+    controller: Any,
+    name: str,
+    *args: Any,
+    default: Any = _DEADLINE_CONTROLLER_MISSING,
+) -> Any:
+    """Invoke an optional controller hook without making it a failure node."""
+    if controller is None:
+        return default
+    try:
+        method = getattr(controller, name, None)
+        if not callable(method):
+            return default
+        return method(*args)
+    except Exception:
+        # Older recovered adapters can expose only a partial controller. The
+        # absolute monotonic deadline remains the compatibility fallback.
+        return default
+
+
+def _deadline_controller_bool(controller: Any, name: str) -> bool:
+    value = _deadline_controller_call(controller, name, default=False)
+    try:
+        return bool(value)
+    except Exception:
+        return False
+
+
+class RegistrationDeadline:
+    """A monotonic registration budget that can pause for manual OTP input.
+
+    The controller is intentionally in-memory and owned by one registration
+    invocation.  While paused, ``remaining`` is frozen and ``is_expired`` is
+    false; resuming shifts the absolute deadline by the time spent in the
+    manual window.  This lets the browser flow, its worker watchdog and the
+    mailbox provider observe one budget without extending ordinary waits.
+    """
+
+    def __init__(
+        self,
+        timeout_seconds: float,
+        *,
+        monotonic_fn: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._monotonic = monotonic_fn
+        now = float(monotonic_fn())
+        try:
+            timeout = max(0.0, float(timeout_seconds))
+        except (TypeError, ValueError):
+            timeout = 0.0
+        self._deadline = now + timeout
+        self._paused_at: float | None = None
+        self._paused_remaining = 0.0
+        self._last_outcome = ""
+        self._manual_prompt_active = False
+        self._manual_handoff_until = 0.0
+        self._post_submit_grace_until = 0.0
+        self._otp_wait_depth = 0
+        self._lock = threading.RLock()
+
+    def is_paused(self) -> bool:
+        with self._lock:
+            return self._paused_at is not None
+
+    def remaining(self) -> float:
+        with self._lock:
+            if self._paused_at is not None:
+                return max(0.0, self._paused_remaining)
+            return max(0.0, self._deadline - float(self._monotonic()))
+
+    def deadline(self) -> float:
+        with self._lock:
+            return float(self._deadline)
+
+    def is_expired(self) -> bool:
+        with self._lock:
+            return self._paused_at is None and self._deadline <= float(self._monotonic())
+
+    def begin_otp_wait(self) -> None:
+        """Mark a task-scoped OTP callback as active for watchdog handoff."""
+        with self._lock:
+            self._otp_wait_depth += 1
+
+    def end_otp_wait(self) -> None:
+        with self._lock:
+            self._otp_wait_depth = max(0, self._otp_wait_depth - 1)
+
+    def otp_wait_active(self) -> bool:
+        with self._lock:
+            return self._otp_wait_depth > 0
+
+    def request_manual_handoff(self) -> None:
+        """Pause briefly so an OTP worker can open its manual prompt."""
+        with self._lock:
+            self._pause_manual_locked()
+            self._manual_handoff_until = max(
+                self._manual_handoff_until,
+                float(self._monotonic()) + MANUAL_OTP_HANDOFF_GRACE_SECONDS,
+            )
+
+    def manual_handoff_active(self) -> bool:
+        with self._lock:
+            return self._manual_handoff_until > float(self._monotonic())
+
+    def manual_handoff_remaining(self) -> float:
+        """Return the remaining short scheduling handoff allowance."""
+        with self._lock:
+            return max(0.0, self._manual_handoff_until - float(self._monotonic()))
+
+    def manual_prompt_opened(self) -> None:
+        """Record that the broker prompt is visible to the operator."""
+        with self._lock:
+            self._pause_manual_locked()
+            self._manual_prompt_active = True
+            self._manual_handoff_until = 0.0
+
+    def manual_prompt_active(self) -> bool:
+        with self._lock:
+            return bool(self._manual_prompt_active)
+
+    def manual_submission_grace_active(self) -> bool:
+        with self._lock:
+            return self._post_submit_grace_until > float(self._monotonic())
+
+    def manual_submission_grace_remaining(self) -> float:
+        """Return the finite post-submit handoff allowance, if any."""
+        with self._lock:
+            return max(0.0, self._post_submit_grace_until - float(self._monotonic()))
+
+    def _pause_manual_locked(self) -> None:
+        if self._paused_at is not None:
+            return
+        now = float(self._monotonic())
+        self._paused_at = now
+        self._paused_remaining = max(0.0, self._deadline - now)
+
+    def pause_manual(self) -> None:
+        with self._lock:
+            self._pause_manual_locked()
+
+    def resume_manual(self, outcome: str = "") -> None:
+        with self._lock:
+            paused_at = self._paused_at
+            if paused_at is None:
+                return
+            now = float(self._monotonic())
+            # Preserve the exact budget left at prompt open and add back the
+            # elapsed manual interval, including an interval that crossed the
+            # original deadline.
+            self._deadline = now + max(0.0, self._paused_remaining)
+            self._paused_at = None
+            self._paused_remaining = 0.0
+            self._manual_prompt_active = False
+            self._manual_handoff_until = 0.0
+            normalized_outcome = str(outcome or "")[:32]
+            self._last_outcome = normalized_outcome
+            # If the prompt opened after the active budget had already
+            # reached zero, let the submitted code traverse the page/API
+            # handoff before the watchdog reports a real timeout. This grace
+            # is finite and applies only to an actually consumed submission.
+            self._post_submit_grace_until = (
+                now + MANUAL_OTP_POST_SUBMIT_GRACE_SECONDS
+                if normalized_outcome == "submitted" and self._deadline <= now
+                else 0.0
+            )
+
+    def sync_manual_prompt(self, prompt: Mapping[str, Any] | None = None) -> None:
+        """Synchronize an optional broker prompt without requiring a broker.
+
+        The provider invokes ``pause_manual``/``resume_manual`` directly. This
+        helper exists for watchdogs and compatibility adapters that can expose
+        a public prompt snapshot; it is deliberately conservative and never
+        opens or closes a prompt itself.
+        """
+        if isinstance(prompt, Mapping) and str(prompt.get("input_kind") or "") == "email_otp":
+            phase = str(prompt.get("phase") or "manual").casefold()
+            if phase == "manual":
+                self.manual_prompt_opened()
+
+
+# Name used by a few recovered integrations and focused tests.
+_RegistrationDeadlineController = RegistrationDeadline
 
 
 _BROWSER_PROCESS_LOST_MARKERS = (
@@ -2036,23 +2232,25 @@ def _invoke_otp_callback(
     *,
     stop_requested: Callable[[], bool],
     deadline_monotonic: float,
+    deadline_controller: Any = None,
 ) -> Any:
     """Invoke old and new OTP callback signatures without replaying side effects."""
     try:
         signature = inspect.signature(callback)
     except (TypeError, ValueError):
-        # Opaque callables are uncommon; use the current contract once and let
-        # an implementation error propagate to the owning task.
-        return callback(
-            stage_code,
-            stop_requested=stop_requested,
-            deadline_monotonic=deadline_monotonic,
-        )
+        try:
+            signature = inspect.signature(getattr(callback, "__call__"))
+        except (AttributeError, TypeError, ValueError):
+            # Do not trial-call an opaque adapter more than once: an internal
+            # TypeError is not evidence that a second signature is safe.
+            return callback(stage_code)
     candidates = (
+        ((stage_code,), {"stop_requested": stop_requested, "deadline_monotonic": deadline_monotonic, "deadline_controller": deadline_controller}),
         ((stage_code,), {"stop_requested": stop_requested, "deadline_monotonic": deadline_monotonic}),
         ((stage_code,), {"stop_requested": stop_requested}),
         ((stage_code,), {"deadline_monotonic": deadline_monotonic}),
         ((stage_code,), {}),
+        ((), {"stop_requested": stop_requested, "deadline_monotonic": deadline_monotonic, "deadline_controller": deadline_controller}),
         ((), {"stop_requested": stop_requested, "deadline_monotonic": deadline_monotonic}),
         ((), {"stop_requested": stop_requested}),
         ((), {"deadline_monotonic": deadline_monotonic}),
@@ -2121,6 +2319,7 @@ async def _await_otp_callback(
     *,
     deadline_monotonic: float,
     stop_requested: Any = None,
+    deadline_controller: Any = None,
 ) -> Any:
     """Run a blocking mailbox callback with a hard deadline and cancellation.
 
@@ -2133,6 +2332,22 @@ async def _await_otp_callback(
     loop = asyncio.get_running_loop()
     result: asyncio.Future[Any] = loop.create_future()
     worker_stop = threading.Event()
+    end_lock = threading.Lock()
+    otp_wait_ended = False
+    pending_async_task: asyncio.Task[Any] | None = None
+    pending_raw_awaitable: Any = None
+    awaitable_lock = threading.Lock()
+    abandoned = False
+
+    _deadline_controller_call(deadline_controller, "begin_otp_wait")
+
+    def end_otp_wait_once() -> None:
+        nonlocal otp_wait_ended
+        with end_lock:
+            if otp_wait_ended:
+                return
+            otp_wait_ended = True
+        _deadline_controller_call(deadline_controller, "end_otp_wait")
 
     def requested() -> bool:
         return worker_stop.is_set() or _stop_requested(stop_requested)
@@ -2144,27 +2359,114 @@ async def _await_otp_callback(
             except BaseException:
                 pass
 
+    def discard_awaitable(value: Any) -> None:
+        """Close/cancel an async callback result that the caller abandoned."""
+        if not inspect.isawaitable(value):
+            return
+        close = getattr(value, "close", None)
+        if callable(close):
+            try:
+                close()
+                return
+            except Exception:
+                pass
+        cancel = getattr(value, "cancel", None)
+        if callable(cancel):
+            try:
+                cancel()
+            except Exception:
+                pass
+
     result.add_done_callback(consume_exception)
 
     def publish(kind: str, value: Any) -> None:
-        if result.done():
+        if abandoned or result.done():
+            if kind == "result":
+                discard_awaitable(value)
             return
         if kind == "error":
             result.set_exception(value)
         else:
             result.set_result(value)
+        end_otp_wait_once()
+
+    async def resolve_awaitable(value: Any) -> Any:
+        current = value
+        for _ in range(16):
+            if not inspect.isawaitable(current):
+                return current
+            current = await current
+        discard_awaitable(current)
+        raise TypeError("OTP callback returned too many nested awaitables")
+
+    def finish_async_task(task: asyncio.Task[Any], original: Any) -> None:
+        nonlocal pending_async_task
+        if pending_async_task is task:
+            pending_async_task = None
+        if task.cancelled():
+            discard_awaitable(original)
+            if not abandoned:
+                publish("error", asyncio.CancelledError())
+            return
+        try:
+            value = task.result()
+        except BaseException as exc:
+            publish("error", exc)
+        else:
+            publish("result", value)
+
+    def take_raw_awaitable() -> Any:
+        nonlocal pending_raw_awaitable
+        with awaitable_lock:
+            value = pending_raw_awaitable
+            pending_raw_awaitable = None
+        return value
+
+    def start_awaitable() -> None:
+        nonlocal pending_async_task
+        value = take_raw_awaitable()
+        if value is None:
+            return
+        if abandoned or result.done():
+            discard_awaitable(value)
+            return
+        resolver = resolve_awaitable(value)
+        try:
+            task = loop.create_task(resolver)
+        except BaseException as exc:
+            discard_awaitable(resolver)
+            discard_awaitable(value)
+            publish("error", exc)
+            return
+        pending_async_task = task
+        task.add_done_callback(
+            lambda completed, original=value: finish_async_task(completed, original)
+        )
 
     def worker() -> None:
+        nonlocal pending_raw_awaitable
         try:
             value = _invoke_otp_callback(
                 callback,
                 stage_code,
                 stop_requested=requested,
                 deadline_monotonic=deadline_monotonic,
+                deadline_controller=deadline_controller,
             )
         except BaseException as exc:
             kind, value = "error", exc
         else:
+            if inspect.isawaitable(value):
+                with awaitable_lock:
+                    pending_raw_awaitable = value
+                try:
+                    loop.call_soon_threadsafe(start_awaitable)
+                except RuntimeError:
+                    # The owning loop may be closing after cancellation. Close
+                    # the coroutine here so it cannot be garbage-collected as
+                    # an un-awaited result.
+                    discard_awaitable(take_raw_awaitable())
+                return
             kind = "result"
         try:
             loop.call_soon_threadsafe(publish, kind, value)
@@ -2180,47 +2482,232 @@ async def _await_otp_callback(
     )
     thread.start()
 
+    async def await_cleanup(value: Any, timeout: float) -> None:
+        """Drain a shielded child while tolerating repeated outer cancels."""
+        if not isinstance(value, asyncio.Future):
+            try:
+                value = asyncio.ensure_future(value)
+            except BaseException:
+                return
+        end = loop.time() + max(0.0, float(timeout))
+        while not value.done():
+            remaining = end - loop.time()
+            if remaining <= 0:
+                return
+            try:
+                await asyncio.wait_for(asyncio.shield(value), timeout=remaining)
+            except asyncio.TimeoutError:
+                return
+            except asyncio.CancelledError:
+                current = asyncio.current_task()
+                uncancel = getattr(current, "uncancel", None)
+                if callable(uncancel):
+                    try:
+                        while int(getattr(current, "cancelling", lambda: 0)() or 0) > 0:
+                            uncancel()
+                    except Exception:
+                        pass
+                continue
+            except BaseException:
+                return
+
     async def stop_and_drain() -> None:
+        nonlocal abandoned
+        if abandoned:
+            end_otp_wait_once()
+            return
+        abandoned = True
         worker_stop.set()
+        discard_awaitable(take_raw_awaitable())
+        async_task = pending_async_task
+        if async_task is not None and not async_task.done():
+            async_task.cancel()
+        if async_task is not None:
+            await await_cleanup(async_task, 0.5)
+            if not async_task.done():
+                # Allow one deferred-cancellation cleanup pass, but keep the
+                # browser pool bounded when a legacy callback never exits.
+                async_task.cancel()
+                await await_cleanup(async_task, 0.25)
         if result.done():
+            try:
+                discard_awaitable(result.result())
+            except BaseException:
+                pass
+            end_otp_wait_once()
             return
         # Cooperative mailbox providers normally wake within one poll chunk;
         # retain only a short grace period so browser cleanup remains bounded.
-        try:
-            await asyncio.wait_for(asyncio.shield(result), timeout=1.5)
-        except BaseException:
-            pass
+        await await_cleanup(result, 1.5)
+        if result.done():
+            try:
+                discard_awaitable(result.result())
+            except BaseException:
+                pass
+        end_otp_wait_once()
 
-    while True:
-        if _stop_requested(stop_requested):
-            await stop_and_drain()
-            raise FreeRegisterError(
-                "free_run_stop",
-                "停止 Free 注册",
-                "任务已请求停止，邮箱验证码轮询已中断",
-                retryable=False,
-                error_code="free_run_stop",
-            )
-        remaining = float(deadline_monotonic) - time.monotonic()
-        if remaining <= 0:
-            await stop_and_drain()
-            raise CamoufoxBrowserError(
-                "free_email_otp_wait",
-                "等待 Camoufox 邮箱验证码",
-                "邮箱验证码等待已达到注册截止时间",
-                retryable=True,
-                error_code="camoufox_otp_wait_timeout",
-            )
-        try:
-            return await asyncio.wait_for(
-                asyncio.shield(result),
-                timeout=min(0.25, remaining),
-            )
-        except asyncio.TimeoutError:
-            continue
-        except asyncio.CancelledError:
-            await stop_and_drain()
-            raise
+    handoff_started: float | None = None
+    try:
+        while True:
+        # A result that was published at the deadline still belongs to this
+        # OTP attempt. Consume it before consulting the active-budget clock;
+        # otherwise a zero remaining budget can mask a valid manual submit.
+            if _stop_requested(stop_requested):
+                await stop_and_drain()
+                raise FreeRegisterError(
+                    "free_run_stop",
+                    "停止 Free 注册",
+                    "任务已请求停止，邮箱验证码轮询已中断",
+                    retryable=False,
+                    error_code="free_run_stop",
+                )
+            if result.done():
+                if _stop_requested(stop_requested):
+                    await stop_and_drain()
+                    raise FreeRegisterError(
+                        "free_run_stop",
+                        "停止 Free 注册",
+                        "任务已请求停止，邮箱验证码轮询已中断",
+                        retryable=False,
+                        error_code="free_run_stop",
+                    )
+                end_otp_wait_once()
+                value = await asyncio.shield(result)
+                if _stop_requested(stop_requested):
+                    await stop_and_drain()
+                    raise FreeRegisterError(
+                        "free_run_stop",
+                        "停止 Free 注册",
+                        "任务已请求停止，邮箱验证码轮询已中断",
+                        retryable=False,
+                        error_code="free_run_stop",
+                    )
+                return value
+            controller = deadline_controller
+            prompt_active = _deadline_controller_bool(controller, "manual_prompt_active")
+            handoff_active = _deadline_controller_bool(controller, "manual_handoff_active")
+            post_submit_grace = _deadline_controller_bool(controller, "manual_submission_grace_active")
+            paused = _deadline_controller_bool(controller, "is_paused")
+            expired_value = _deadline_controller_call(controller, "is_expired")
+            if expired_value is _DEADLINE_CONTROLLER_MISSING:
+                try:
+                    expired = deadline_monotonic <= time.monotonic()
+                except (TypeError, ValueError, OverflowError):
+                    expired = False
+            else:
+                try:
+                    expired = bool(expired_value)
+                except Exception:
+                    try:
+                        expired = deadline_monotonic <= time.monotonic()
+                    except (TypeError, ValueError, OverflowError):
+                        expired = False
+            if expired and not paused:
+                    # Give the provider a short scheduling handoff to open its
+                    # broker prompt. A cooperative provider will mark the
+                    # prompt active; an uncooperative callback is cancelled
+                    # once this bounded grace elapses.
+                    requested_handoff = _deadline_controller_call(
+                        controller, "request_manual_handoff"
+                    )
+                    if requested_handoff is not _DEADLINE_CONTROLLER_MISSING:
+                        paused = True
+                        handoff_active = True
+                        handoff_started = handoff_started or time.monotonic()
+            if paused and not prompt_active and not handoff_active:
+                handoff_started = handoff_started or time.monotonic()
+                handoff_active = (
+                    time.monotonic() - handoff_started
+                    < MANUAL_OTP_HANDOFF_GRACE_SECONDS
+                )
+            elif handoff_active and handoff_started is None:
+                # A pool watchdog may have opened the handoff before this
+                # helper got scheduled. Preserve the original two-second
+                # bound instead of starting a fresh grace window.
+                handoff_remaining = _deadline_controller_call(
+                    controller, "manual_handoff_remaining"
+                )
+                try:
+                    handoff_remaining = float(handoff_remaining)
+                    if not math.isfinite(handoff_remaining):
+                        raise ValueError
+                except (TypeError, ValueError, OverflowError):
+                    handoff_remaining = MANUAL_OTP_HANDOFF_GRACE_SECONDS
+                handoff_started = time.monotonic() - max(
+                    0.0,
+                    MANUAL_OTP_HANDOFF_GRACE_SECONDS - handoff_remaining,
+                )
+            remaining_value = _deadline_controller_call(controller, "remaining")
+            if remaining_value is _DEADLINE_CONTROLLER_MISSING:
+                try:
+                    remaining = deadline_monotonic - time.monotonic()
+                except (TypeError, ValueError, OverflowError):
+                    remaining = 0.0
+            else:
+                try:
+                    remaining = float(remaining_value)
+                    if not math.isfinite(remaining):
+                        raise ValueError
+                except (TypeError, ValueError, OverflowError):
+                    try:
+                        remaining = deadline_monotonic - time.monotonic()
+                    except (TypeError, ValueError, OverflowError):
+                        remaining = 0.0
+            if prompt_active or handoff_active or post_submit_grace:
+                # The active registration budget is suspended while the
+                # operator prompt (or its short handoff) is in flight.
+                remaining = max(0.25, remaining)
+            if remaining <= 0:
+                if (prompt_active or handoff_active or post_submit_grace) and not (
+                    handoff_started is not None
+                    and not prompt_active
+                    and not post_submit_grace
+                    and time.monotonic() - handoff_started >= MANUAL_OTP_HANDOFF_GRACE_SECONDS
+                ):
+                    try:
+                        return await asyncio.wait_for(
+                            asyncio.shield(result), timeout=0.25,
+                        )
+                    except asyncio.TimeoutError:
+                        continue
+                if paused:
+                    _deadline_controller_call(controller, "resume_manual", "timeout")
+                await stop_and_drain()
+                raise CamoufoxBrowserError(
+                    "free_email_otp_wait",
+                    "等待 Camoufox 邮箱验证码",
+                    "邮箱验证码等待已达到注册截止时间",
+                    retryable=True,
+                    error_code="camoufox_otp_wait_timeout",
+                )
+            try:
+                value = await asyncio.wait_for(
+                    asyncio.shield(result),
+                    timeout=min(0.25, remaining),
+                )
+                if _stop_requested(stop_requested):
+                    await stop_and_drain()
+                    raise FreeRegisterError(
+                        "free_run_stop",
+                        "停止 Free 注册",
+                        "任务已请求停止，邮箱验证码轮询已中断",
+                        retryable=False,
+                        error_code="free_run_stop",
+                    )
+                return value
+            except asyncio.TimeoutError:
+                continue
+            except asyncio.CancelledError:
+                await stop_and_drain()
+                raise
+    except asyncio.CancelledError:
+        await stop_and_drain()
+        raise
+    except BaseException:
+        await stop_and_drain()
+        raise
+    finally:
+        end_otp_wait_once()
 
 
 async def _browser_flow(
@@ -2241,9 +2728,62 @@ async def _browser_flow(
     password_retry: bool = False,
     password_retry_token: str = "",
     startup_gate: asyncio.Semaphore | None = None,
+    deadline_controller: RegistrationDeadline | None = None,
 ) -> dict[str, Any]:
     timeout = max(60, int(config.get("registration_timeout_seconds") or 600))
-    deadline = time.monotonic() + timeout
+    controller = deadline_controller or config.get("_deadline_controller")
+    if controller is None:
+        controller = RegistrationDeadline(timeout)
+    fallback_deadline = time.monotonic() + timeout
+
+    def current_deadline() -> float:
+        value = _deadline_controller_call(controller, "deadline")
+        if value is not _DEADLINE_CONTROLLER_MISSING:
+            try:
+                candidate = float(value)
+                if math.isfinite(candidate):
+                    return candidate
+            except (TypeError, ValueError, OverflowError):
+                pass
+        return fallback_deadline
+
+    def budget_remaining() -> float:
+        value = _deadline_controller_call(controller, "remaining")
+        if value is not _DEADLINE_CONTROLLER_MISSING:
+            try:
+                candidate = float(value)
+                if math.isfinite(candidate):
+                    return max(0.0, candidate)
+            except (TypeError, ValueError, OverflowError):
+                pass
+        return max(0.0, current_deadline() - time.monotonic())
+
+    def budget_paused() -> bool:
+        return _deadline_controller_bool(controller, "is_paused")
+
+    def budget_grace_active() -> bool:
+        return _deadline_controller_bool(controller, "manual_submission_grace_active")
+
+    def budget_grace_remaining() -> float:
+        value = _deadline_controller_call(controller, "manual_submission_grace_remaining")
+        if value is not _DEADLINE_CONTROLLER_MISSING:
+            try:
+                candidate = float(value)
+                if math.isfinite(candidate):
+                    return max(0.0, candidate)
+            except (TypeError, ValueError, OverflowError):
+                pass
+        return MANUAL_OTP_POST_SUBMIT_GRACE_SECONDS if budget_grace_active() else 0.0
+
+    def budget_expired() -> bool:
+        value = _deadline_controller_call(controller, "is_expired")
+        if value is not _DEADLINE_CONTROLLER_MISSING:
+            if bool(value):
+                return not budget_grace_active()
+            return False
+        return not budget_paused() and budget_remaining() <= 0
+
+    deadline = current_deadline()
     account_flow = "existing_login" if force_existing_login else "signup"
     # The manager passes the configured value for normal runs, but resolving
     # it here also keeps direct browser-flow callers aligned with Free config.
@@ -2673,7 +3213,12 @@ async def _browser_flow(
         }, ensure_ascii=False)[:500]
 
     async def wait_for_state(*states: str, seconds: float = 45.0) -> str:
-        remaining = max(1.0, deadline - time.monotonic())
+        grace_remaining = budget_grace_remaining()
+        remaining = (
+            max(1.0, float(seconds))
+            if budget_paused()
+            else max(1.0, budget_remaining(), grace_remaining)
+        )
         return await _wait_state(page, min(float(seconds), remaining), *states)
 
     async def wait_for_otp_input(stage_code: str = "", seconds: float = 45.0) -> tuple[str, str]:
@@ -2688,7 +3233,9 @@ async def _browser_flow(
         """
         timing_stage = str(stage_code or entry_otp_stage)
         started = time.monotonic()
-        end = min(deadline, started + max(1.0, float(seconds)))
+        end = started + max(1.0, float(seconds))
+        if not budget_paused() and not budget_grace_active():
+            end = min(current_deadline(), end)
         while time.monotonic() < end:
             current = await _page_state(page)
             if current not in {"otp", "otp_wait"}:
@@ -2750,7 +3297,9 @@ async def _browser_flow(
                     stage_fn=set_stage,
                     task_id=str(config.get("task_id") or ""),
                     device_id=str(config.get("device_id") or ""),
-                    deadline_monotonic=deadline,
+                    deadline_monotonic=current_deadline(),
+                    deadline_controller=controller,
+                    stop_requested=config.get("_stop_requested"),
                     timing_fn=timing_fn,
                 )
                 result.update(password_result)
@@ -2759,6 +3308,8 @@ async def _browser_flow(
                     password_result.get("password_set_after_registration")
                 )
             except FreeRegisterError as exc:
+                if exc.error_code == "free_run_stop" or exc.node_code == "free_run_stop":
+                    raise
                 detail = clean(str(exc), 300)
                 result.update({
                     "password_status": "pending",
@@ -2791,7 +3342,8 @@ async def _browser_flow(
                     stage_fn=lambda code: set_stage(code),
                     task_id=str(config.get("task_id") or ""),
                     device_id=str(config.get("device_id") or ""),
-                    deadline_monotonic=deadline,
+                    deadline_monotonic=current_deadline(),
+                    deadline_controller=controller,
                     stop_requested=config.get("_stop_requested"),
                     timing_fn=timing_fn,
                 )
@@ -2803,6 +3355,8 @@ async def _browser_flow(
                 set_stage("free_twofa_activate")
                 result["twofa_status"] = "enabled"
             except FreeRegisterError as exc:
+                if exc.error_code == "free_run_stop" or exc.node_code == "free_run_stop":
+                    raise
                 result.update({
                     "twofa_status": "pending",
                     "twofa_error": clean(str(exc), 300),
@@ -2873,10 +3427,14 @@ async def _browser_flow(
                 stage_fn=set_stage,
                 task_id=str(config.get("task_id") or ""),
                 device_id=str(config.get("device_id") or ""),
-                deadline_monotonic=deadline,
+                deadline_monotonic=current_deadline(),
+                deadline_controller=controller,
+                stop_requested=config.get("_stop_requested"),
                 timing_fn=timing_fn,
             )
         except FreeRegisterError as exc:
+            if exc.error_code == "free_run_stop" or exc.node_code == "free_run_stop":
+                raise
             detail = clean(str(exc), 300)
             return {
                 "access_token": token,
@@ -2994,7 +3552,7 @@ async def _browser_flow(
         async with startup_gate:
             await open_registration_entry()
 
-    while time.monotonic() < deadline:
+    while not budget_expired():
         step_count += 1
         if _stop_requested(config.get("_stop_requested")):
             raise FreeRegisterError(
@@ -3286,7 +3844,8 @@ async def _browser_flow(
                 code = str(await _await_otp_callback(
                     otp_callback,
                     stage_code,
-                    deadline_monotonic=deadline,
+                    deadline_monotonic=current_deadline(),
+                    deadline_controller=controller,
                     stop_requested=config.get("_stop_requested"),
                 ) or "").strip()
                 if not code:
@@ -4386,14 +4945,105 @@ class CamoufoxBrowserPool:
     async def _register_async(self, kwargs: Mapping[str, Any]) -> dict[str, Any]:
         if self._global_semaphore is None or not self._slots:
             raise CamoufoxBrowserError("free_camoufox_launch", "启动 Camoufox", "浏览器池没有可用进程", error_code="camoufox_pool_empty")
+        registration_timeout = float(self.config.get("registration_timeout_seconds") or 600)
+        fallback_deadline = time.monotonic() + max(0.0, registration_timeout)
+        controller = kwargs.get("deadline_controller")
+        if controller is None:
+            supplied_config = kwargs.get("config")
+            if isinstance(supplied_config, Mapping):
+                controller = supplied_config.get("_deadline_controller")
+        if controller is None:
+            controller = RegistrationDeadline(registration_timeout)
+        effective_kwargs = dict(kwargs)
+        effective_config = dict(kwargs.get("config") or {})
+        effective_config["_deadline_controller"] = controller
+        effective_kwargs["config"] = effective_config
+        effective_kwargs["deadline_controller"] = controller
         restart_attempted = False
         while True:
             try:
                 async with self._global_semaphore:
-                    return await asyncio.wait_for(
-                        self._register_with_slot(kwargs),
-                        timeout=float(self.config.get("registration_timeout_seconds") or 600),
+                    task = asyncio.create_task(self._register_with_slot(effective_kwargs))
+                    safety_deadline = time.monotonic() + registration_timeout + max(
+                        30.0,
+                        float(self.config.get("context_close_timeout_seconds") or 15)
+                        + float(self.config.get("browser_recycle_timeout_seconds") or 45)
+                        + float(self.config.get("browser_recycle_drain_timeout_seconds") or 20)
+                        + (MANUAL_OTP_WINDOW_SECONDS * MAX_MANUAL_OTP_WINDOWS)
+                        + MANUAL_OTP_POST_SUBMIT_GRACE_SECONDS,
                     )
+                    try:
+                        while True:
+                            if task.done():
+                                return await task
+                            expired_value = _deadline_controller_call(controller, "is_expired")
+                            if expired_value is _DEADLINE_CONTROLLER_MISSING:
+                                expired = time.monotonic() >= fallback_deadline
+                            else:
+                                try:
+                                    expired = bool(expired_value)
+                                except Exception:
+                                    expired = time.monotonic() >= fallback_deadline
+                            paused = _deadline_controller_bool(controller, "is_paused")
+                            prompt_active = _deadline_controller_bool(controller, "manual_prompt_active")
+                            handoff_active = _deadline_controller_bool(controller, "manual_handoff_active")
+                            post_submit_grace = _deadline_controller_bool(controller, "manual_submission_grace_active")
+                            otp_wait_active = _deadline_controller_bool(controller, "otp_wait_active")
+                            remaining_value = _deadline_controller_call(controller, "remaining")
+                            if remaining_value is _DEADLINE_CONTROLLER_MISSING:
+                                remaining = max(0.0, fallback_deadline - time.monotonic())
+                            else:
+                                try:
+                                    remaining = float(remaining_value)
+                                    if not math.isfinite(remaining):
+                                        raise ValueError
+                                except (TypeError, ValueError, OverflowError):
+                                    remaining = max(0.0, fallback_deadline - time.monotonic())
+                            if expired and otp_wait_active and not paused and not handoff_active:
+                                requested_handoff = _deadline_controller_call(
+                                    controller, "request_manual_handoff"
+                                )
+                                if requested_handoff is not _DEADLINE_CONTROLLER_MISSING:
+                                    paused = True
+                                    handoff_active = True
+                            if (
+                                (
+                                    expired
+                                    and not (paused or prompt_active or handoff_active or post_submit_grace)
+                                )
+                                or (
+                                    paused
+                                    and otp_wait_active
+                                    and not (prompt_active or handoff_active or post_submit_grace)
+                                )
+                                or time.monotonic() >= safety_deadline
+                            ):
+                                if paused and not prompt_active and not handoff_active:
+                                    _deadline_controller_call(controller, "resume_manual", "timeout")
+                                task.cancel()
+                                try:
+                                    await asyncio.wait_for(
+                                        asyncio.shield(task),
+                                        timeout=max(1.0, min(30.0, safety_deadline - time.monotonic() + 1.0)),
+                                    )
+                                except BaseException:
+                                    pass
+                                raise CamoufoxBrowserError(
+                                    "free_camoufox_browser", "Camoufox 注册页面",
+                                    "浏览器注册超时，已取消当前 context 并回收进程",
+                                    error_code="camoufox_registration_timeout",
+                                )
+                            await asyncio.sleep(
+                                min(0.25, max(0.01, remaining)) if not paused
+                                else 0.25
+                            )
+                    finally:
+                        if not task.done():
+                            task.cancel()
+                        try:
+                            await asyncio.wait_for(asyncio.shield(task), timeout=5.0)
+                        except BaseException:
+                            pass
             except asyncio.TimeoutError as exc:
                 raise CamoufoxBrowserError(
                     "free_camoufox_browser", "Camoufox 注册页面",
@@ -5154,16 +5804,40 @@ class CamoufoxBrowserPool:
             ) from self._init_error
         if self._loop is None:
             raise CamoufoxBrowserError("free_camoufox_launch", "启动 Camoufox", "浏览器事件循环不可用", error_code="camoufox_loop_missing")
-        future = asyncio.run_coroutine_threadsafe(self._register_async(kwargs), self._loop)
         registration_timeout = float(self.config.get("registration_timeout_seconds") or 600)
         cleanup_budget = float(self.config.get("context_close_timeout_seconds") or 15)
         recycle_budget = float(self.config.get("browser_recycle_timeout_seconds") or 45)
         drain_budget = float(self.config.get("browser_recycle_drain_timeout_seconds") or 20)
+        controller = kwargs.get("deadline_controller")
+        if controller is None:
+            supplied_config = kwargs.get("config")
+            if isinstance(supplied_config, Mapping):
+                controller = supplied_config.get("_deadline_controller")
+        if controller is None:
+            controller = RegistrationDeadline(registration_timeout)
+        effective_kwargs = dict(kwargs)
+        effective_config = dict(kwargs.get("config") or {})
+        effective_config["_deadline_controller"] = controller
+        effective_kwargs["config"] = effective_config
+        effective_kwargs["deadline_controller"] = controller
+        safety_deadline = time.monotonic() + registration_timeout + max(
+            30.0,
+            cleanup_budget + recycle_budget + drain_budget
+            + (MANUAL_OTP_WINDOW_SECONDS * MAX_MANUAL_OTP_WINDOWS)
+            + MANUAL_OTP_POST_SUBMIT_GRACE_SECONDS,
+        )
+        future = asyncio.run_coroutine_threadsafe(self._register_async(effective_kwargs), self._loop)
         try:
-            return dict(future.result(
-                timeout=registration_timeout + cleanup_budget + recycle_budget
-                + drain_budget + 30,
-            ))
+            # The async watchdog observes the pause-aware controller and
+            # cancels the registration task when its active budget expires.
+            # Keep this cross-thread wait as one bounded operation instead of
+            # polling every 250ms: a Future test double (or a scheduler that
+            # reports an immediate timeout) must not turn the caller into a
+            # hot loop. The allowance covers the three independent broker
+            # windows (entry, password and 2FA), post-submit handoff, and
+            # context/recycle cleanup.
+            wait_budget = max(0.25, safety_deadline - time.monotonic())
+            return dict(future.result(timeout=wait_budget))
         except FutureCancelledError as exc:
             # ``run_coroutine_threadsafe`` translates an async
             # ``CancelledError`` into ``concurrent.futures.CancelledError``.
@@ -5689,12 +6363,23 @@ class CamoufoxRegistrationRunner:
         browser_config = dict(config.get("camoufox") or {})
         if self.debug_artifact_dir:
             browser_config["_debug_artifact_dir"] = self.debug_artifact_dir
+        deadline_controller = RegistrationDeadline(
+            float(browser_config.get("registration_timeout_seconds") or 600)
+        )
+        task_deadline_controller = deadline_controller
         otp = build_free_mailbox_otp_provider(
             str(task.get("mailbox_url") or ""), str(task.get("proxy") or ""), config,
             log_fn=log, task_id=task_id,
             **({"batch_id": str(task.get("batch_id") or "")} if task.get("batch_id") else {}),
             stage_fn=stage,
         )
+        # Keep the builder's historical config identity intact.  The
+        # deadline is task-local runtime state, so attach it to the provider
+        # instance instead of adding a private key to the caller's mapping.
+        try:
+            setattr(otp, "deadline_controller", deadline_controller)
+        except Exception:
+            pass
         try:
             stage(task_id, "free_password_enroll" if password_retry else "free_camoufox_signup")
             if stop_event.is_set():
@@ -5704,7 +6389,11 @@ class CamoufoxRegistrationRunner:
                 *,
                 stop_requested: Callable[[], bool] | None = None,
                 deadline_monotonic: float | None = None,
+                deadline_controller: Any | None = None,
             ) -> str:
+                active_controller = deadline_controller or task_deadline_controller
+                if active_controller is not getattr(otp, "deadline_controller", None):
+                    otp.deadline_controller = active_controller
                 def combined_stop() -> bool:
                     return stop_event.is_set() or (
                         callable(stop_requested) and bool(stop_requested())
@@ -5730,6 +6419,7 @@ class CamoufoxRegistrationRunner:
                     "incident_id": str(task.get("incident_id") or ""),
                     "proxy_fingerprint": str(task.get("proxy_fingerprint") or ""),
                     "_stop_requested": stop_event.is_set,
+                    "_deadline_controller": task_deadline_controller,
                 }, log=log,
                 stage_fn=stage,
                 timing_fn=config.get("_timing_substep"),
@@ -5737,6 +6427,7 @@ class CamoufoxRegistrationRunner:
                 existing_password=existing_password,
                 password_retry=password_retry,
                 password_retry_token=saved_password_token,
+                deadline_controller=task_deadline_controller,
             )
             result = dict(result)
             if password_retry:

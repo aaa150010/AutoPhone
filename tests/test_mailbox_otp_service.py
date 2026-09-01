@@ -95,6 +95,42 @@ class MailboxOtpServiceTests(unittest.TestCase):
         self.assertEqual(calls["deadline"], deadline)
         self.assertEqual(raised.exception.error_code, "free_email_otp_wait_mailbox_code_timeout")
 
+    def test_free_provider_supports_keyword_only_mailbox_waiter_stage(self):
+        calls = {}
+
+        class KeywordOnlyService:
+            def wait_code(self, *, stage_code, stop_requested=None, **_kwargs):
+                calls["stage"] = stage_code
+                calls["stopped"] = bool(stop_requested and stop_requested())
+                return "071618"
+
+        provider = MailboxUrlOtpProvider(
+            "https://mail.example.test/inbox",
+            timeout=5,
+            fetcher=lambda url: MailboxResponse(url, b"[]", "application/json", 200),
+        )
+        provider.service = KeywordOnlyService()
+        self.assertEqual(provider.wait_code("mailbox@example.test"), "071618")
+        self.assertEqual(calls, {"stage": "free_email_otp_wait", "stopped": False})
+
+    def test_free_provider_supports_kwargs_only_mailbox_waiter(self):
+        calls = {}
+
+        class KwargsOnlyService:
+            def wait_code(self, **kwargs):
+                calls.update(kwargs)
+                return "246810"
+
+        provider = MailboxUrlOtpProvider(
+            "https://mail.example.test/inbox",
+            timeout=5,
+            fetcher=lambda url: MailboxResponse(url, b"[]", "application/json", 200),
+        )
+        provider.service = KwargsOnlyService()
+        self.assertEqual(provider.wait_code("mailbox@example.test"), "246810")
+        self.assertEqual(calls["stage_code"], "free_email_otp_wait")
+        self.assertIn("stop_requested", calls)
+
     def test_explicit_proxy_supports_all_configured_schemes_and_disables_environment(self):
         for proxy in (
             "http://127.0.0.1:7897",
@@ -268,6 +304,47 @@ class MailboxOtpServiceTests(unittest.TestCase):
         service.prepare()
         self.assertEqual(service.wait_code(), "654321")
         self.assertEqual(service.diagnostic()["openai_messages"], 1)
+        service.close()
+
+    def test_shared_service_extracts_api798_nested_data_code(self):
+        source_url = (
+            "https://api798.com/get_code?"
+            "email=user%40example.test&auth_code=private-access"
+        )
+        payloads = iter((
+            MailboxResponse(
+                source_url,
+                b'{"success":true,"data":{"subject":"Mail is being delivered"}}',
+                "application/json",
+                200,
+            ),
+            MailboxResponse(
+                source_url,
+                json.dumps({
+                    "success": True,
+                    "data": {
+                        "body": "Your ChatGPT verification code is 071618.",
+                        "code": "071618",
+                        "subject": "ChatGPT temporary verification code",
+                        "from": "noreply@openai.com",
+                    },
+                }).encode("utf-8"),
+                "application/json",
+                200,
+            ),
+        ))
+        service = MailboxOtpService(
+            source_url,
+            timeout_seconds=10,
+            fetcher=lambda _url: next(payloads),
+        )
+
+        service.prepare("free_email_otp_wait")
+        self.assertEqual(
+            service.wait_code(stage_code="free_email_otp_wait"),
+            "071618",
+        )
+        self.assertEqual(service.diagnostic()["reason"], "code_found")
         service.close()
 
     def test_timing_callback_reports_mailbox_milestones_without_code_contents(self):
@@ -556,6 +633,176 @@ class MailboxOtpServiceTests(unittest.TestCase):
         self.assertEqual(fake.recorded[0][0], "mailbox_openai_message_without_otp")
         self.assertEqual([state[1]["phase"] for state in states if state[1]], ["automatic", "manual"])
         self.assertIsNone(states[-1][1])
+
+    def test_manual_mailbox_takeover_skips_later_password_and_twofa_waits(self):
+        broker = ManualVerificationBroker(default_window_seconds=3)
+
+        class FakeService:
+            def __init__(self):
+                self.wait_calls = []
+                self.recorded = []
+
+            def wait_code(self, stage_code, **_kwargs):
+                self.wait_calls.append(stage_code)
+                raise MailboxOtpError("mailbox_code_timeout", "邮箱验证码等待超时")
+
+            def diagnostic(self):
+                return {"reason": "mailbox_openai_message_without_otp"}
+
+            def record_parser_sample(self, *_args, **_kwargs):
+                self.recorded.append(_args)
+                return "MPS-takeover"
+
+            def close(self):
+                pass
+
+        fake = FakeService()
+        generations = {
+            "free_email_otp_wait": 1,
+            "free_password_otp_wait": 2,
+            "free_twofa_enroll": 3,
+        }
+        provider = MailboxUrlOtpProvider(
+            "https://mail.example.test/inbox",
+            timeout=5,
+            task_id="free-takeover",
+            manual_broker=broker,
+            manual_generation_getter=lambda _task_id, stage_code: generations[stage_code],
+        )
+        provider.service = fake
+
+        first_result = []
+        first = threading.Thread(
+            target=lambda: first_result.append(
+                provider.wait_code("mailbox@example.test", stage_code="free_email_otp_wait")
+            )
+        )
+        first.start()
+        deadline = time.time() + 1
+        while time.time() < deadline and not broker.public("free-takeover"):
+            time.sleep(0.01)
+        first_prompt = broker.public("free-takeover")
+        self.assertTrue(first_prompt.get("can_submit"))
+        self.assertEqual(first_prompt.get("generation"), 1)
+        broker.submit("free-takeover", "email_otp", 1, "071618")
+        first.join(1)
+        self.assertEqual(first_result, ["071618"])
+
+        second_result = []
+        resends = []
+        second = threading.Thread(
+            target=lambda: second_result.append(
+                provider.wait_code(
+                    "mailbox@example.test",
+                    stage_code="free_password_otp_wait",
+                    resend_fn=lambda: resends.append("password"),
+                )
+            )
+        )
+        second.start()
+        deadline = time.time() + 1
+        while time.time() < deadline and not broker.public("free-takeover"):
+            time.sleep(0.01)
+        second_prompt = broker.public("free-takeover")
+        self.assertTrue(second_prompt.get("can_submit"))
+        self.assertEqual(second_prompt.get("generation"), 2)
+        broker.submit("free-takeover", "email_otp", 2, "246810")
+        second.join(1)
+        self.assertEqual(second_result, ["246810"])
+        self.assertEqual(fake.wait_calls, ["free_email_otp_wait"])
+
+        third_result = []
+        third = threading.Thread(
+            target=lambda: third_result.append(
+                provider.wait_code(
+                    "mailbox@example.test",
+                    stage_code="free_twofa_enroll",
+                    resend_fn=lambda: resends.append("twofa"),
+                )
+            )
+        )
+        third.start()
+        deadline = time.time() + 1
+        while time.time() < deadline and not broker.public("free-takeover"):
+            time.sleep(0.01)
+        third_prompt = broker.public("free-takeover")
+        self.assertTrue(third_prompt.get("can_submit"))
+        self.assertEqual(third_prompt.get("generation"), 3)
+        broker.submit("free-takeover", "email_otp", 3, "135790")
+        third.join(1)
+        self.assertEqual(third_result, ["135790"])
+        self.assertEqual(fake.wait_calls, ["free_email_otp_wait"])
+        self.assertEqual(resends, [])
+        self.assertEqual(len(fake.recorded), 1)
+
+    def test_preopened_prompt_with_automatic_winner_does_not_enable_takeover(self):
+        broker = ManualVerificationBroker(default_window_seconds=3)
+        automatic_release = threading.Event()
+
+        class FakeService:
+            def __init__(self):
+                self.wait_calls = []
+                self.recorded = 0
+
+            def wait_code(self, stage_code, **_kwargs):
+                self.wait_calls.append(stage_code)
+                if stage_code == "free_email_otp_wait":
+                    automatic_release.wait(1)
+                    return "654321"
+                return "246810"
+
+            def diagnostic(self):
+                return {"reason": "code_found"}
+
+            def record_parser_sample(self, *_args, **_kwargs):
+                self.recorded += 1
+
+            def close(self):
+                pass
+
+        fake = FakeService()
+        provider = MailboxUrlOtpProvider(
+            "https://mail.example.test/inbox",
+            timeout=5,
+            task_id="free-automatic-winner",
+            manual_broker=broker,
+            manual_generation_getter=lambda _task_id, stage_code: {
+                "free_email_otp_wait": 1,
+                "free_password_otp_wait": 2,
+            }[stage_code],
+        )
+        provider.service = fake
+        broker.open("free-automatic-winner", "email_otp", 1, window_seconds=3)
+
+        first_result = []
+        first = threading.Thread(
+            target=lambda: first_result.append(
+                provider.wait_code(
+                    "mailbox@example.test",
+                    stage_code="free_email_otp_wait",
+                )
+            )
+        )
+        first.start()
+        time.sleep(0.05)
+        automatic_release.set()
+        first.join(1)
+
+        self.assertFalse(first.is_alive())
+        self.assertEqual(first_result, ["654321"])
+        self.assertFalse(provider._manual_takeover)
+        self.assertEqual(
+            provider.wait_code(
+                "mailbox@example.test",
+                stage_code="free_password_otp_wait",
+            ),
+            "246810",
+        )
+        self.assertEqual(
+            fake.wait_calls,
+            ["free_email_otp_wait", "free_password_otp_wait"],
+        )
+        self.assertEqual(fake.recorded, 0)
 
     def test_regular_runtime_provider_uses_the_same_shared_service(self):
         provider = SimpleNamespace(

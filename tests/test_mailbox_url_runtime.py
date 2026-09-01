@@ -312,6 +312,158 @@ class MailboxUrlRuntimeTests(unittest.TestCase):
                 self.assertEqual(detail_urls, ())
                 self.assertEqual([message.code for message in messages], ["731904"])
 
+    def test_api798_get_code_nested_data_mail_preserves_leading_zero_code(self):
+        source_url = (
+            "https://api798.com/get_code?"
+            "email=user%40example.test&auth_code=private-access"
+        )
+        payload = {
+            "success": True,
+            "data": {
+                "body": "Your ChatGPT verification code is 071618.",
+                "code": "071618",
+                "date": "2026-08-31T10:20:30Z",
+                "subject": "ChatGPT temporary verification code",
+                "from": "noreply@openai.com",
+                # Unrelated response metadata must not leak into the message.
+                "auth_code": "private-access",
+            },
+        }
+
+        messages, detail_urls = parse_mailbox_payload(
+            json.dumps(payload),
+            source_url,
+        )
+
+        self.assertEqual(detail_urls, ())
+        self.assertEqual(len(messages), 1)
+        message = messages[0]
+        self.assertEqual(message.code, "071618")
+        self.assertEqual(message.code_source, "explicit_code")
+        self.assertTrue(message.explicit_code)
+        self.assertEqual(message.sender, "noreply@openai.com")
+        self.assertEqual(message.received_at, "2026-08-31T10:20:30Z")
+        self.assertIn("body", message.field_sources)
+        self.assertNotIn("private-access", repr(message))
+
+    def test_api798_get_code_normalizes_hyphenated_mail_fields(self):
+        source_url = "https://api798.com/get_code?email=user%40example.test"
+        payload = {
+            "success": True,
+            "data": {
+                "message-id": "mail-17",
+                "verification-code": "071618",
+                "received-at": "2026-08-31T10:20:30Z",
+                "from-address": "noreply@openai.com",
+            },
+        }
+
+        messages, _links = parse_mailbox_payload(json.dumps(payload), source_url)
+
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(messages[0].code, "071618")
+        self.assertEqual(messages[0].code_source, "explicit_code")
+        self.assertEqual(messages[0].sender, "noreply@openai.com")
+        self.assertEqual(messages[0].received_at, "2026-08-31T10:20:30Z")
+
+    def test_api798_get_code_nested_data_rejects_invalid_or_non_string_codes(self):
+        source_url = (
+            "https://api798.com/get_code?"
+            "email=user%40example.test&auth_code=private-access"
+        )
+        for invalid in ("07161", "0716180", 71618, True, None):
+            with self.subTest(invalid=invalid):
+                payload = {
+                    "success": True,
+                    "data": {
+                        "subject": "ChatGPT temporary verification code",
+                        "code": invalid,
+                    },
+                }
+                messages, _links = parse_mailbox_payload(
+                    json.dumps(payload),
+                    source_url,
+                )
+                self.assertFalse(any(message.code for message in messages))
+
+    def test_api798_get_code_nested_data_does_not_use_query_auth_code(self):
+        source_url = (
+            "https://api798.com/get_code?"
+            "email=user%40example.test&auth_code=071618"
+        )
+        payload = {
+            "success": True,
+            "data": {"subject": "Mail is still being delivered"},
+        }
+
+        messages, _links = parse_mailbox_payload(json.dumps(payload), source_url)
+
+        self.assertFalse(any(message.code for message in messages))
+        self.assertNotIn("071618", repr(messages))
+
+    def test_api798_get_code_nested_data_drops_credential_shaped_fields(self):
+        source_url = (
+            "https://api798.com/get_code?"
+            "email=user%40example.test&auth_code=query-private"
+        )
+        payload = {
+            "success": True,
+            "data": {
+                "message": {
+                    "body": {
+                        "text": "Your ChatGPT verification code is 071618.",
+                        "token": "nested-token-private",
+                    },
+                    "key": "nested-key-private",
+                    "auth_code": "nested-auth-private",
+                },
+            },
+        }
+
+        messages, _links = parse_mailbox_payload(json.dumps(payload), source_url)
+        rendered = repr(messages)
+
+        self.assertEqual([message.code for message in messages], ["071618"])
+        self.assertNotIn("query-private", rendered)
+        self.assertNotIn("nested-token-private", rendered)
+        self.assertNotIn("nested-key-private", rendered)
+        self.assertNotIn("nested-auth-private", rendered)
+
+    def test_api798_nested_mail_does_not_promote_uncontextual_bare_body_values(self):
+        source_url = (
+            "https://api798.com/get_code?"
+            "email=user%40example.test&auth_code=private-access"
+        )
+        for field in ("subject", "from", "body"):
+            with self.subTest(field=field):
+                payload = {
+                    "success": True,
+                    "data": {field: "731904"},
+                }
+                messages, _links = parse_mailbox_payload(
+                    json.dumps(payload),
+                    source_url,
+                )
+                self.assertFalse(any(message.code for message in messages))
+
+    def test_api798_get_code_nested_data_success_false_is_empty(self):
+        source_url = (
+            "https://api798.com/get_code?"
+            "email=user%40example.test&auth_code=private-access"
+        )
+        payload = {
+            "success": False,
+            "data": {
+                "body": "Your ChatGPT verification code is 071618.",
+                "code": "071618",
+            },
+        }
+
+        messages, detail_urls = parse_mailbox_payload(json.dumps(payload), source_url)
+
+        self.assertEqual(messages, ())
+        self.assertEqual(detail_urls, ())
+
     def test_api798_get_code_client_payload_accepts_scalar_message(self):
         source_url = (
             "https://api798.com/get_code?"
@@ -333,6 +485,38 @@ class MailboxUrlRuntimeTests(unittest.TestCase):
                 self.assertFalse(refreshing)
                 self.assertEqual(error_code, "")
                 self.assertIsNone(status)
+
+    def test_api798_get_code_nested_data_reaches_client_payload_and_latest_code(self):
+        source_url = (
+            "https://api798.com/get_code?"
+            "email=user%40example.test&auth_code=private-access"
+        )
+        payload = {
+            "success": True,
+            "data": {
+                "body": "Your ChatGPT verification code is 071618.",
+                "code": "071618",
+                "date": "2026-08-31T10:20:30Z",
+                "subject": "ChatGPT temporary verification code",
+                "from": "noreply@openai.com",
+            },
+        }
+
+        parsed = _parse_client_mailbox_payload(json.dumps(payload), source_url)
+        messages, detail_urls, smtp_inbound, refreshing, error_code, status = parsed
+        self.assertEqual([message.code for message in messages], ["071618"])
+        self.assertEqual(detail_urls, ())
+        self.assertFalse(smtp_inbound)
+        self.assertFalse(refreshing)
+        self.assertEqual(error_code, "")
+        self.assertIsNone(status)
+
+        selection = MailboxUrlClient(
+            source_url,
+            fetcher=lambda url: json_response(url, payload),
+        ).latest_code()
+        self.assertEqual(selection.code, "071618")
+        self.assertEqual(selection.reason, "code_found")
 
     def test_api798_get_code_client_payload_success_false_is_empty(self):
         source_url = (

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Mapping
 import re
 import threading
 import time
@@ -379,6 +380,7 @@ def wait_with_manual_fallback(
     automatic_submitted = threading.Event()
     automatic_unmatched_notified = False
     manual_was_explicit = False
+    manual_open_notification: tuple[Any, ...] | None = None
 
     def notify_automatic_unmatched(reason: Any) -> None:
         nonlocal automatic_unmatched_notified
@@ -391,6 +393,32 @@ def wait_with_manual_fallback(
             # Parser-sample persistence is diagnostic-only and must never
             # prevent a task from accepting a valid manual code.
             pass
+
+    def notify_manual_opened(prompt: Mapping[str, Any]) -> None:
+        """Notify the owner once for each concrete broker prompt.
+
+        A prompt opened by the UI can remain visible across many polling
+        iterations.  The callback pauses the registration deadline and
+        updates public state, so invoking it repeatedly would keep extending
+        that pause and produce duplicate state transitions.  Include the
+        prompt's immutable context in the marker so a genuinely new prompt
+        can still be announced after an expired one is replaced.
+        """
+        nonlocal manual_open_notification
+        marker = (
+            str(prompt.get("input_kind") or ""),
+            normalize_generation(prompt.get("generation")),
+            prompt.get("opened_at"),
+            prompt.get("deadline_at"),
+        )
+        if manual_open_notification == marker:
+            return
+        manual_open_notification = marker
+        if on_manual_opened is not None:
+            try:
+                on_manual_opened(dict(prompt))
+            except Exception:
+                pass
 
     def run_automatic() -> None:
         try:
@@ -445,6 +473,7 @@ def wait_with_manual_fallback(
         if prompt is not None:
             manual_was_explicit = True
             manual_open.set()
+            notify_manual_opened(prompt)
             # A user may have opened the prompt and submitted a code before
             # the automatic waiter reaches its timeout.  Consume it now so an
             # explicit manual action is responsive while preserving the same
@@ -519,11 +548,7 @@ def wait_with_manual_fallback(
         notify_automatic_unmatched(unmatched_reason)
     prompt = broker.open(task_id, input_kind, generation, window_seconds=manual_timeout_seconds)
     manual_open.set()
-    if on_manual_opened is not None:
-        try:
-            on_manual_opened(dict(prompt))
-        except Exception:
-            pass
+    notify_manual_opened(prompt)
     try:
         # The automatic worker can finish in the small hand-off window between
         # the timeout decision and opening the prompt.  Consume that result

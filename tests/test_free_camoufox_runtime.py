@@ -175,6 +175,54 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         _FakeManager.instances.clear()
         _FakeManager.context_close_error = None
 
+    def test_registration_deadline_pauses_and_shifts_remaining_budget(self):
+        """Manual input freezes the active budget and resumes from the same remainder."""
+        clock = [100.0]
+        controller = runtime.RegistrationDeadline(
+            10.0, monotonic_fn=lambda: clock[0],
+        )
+
+        clock[0] = 104.0
+        self.assertAlmostEqual(controller.remaining(), 6.0)
+        controller.pause_manual()
+        self.assertTrue(controller.is_paused())
+
+        # The operator can take longer than the original registration window;
+        # elapsed manual time must not consume the six seconds left above.
+        clock[0] = 200.0
+        self.assertAlmostEqual(controller.remaining(), 6.0)
+        self.assertFalse(controller.is_expired())
+
+        controller.resume_manual("submitted")
+        self.assertFalse(controller.is_paused())
+        self.assertAlmostEqual(controller.deadline(), 206.0)
+        clock[0] = 205.5
+        self.assertAlmostEqual(controller.remaining(), 0.5)
+        clock[0] = 206.0
+        self.assertTrue(controller.is_expired())
+
+    def test_registration_deadline_submission_grace_requires_expired_budget(self):
+        """A submitted late code gets bounded handoff grace; other outcomes do not."""
+        clock = [100.0]
+        expired = runtime.RegistrationDeadline(
+            1.0, monotonic_fn=lambda: clock[0],
+        )
+        clock[0] = 102.0
+        expired.pause_manual()
+        clock[0] = 120.0
+        expired.resume_manual("submitted")
+        self.assertTrue(expired.manual_submission_grace_active())
+        self.assertTrue(expired.is_expired())
+        clock[0] = 120.0 + runtime.MANUAL_OTP_POST_SUBMIT_GRACE_SECONDS
+        self.assertFalse(expired.manual_submission_grace_active())
+
+        active = runtime.RegistrationDeadline(
+            10.0, monotonic_fn=lambda: clock[0],
+        )
+        active.pause_manual()
+        active.resume_manual("submitted")
+        self.assertFalse(active.manual_submission_grace_active())
+
     def test_profile_age_fill_skips_actionability_click(self):
         page = _ProfileFillPage()
 
@@ -244,6 +292,47 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         self.assertTrue(stopped.wait(1.0))
         self.assertEqual(failure.error_code, "camoufox_otp_wait_timeout")
 
+    def test_otp_callback_manual_window_can_cross_original_deadline(self):
+        """A visible broker prompt pauses the shared OTP and browser budget."""
+        release = threading.Event()
+        opened = threading.Event()
+        controller = runtime.RegistrationDeadline(0.05)
+
+        def callback(
+            _stage,
+            *,
+            stop_requested,
+            deadline_monotonic,
+            deadline_controller,
+        ):
+            self.assertFalse(stop_requested())
+            self.assertGreater(deadline_monotonic, 0)
+            self.assertIs(deadline_controller, controller)
+            deadline_controller.manual_prompt_opened()
+            opened.set()
+            self.assertTrue(release.wait(1))
+            deadline_controller.resume_manual("submitted")
+            return "071618"
+
+        async def run():
+            task = asyncio.create_task(runtime._await_otp_callback(
+                callback,
+                "free_email_otp_wait",
+                deadline_monotonic=controller.deadline(),
+                deadline_controller=controller,
+            ))
+            while not opened.is_set():
+                await asyncio.sleep(0.005)
+            # Cross the original 50 ms registration deadline while the prompt
+            # is still active, then submit through the same controller.
+            await asyncio.sleep(0.08)
+            release.set()
+            return await task
+
+        self.assertEqual(asyncio.run(run()), "071618")
+        self.assertFalse(controller.is_paused())
+        self.assertGreater(controller.remaining(), 0)
+
     def test_otp_callback_stop_signal_cancels_worker(self):
         """Cancelling the async page flow propagates to a mailbox callback."""
         started = threading.Event()
@@ -273,6 +362,82 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         asyncio.run(run())
         self.assertTrue(started.is_set())
         self.assertTrue(stopped.wait(1.0))
+
+    def test_async_otp_callback_is_closed_when_flow_is_cancelled(self):
+        started = threading.Event()
+        closed = threading.Event()
+
+        async def callback(_stage, *, stop_requested, deadline_monotonic):
+            started.set()
+            try:
+                await asyncio.sleep(30)
+            finally:
+                closed.set()
+
+        async def run():
+            task = asyncio.create_task(runtime._await_otp_callback(
+                callback,
+                "free_email_otp_wait",
+                deadline_monotonic=time.monotonic() + 30,
+            ))
+            for _ in range(100):
+                if started.is_set():
+                    break
+                await asyncio.sleep(0.005)
+            self.assertTrue(started.is_set())
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+
+        asyncio.run(run())
+        self.assertTrue(closed.wait(1.0))
+
+    def test_otp_callback_stop_wins_over_simultaneous_result(self):
+        started = threading.Event()
+        release = threading.Event()
+        stop = threading.Event()
+
+        def callback(_stage, *, stop_requested, **_kwargs):
+            started.set()
+            release.wait(1)
+            return "999999"
+
+        async def run():
+            task = asyncio.create_task(runtime._await_otp_callback(
+                callback,
+                "free_email_otp_wait",
+                deadline_monotonic=time.monotonic() + 10,
+                stop_requested=stop,
+            ))
+            for _ in range(100):
+                if started.is_set():
+                    break
+                await asyncio.sleep(0.005)
+            self.assertTrue(started.is_set())
+            stop.set()
+            release.set()
+            with self.assertRaises(runtime.FreeRegisterError) as raised:
+                await task
+            return raised.exception
+
+        failure = asyncio.run(run())
+        self.assertEqual(failure.error_code, "free_run_stop")
+
+    def test_otp_callback_awaits_nested_coroutine_result(self):
+        async def inner():
+            return "071618"
+
+        async def callback(_stage, **_kwargs):
+            return inner()
+
+        async def run():
+            return await runtime._await_otp_callback(
+                callback,
+                "free_email_otp_wait",
+                deadline_monotonic=time.monotonic() + 1,
+            )
+
+        self.assertEqual(asyncio.run(run()), "071618")
 
     def test_profile_transition_timing_is_non_overlapping(self):
         """The async submit and home confirmation intervals are distinct."""
@@ -1938,6 +2103,52 @@ class CamoufoxRuntimeTests(unittest.TestCase):
             try:
                 with self.assertRaises(runtime.CamoufoxBrowserError) as raised:
                     pool.register(email="user@example.test", password="password", proxy="")
+            finally:
+                pool.shutdown()
+
+        self.assertEqual(raised.exception.error_code, "camoufox_registration_timeout")
+        self.assertGreaterEqual(len(_FakeManager.instances), 2)
+        self.assertTrue(all(item.exited == 1 for item in _FakeManager.instances))
+
+    def test_registration_watchdogs_pause_for_manual_window(self):
+        async def manual_flow(_page, *, deadline_controller, **_kwargs):
+            deadline_controller.manual_prompt_opened()
+            await asyncio.sleep(0.08)
+            deadline_controller.resume_manual("submitted")
+            return {"ok": True, "manual": True}
+
+        with (
+            patch.object(runtime, "_load_camoufox_api", return_value=(_FakeManager, _fake_context)),
+            patch.object(runtime, "_browser_flow", side_effect=manual_flow),
+        ):
+            pool = runtime.CamoufoxBrowserPool(
+                self._config(registration_timeout_seconds=0.05)
+            )
+            try:
+                result = pool.register(email="user@example.test")
+            finally:
+                pool.shutdown()
+
+        self.assertTrue(result["manual"])
+        self.assertTrue(all(item.exited == 1 for item in _FakeManager.instances))
+
+    def test_registration_watchdogs_resume_after_manual_expiry(self):
+        async def expired_manual_flow(_page, *, deadline_controller, **_kwargs):
+            deadline_controller.manual_prompt_opened()
+            await asyncio.sleep(0.08)
+            deadline_controller.resume_manual("expired")
+            await asyncio.Event().wait()
+
+        with (
+            patch.object(runtime, "_load_camoufox_api", return_value=(_FakeManager, _fake_context)),
+            patch.object(runtime, "_browser_flow", side_effect=expired_manual_flow),
+        ):
+            pool = runtime.CamoufoxBrowserPool(
+                self._config(registration_timeout_seconds=0.05)
+            )
+            try:
+                with self.assertRaises(runtime.CamoufoxBrowserError) as raised:
+                    pool.register(email="user@example.test")
             finally:
                 pool.shutdown()
 

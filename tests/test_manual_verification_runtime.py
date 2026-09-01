@@ -220,6 +220,49 @@ class ManualVerificationRuntimeTests(unittest.TestCase):
         self.assertEqual(result, ["222222"])
         self.assertEqual(events, [])
 
+    def test_preopened_manual_prompt_notifies_owner_once(self):
+        """A UI-opened prompt pauses its owner without duplicate callbacks."""
+        broker = ManualVerificationBroker(default_window_seconds=3)
+        opened = broker.open("T-preopened", "email_otp", 1, window_seconds=3)
+        callback_seen = threading.Event()
+        automatic_release = threading.Event()
+        callbacks = []
+        result = []
+
+        def on_manual_opened(prompt):
+            callbacks.append(prompt)
+            callback_seen.set()
+
+        def run():
+            result.append(
+                wait_with_manual_fallback(
+                    lambda: (automatic_release.wait(2), "not-a-code")[1],
+                    broker=broker,
+                    task_id="T-preopened",
+                    input_kind="email_otp",
+                    generation=1,
+                    automatic_timeout_seconds=1,
+                    manual_timeout_seconds=3,
+                    on_manual_opened=on_manual_opened,
+                )
+            )
+
+        thread = threading.Thread(target=run)
+        thread.start()
+        self.assertTrue(callback_seen.wait(1))
+        # The same prompt is observed repeatedly while the automatic worker
+        # remains blocked; notification must stay one-shot.
+        time.sleep(0.05)
+        broker.submit("T-preopened", "email_otp", 1, "123456")
+        automatic_release.set()
+        thread.join(1)
+
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(result, ["123456"])
+        self.assertEqual(len(callbacks), 1)
+        self.assertEqual(callbacks[0]["opened_at"], opened["opened_at"])
+        self.assertEqual(callbacks[0]["deadline_at"], opened["deadline_at"])
+
 
 if __name__ == "__main__":
     unittest.main()

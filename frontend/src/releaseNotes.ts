@@ -13,11 +13,15 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.95',
-  freeRuntimeVersion: '1.6.95',
-  title: 'Free 注册工程化存储与诊断重构',
-  releasedAt: '2026-08-31',
+  version: '1.6.96',
+  freeRuntimeVersion: '1.6.96',
+  title: 'API798 验证码解析与人工回退修复',
+  releasedAt: '2026-09-01',
   sections: [
+    {
+      title: 'API798 验证码解析与人工回退修复',
+      usage: 'api798.com/get_code 现在支持 success/data.body/data.code 等嵌套邮件字段，保留验证码前导零且不会把 auth_code、token 或 URL 查询参数误当验证码；自动取码未命中后可按注册、密码设置和 2FA 阶段进入独立人工验证码窗口。Camoufox 人工窗口会暂停注册截止时间，提交、取消或超时后执行有界恢复与清理，停止信号也会中断密码和 2FA 等待。',
+    },
     {
       title: 'Free 注册工程化存储与诊断重构',
       usage: 'Free protocol 与 Camoufox 任务现在使用独立 SQLite、原子任务状态迁移和两阶段邮箱租约；结构化诊断事件统一记录首个真实失败、重试、清理和浏览器生命周期。邮箱原文、取件地址、Token、密码和验证码继续只在受控接口按需读取。',

@@ -495,7 +495,9 @@ def _safe_identity(*values: Any) -> str:
 
 
 def _message_from_mapping(
-    value: Mapping[str, Any], source_url: str, order: int, *, trust_explicit_code: bool = False,
+    value: Mapping[str, Any], source_url: str, order: int, *,
+    trust_explicit_code: bool = False,
+    allow_bare_code: bool | None = None,
 ) -> MailboxMessage | None:
     message_id = _scalar_text(_first(value, _ID_KEYS)).strip()
     sender = decode_mail_body(_first(value, _SENDER_KEYS))
@@ -508,7 +510,18 @@ def _message_from_mapping(
         detail_url = client_mailbox_detail_url(source_url, _first(value, _ID_KEYS))
     trusted_source = trust_explicit_code or _trusted_otp_source(source_url)
     explicit_code = _explicit_code_from_mapping(value) if trusted_source else ""
-    code_match = extract_mailbox_code(sender, subject, body, decoder=decode_mail_body, allow_bare_code=trusted_source)
+    bare_code_allowed = (
+        _trusted_otp_source(source_url)
+        if allow_bare_code is None
+        else bool(allow_bare_code)
+    )
+    code_match = extract_mailbox_code(
+        sender,
+        subject,
+        body,
+        decoder=decode_mail_body,
+        allow_bare_code=bare_code_allowed,
+    )
     code = explicit_code or code_match.code
     if not any((message_id, sender, subject, received_at, body, detail_url, code)):
         return None
@@ -585,6 +598,8 @@ def _walk_mappings(value: Any) -> Iterable[Mapping[str, Any]]:
 
 def _messages_from_json(
     parsed: Any, source_url: str, *, start_order: int = 0, message_limit: int = MAX_PARSED_MESSAGES,
+    trust_explicit_code: bool = False,
+    allow_bare_code: bool | None = None,
 ) -> tuple[list[MailboxMessage], list[str]]:
     messages: list[MailboxMessage] = []
     detail_urls: list[str] = []
@@ -593,7 +608,13 @@ def _messages_from_json(
     for mapping in _walk_mappings(parsed):
         if len(messages) >= limit:
             break
-        message = _message_from_mapping(mapping, source_url, order)
+        message = _message_from_mapping(
+            mapping,
+            source_url,
+            order,
+            trust_explicit_code=trust_explicit_code,
+            allow_bare_code=allow_bare_code,
+        )
         if message is None:
             continue
         messages.append(message)
@@ -790,24 +811,48 @@ def _parse_api798_get_code_payload(
         return None
     if not response.success:
         return (), ()
+    messages: list[MailboxMessage] = []
+    order = 0
+    if isinstance(response.data, Mapping):
+        message = _message_from_mapping(
+            response.data,
+            source_url,
+            order,
+            trust_explicit_code=True,
+            allow_bare_code=False,
+        )
+        if message is not None:
+            messages.append(message)
+            order += 1
+        else:
+            nested, _detail_urls = _messages_from_json(
+                response.data,
+                source_url,
+                start_order=order,
+                message_limit=MAX_PARSED_MESSAGES,
+                trust_explicit_code=True,
+                allow_bare_code=False,
+            )
+            messages.extend(nested)
+            order += len(nested)
     message_text = decode_mail_body(response.message)
-    if not message_text:
-        return (), ()
-    code_match = extract_mailbox_code(
-        message_text,
-        decoder=decode_mail_body,
-        allow_bare_code=True,
-    )
-    message = MailboxMessage(
-        identity=_safe_identity(source_url, "api798_get_code", message_text),
-        subject=message_text[:500],
-        body=message_text,
-        code=code_match.code,
-        code_source=code_match.source,
-        explicit_code=bool(code_match.code),
-        field_sources=("api798_get_code",),
-    )
-    return (message,), ()
+    if message_text:
+        code_match = extract_mailbox_code(
+            message_text,
+            decoder=decode_mail_body,
+            allow_bare_code=True,
+        )
+        messages.append(MailboxMessage(
+            identity=_safe_identity(source_url, "api798_get_code", message_text),
+            subject=message_text[:500],
+            body=message_text,
+            code=code_match.code,
+            code_source=code_match.source,
+            explicit_code=False,
+            field_sources=("api798_get_code",),
+            order=order,
+        ))
+    return _merge_messages(messages), ()
 
 
 def parse_mailbox_payload(raw: str, source_url: str) -> tuple[tuple[MailboxMessage, ...], tuple[str, ...]]:

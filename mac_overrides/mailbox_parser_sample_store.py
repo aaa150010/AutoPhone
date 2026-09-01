@@ -23,7 +23,7 @@ from typing import Any
 
 
 SCHEMA_VERSION = 1
-MAILBOX_PARSER_REVISION = "pickup-dynamic-v6-samples"
+MAILBOX_PARSER_REVISION = "pickup-dynamic-v7-samples"
 DEFAULT_RETENTION_DAYS = 30
 DEFAULT_MAX_SAMPLES = 5000
 DEFAULT_MAX_BYTES = 512 * 1024 * 1024

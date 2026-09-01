@@ -32,7 +32,7 @@ def _sample(url: str = "https://mail.example.test/pickup?key=private") -> dict:
         "mailbox_url": url,
         "reason": "mailbox_openai_message_without_otp",
         "diagnostics": {"listing_messages": 1, "openai_messages": 1},
-        "parser_version": "pickup-dynamic-v6-samples",
+        "parser_version": "pickup-dynamic-v7-samples",
     }
 
 
@@ -147,6 +147,34 @@ class MailboxParserSampleRouteTests(unittest.TestCase):
         reparsed = client.post(f"/samples/{self.sample_id}/reparse").get_json()["reparse"]
         self.assertIn("detail_url_fingerprints", reparsed)
         self.assertNotIn("mail.example.test", json.dumps(reparsed))
+
+    def test_offline_reparse_recognizes_api798_nested_data_code(self) -> None:
+        source_url = (
+            "https://api798.com/get_code?"
+            "email=user%40example.test&auth_code=private-access"
+        )
+        payload = json.dumps({
+            "success": True,
+            "data": {
+                "body": "Your ChatGPT verification code is 071618.",
+                "code": "071618",
+                "subject": "ChatGPT temporary verification code",
+                "from": "noreply@openai.com",
+            },
+        }).encode("utf-8")
+        sample_id = self.store.record_failure(
+            _sample(source_url),
+            [_response(payload, url=source_url)],
+        )
+
+        reparsed = self.app.test_client().post(
+            f"/samples/{sample_id}/reparse"
+        ).get_json()["reparse"]
+
+        self.assertEqual(reparsed["code_message_count"], 1)
+        self.assertTrue(reparsed["messages"][0]["code_present"])
+        self.assertEqual(reparsed["messages"][0]["code_source"], "explicit_code")
+        self.assertNotIn("071618", json.dumps(reparsed))
 
 
 class MailboxParserSampleCaptureTests(unittest.TestCase):

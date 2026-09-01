@@ -27,10 +27,61 @@ _TRUSTED_OTP_PATH_PATTERN = re.compile(
 
 @dataclass(frozen=True, slots=True)
 class Api798GetCodeResponse:
-    """Strict, body-only projection of an api798 ``/get_code`` response."""
+    """Credential-safe projection of an api798 ``/get_code`` response.
+
+    The endpoint has shipped both a scalar top-level ``message`` and a nested
+    ``data`` mail object.  Keep only fields that describe the mail itself;
+    URL query parameters (including ``auth_code``) never enter this object.
+    """
 
     success: bool
     message: str = ""
+    data: Mapping[str, Any] | None = None
+
+
+_API798_DATA_KEYS = frozenset({
+    # ``key`` is intentionally excluded: on some revisions it is the same
+    # mailbox credential carried as ``auth_code`` in the request URL.  Message
+    # ids are still covered by the non-secret id/uid aliases below.
+    "id", "uid", "messageid", "message_id", "mailid", "mail_id",
+    "from", "fromaddress", "from_address", "sender", "senderemail",
+    "sender_email", "sendemail", "send_email", "emailfrom", "email_from",
+    "subject", "title", "mailsubject", "mail_subject", "mailtitle", "mail_title",
+    "body", "content", "html", "text", "message", "msg", "snippet", "preview",
+    "bodyhtml", "body_html", "bodytext", "body_text", "contenthtml", "content_html",
+    "contenttext", "content_text", "date", "time", "received", "receivedat",
+    "received_at", "sentat", "sent_at", "timestamp", "code", "otp", "otpcode",
+    "otp_code", "verificationcode", "verification_code", "securitycode", "security_code",
+})
+
+
+def _project_data(value: Any, *, depth: int = 0) -> Mapping[str, Any] | None:
+    """Project nested mail metadata without retaining unrelated response data."""
+    if depth > 8 or not isinstance(value, Mapping):
+        return None
+    projected: dict[str, Any] = {}
+    for key, item in value.items():
+        normalized_key = str(key).replace("-", "_").casefold()
+        if normalized_key not in _API798_DATA_KEYS:
+            continue
+        if isinstance(item, Mapping):
+            nested = _project_data(item, depth=depth + 1)
+            if nested:
+                projected[normalized_key] = nested
+        elif isinstance(item, (list, tuple)):
+            nested_items: list[Any] = []
+            for child in item[:40]:
+                if isinstance(child, Mapping):
+                    nested = _project_data(child, depth=depth + 1)
+                    if nested:
+                        nested_items.append(nested)
+                elif isinstance(child, (str, int, float)) and not isinstance(child, bool):
+                    nested_items.append(child)
+            if nested_items:
+                projected[normalized_key] = nested_items
+        elif isinstance(item, (str, int, float)) and not isinstance(item, bool):
+            projected[normalized_key] = item
+    return projected or None
 _API798_HTML_CONTENT_PATTERNS = (
     re.compile(r'(?is)\bhtmlContent\s*=\s*"((?:\\.|[^"\\])*)"'),
     re.compile(r"(?is)\bhtmlContent\s*=\s*'((?:\\.|[^'\\])*)'"),
@@ -74,7 +125,7 @@ def api798_get_code_response(
     raw: str,
     source_url: str,
 ) -> Api798GetCodeResponse | None:
-    """Parse only the documented top-level ``success/message`` envelope.
+    """Parse the successful envelope and its nested mail projection.
 
     ``None`` means the URL is not the exact api798 endpoint.  Once the URL is
     recognized, malformed data is kept as an unsuccessful empty response so
@@ -91,7 +142,12 @@ def api798_get_code_response(
         return Api798GetCodeResponse(False)
     if parsed.get("success") is not True:
         return Api798GetCodeResponse(False)
-    return Api798GetCodeResponse(True, _top_level_scalar(parsed.get("message")))
+    data = _project_data(parsed.get("data"))
+    return Api798GetCodeResponse(
+        True,
+        _top_level_scalar(parsed.get("message")),
+        data,
+    )
 
 
 def _decode_javascript_string(value: str) -> str:
