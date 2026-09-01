@@ -1197,6 +1197,11 @@ class FreeFailureRuntimeMixin:
             context = dict(task or current)
             context.update({key: value for key, value in current.items() if key not in context})
             payload = failure_result_payload(context, status=status, failure=normalized, result=result)
+            protocol_sanitizer = getattr(self, "_sanitize_protocol_result", None)
+            protocol_result = str(context.get("driver") or "").strip().lower() == "protocol"
+            if protocol_result and callable(protocol_sanitizer):
+                durable_result = protocol_sanitizer(durable_result)
+                payload = protocol_sanitizer(payload)
             # Keep private account evidence in the task snapshot as well as
             # the mailbox result file.  This matters after restart, when the
             # task store may be the only source available to the rerun guard.
@@ -1204,6 +1209,8 @@ class FreeFailureRuntimeMixin:
             row_id = str(context.get("row_id") or "").strip()
             prior_result = merge_account_result_fields(task_result, durable_result)
             payload = merge_account_result_fields(prior_result, payload)
+            if protocol_result and callable(protocol_sanitizer):
+                payload = protocol_sanitizer(payload)
             incident_id = ""
             log_store = getattr(self, "log_store", None)
             diagnostic_store = getattr(log_store, "diagnostic_store", None)

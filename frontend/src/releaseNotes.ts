@@ -13,11 +13,19 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.96',
-  freeRuntimeVersion: '1.6.96',
-  title: 'API798 验证码解析与人工回退修复',
+  version: '1.6.98',
+  freeRuntimeVersion: '1.6.98',
+  title: 'Free 协议新建入口对齐 Windows 链路',
   releasedAt: '2026-09-01',
   sections: [
+    {
+      title: 'Free 协议新建入口对齐 Windows 链路',
+      usage: '首次 Free protocol 注册使用 Windows 参考包的 signup authorize 入口，避免全新邮箱被送入 login_or_signup 混合分支后错误进入手机号节点；密码和 2FA 重试继续使用 login_or_signup，Camoufox 链路保持隔离不变。',
+    },
+    {
+      title: 'Free 协议链路 Token 与手机号边界修复',
+      usage: 'Free protocol 注册成功以 access token 为唯一 Token 凭据，兼容 access_token、accessToken 和 token 响应字段，并丢弃 refresh/id token 等可选字段；进入手机号验证页会以 free_phone_required 停止且不会调用接码平台。Camoufox 链路保持原有 Token、Session、套餐、密码和 2FA 行为不变。',
+    },
     {
       title: 'API798 验证码解析与人工回退修复',
       usage: 'api798.com/get_code 现在支持 success/data.body/data.code 等嵌套邮件字段，保留验证码前导零且不会把 auth_code、token 或 URL 查询参数误当验证码；自动取码未命中后可按注册、密码设置和 2FA 阶段进入独立人工验证码窗口。Camoufox 人工窗口会暂停注册截止时间，提交、取消或超时后执行有界恢复与清理，停止信号也会中断密码和 2FA 等待。',

@@ -226,7 +226,7 @@ class FreeProtocolRuntimeTests(unittest.TestCase):
 
         self.assertEqual(result["twofa_status"], "disabled")
         self.assertEqual(len(build_calls), 1)
-        self.assertEqual(build_calls[0]["screen_hint"], "login_or_signup")
+        self.assertEqual(build_calls[0]["screen_hint"], "signup")
         self.assertEqual(build_calls[0]["login_hint"], _task()["email"])
         self.assertEqual(build_calls[0]["prompt"], "login")
         self.assertIn("prompt=login", contexts[0]["url"])

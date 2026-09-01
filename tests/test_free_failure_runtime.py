@@ -64,6 +64,53 @@ class FreeFailureRuntimeTests(unittest.TestCase):
         self.assertIsNone(failure)
         self.assertEqual(result["password_status"], "enabled")
 
+    def test_protocol_failure_persistence_drops_optional_tokens_but_camoufox_keeps_them(self) -> None:
+        manager = FreeRegisterManager(self.data_dir)
+        row = manager.pool.import_text(
+            "protocol@example.test----https://mail.example.test/protocol\n"
+            "camoufox@example.test----https://mail.example.test/camoufox\n"
+        )
+        rows = manager.pool.entries()
+        self.assertEqual(len(rows), 2)
+        protocol_row, camoufox_row = rows
+        for task_id, row_id, driver in (
+            ("protocol-failure", protocol_row.row_id, "protocol"),
+            ("camoufox-failure", camoufox_row.row_id, "camoufox"),
+        ):
+            manager._tasks[task_id] = {
+                "task_id": task_id,
+                "row_id": row_id,
+                "driver": driver,
+                "email": "account@example.test",
+                "status": "running",
+                "result": {},
+            }
+            manager._persist_task_failure(
+                task_id,
+                manager._tasks[task_id],
+                status="failed",
+                failure={
+                    "node_code": "free_access_token",
+                    "node_label": "获取 Free access token",
+                    "error_code": "token_failed",
+                    "public_message": "token failed",
+                    "retryable": False,
+                },
+                result={
+                    "access_token": "access-token-private",
+                    "refresh_token": "refresh-token-private",
+                    "id_token": "id-token-private",
+                },
+            )
+
+        protocol_saved = manager.pool.result(protocol_row.row_id)
+        camoufox_saved = manager.pool.result(camoufox_row.row_id)
+        self.assertEqual(protocol_saved["access_token"], "access-token-private")
+        self.assertNotIn("refresh_token", protocol_saved)
+        self.assertNotIn("id_token", protocol_saved)
+        self.assertEqual(camoufox_saved["refresh_token"], "refresh-token-private")
+        self.assertEqual(camoufox_saved["id_token"], "id-token-private")
+
     def _wait(self, manager: FreeRegisterManager) -> None:
         deadline = time.time() + 3
         while manager.public_state()["running"] and time.time() < deadline:

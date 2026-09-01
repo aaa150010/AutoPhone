@@ -3116,13 +3116,6 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 )
             batch_id = str(self._batch_id or "") if active_batch else f"free-retry-{int(time.time())}-{secrets.token_hex(4)}"
             driver = str(original.get("driver") or config.get("driver") or "protocol").strip().lower()
-            # 2FA is a continuation of an already-created account.  Keep it
-            # on the AutoRegister-aligned protocol path for browser origins:
-            # passwordless registrations have a token but no saved signup
-            # password, and reopening a Camoufox signup page
-            # would either require a nonexistent password or replay signup.
-            if twofa_retry and driver == "camoufox":
-                driver = "protocol"
             if driver not in {"protocol", "camoufox"}:
                 raise FreeRegisterError("free_rerun", "重跑 Free 账号", "Free 注册链路无效", retryable=False)
             mailbox = self.pool.entry(row_id)
@@ -4113,6 +4106,8 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     if password_retry:
                         runner_kwargs["password_retry"] = True
                     result = dict(runner(snapshot, task_config, self._stop, self._stage, task_log, **runner_kwargs))
+                    if snapshot_driver == "protocol":
+                        result = self._sanitize_protocol_result(result)
                     break
                 except FreeRegisterError as exc:
                     error_node = str(getattr(exc, "node_code", ""))
@@ -4195,6 +4190,8 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             if twofa_retry or password_retry:
                 prior_result = snapshot.get("result") if isinstance(snapshot.get("result"), Mapping) else {}
                 result = merge_account_result_fields(prior_result, result)
+            if snapshot_driver == "protocol":
+                result = self._sanitize_protocol_result(result)
             self._save_task(task_id, profile_summary=result.get("profile_summary", ""), registration_ip=result.get("registration_ip", ""))
             status, result, result_failure = completed_result_state(
                 result,

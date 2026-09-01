@@ -6,6 +6,7 @@ import unittest
 
 from mac_overrides.free_protocol_flow import (
     _is_security_page,
+    _is_phone,
     _raise_security_page,
     _status,
     _wait_and_validate_email_otp,
@@ -434,6 +435,27 @@ class FreeProtocolFlowTests(unittest.TestCase):
         self.assertTrue(result["registration_completed"])
         self.assertEqual(result["access_token"], "access-token-private")
 
+    def test_exchange_discards_optional_refresh_and_identity_tokens(self):
+        transport = _Transport(exchange={
+            "_status": 200,
+            "accessToken": "access-token-private",
+            "refresh_token": "refresh-token-private",
+            "refreshToken": "refresh-token-private-camel",
+            "id_token": "id-token-private",
+            "idToken": "id-token-private-camel",
+            "expires_at": 123,
+            "token_type": "Bearer",
+            "scope": "openid",
+        })
+        result, _ = _run(transport)
+        self.assertEqual(result["access_token"], "access-token-private")
+        self.assertTrue(result["has_access_token"])
+        for key in (
+            "accessToken", "refresh_token", "refreshToken", "id_token", "idToken",
+            "expires_at", "token_type", "scope",
+        ):
+            self.assertNotIn(key, result)
+
     def test_invalid_session_rebuilds_once_without_changing_email_or_proxy(self):
         first = _Transport(email={"_status": 400, "error": "Your sign-in session is no longer valid."})
         second = _Transport()
@@ -743,6 +765,18 @@ class FreeProtocolFlowTests(unittest.TestCase):
         self.assertEqual(raised.exception.node_code, "free_phone_required")
         self.assertEqual(transport.phone_calls, 0)
 
+    def test_explicit_profile_state_wins_over_stale_phone_continuation(self):
+        response = {
+            "_status": 200,
+            "page": {"type": "about-you"},
+            "continue_url": "/contact-verification?next=/about-you",
+        }
+        self.assertFalse(_is_phone(response))
+        transport = _Transport(email=response)
+        result, _ = _run(transport)
+        self.assertTrue(result["registration_completed"])
+        self.assertIn("create_account_profile", transport.calls)
+
     def test_existing_login_password_page_switches_directly_to_email_otp(self):
         chain = sys.modules["codex_oauth_chain"]
         original_success = chain._is_success_response
@@ -775,13 +809,13 @@ class FreeProtocolFlowTests(unittest.TestCase):
         self.assertEqual(transport.calls.count("send_email_otp"), 1)
         self.assertEqual(transport.calls.count("verify_email_otp"), 1)
 
-    def test_login_password_uses_explicit_passwordless_sender_and_reclassifies_signup(self):
-        """Mirror AutoRegister's login-password page one-time-code action.
+    def test_login_password_uses_reference_email_sender_and_reclassifies_signup(self):
+        """Mirror AutoRegister's login-password page email-code action.
 
         The provider may return a login-password page for a mailbox that can
-        still take the passwordless signup path.  The dedicated transport
-        method must win over the generic email sender, and the profile page
-        returned after OTP must reclassify the result as a signup.
+        still take the passwordless signup path. The protocol must delegate
+        endpoint fallback to the transport's normal email sender and must not
+        force a passwordless endpoint or reuse the misleading continuation URL.
         """
         class PasswordlessSignup(_Transport):
             def __init__(self):
@@ -793,8 +827,8 @@ class FreeProtocolFlowTests(unittest.TestCase):
                     "continue_url": "/api/accounts/email-otp/send",
                 })
 
-            def send_passwordless_otp(self, _url=""):
-                self.calls.append("send_passwordless_otp")
+            def send_email_otp(self, url="sentinel-url"):
+                self.calls.append(("send_email_otp", url))
                 return {
                     "_status": 200,
                     "page": {"type": "email_otp_verification"},
@@ -806,12 +840,11 @@ class FreeProtocolFlowTests(unittest.TestCase):
 
         self.assertTrue(result["registration_completed"])
         self.assertEqual(result["account_flow"], "signup")
-        self.assertEqual(transport.calls.count("send_passwordless_otp"), 1)
-        self.assertEqual(transport.calls.count("send_email_otp"), 0)
+        self.assertEqual([call for call in transport.calls if isinstance(call, tuple) and call[0] == "send_email_otp"], [("send_email_otp", "")])
         self.assertEqual(transport.calls.count("verify_email_otp"), 1)
 
-    def test_passwordless_sender_failure_stays_at_login_otp_node(self):
-        class FailedPasswordlessSender(_Transport):
+    def test_email_sender_failure_stays_at_login_otp_node(self):
+        class FailedEmailSender(_Transport):
             def __init__(self):
                 super().__init__(email={
                     "_status": 200,
@@ -819,23 +852,22 @@ class FreeProtocolFlowTests(unittest.TestCase):
                     "continue_url": "/api/accounts/email-otp/send",
                 })
 
-            def send_passwordless_otp(self, _url=""):
-                self.calls.append("send_passwordless_otp")
+            def send_email_otp(self, _url=""):
+                self.calls.append("send_email_otp")
                 return {
                     "_status": 503,
                     "error": "passwordless send unavailable",
                     "error_code": "otp_send_unavailable",
                 }
 
-        transport = FailedPasswordlessSender()
+        transport = FailedEmailSender()
         with self.assertRaises(FreeRegisterError) as raised:
             _run(transport)
 
         self.assertEqual(raised.exception.node_code, "free_existing_login_otp")
         self.assertEqual(raised.exception.error_code, "free_existing_login_otp_send_failed")
         self.assertEqual(raised.exception.provider_code, "otp_send_unavailable")
-        self.assertEqual(transport.calls.count("send_passwordless_otp"), 1)
-        self.assertEqual(transport.calls.count("send_email_otp"), 0)
+        self.assertEqual(transport.calls.count("send_email_otp"), 1)
 
     def test_existing_account_email_login_uses_password_verify_sentinel(self):
         class ExistingEmailFallback(_Transport):

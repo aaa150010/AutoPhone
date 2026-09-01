@@ -420,6 +420,36 @@ class FreeProtocolMixin:
         "local_token_ready", "access_token_present", "token_present", "phase2_ok",
     })
 
+    _PROTOCOL_OPTIONAL_TOKEN_KEYS = frozenset({
+        "accessToken", "refresh_token", "refreshToken", "id_token", "idToken",
+        "token", "session_token", "sessionToken", "expires_at", "expiresAt",
+        "token_type", "tokenType", "scope",
+    })
+
+    @staticmethod
+    def _sanitize_protocol_result(value: Mapping[str, Any] | None) -> dict[str, Any]:
+        """Keep only the access token from a protocol account result.
+
+        This gate is deliberately owned by the protocol mixin.  Callers use
+        it only when the task driver is ``protocol`` so Camoufox results keep
+        their existing token contract.
+        """
+        result = dict(value) if isinstance(value, Mapping) else {}
+        access_token = str(
+            result.get("access_token")
+            or result.get("accessToken")
+            or result.get("token")
+            or result.get("session_token")
+            or result.get("sessionToken")
+            or ""
+        ).strip()
+        if access_token:
+            result["access_token"] = access_token
+            result["has_access_token"] = True
+        for key in FreeProtocolMixin._PROTOCOL_OPTIONAL_TOKEN_KEYS:
+            result.pop(key, None)
+        return result
+
     @staticmethod
     def resolve_node_runner(config: Mapping[str, Any] | None = None) -> str:
         """Resolve the explicit or bundled SentinelRunner without starting it."""
@@ -529,7 +559,7 @@ class FreeProtocolMixin:
                 "协议注册链路未返回结果，未进入 Token 节点",
                 error_code="free_protocol_result_empty",
             )
-        result = dict(raw_result)
+        result = FreeProtocolMixin._sanitize_protocol_result(raw_result)
         ok_marker = result.get("ok")
         explicit_failure = (
             isinstance(ok_marker, bool) and not ok_marker
@@ -565,7 +595,7 @@ class FreeProtocolMixin:
                 provider_status=result.get("provider_status") or result.get("http_status"),
                 error_code=str(result.get("error_code") or f"{node_code}_failed"),
             )
-        token_present = bool(str(result.get("access_token") or result.get("token") or "").strip())
+        token_present = bool(str(result.get("access_token") or "").strip())
         if token_present and not FreeProtocolMixin._registration_completion_confirmed(result):
             raise FreeRegisterError(
                 "free_protocol_result", "读取 Free 协议注册结果",
@@ -684,13 +714,14 @@ class FreeProtocolMixin:
         auth_session_logging_id = str(uuid.uuid4())
 
         def build_oauth_context() -> dict[str, Any]:
+            # The Windows reference enters a fresh mailbox through its
+            # explicit signup authorize branch.  Password/2FA retries are
+            # existing-account continuations and must retain the mixed login
+            # context so they do not get redirected into signup again.
+            screen_hint = "login_or_signup" if (password_retry or twofa_retry) else "signup"
             oauth_url, state, code_verifier = codex_chain_runner.build_oauth_url(
                 login_hint=email,
-                # Match AutoRegister's current OAuth context.  The server
-                # must be allowed to classify a mailbox as a new account or
-                # an existing login; forcing ``signup`` can send an existing
-                # mailbox into the wrong page state before URL OTP handling.
-                screen_hint="login_or_signup",
+                screen_hint=screen_hint,
                 prompt="login",
             )
             oauth_url = _ensure_oauth_context_params(
@@ -889,7 +920,7 @@ class FreeProtocolMixin:
                     )
                 if reference_flow:
                     run_authenticated_warmup(transport, token)
-                result = dict(saved)
+                result = self._sanitize_protocol_result(saved)
                 for key in (
                     "failure", "error", "error_code", "error_node",
                     "password_failure", "password_error",
@@ -925,7 +956,7 @@ class FreeProtocolMixin:
                     )
                 elif saved_password:
                     result["credential_line"] = f"{email}----{saved_password}"
-                return result
+                return self._sanitize_protocol_result(result)
 
             if twofa_retry:
                 saved = self.pool.result(str(task["row_id"]))
@@ -937,7 +968,7 @@ class FreeProtocolMixin:
                     # context before starting password re-authentication.
                     # Keep this best-effort and on the same proxy/session.
                     run_authenticated_warmup(transport, token)
-                result = dict(saved)
+                result = self._sanitize_protocol_result(saved)
                 for key in ("failure", "error", "error_code", "error_node", "twofa_failure", "twofa_error"):
                     result.pop(key, None)
                 saved_password = str(saved.get("password") or "")
@@ -1001,7 +1032,7 @@ class FreeProtocolMixin:
                     result["credential_line"] = f"{email}----{saved_password}"
                 else:
                     result.pop("credential_line", None)
-                return result
+                return self._sanitize_protocol_result(result)
 
             try:
                 raw_result, transport = run_free_protocol_flow(
@@ -1143,12 +1174,12 @@ class FreeProtocolMixin:
                     twofa[key] = result[key]
             if registration_password_used or password_set_after_registration:
                 twofa["password"] = str(result.get("password") or password)
-            return finalize_registration_result(
+            return self._sanitize_protocol_result(finalize_registration_result(
                 twofa,
                 driver="protocol",
                 email=email,
                 password_used=registration_password_used or password_set_after_registration,
-            )
+            ))
         finally:
             try:
                 otp_close = getattr(otp_provider, "close", None)

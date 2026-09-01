@@ -396,6 +396,11 @@ def _is_phone(response: Any) -> bool:
     page = ""
     if isinstance(response, Mapping) and isinstance(response.get("page"), Mapping):
         page = str(response["page"].get("type") or "").casefold()
+    # An explicit profile/about-you page is authoritative. Some authorize
+    # envelopes retain a stale phone-related continuation URL while the
+    # visible state has already advanced to the profile form.
+    if page.replace("-", "_") in _PROFILE_PAGE_TYPES:
+        return False
     locations = " ".join(_page_locations(response)).casefold()
     return "phone" in page or "/phone" in locations or "contact-verification" in locations
 
@@ -783,12 +788,17 @@ def _wait_and_validate_email_otp(
     send_before_wait: bool = False,
     resend_budget: dict[str, int] | None = None,
     stop_requested: Callable[[], bool] | None = None,
+    send_url_override: str | None = None,
 ) -> Any:
     ok, page_type, continue_url, error_text, _session_invalid = _chain_helpers()
     current = response
     retry_count = 0
     max_attempts = 3
     budget = resend_budget if isinstance(resend_budget, dict) else {"used": 0}
+    # AutoRegister sends the login-page email OTP through the normal email
+    # verification action (with an empty continuation URL). Keep the existing
+    # stage identity for diagnostics while the transport owns its concrete
+    # request flow and endpoint fallback.
     sentinel_flow = (
         "password_verify"
         if stage_code == "free_existing_login_otp"
@@ -828,7 +838,7 @@ def _wait_and_validate_email_otp(
         sent = _call_transport(
             transport,
             send_method,
-            continue_url(current) or "",
+            (continue_url(current) if send_url_override is None else send_url_override) or "",
             flow=sentinel_flow,
             stop_requested=stop_requested,
             log=log,
@@ -1166,14 +1176,6 @@ def _run_once(
                 # recovered HTTP response may advertise an email-OTP send
                 # URL as ``continue_url`` even when that action was not
                 # selected, so do not let that URL choose the endpoint here.
-                # A transport that predates the dedicated adapter method
-                # keeps the old fallback for compatibility with test doubles
-                # and older recovered runtimes.
-                passwordless_sender = (
-                    "send_passwordless_otp"
-                    if callable(getattr(transport, "send_passwordless_otp", None))
-                    else "send_email_otp"
-                )
                 account_flow = "existing_login"
                 _reset_otp_request(otp_provider)
                 _prepare_otp(otp_provider, "free_existing_login_otp", force_snapshot=False)
@@ -1186,23 +1188,18 @@ def _run_once(
                     stage=stage,
                     log=log,
                     stage_code="free_existing_login_otp",
-                    send_method=passwordless_sender,
+                    # The reference transport owns endpoint fallback here;
+                    # do not force the dedicated passwordless endpoint.
+                    send_method="send_email_otp",
                     verify_method="verify_email_otp",
                     send_before_wait=True,
                     resend_budget=otp_resend_budget,
                     stop_requested=stop_requested,
+                    send_url_override="",
                 )
             if not _is_state_response(response, ok):
                 _raise_response(response, node="free_email_password", label="提交 Free 注册密码", stage="free_email_password")
             continue
-        if _is_phone(response):
-            raise FreeRegisterError(
-                "free_phone_required",
-                "Free 注册手机号节点",
-                "协议注册进入手机号验证，Free 流程未调用接码平台",
-                retryable=False,
-                error_code="free_phone_required",
-            )
         if (_is_profile(response) or current_page in _PROFILE_PAGE_TYPES) and not profile_submitted:
             profile_submitted = True
             account_flow = "signup"
@@ -1237,6 +1234,19 @@ def _run_once(
             if not _is_state_response(response, ok):
                 _raise_response(response, node="free_account_create", label="创建 Free 账号", stage="free_account_create")
             continue
+        if _is_phone(response):
+            raise FreeRegisterError(
+                "free_phone_required",
+                "Free 注册手机号节点",
+                "协议注册进入手机号验证，Free 流程未调用接码平台",
+                retryable=False,
+                error_code="free_phone_required",
+                **_response_metadata(
+                    response,
+                    action_hint="根据节点日志检查上游响应和当前代理",
+                    diagnostic_error="协议注册进入手机号验证，Free 流程未调用接码平台",
+                ),
+            )
         if current_page in {"sign_in_with_chatgpt_codex_consent", "consent", "consent_required"} and not consent_accepted:
             consent_accepted = True
             consent_url = _next_url(response)
@@ -1407,7 +1417,12 @@ def _run_once(
             )
     if not isinstance(tokens, Mapping):
         tokens = {}
-    token = str(tokens.get("access_token") or "").strip()
+    token = str(
+        tokens.get("access_token")
+        or tokens.get("accessToken")
+        or tokens.get("token")
+        or ""
+    ).strip()
     if not token:
         raise FreeRegisterError(
             "free_access_token",
@@ -1415,12 +1430,6 @@ def _run_once(
             "OAuth Token 交换完成但未返回 access token",
             error_code="token_exchange_failed",
         )
-    if not str(tokens.get("refresh_token") or "").strip() or not str(tokens.get("id_token") or "").strip():
-        # Some valid OAuth-compatible exchanges expose only the short-lived
-        # access token.  Registration completion is established by the
-        # callback/state check above; optional token siblings must not turn a
-        # successful account creation into a false Token failure.
-        _log(log, "OAuth Token 响应未包含全部可选 Token 字段，已保留 access token 继续后续查询", "warn")
     _log(log, "OAuth Token 交换完成（敏感内容不写入日志）", "success")
     result = {
         "ok": True,
@@ -1438,9 +1447,6 @@ def _run_once(
     }
     if result["account_flow"] == "signup" and registration_password_used:
         result["password"] = password or FIXED_PASSWORD
-    for key in ("refresh_token", "id_token", "expires_at", "token_type", "email", "scope"):
-        if key in tokens:
-            result[key] = tokens.get(key)
     return result
 
 def run_free_protocol_flow(

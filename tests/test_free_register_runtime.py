@@ -525,7 +525,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             runner=lambda *_args, **_kwargs: {},
             proxy_probe=lambda _proxy, _url: "203.0.113.20",
         )
-        self.assertEqual(manager.public_state()["runtime_version"], "1.6.96")
+        self.assertEqual(manager.public_state()["runtime_version"], "1.6.98")
         self.assertEqual(manager.preflight({"target_count": 1})["otp_parser_revision"], "pickup-dynamic-v7-samples")
 
     def test_close_camoufox_debug_passes_current_config_to_pool_helper(self):
@@ -661,6 +661,23 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertTrue(FreeProtocolMixin._registration_completion_confirmed({"ok": True, "oauth_callback_completed": True}))
         self.assertTrue(FreeProtocolMixin._registration_completion_confirmed({"ok": True, "access_token_present": True}))
         self.assertTrue(FreeProtocolMixin._registration_completion_confirmed({"ok": True, "phase2_status": "completed"}))
+
+    def test_protocol_result_normalizes_access_alias_and_drops_optional_tokens(self):
+        result = FreeProtocolMixin._sanitize_protocol_result({
+            "accessToken": "access-token-private",
+            "refresh_token": "refresh-token-private",
+            "idToken": "id-token-private",
+            "token": "access-token-alias",
+            "sessionToken": "session-token-private",
+            "password_status": "enabled",
+        })
+        self.assertEqual(result["access_token"], "access-token-private")
+        self.assertTrue(result["has_access_token"])
+        self.assertEqual(result["password_status"], "enabled")
+        for key in (
+            "accessToken", "refresh_token", "idToken", "token", "sessionToken",
+        ):
+            self.assertNotIn(key, result)
 
     def test_protocol_result_does_not_treat_string_false_as_completion(self):
         self.assertFalse(FreeProtocolMixin._registration_completion_confirmed({
@@ -2421,7 +2438,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertEqual(manager.pool.public_rows()[0]["status"], "available")
         self.assertEqual(manager.proxies.public()["rows"][0]["active_lease_count"], 0)
 
-    def test_camoufox_twofa_retry_switches_to_protocol_for_passwordless_account(self):
+    def test_camoufox_twofa_retry_stays_on_camoufox_chain(self):
         pool = FreeMailboxPool(self.data_dir)
         pool.import_text("a@example.test----https://mail.example.test/a\n")
         proxies = FreeProxyPool(self.data_dir)
@@ -2430,7 +2447,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         def runner(task, _config, _stop, _stage, _log, *, twofa_retry=False):
             if not twofa_retry:
                 return {"access_token": "token-private", "twofa_status": "pending"}
-            self.assertEqual(task["driver"], "protocol")
+            self.assertEqual(task["driver"], "camoufox")
             return {"access_token": "token-private", "twofa_status": "enabled"}
 
         manager = FreeRegisterManager(
@@ -2447,7 +2464,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         deadline = time.time() + 3
         while manager.public_state()["running"] and time.time() < deadline:
             time.sleep(0.01)
-        self.assertEqual(manager.public_tasks()[0]["driver"], "protocol")
+        self.assertEqual(manager.public_tasks()[0]["driver"], "camoufox")
 
     def test_twofa_retry_applies_remote_socks5_dns_policy_before_binding(self):
         pool = FreeMailboxPool(self.data_dir)
@@ -2492,7 +2509,10 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         while manager.public_state()["running"] and time.time() < deadline:
             time.sleep(0.01)
         self.assertTrue(probed)
-        self.assertTrue(probed[0].startswith("socks5h://"))
+        # Camoufox accepts the declared SOCKS5 endpoint through its browser
+        # transport adapter; the protocol-only socks5h DNS mapping must not
+        # leak into this isolated retry path.
+        self.assertTrue(probed[0].startswith("socks5://"))
 
     def test_twofa_result_failure_is_persisted_as_structured_task_failure(self):
         pool = FreeMailboxPool(self.data_dir)
