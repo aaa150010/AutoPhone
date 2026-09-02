@@ -1527,11 +1527,18 @@ async def _submit_email_form_stable(page: Any, email: str) -> dict[str, Any]:
 
 
 async def _click_first(page: Any, selectors: tuple[str, ...], *, timeout: float = 8.0) -> str | None:
+    deadline = time.monotonic() + max(0.5, float(timeout))
     for selector in selectors:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
         try:
             locator = page.locator(selector).first
-            await locator.wait_for(state="visible", timeout=max(500, int(timeout * 1000)))
-            await locator.click(timeout=5000)
+            await locator.wait_for(state="visible", timeout=max(1, int(remaining * 1000)))
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            await locator.click(timeout=max(1, min(5000, int(remaining * 1000))))
             return selector
         except Exception:
             continue
@@ -2817,6 +2824,7 @@ async def _browser_flow(
     profile_home_state_recorded = False
     profile_transition_recorded = False
     entry_transition_deadline = 0.0
+    entry_transition_observe_deadline = 0.0
     entry_transition_started = 0.0
     entry_transition_recorded = False
     entry_retry_used = False
@@ -3471,7 +3479,7 @@ async def _browser_flow(
 
     async def open_registration_entry() -> None:
         """Keep the reference startup gate around only entry navigation."""
-        nonlocal entry_submitted, entry_transition_deadline, entry_transition_started
+        nonlocal entry_submitted, entry_transition_deadline, entry_transition_observe_deadline, entry_transition_started
         nonlocal entry_retry_used, entry_signin_fallback_used, entry_recovery
         # Establish the mailbox baseline before the first request that may
         # send an OTP. The provider itself remains AutoPhone's strategy mode.
@@ -3509,8 +3517,9 @@ async def _browser_flow(
                 await prepare_otp(entry_otp_stage, notify_stage=False)
             await submit_entry_email(email_selector)
             entry_submitted = True
-            entry_transition_deadline = time.monotonic() + 45.0
             entry_transition_started = time.monotonic()
+            entry_transition_deadline = entry_transition_started + 45.0
+            entry_transition_observe_deadline = entry_transition_started + 12.0
             return
 
         # Keep the same-origin NextAuth fallback from the reference flow for a
@@ -3527,8 +3536,9 @@ async def _browser_flow(
                 proxy_retryable=False, log=log,
             )
             entry_submitted = True
-            entry_transition_deadline = time.monotonic() + 45.0
             entry_transition_started = time.monotonic()
+            entry_transition_deadline = entry_transition_started + 45.0
+            entry_transition_observe_deadline = entry_transition_started + 12.0
             return
         snapshot = await _snapshot(page)
         raise CamoufoxBrowserError(
@@ -3633,23 +3643,34 @@ async def _browser_flow(
             # until the same bounded transition window; otherwise five fast
             # DOM polls (about two seconds) can misclassify an asynchronous
             # navigation as a stuck registration.
-            if state in {"entry", "unknown"} and entry_submitted and now < entry_transition_deadline:
+            if state in {"entry", "unknown"} and entry_submitted and now < entry_transition_observe_deadline:
                 await asyncio.sleep(1.0)
                 continue
             if state == "entry" and entry_submitted and not entry_retry_used and not auth_phase_locked:
                 entry_retry_used = True
                 entry_recovery = "form_resubmit"
                 await prepare_otp(entry_otp_stage, notify_stage=False)
+                remaining = max(0.0, entry_transition_deadline - time.monotonic())
+                if remaining <= 0.0:
+                    continue
                 reopened = await _click_exact_button_text(
-                    page, ("Continue", "继续"), timeout=3,
+                    page, ("Continue", "继续"), timeout=min(3.0, remaining),
                 )
                 if reopened:
                     log("Camoufox 登录壳回退，已重新打开邮箱表单", "warn")
-                selector = await _wait_for_any_selector(page, EMAIL_SELECTORS, timeout=8)
+                remaining = max(0.0, entry_transition_deadline - time.monotonic())
+                selector = (
+                    await _wait_for_any_selector(
+                        page, EMAIL_SELECTORS, timeout=min(8.0, remaining),
+                    )
+                    if remaining >= 0.1 else None
+                )
                 if selector:
                     await submit_entry_email(selector, recovery=True)
-                    entry_transition_deadline = time.monotonic() + 45.0
-                    entry_transition_started = time.monotonic()
+                    entry_transition_observe_deadline = min(
+                        entry_transition_deadline,
+                        time.monotonic() + 12.0,
+                    )
                     seen.clear()
                     await asyncio.sleep(1.0)
                     continue
@@ -3669,11 +3690,18 @@ async def _browser_flow(
                         safe_page=_safe_url(page), page_type=state,
                     )
                 log("Camoufox 登录壳未推进，开始一次同源 signin 兜底", "warn")
+                remaining = max(0.0, entry_transition_deadline - time.monotonic())
+                if remaining <= 0.0:
+                    continue
                 await _goto_with_retry(
-                    page, authorize_url, timeout_ms=min(timeout * 1000, 90_000),
+                    page, authorize_url,
+                    timeout_ms=min(timeout * 1000, 90_000, max(1, int(remaining * 1000))),
                     proxy_retryable=False, log=log,
                 )
-                entry_transition_deadline = time.monotonic() + 45.0
+                entry_transition_observe_deadline = min(
+                    entry_transition_deadline,
+                    time.monotonic() + 12.0,
+                )
                 seen.clear()
                 await asyncio.sleep(1.0)
                 continue
@@ -3704,8 +3732,9 @@ async def _browser_flow(
                     await prepare_otp(entry_otp_stage, notify_stage=False)
                     await submit_entry_email(selector)
                     entry_submitted = True
-                    entry_transition_deadline = time.monotonic() + 45.0
                     entry_transition_started = time.monotonic()
+                    entry_transition_deadline = entry_transition_started + 45.0
+                    entry_transition_observe_deadline = entry_transition_started + 12.0
                 else:
                     reopened = await _click_exact_button_text(
                         page, ("Continue", "继续"), timeout=3,

@@ -751,6 +751,36 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         )
         self.assertEqual(calls, [{"key": "Enter", "no_wait_after": True}])
 
+    def test_click_first_uses_one_shared_timeout_for_all_selectors(self):
+        wait_timeouts = []
+        clock = [0.0]
+
+        class Locator:
+            first = None
+
+            def __init__(self):
+                self.first = self
+
+            async def wait_for(self, **kwargs):
+                wait_timeouts.append(kwargs["timeout"])
+                clock[0] += 0.4
+                raise TimeoutError("selector not visible")
+
+            async def click(self, **_kwargs):  # pragma: no cover - wait always fails
+                raise AssertionError("invalid selector must not click")
+
+        class Page:
+            def locator(self, _selector):
+                return Locator()
+
+        with patch.object(runtime.time, "monotonic", side_effect=lambda: clock[0]):
+            result = asyncio.run(runtime._click_first(Page(), ("#missing-a", "#missing-b"), timeout=1))
+
+        self.assertIsNone(result)
+        self.assertEqual(len(wait_timeouts), 2)
+        self.assertGreater(wait_timeouts[0], wait_timeouts[1])
+        self.assertLessEqual(wait_timeouts[1], 600)
+
     def test_entry_submission_prefers_safe_button_and_waits_for_async_navigation(self):
         stable_result = {
             "ok": True,
@@ -1096,7 +1126,7 @@ class CamoufoxRuntimeTests(unittest.TestCase):
             now = 0.0
 
         async def fast_sleep(seconds):
-            Clock.now += max(50.0, float(seconds or 0.0))
+            Clock.now += float(seconds or 0.0)
 
         stable_result = {
             "ok": True,
@@ -1150,6 +1180,7 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         self.assertEqual(raised.exception.error_code, "camoufox_entry_transition_timeout")
         self.assertFalse(raised.exception.retryable)
         self.assertEqual(stable.await_count, 2)
+        self.assertLessEqual(Clock.now, 46.0)
         self.assertEqual(submit.await_args_list[0].args[1], "input[type='email']")
         signin.assert_awaited_once_with(page, "user@example.test")
         self.assertIn('"phase": "entry"', raised.exception.diagnostic)

@@ -620,16 +620,79 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
     @staticmethod
     def _timing_record(task: dict[str, Any]) -> dict[str, Any]:
         value = task.get("timing")
+        started_at = int(task.get("created_at") or time.time())
         if not isinstance(value, dict):
-            value = {"started_at": int(task.get("created_at") or time.time()), "finished_at": None, "elapsed_ms": 0, "elapsed_seconds": 0.0, "stages": []}
+            value = {
+                "started_at": started_at,
+                "queued_at": started_at,
+                "execution_started_at": None,
+                "finished_at": None,
+                "elapsed_ms": 0,
+                "elapsed_seconds": 0.0,
+                "queue_elapsed_seconds": 0.0,
+                "execution_elapsed_seconds": 0.0,
+                "stages": [],
+            }
             task["timing"] = value
-        value.setdefault("started_at", int(task.get("created_at") or time.time()))
+        value.setdefault("started_at", started_at)
+        value.setdefault("queued_at", value.get("started_at") or started_at)
+        value.setdefault("execution_started_at", None)
         value.setdefault("finished_at", None)
         value.setdefault("elapsed_ms", 0)
         value.setdefault("elapsed_seconds", 0.0)
+        value.setdefault("queue_elapsed_seconds", 0.0)
+        value.setdefault("execution_elapsed_seconds", 0.0)
         value.setdefault("stages", [])
         value.setdefault("substeps", [])
         return value
+
+    def _mark_execution_started(self, task_id: str, *, persist: bool = True) -> bool:
+        """Record the worker start boundary for both timing and progress."""
+        normalized = str(task_id or "").strip()
+        if not normalized:
+            return False
+        now_wall = int(time.time())
+        now_mono = time.monotonic()
+        changed = False
+        queued_at = now_wall
+        stage_code = ""
+        with self._lock:
+            task = self._tasks.get(normalized)
+            if not isinstance(task, dict):
+                return False
+            timing = self._timing_record(task)
+            queued_at = int(timing.get("queued_at") or timing.get("started_at") or task.get("created_at") or now_wall)
+            stage_code = str(task.get("stage") or "")
+            timing["queued_at"] = queued_at
+            if timing.get("execution_started_at") is None:
+                timing["execution_started_at"] = now_wall
+                timing["queue_elapsed_seconds"] = round(max(0, now_wall - queued_at), 3)
+                timing["execution_elapsed_seconds"] = 0.0
+                changed = True
+            self._task_started_mono.setdefault(normalized, now_mono)
+            progress = task.setdefault("progress", {})
+            progress["timing"] = copy.deepcopy(timing)
+            progress["updated_at"] = now_wall
+            task["updated_at"] = now_wall
+        if self.progress is not None and callable(getattr(self.progress, "mark_execution_started", None)):
+            try:
+                set_stage = getattr(self.progress, "set_stage", None)
+                if callable(set_stage) and stage_code:
+                    try:
+                        set_stage(normalized, stage_code, now=queued_at)
+                    except TypeError:
+                        set_stage(normalized, stage_code)
+                self.progress.mark_execution_started(normalized, now=now_wall)
+            except TypeError:
+                try:
+                    self.progress.mark_execution_started(normalized)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+        if changed and persist:
+            self._save_tasks_safely("任务开始执行计时")
+        return True
 
     def _record_timing_substep(
         self,
@@ -1093,7 +1156,37 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 task_started = self._task_started_mono.pop(task_id, None)
                 timing = self._timing_record(task)
                 total_ms = int(max(0.0, (now_mono - task_started) * 1000.0)) if task_started is not None else max(0, (now_wall - int(timing.get("started_at") or now_wall)) * 1000)
-                timing.update({"finished_at": now_wall, "elapsed_ms": total_ms, "elapsed_seconds": round(total_ms / 1000.0, 3)})
+                started_at = int(timing.get("started_at") or task.get("created_at") or now_wall)
+                queued_at = int(timing.get("queued_at") or started_at)
+                execution_started_at = timing.get("execution_started_at")
+                if execution_started_at is not None:
+                    try:
+                        execution_started_at = int(execution_started_at)
+                    except (TypeError, ValueError):
+                        execution_started_at = None
+                queue_seconds = max(
+                    0.0,
+                    float(execution_started_at - queued_at)
+                    if execution_started_at is not None else float(now_wall - queued_at),
+                )
+                execution_ms = max(
+                    0,
+                    int((now_mono - task_started) * 1000.0)
+                    if task_started is not None
+                    else (now_wall - execution_started_at) * 1000
+                    if execution_started_at is not None else 0,
+                )
+                timing.update({
+                    "started_at": started_at,
+                    "queued_at": queued_at,
+                    "execution_started_at": execution_started_at,
+                    "finished_at": now_wall,
+                    "elapsed_ms": total_ms,
+                    "elapsed_seconds": round(total_ms / 1000.0, 3),
+                    "queue_elapsed_seconds": round(queue_seconds, 3),
+                    "execution_elapsed_seconds": round(execution_ms / 1000.0, 3),
+                })
+                progress["timing"] = copy.deepcopy(timing)
                 progress["total_elapsed_ms"] = total_ms
                 progress["finished_at"] = now_wall
                 progress["updated_at"] = now_wall
@@ -1396,7 +1489,13 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     "deadline_at": max(int(opened_value or 0), int(deadline_value or 0)),
                 }
         if isinstance(task.get("timing"), Mapping):
-            public["timing"] = sanitize_public_timing(task["timing"])
+            legacy_timing_task = {
+                "created_at": task.get("created_at"),
+                "timing": copy.deepcopy(dict(task["timing"])),
+            }
+            public["timing"] = sanitize_public_timing(
+                self._timing_record(legacy_timing_task)
+            )
         if isinstance(task.get("failure"), Mapping):
             failure = canonical_failure(task["failure"])
             if failure is not None:
@@ -1759,6 +1858,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                         "status": "queued",
                         "created_at": now,
                         "updated_at": now,
+                        "timing": self._timing_record({"created_at": now}),
                         "batch_id": batch_id,
                         "run_mode": "free_register",
                         "driver": driver,
@@ -2608,7 +2708,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     task_id = f"{batch_id}-{ordinal}"
                     row_state = self.pool._row_state(row.row_id) if callable(getattr(self.pool, "_row_state", None)) else {}
                     source = str(row_state.get("source") or "url").strip().lower()
-                    self._tasks[task_id] = {"task_id": task_id, "ordinal": ordinal, "slot_id": f"{batch_id}-slot-{((ordinal - 1) % workers) + 1}", "slot_index": ((ordinal - 1) % workers) + 1, "concurrency_limit": workers, "status": "queued", "created_at": now, "updated_at": now, "batch_id": batch_id, "run_mode": "free_register", "driver": driver, "proxy_allocation_mode": str(config.get("proxy_allocation_mode") or "healthy_random"), "email": row.email, "row_id": row.row_id, "mailbox_url": row.mailbox_url, "mailbox_source": source, "service_token": str(row_state.get("service_token") or "") if source == "remail" else "", "proxy": binding.proxy, "proxy_id": binding.proxy_id, "proxy_scheme": binding.scheme, "proxy_effective_scheme": getattr(binding, "effective_scheme", "") or binding.scheme, "proxy_country": binding.country, "proxy_group": binding.group, "proxy_masked": binding.masked, "proxy_fingerprint": binding.fingerprint, "expected_exit_ip": binding.exit_ip, "registration_ip": "", "exit_ip": binding.exit_ip, "proxy_attempts": [], "cleanup_status": "pending", "progress": {"stage": "free_oauth_session", "group": "free", "started_at": now, "updated_at": now, "finished_at": None}, "result": {"twofa_status": "", "driver": driver, "expected_exit_ip": binding.exit_ip, "proxy_country": binding.country, "proxy_group": binding.group}}
+                    self._tasks[task_id] = {"task_id": task_id, "ordinal": ordinal, "slot_id": f"{batch_id}-slot-{((ordinal - 1) % workers) + 1}", "slot_index": ((ordinal - 1) % workers) + 1, "concurrency_limit": workers, "status": "queued", "created_at": now, "updated_at": now, "timing": self._timing_record({"created_at": now}), "batch_id": batch_id, "run_mode": "free_register", "driver": driver, "proxy_allocation_mode": str(config.get("proxy_allocation_mode") or "healthy_random"), "email": row.email, "row_id": row.row_id, "mailbox_url": row.mailbox_url, "mailbox_source": source, "service_token": str(row_state.get("service_token") or "") if source == "remail" else "", "proxy": binding.proxy, "proxy_id": binding.proxy_id, "proxy_scheme": binding.scheme, "proxy_effective_scheme": getattr(binding, "effective_scheme", "") or binding.scheme, "proxy_country": binding.country, "proxy_group": binding.group, "proxy_masked": binding.masked, "proxy_fingerprint": binding.fingerprint, "expected_exit_ip": binding.exit_ip, "registration_ip": "", "exit_ip": binding.exit_ip, "proxy_attempts": [], "cleanup_status": "pending", "progress": {"stage": "free_oauth_session", "group": "free", "started_at": now, "updated_at": now, "finished_at": None}, "result": {"twofa_status": "", "driver": driver, "expected_exit_ip": binding.exit_ip, "proxy_country": binding.country, "proxy_group": binding.group}}
                     self._tasks[task_id]["device_id"] = f"free-{secrets.token_hex(16)}"
                     created_task_ids.append(task_id)
                     if self.mailbox_leases is not None:
@@ -3267,6 +3367,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     "status": "queued",
                     "created_at": now,
                     "updated_at": now,
+                    "timing": self._timing_record({"created_at": now}),
                     "batch_id": batch_id,
                     "run_mode": "free_register",
                     "driver": driver,
@@ -4065,6 +4166,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             if twofa_retry or password_retry:
                 task.pop("failure", None)
             task["updated_at"] = int(time.time())
+            self._mark_execution_started(task_id, persist=False)
             snapshot = dict(task)
             snapshot_driver = str(snapshot.get("driver") or config.get("driver") or "protocol").strip().lower()
             # Publish the running transition before invoking transport code.

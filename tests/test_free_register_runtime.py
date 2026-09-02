@@ -110,6 +110,49 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertNotIn("654321", str(rows))
         self.assertTrue(any("子步骤完成" in message for message, _level, _fields in logs))
 
+    def test_manager_timing_splits_queue_and_execution_and_freezes_terminal_values(self):
+        manager = FreeRegisterManager(self.data_dir, log_fn=lambda *_args, **_kwargs: None)
+        manager._tasks["timing-lifecycle"] = {
+            "task_id": "timing-lifecycle",
+            "status": "running",
+            "created_at": 100,
+            "stage": "free_oauth_session",
+            "timing": {"started_at": 100},
+            "progress": {
+                "stage": "free_oauth_session",
+                "stage_started_at": 112,
+                "started_at": 100,
+            },
+        }
+        with (
+            patch("mac_overrides.free_register_runtime.time.time", side_effect=(112, 125)),
+            patch("mac_overrides.free_register_runtime.time.monotonic", side_effect=(0.0, 13.0)),
+        ):
+            self.assertTrue(manager._mark_execution_started("timing-lifecycle"))
+            manager._finish_progress("timing-lifecycle")
+
+        timing = manager._tasks["timing-lifecycle"]["timing"]
+        self.assertEqual(timing["queued_at"], 100)
+        self.assertEqual(timing["execution_started_at"], 112)
+        self.assertEqual(timing["queue_elapsed_seconds"], 12.0)
+        self.assertEqual(timing["execution_elapsed_seconds"], 13.0)
+        self.assertEqual(timing["finished_at"], 125)
+        self.assertEqual(manager._tasks["timing-lifecycle"]["progress"]["timing"], timing)
+
+    def test_manager_timing_record_backfills_legacy_fields(self):
+        manager = FreeRegisterManager(self.data_dir)
+        task = {"task_id": "legacy-timing", "status": "failed", "created_at": 100, "timing": {"elapsed_ms": 4}}
+        timing = manager._timing_record(task)
+        self.assertEqual(timing["started_at"], 100)
+        self.assertEqual(timing["queued_at"], 100)
+        self.assertIsNone(timing["execution_started_at"])
+        self.assertEqual(timing["queue_elapsed_seconds"], 0.0)
+        self.assertEqual(timing["execution_elapsed_seconds"], 0.0)
+        manager._tasks["legacy-timing"] = task
+        public_timing = manager.public_tasks()[0]["timing"]
+        self.assertEqual(public_timing["queued_at"], 100)
+        self.assertIsNone(public_timing.get("execution_started_at"))
+
     def test_task_log_infers_concrete_driver_for_diagnostic_scope(self):
         diagnostics = DiagnosticStore(self.data_dir / "diagnostics")
         manager = FreeRegisterManager(self.data_dir, diagnostic_store=diagnostics)
