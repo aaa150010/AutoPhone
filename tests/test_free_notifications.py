@@ -49,9 +49,13 @@ class FreeNotificationSummaryTests(unittest.TestCase):
         message = sent[0]
         self.assertEqual(
             message["Subject"],
-            "[GPT 注册中心][Free · Camoufox] Free 注册批次汇总 free-camoufox-email",
+            "[GPT 注册中心][Camoufox] Free 注册汇总",
         )
-        self.assertIn("链路：Free / Camoufox", message.get_content())
+        body = message.get_content()
+        self.assertIn("结果：成功 1 ｜ 失败 0 ｜ 共 1 个", body)
+        self.assertIn("链路：Camoufox", body)
+        self.assertNotIn("free-camoufox-email", message.as_string())
+        self.assertNotIn("邮箱：", body)
         self.assertNotIn("自动接码机", message.as_string())
 
     def test_summary_identifies_free_driver_and_chain(self) -> None:
@@ -65,10 +69,10 @@ class FreeNotificationSummaryTests(unittest.TestCase):
         )
 
         self.assertEqual(protocol["driver"], "protocol")
-        self.assertEqual(protocol["chain"], "Free / Protocol")
+        self.assertEqual(protocol["chain"], "协议")
         self.assertEqual(protocol["drivers"], ["protocol"])
         self.assertEqual(camoufox["driver"], "camoufox")
-        self.assertEqual(camoufox["chain"], "Free / Camoufox")
+        self.assertEqual(camoufox["chain"], "Camoufox")
 
     def test_summary_does_not_guess_unsupported_or_missing_driver(self) -> None:
         summary = summarize_free_batch(
@@ -81,7 +85,7 @@ class FreeNotificationSummaryTests(unittest.TestCase):
 
         self.assertEqual(summary["driver"], "unknown")
         self.assertEqual(summary["drivers"], ["unknown"])
-        self.assertEqual(summary["chain"], "Free / 未知链路")
+        self.assertEqual(summary["chain"], "未知链路")
 
     def test_summary_is_deduplicated_and_credential_free(self) -> None:
         tasks = [

@@ -13,11 +13,15 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.101',
-  freeRuntimeVersion: '1.6.101',
-  title: 'Free 协议密码 2FA 分支修复',
+  version: '1.6.102',
+  freeRuntimeVersion: '1.6.102',
+  title: '邮箱通知摘要格式优化',
   releasedAt: '2026-09-02',
   sections: [
+    {
+      title: '邮箱通知结果摘要优化',
+      usage: '普通接码、Free 协议和 Camoufox 邮件通知统一优先显示成功、失败和总数，批次编号不再出现在邮件主题或正文中；链路名称改为“接码”“协议”“Camoufox”，接码 Key 余额不足时保留脱敏 Key 标识和余额信息。',
+    },
     {
       title: 'Free protocol 密码设置按账号状态处理 2FA',
       usage: '密码设置默认不会主动查询或触发 2FA；只有服务端在邮箱验证码后明确返回 mfa-challenge 且账号已有已保存 TOTP 时，才完成协议 TOTP 并继续密码页。未启用 2FA 的账号直接进入密码设置，Camoufox 链路保持隔离。',

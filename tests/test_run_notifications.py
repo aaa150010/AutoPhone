@@ -315,12 +315,12 @@ class TransportTests(unittest.TestCase):
         )
         message, from_addr, to_addrs = client.messages[0]
         body = message.get_content()
-        self.assertIn("[GPT 注册中心][普通流程] 批次完成", message["Subject"])
+        self.assertIn("[GPT 注册中心][接码] 批次完成", message["Subject"])
         self.assertEqual(from_addr, "notifier@qq.com")
         self.assertEqual(to_addrs, ["ops@example.test"])
-        self.assertIn("处理总数：7", body)
-        self.assertIn("链路：普通流程", body)
-        self.assertIn("成功：4", body)
+        self.assertIn("结果：成功 4 ｜ 失败 2 ｜ 共 7 个 ｜ 停止 1", body)
+        self.assertIn("链路：接码", body)
+        self.assertLess(body.index("结果："), body.index("链路："))
         self.assertNotIn("smtp-password-never-in-mail", message.as_string())
 
     def test_connectivity_message_contains_only_stable_safe_metadata(self):
@@ -345,8 +345,8 @@ class TransportTests(unittest.TestCase):
         message = ssl_factory.clients[0].messages[0][0]
         rendered = message.as_string()
         body = message.get_content()
-        self.assertIn("[GPT 注册中心][普通流程] OpenAI 授权链路异常", message["Subject"])
-        self.assertIn("链路：普通流程", body)
+        self.assertIn("[GPT 注册中心][接码] OpenAI 授权链路异常", message["Subject"])
+        self.assertIn("链路：接码", body)
         self.assertIn("openai_tls_connection_failure", body)
         self.assertIn("中文原因：OpenAI TLS 握手失败", body)
         self.assertIn("sha256:0123456789abcdef", body)
@@ -404,8 +404,7 @@ class TransportTests(unittest.TestCase):
         )
         message = built.as_string()
 
-        self.assertIn("处理总数：2", built.get_content())
-        self.assertIn("失败：1", built.get_content())
+        self.assertIn("结果：成功 0 ｜ 失败 1 ｜ 共 2 个", built.get_content())
         for value in sensitive.values():
             self.assertNotIn(value, message)
         self.assertNotIn("smtp-secret", message)
@@ -422,9 +421,9 @@ class TransportTests(unittest.TestCase):
         body = built.get_content()
 
         self.assertIn("运行异常（仍有任务未终态）", built["Subject"])
-        self.assertIn("批次 20260808-150600-b20be0", built["Subject"])
+        self.assertNotIn("20260808-150600-b20be0", built["Subject"])
         self.assertIn("未终态 3", built["Subject"])
-        self.assertIn("共享批次：20260808-150600-b20be0", body)
+        self.assertNotIn("20260808-150600-b20be0", body)
         self.assertIn("未终态任务数：3", body)
         self.assertIn("未终态任务：T058、T078、T083", body)
         self.assertIn("批次监控正常返回，但仍有任务未终态", body)
@@ -445,11 +444,22 @@ class TransportTests(unittest.TestCase):
             balance_alerts=[alert],
         )
         body = built.get_content()
-        self.assertIn("SMS Key 余额不足", body)
+        self.assertIn("接码 Key 余额不足", body)
         self.assertIn("平台 smsbower / Key 2", body)
         self.assertIn("指纹 abcdef1234", body)
         self.assertIn("当前余额 $0.4200", body)
         self.assertNotIn("api-secret", body)
+
+    def test_result_summary_puts_counts_first_and_hides_batch(self):
+        built = build_notification_message(
+            enabled_config(),
+            EVENT_UNEXPECTED_STOP,
+            {"total": 1, "failed": 1},
+            batch_id="free-retry-1788-da7c4f39",
+        )
+        body = built.get_content()
+        self.assertTrue(body.startswith("结果：成功 0 ｜ 失败 1 ｜ 共 1 个"))
+        self.assertNotIn("free-retry-1788-da7c4f39", built.as_string())
 
     def test_notification_metadata_rejects_credentials_and_raw_reasons(self):
         private_values = (
@@ -490,7 +500,7 @@ class TransportTests(unittest.TestCase):
         message = factory.clients[0].messages[0][0]
         self.assertEqual(message["Subject"], "[GPT 注册中心] 测试通知")
         self.assertIn("配置测试成功", message.get_content())
-        self.assertIn("普通流程", message.get_content())
+        self.assertIn("接码", message.get_content())
         self.assertNotIn("smtp-secret", message.as_string())
 
 

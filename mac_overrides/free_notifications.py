@@ -25,7 +25,7 @@ except ImportError:  # pragma: no cover
 _BATCH_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$")
 _INCIDENT_RE = re.compile(r"^LOG-[A-Za-z0-9._:-]{1,80}$")
 _FREE_DRIVER_LABELS = {
-    "protocol": "Protocol",
+    "protocol": "协议",
     "camoufox": "Camoufox",
 }
 
@@ -47,7 +47,7 @@ def _free_chain_display(drivers: Any) -> str:
         for driver in ("protocol", "camoufox", "unknown")
         if driver in values
     ]
-    return f"Free / {' + '.join(labels)}"
+    return " + ".join(labels)
 
 
 def _mask_email(value: Any) -> str:
@@ -187,26 +187,35 @@ class FreeBatchNotificationAdapter:
 
         def send(summary: Mapping[str, Any]) -> None:
             message = EmailMessage()
-            chain = str(summary.get("chain") or "Free / 未知链路")
-            subject_chain = chain.replace(" / ", " · ", 1)
+            chain = str(summary.get("chain") or "未知链路")
             message["Subject"] = (
-                f"[GPT 注册中心][{subject_chain}] Free 注册批次汇总 "
-                f"{summary.get('batch_id') or '-'}"
+                f"[GPT 注册中心][{chain}] Free 注册汇总"
             )
             settings = sender._settings
             message["From"] = settings.sender
             message["To"] = ", ".join(settings.recipients)
             slowest = summary.get("slowest_node") or {}
             failure = summary.get("first_failure") or {}
+            result_parts = [
+                f"成功 {summary.get('success', 0)}",
+                f"失败 {summary.get('failed', 0)}",
+                f"共 {summary.get('total', 0)} 个",
+            ]
+            for label, key in (
+                ("部分成功", "partial"),
+                ("2FA 待重试", "twofa_pending"),
+                ("停止", "stopped"),
+            ):
+                value = summary.get(key, 0)
+                if value:
+                    result_parts.append(f"{label} {value}")
             lines = [
+                f"结果：{' ｜ '.join(result_parts)}",
                 f"链路：{chain}",
-                f"批次：{summary.get('batch_id') or '-'}",
-                f"账号：{summary.get('total', 0)}，成功 {summary.get('success', 0)}，失败 {summary.get('failed', 0)}，部分成功 {summary.get('partial', 0)}，2FA 待重试 {summary.get('twofa_pending', 0)}，停止 {summary.get('stopped', 0)}",
                 f"总耗时：{summary.get('duration_seconds', 0)} 秒",
                 f"最慢节点：{slowest.get('label') or '-'} ({int(slowest.get('duration_ms') or 0)} ms)",
                 f"首个失败节点：{failure.get('label') or '-'}",
                 f"脱敏日志 ID：{', '.join(summary.get('incident_ids') or ()) or '-'}",
-                f"邮箱：{', '.join(summary.get('emails') or ()) or '-'}",
             ]
             message.set_content("\n".join(lines))
             sender._send_message(message)

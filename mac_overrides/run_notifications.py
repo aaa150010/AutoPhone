@@ -48,14 +48,14 @@ DEFAULT_EVENT_SETTINGS = {
 QQ_SMTP_HOST = "smtp.qq.com"
 QQ_SMTP_PORT = 465
 _NOTIFICATION_PRODUCT_LABEL = "GPT 注册中心"
-_ORDINARY_FLOW_LABEL = "普通流程"
+_ORDINARY_FLOW_LABEL = "接码"
 _EVENT_LABELS = {
     EVENT_BATCH_COMPLETED: "批次完成",
     EVENT_UNEXPECTED_STOP: "异常结束",
     EVENT_STALLED: "运行停滞",
-    EVENT_SMS_EXHAUSTED: "SMS Key 已耗尽",
+    EVENT_SMS_EXHAUSTED: "接码 Key 已耗尽",
     EVENT_MANUAL_STOP: "手动停止",
-    EVENT_SMS_BALANCE_LOW: "SMS Key 余额不足",
+    EVENT_SMS_BALANCE_LOW: "接码 Key 余额不足",
 }
 _ADDRESS_PATTERN = re.compile(r"^[^@\s<>]+@[^@\s<>]+$")
 _SAFE_BATCH_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$")
@@ -570,31 +570,34 @@ def _build_message(settings: _SmtpSettings, notification: RunNotification) -> Em
     subject_parts = [
         f"[{_NOTIFICATION_PRODUCT_LABEL}][{_ORDINARY_FLOW_LABEL}] {label}"
     ]
-    if notification.batch_id:
-        subject_parts.append(f"批次 {notification.batch_id}")
     if notification.event == EVENT_SMS_BALANCE_LOW:
-        subject_parts.append(f"低余额 Key {len(notification.balance_alerts)} 个")
+        subject_parts.append(f"{len(notification.balance_alerts)} 个")
     elif unfinished:
         subject_parts.append(f"未终态 {unfinished}")
     else:
         subject_parts.append(
-            f"成功 {aggregate.succeeded} / 失败 {aggregate.failed} / 停止 {aggregate.stopped}"
+            f"成功 {aggregate.succeeded} · 失败 {aggregate.failed} · 共 {aggregate.total} 个"
         )
     message["Subject"] = "｜".join(subject_parts)
     message["From"] = settings.sender
     message["To"] = ", ".join(settings.recipients)
+    result_parts = [
+        f"成功 {aggregate.succeeded}",
+        f"失败 {aggregate.failed}",
+        f"共 {aggregate.total} 个",
+    ]
+    for label_text, value in (
+        ("停止", aggregate.stopped),
+        ("运行中", aggregate.active),
+        ("待处理", aggregate.pending),
+    ):
+        if value:
+            result_parts.append(f"{label_text} {value}")
     lines = [
+        f"结果：{' ｜ '.join(result_parts)}",
         f"链路：{_ORDINARY_FLOW_LABEL}",
         f"事件：{label}",
-        f"处理总数：{aggregate.total}",
-        f"成功：{aggregate.succeeded}",
-        f"失败：{aggregate.failed}",
-        f"已停止：{aggregate.stopped}",
-        f"运行中：{aggregate.active}",
-        f"等待中：{aggregate.pending}",
     ]
-    if notification.batch_id:
-        lines.insert(1, f"共享批次：{notification.batch_id}")
     if unfinished:
         lines.append(f"未终态任务数：{unfinished}")
     if notification.unfinished_task_ids:
@@ -652,8 +655,6 @@ def _build_connectivity_message(
     label = "OpenAI 授权链路已恢复" if recovered else "OpenAI 授权链路异常"
     message = EmailMessage()
     subject = f"[{_NOTIFICATION_PRODUCT_LABEL}][{_ORDINARY_FLOW_LABEL}] {label}"
-    if notification.batch_id:
-        subject += f"｜批次 {notification.batch_id}"
     message["Subject"] = subject
     message["From"] = settings.sender
     message["To"] = ", ".join(settings.recipients)
@@ -664,8 +665,6 @@ def _build_connectivity_message(
         f"稳定原因码：{notification.reason_code}",
         f"中文原因：{_CONNECTIVITY_REASON_LABELS.get(notification.reason_code, 'OpenAI 授权链路连接异常')}",
     ]
-    if notification.batch_id:
-        lines.append(f"共享批次：{notification.batch_id}")
     if notification.affected_origins:
         lines.append(f"受影响来源：{'、'.join(notification.affected_origins)}")
     if notification.detected_at:
