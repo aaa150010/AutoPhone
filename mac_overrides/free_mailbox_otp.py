@@ -553,8 +553,35 @@ def build_free_mailbox_otp_provider(
     batch_id: str = "",
     workflow: str = "free_register",
     driver: str = "",
+    mailbox_source: str = "url",
+    mailbox_email: str = "",
+    service_token: str = "",
 ) -> MailboxUrlOtpProvider:
     """Create a Free provider without ever borrowing the registration proxy."""
+    fetcher = None
+    is_remail = str(mailbox_source or "url").strip().lower() == "remail"
+    if is_remail:
+        try:
+            import json
+            from .remail_api import RemailClient
+        except ImportError:
+            import json
+            from remail_api import RemailClient  # type: ignore[no-redef]
+        remail_cfg = config.get("remail") if isinstance(config.get("remail"), Mapping) else {}
+        client = RemailClient(
+            str(remail_cfg.get("base_url") or "https://remail.aishop6.com"),
+            "",
+            float(remail_cfg.get("request_timeout_seconds") or 20),
+        )
+
+        def fetcher(_url: str) -> MailboxResponse:
+            value = client.pickup(str(mailbox_email or ""), str(service_token or ""))
+            return MailboxResponse(
+                url=str(remail_cfg.get("base_url") or "https://remail.aishop6.com") + "/v1/pickup",
+                body=json.dumps(value).encode("utf-8"),
+                content_type="application/json",
+                status=200,
+            )
     return MailboxUrlOtpProvider(
         mailbox_url,
         registration_proxy,
@@ -566,8 +593,13 @@ def build_free_mailbox_otp_provider(
         mailbox_proxy_url=str(config.get("mailbox_proxy_url") or DEFAULT_FREE_MAILBOX_PROXY),
         request_retries=int(config.get("mailbox_request_retries", 3)),
         retry_backoff_seconds=float(config.get("mailbox_retry_backoff_seconds", 1.0)),
-        manual_broker=config.get("_manual_verification_broker"),
-        manual_generation_getter=config.get("_manual_generation_getter"),
+        fetcher=fetcher,
+        # Remail is an API-scoped mailbox.  Falling back to the interactive
+        # manual broker after an empty pickup would turn a short upstream
+        # delivery delay into several five-minute windows and hide the real
+        # provider result.  Keep manual fallback for ordinary URL mailboxes.
+        manual_broker=None if is_remail else config.get("_manual_verification_broker"),
+        manual_generation_getter=None if is_remail else config.get("_manual_generation_getter"),
         deadline_controller=config.get("_deadline_controller"),
         verification_state_fn=config.get("_mailbox_verification_state_fn"),
         timing_fn=config.get("_timing_substep"),

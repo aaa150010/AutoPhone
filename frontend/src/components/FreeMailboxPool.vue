@@ -66,6 +66,10 @@ function isHistoricalDriver(row: FreeMailboxRow) {
   const driver = String(row.driver || '').trim().toLowerCase()
   return Boolean(driver) && driver !== 'protocol' && driver !== 'camoufox'
 }
+function isRemailMailbox(row: FreeMailboxRow) {
+  return String((row as any).source || '').trim().toLowerCase() === 'remail'
+    || String(row.mailbox_url || '').toLowerCase().includes('remail.aishop6.com/v1/pickup')
+}
 function mailboxDriverLabel(row: FreeMailboxRow) {
   const driver = String(row.driver || '').trim().toLowerCase()
   if (driver === 'camoufox') return 'Camoufox'
@@ -554,7 +558,7 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
           <el-table-column label="2FA" width="112" align="center">
             <template #default="{ row }"><template v-if="row.has_totp"><el-tag size="small" type="success" effect="plain">已启用</el-tag><el-tooltip content="复制临时 2FA 验证码"><el-button link :icon="Key" :loading="loadingTotp.includes(row.row_id)" aria-label="复制临时 2FA 验证码" @click="copyRow('totp', row)" /></el-tooltip></template><el-button v-else-if="!isHistoricalDriver(row) && row.twofa_status === 'pending'" link type="warning" @click="retryTwofa(row)"><el-tag size="small" type="warning" effect="plain">待重试</el-tag></el-button><el-tag v-else size="small" type="info" effect="plain">未启用</el-tag></template>
           </el-table-column>
-          <el-table-column label="取件" width="92" align="center"><template #default="{ row }"><el-tooltip content="打开取件地址" placement="top"><el-button link :icon="Link" aria-label="打开取件地址" @click="openUrl(row)" /></el-tooltip><el-tooltip content="提取并复制最新验证码" placement="top"><el-button link :icon="CopyDocument" :loading="loadingLatestCode.includes(row.row_id)" aria-label="提取并复制最新验证码" @click="copyLatestCode(row)" /></el-tooltip></template></el-table-column>
+          <el-table-column label="取件" width="92" align="center"><template #default="{ row }"><el-tooltip v-if="!isRemailMailbox(row)" content="打开取件地址" placement="top"><el-button link :icon="Link" aria-label="打开取件地址" @click="openUrl(row)" /></el-tooltip><el-tooltip content="提取并复制最新验证码" placement="top"><el-button link :icon="CopyDocument" :loading="loadingLatestCode.includes(row.row_id)" aria-label="提取并复制最新验证码" @click="copyLatestCode(row)" /></el-tooltip></template></el-table-column>
           <el-table-column label="Token" width="80" align="center"><template #default="{ row }"><el-button v-if="row.has_access_token" link :icon="CopyDocument" aria-label="复制 Token" @click="copyRow('token', row)" /><span v-else>-</span></template></el-table-column>
           <el-table-column label="测活操作" width="118" align="center"><template #default="{ row }"><el-tooltip content="快速测活"><el-button link type="success" :icon="CircleCheck" :disabled="!canLiveCheck(row) || Boolean(liveBusy)" aria-label="快速测活" @click.stop="startLiveCheck('fast', [row])" /></el-tooltip><el-tooltip content="深度测活"><el-button link type="warning" :icon="RefreshRight" :disabled="!canLiveCheck(row) || Boolean(liveBusy)" aria-label="深度测活" @click.stop="startLiveCheck('deep', [row])" /></el-tooltip><el-tooltip content="查看测活日志"><el-button link :icon="View" :disabled="!row.live_check_task_id" aria-label="查看测活日志" @click.stop="openLiveLog(row)" /></el-tooltip></template></el-table-column>
           <el-table-column label="敏感字段" width="160" align="center"><template #default="{ row }"><el-button v-if="row.has_credential" link :icon="CopyDocument" @click="copyRow('credential', row)">完整凭据</el-button><el-button v-if="row.has_password" link :icon="Lock" @click="copyRow('password', row)">密码</el-button></template></el-table-column>

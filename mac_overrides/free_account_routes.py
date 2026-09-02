@@ -98,7 +98,10 @@ class FreeAccountRouteController:
             row = self.manager.pool.entry(row_id)
             if row is None:
                 raise FreeRegisterError("free_mailbox_latest_code", "读取 Free 邮箱验证码", "Free 邮箱行不存在", retryable=False)
-            return self.module.jsonify(**fetch_latest_code(row.mailbox_url, proxy=self._mailbox_proxy()))
+            payload = self.manager.pool._row_state(row.row_id) if callable(getattr(self.manager.pool, "_row_state", None)) else {}
+            private = {}
+            token = str(private.get("service_token") or private.get("serviceToken") or payload.get("service_token") or payload.get("serviceToken") or "")
+            return self.module.jsonify(**fetch_latest_code(row.mailbox_url, proxy=self._mailbox_proxy(), mailbox_source=str(payload.get("source") or ""), mailbox_email=str(row.email or ""), service_token=token))
         except Exception as exc:
             return self.error_response(
                 exc,
@@ -121,7 +124,11 @@ class FreeAccountRouteController:
             row = self.manager.pool.entry(row_id)
             if row is None:
                 raise FreeRegisterError("free_mailbox_latest_code", "读取 Free 邮箱验证码", "Free 邮箱绑定已变化", retryable=False)
-            return self.module.jsonify(**fetch_latest_code(row.mailbox_url, proxy=self._mailbox_proxy()))
+            payload = self.manager.pool._row_state(row.row_id) if callable(getattr(self.manager.pool, "_row_state", None)) else {}
+            token = str(task.get("service_token") or "")
+            if not token:
+                token = str(payload.get("service_token") or payload.get("serviceToken") or "")
+            return self.module.jsonify(**fetch_latest_code(row.mailbox_url, proxy=self._mailbox_proxy(), mailbox_source=str(task.get("mailbox_source") or payload.get("source") or ""), mailbox_email=str(row.email or ""), service_token=token))
         except Exception as exc:
             return self.error_response(
                 exc,

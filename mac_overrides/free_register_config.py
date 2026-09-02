@@ -45,6 +45,18 @@ DEFAULT_FREE_CONFIG: dict[str, Any] = {
     "mailbox_proxy_url": DEFAULT_FREE_MAILBOX_PROXY,
     "mailbox_request_retries": 3,
     "mailbox_retry_backoff_seconds": 1.0,
+    "remail": {
+        "enabled": False,
+        "base_url": "https://remail.aishop6.com",
+        "api_key": "",
+        "project_id": "",
+        "supply_policy": "private_first",
+        "request_timeout_seconds": 20,
+        "catalog_cache_seconds": 60,
+        "order_sync_enabled": False,
+        "order_sync_interval_minutes": 30,
+        "auto_import_new_purchase_orders": False,
+    },
     # One password is shared by the signup password page and the optional
     # post-registration password continuation. It is masked by ``public``.
     "account_password": "Aa150010150010",
@@ -233,6 +245,25 @@ class FreeConfigStore:
         result["mailbox_proxy_url"] = mailbox_policy.proxy_url
         result["mailbox_request_retries"] = mailbox_policy.retries
         result["mailbox_retry_backoff_seconds"] = mailbox_policy.backoff_seconds
+        remail_defaults = DEFAULT_FREE_CONFIG["remail"]
+        remail_incoming = result.get("remail") if isinstance(result.get("remail"), Mapping) else {}
+        remail = _merge(remail_defaults, remail_incoming)
+        previous_remail = base.get("remail") if isinstance(base.get("remail"), Mapping) else {}
+        if remail.get("api_key") == SECRET_MASK:
+            remail["api_key"] = str(previous_remail.get("api_key") or "")
+        remail["enabled"] = _as_bool(remail.get("enabled"), False)
+        remail["base_url"] = clean(remail.get("base_url"), 300) or remail_defaults["base_url"]
+        remail["api_key"] = clean(remail.get("api_key"), 300)
+        remail["project_id"] = clean(remail.get("project_id"), 80)
+        remail["supply_policy"] = str(remail.get("supply_policy") or "private_first").strip().lower()
+        if remail["supply_policy"] not in {"private_first", "public_only"}:
+            remail["supply_policy"] = "private_first"
+        remail["request_timeout_seconds"] = _int(remail.get("request_timeout_seconds"), 20, 3, 120)
+        remail["catalog_cache_seconds"] = _int(remail.get("catalog_cache_seconds"), 60, 0, 3600)
+        remail["order_sync_enabled"] = _as_bool(remail.get("order_sync_enabled"), False)
+        remail["order_sync_interval_minutes"] = _int(remail.get("order_sync_interval_minutes"), 30, 1, 1440)
+        remail["auto_import_new_purchase_orders"] = _as_bool(remail.get("auto_import_new_purchase_orders"), False)
+        result["remail"] = remail
         account_password = clean(result.get("account_password"), 256)
         if account_password == SECRET_MASK:
             account_password = clean(base.get("account_password"), 256)
@@ -400,14 +431,23 @@ class FreeConfigStore:
             parsed_mailbox_proxy = None
         if parsed_mailbox_proxy is not None and (parsed_mailbox_proxy.username or parsed_mailbox_proxy.password):
             value["mailbox_proxy_url"] = SECRET_MASK
+        remail = value.get("remail")
+        if isinstance(remail, Mapping):
+            remail = dict(remail)
+            if str(remail.get("api_key") or "").strip():
+                remail["api_key"] = SECRET_MASK
+            value["remail"] = remail
         return value
 
     def secret(self, secret_id: str) -> str:
-        if secret_id not in {"mailbox_proxy_url"}:
+        if secret_id not in {"mailbox_proxy_url", "remail_api_key"}:
             raise FreeRegisterError("free_config_secret", "读取 Free 配置密钥", "Free 配置密钥类型无效", retryable=False)
         value = self.load()
         if secret_id == "mailbox_proxy_url":
             return str(value.get("mailbox_proxy_url") or "")
+        if secret_id == "remail_api_key":
+            remail = value.get("remail") if isinstance(value.get("remail"), Mapping) else {}
+            return str(remail.get("api_key") or "")
         return ""
 
     def migrate_legacy(self, local_config: Mapping[str, Any] | None, legacy_data_dir: str | Path) -> dict[str, Any]:

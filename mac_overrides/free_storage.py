@@ -708,6 +708,17 @@ class FreeSQLiteStore:
                             payload TEXT NOT NULL DEFAULT '{}',
                             private_payload TEXT NOT NULL DEFAULT '{}'
                         );
+                        CREATE TABLE IF NOT EXISTS remail_orders (
+                            order_no TEXT PRIMARY KEY,
+                            status TEXT NOT NULL DEFAULT '',
+                            delivery_email TEXT NOT NULL DEFAULT '',
+                            imported INTEGER NOT NULL DEFAULT 0,
+                            pool_row_id TEXT NOT NULL DEFAULT '',
+                            created_at TEXT NOT NULL,
+                            updated_at TEXT NOT NULL,
+                            payload TEXT NOT NULL DEFAULT '{}',
+                            private_payload TEXT NOT NULL DEFAULT '{}'
+                        );
                         CREATE TABLE IF NOT EXISTS resource_leases (
                             resource_type TEXT NOT NULL,
                             resource_id TEXT NOT NULL,
@@ -733,6 +744,7 @@ class FreeSQLiteStore:
                         CREATE VIEW IF NOT EXISTS free_proxies AS SELECT * FROM proxies;
                         CREATE VIEW IF NOT EXISTS free_tasks AS SELECT * FROM tasks;
                         CREATE VIEW IF NOT EXISTS free_results AS SELECT * FROM results;
+                        CREATE VIEW IF NOT EXISTS free_remail_orders AS SELECT * FROM remail_orders;
                         CREATE VIEW IF NOT EXISTS free_resource_leases AS SELECT * FROM resource_leases;
                         """
                     )
@@ -750,7 +762,7 @@ class FreeSQLiteStore:
                         raise FreeStorageError(
                             f"SQLite schema 版本 {existing_schema} 高于当前运行时 {SCHEMA_VERSION}"
                         )
-                    for table in ("mailboxes", "proxies", "tasks", "results"):
+                    for table in ("mailboxes", "proxies", "tasks", "results", "remail_orders"):
                         columns = {
                             str(item[1])
                             for item in db.execute(f"PRAGMA table_info({table})").fetchall()
@@ -1601,6 +1613,23 @@ class FreeSQLiteStore:
             "created_at": str(row["created_at"]),
             "updated_at": str(row["updated_at"]),
             "payload": _redact(payload) if public else payload,
+        }
+
+    @staticmethod
+    def _remail_order_dict(row: sqlite3.Row, *, public: bool = False) -> dict[str, Any]:
+        payload = FreeSQLiteStore._row_payload(row, include_private=not public)
+        if public:
+            payload = _redact(payload)
+        return {
+            "order_no": str(row["order_no"]),
+            "status": str(row["status"]),
+            "delivery_email": str(row["delivery_email"]) if not public else _mask_email(row["delivery_email"]),
+            "delivery_email_masked": _mask_email(row["delivery_email"]),
+            "imported": bool(row["imported"]),
+            "pool_row_id": str(row["pool_row_id"]),
+            "created_at": str(row["created_at"]),
+            "updated_at": str(row["updated_at"]),
+            "payload": payload,
         }
 
     def _page(
@@ -3240,6 +3269,63 @@ class FreeSQLiteStore:
                     raise
         assert row is not None
         return self._result_dict(row)
+
+    def upsert_remail_order(self, order: Mapping[str, Any]) -> dict[str, Any]:
+        """Persist an order, keeping service_token in the private sidecar."""
+        order_no = str(order.get("orderNo") or order.get("order_no") or "").strip()
+        if not order_no:
+            raise ValueError("Remail orderNo 不能为空")
+        email = str(order.get("deliveryEmail") or order.get("delivery_email") or "").strip().lower()
+        status = str(order.get("status") or "").strip().lower()
+        public, private = _partition_json(dict(order))
+        now = _now()
+        with self._transaction():
+            with self._connection() as db:
+                db.execute("BEGIN IMMEDIATE")
+                try:
+                    current = db.execute("SELECT imported,pool_row_id,created_at FROM remail_orders WHERE order_no=?", (order_no,)).fetchone()
+                    imported = int(current[0]) if current is not None else int(bool(order.get("imported")))
+                    pool_row_id = str(current[1]) if current is not None else str(order.get("pool_row_id") or "")
+                    created_at = str(current[2]) if current is not None else now
+                    db.execute(
+                        "INSERT INTO remail_orders(order_no,status,delivery_email,imported,pool_row_id,created_at,updated_at,payload,private_payload) VALUES(?,?,?,?,?,?,?,?,?) "
+                        "ON CONFLICT(order_no) DO UPDATE SET status=excluded.status,delivery_email=excluded.delivery_email,updated_at=excluded.updated_at,payload=excluded.payload,private_payload=excluded.private_payload",
+                        (order_no, status, email, imported, pool_row_id, created_at, now, _safe_json(public), _safe_json(private)),
+                    )
+                    row = db.execute("SELECT * FROM remail_orders WHERE order_no=?", (order_no,)).fetchone()
+                    db.execute("COMMIT")
+                except BaseException:
+                    db.execute("ROLLBACK")
+                    raise
+        assert row is not None
+        return self._remail_order_dict(row)
+
+    def list_remail_orders(self, *, status: str | None = None, imported: bool | None = None, public: bool = False, limit: int = 500) -> list[dict[str, Any]]:
+        clauses = ["1=1"]
+        params: list[Any] = []
+        if status:
+            clauses.append("status=?")
+            params.append(str(status))
+        if imported is not None:
+            clauses.append("imported=?")
+            params.append(int(bool(imported)))
+        params.append(max(1, min(5000, int(limit))))
+        with self._connection() as db:
+            rows = db.execute(f"SELECT * FROM remail_orders WHERE {' AND '.join(clauses)} ORDER BY updated_at DESC, order_no DESC LIMIT ?", params).fetchall()
+        return [self._remail_order_dict(row, public=public) for row in rows]
+
+    def mark_remail_order_imported(self, order_no: str, pool_row_id: str) -> dict[str, Any] | None:
+        with self._transaction():
+            with self._connection() as db:
+                db.execute("BEGIN IMMEDIATE")
+                try:
+                    db.execute("UPDATE remail_orders SET imported=1,pool_row_id=?,updated_at=? WHERE order_no=?", (str(pool_row_id), _now(), str(order_no).strip()))
+                    row = db.execute("SELECT * FROM remail_orders WHERE order_no=?", (str(order_no).strip(),)).fetchone()
+                    db.execute("COMMIT")
+                except BaseException:
+                    db.execute("ROLLBACK")
+                    raise
+        return self._remail_order_dict(row) if row is not None else None
 
     def update_mailbox(
         self,

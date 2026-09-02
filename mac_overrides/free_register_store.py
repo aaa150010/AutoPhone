@@ -492,6 +492,7 @@ class FreeMailboxPool:
                 public_live_checked_at = sanitize_public_timestamp(result.get("live_checked_at"), default="")
                 public_live_http_status = sanitize_public_http_status(result.get("live_check_http_status"), default=None)
                 public_twofa_status = sanitize_public_status(result.get("twofa_status"))
+                public_source = sanitize_public_identifier(current.get("source"), limit=30)
                 output.append({
                     "row_id": public_row_id,
                     "line_no": public_line_no,
@@ -506,6 +507,7 @@ class FreeMailboxPool:
                     "stage": public_stage,
                     "batch_id": public_batch_id,
                     "driver": public_driver,
+                    "source": public_source,
                     "proxy_masked": sanitize_failure_text(current.get("proxy_masked", ""), 300),
                     "proxy_fingerprint": public_proxy_fingerprint,
                     "proxy_id": public_proxy_id,

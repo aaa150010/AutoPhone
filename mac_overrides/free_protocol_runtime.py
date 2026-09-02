@@ -842,12 +842,15 @@ class FreeProtocolMixin:
                 **sentinel_kwargs,
             )
             return created
-        otp_provider = build_free_mailbox_otp_provider(
-            str(task["mailbox_url"]), proxy, chain_config,
-            log_fn=log, task_id=task_id,
+        provider_kwargs: dict[str, Any] = {
+            "log_fn": log,
+            "task_id": task_id,
+            "stage_fn": stage,
             **({"batch_id": str(task.get("batch_id") or "")} if task.get("batch_id") else {}),
-            stage_fn=stage,
-        )
+        }
+        if str(task.get("mailbox_source") or "url").strip().lower() == "remail":
+            provider_kwargs.update({"mailbox_source": "remail", "mailbox_email": str(task.get("email") or ""), "service_token": str(task.get("service_token") or "")})
+        otp_provider = build_free_mailbox_otp_provider(str(task["mailbox_url"]), proxy, chain_config, **provider_kwargs)
 
         transport_ref: dict[str, Any] = {}
 

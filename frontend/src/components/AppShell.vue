@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
-import { Bell, Connection, Document, Expand, Fold, Link, Loading, MessageBox, Monitor, Scissor, Setting, Tickets, Tools, Wallet } from '@element-plus/icons-vue'
+import { Connection, Document, Expand, Fold, Link, Loading, MessageBox, Monitor, Scissor, Setting, ShoppingCart, Tickets, Tools, Wallet } from '@element-plus/icons-vue'
 import MailboxPage from '../pages/MailboxPage.vue'
 import FreeMailboxPoolPage from '../pages/FreeMailboxPoolPage.vue'
 import FreeRebindPage from '../pages/FreeRebindPage.vue'
@@ -15,15 +15,16 @@ import PaymentToolsPage from '../pages/PaymentToolsPage.vue'
 import NetworkToolsPage from '../pages/NetworkToolsPage.vue'
 import LogCenterPage from '../pages/LogCenterPage.vue'
 import MailboxParserSamplesPage from '../pages/MailboxParserSamplesPage.vue'
+import RemailPurchasePage from '../pages/RemailPurchasePage.vue'
+import RemailOrdersPage from '../pages/RemailOrdersPage.vue'
 import { appControllerKey, createAppController } from '../composables/useAppController'
-import { buildOpenAIConnectivityView } from '../utils/openAIConnectivity'
 import ReleaseNotesDialog from './ReleaseNotesDialog.vue'
 import OpenAIConnectivityDiagnosticDialog from './OpenAIConnectivityDiagnosticDialog.vue'
 
 const controller = createAppController()
 provide(appControllerKey, controller)
 
-const routes = new Set(['/', '/mailboxes', '/free-register', '/free-mailboxes', '/free-rebind', '/splitter', '/url-test', '/settings', '/payment-tools', '/network-tools', '/logs', '/mailbox-parser-samples'])
+const routes = new Set(['/', '/mailboxes', '/free-register', '/free-mailboxes', '/free-rebind', '/splitter', '/url-test', '/settings', '/payment-tools', '/network-tools', '/logs', '/mailbox-parser-samples', '/remail/purchase', '/remail/orders'])
 const pathFromLocation = () => `${routes.has(window.location.pathname) ? window.location.pathname : '/'}${window.location.search}${window.location.hash}`
 const activePath = ref(routes.has(window.location.pathname) ? window.location.pathname : '/')
 const currentLocation = ref(pathFromLocation())
@@ -31,18 +32,6 @@ const settingsAnchor = ref(new URLSearchParams(window.location.search).get('sect
 const sidebarCollapsed = ref(window.localStorage.getItem('gptphone.sidebar.collapsed') === '1')
 const diagnosticDialog = ref<InstanceType<typeof OpenAIConnectivityDiagnosticDialog>>()
 
-const runStatus = computed(() => {
-  const runtime = controller.runtime.value
-  if (runtime.stop_requested) return runtime.running ? '正在停止' : '已停止'
-  if (runtime.sms_safe_stop) return '异常停止'
-  return runtime.running ? '运行中' : '空闲'
-})
-const statusClass = computed(() => controller.runtime.value.sms_safe_stop
-  ? 'danger'
-  : controller.runtime.value.stop_requested
-    ? 'warning'
-    : controller.running.value ? 'success' : 'idle')
-const connectivityStatus = computed(() => buildOpenAIConnectivityView(controller.runtime.value))
 async function confirmNavigation() {
   if (!controller.dirty.value) return true
   try {
@@ -87,10 +76,6 @@ function handleBeforeUnload(event: BeforeUnloadEvent) {
   event.returnValue = ''
 }
 
-function openConnectivityDiagnostics(reason = '手动检查当前 OpenAI 授权链路') {
-  controller.openConnectivityDiagnostics(reason)
-}
-
 function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value
   window.localStorage.setItem('gptphone.sidebar.collapsed', sidebarCollapsed.value ? '1' : '0')
@@ -128,7 +113,7 @@ onUnmounted(() => {
           <el-tooltip :content="sidebarCollapsed ? '展开菜单' : '收缩菜单'" placement="right"><el-button class="sidebar-toggle" link :icon="sidebarCollapsed ? Expand : Fold" aria-label="收缩或展开左侧菜单" @click="toggleSidebar" /></el-tooltip>
         </div>
 
-        <el-menu :default-active="activePath" :default-openeds="sidebarCollapsed ? [] : ['sms-workspace', 'free-workspace', 'tool-workspace', 'diagnostic-workspace', 'system-settings']" :collapse="sidebarCollapsed" :collapse-transition="false" @select="selectPage">
+        <el-menu :default-active="activePath" :default-openeds="sidebarCollapsed ? [] : ['sms-workspace', 'free-workspace', 'remail-workspace', 'tool-workspace', 'diagnostic-workspace', 'system-settings']" :collapse="sidebarCollapsed" :collapse-transition="false" @select="selectPage">
           <el-sub-menu index="sms-workspace">
             <template #title><el-icon><MessageBox /></el-icon><span>接码工作台</span></template>
             <el-menu-item index="/"><el-icon><Monitor /></el-icon><span>接码运行中心</span></el-menu-item>
@@ -141,6 +126,11 @@ onUnmounted(() => {
             <el-menu-item index="/free-register"><el-icon><Monitor /></el-icon><span>Free 注册运行</span></el-menu-item>
             <el-menu-item index="/free-mailboxes"><el-icon><Tickets /></el-icon><span>Free 邮箱管理</span></el-menu-item>
             <el-menu-item index="/free-rebind"><el-icon><Link /></el-icon><span>Free 邮箱换绑</span></el-menu-item>
+          </el-sub-menu>
+          <el-sub-menu index="remail-workspace">
+            <template #title><el-icon><Wallet /></el-icon><span>Remail 管理</span></template>
+            <el-menu-item index="/remail/purchase"><el-icon><ShoppingCart /></el-icon><span>Remail 购买</span></el-menu-item>
+            <el-menu-item index="/remail/orders"><el-icon><Document /></el-icon><span>Remail 订单查询</span></el-menu-item>
           </el-sub-menu>
           <el-sub-menu index="tool-workspace">
             <template #title><el-icon><Tools /></el-icon><span>支付与网络工具</span></template>
@@ -158,11 +148,6 @@ onUnmounted(() => {
           </el-sub-menu>
         </el-menu>
 
-        <div class="global-status">
-          <el-tooltip :content="`运行状态：${runStatus}`" placement="right"><button class="status-button" :class="statusClass" type="button" aria-label="运行状态"><span class="status-dot" /></button></el-tooltip>
-          <el-tooltip :content="`${connectivityStatus.sidebarLabel}：${connectivityStatus.sidebarDetail}`" placement="right"><button class="status-button connectivity-button" :class="`is-${connectivityStatus.tone}`" type="button" aria-label="OpenAI 链路诊断" @click="openConnectivityDiagnostics()"><el-icon><Connection /></el-icon></button></el-tooltip>
-          <el-tooltip v-if="controller.runtime.value.notification?.status" :content="controller.runtime.value.notification.status === 'sent' ? '通知已发送' : controller.runtime.value.notification.status === 'failed' ? '通知发送失败' : '通知等待发送'" placement="right"><button class="status-button notification-button" type="button" aria-label="通知状态"><el-icon><Bell /></el-icon></button></el-tooltip>
-        </div>
       </el-aside>
 
       <el-main>
@@ -178,6 +163,8 @@ onUnmounted(() => {
         <NetworkToolsPage v-else-if="activePath === '/network-tools'" />
         <LogCenterPage v-else-if="activePath === '/logs'" :location-key="currentLocation" />
         <MailboxParserSamplesPage v-else-if="activePath === '/mailbox-parser-samples'" />
+        <RemailPurchasePage v-else-if="activePath === '/remail/purchase'" />
+        <RemailOrdersPage v-else-if="activePath === '/remail/orders'" />
         <SettingsPage v-else :initial-anchor="settingsAnchor" @navigate="navigate" />
       </el-main>
     </el-container>
@@ -204,17 +191,6 @@ onUnmounted(() => {
 .el-menu-item { width: calc(100% - 0px); height: 42px; margin-bottom: 4px; padding: 0 12px !important; justify-content: flex-start; border-radius: 5px; color: #64748b; font-size: 13px; }
 .el-menu-item .el-icon { font-size: 18px; }
 .el-menu-item.is-active { background: #e7eef8; color: #315f99; font-weight: 650; }
-.global-status { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; margin: 8px 10px; padding: 10px 0; border-top: 1px solid #d8e1eb; }
-.status-button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: #64748b; cursor: pointer; }
-.status-button:hover { background: #e7eef8; color: #315f99; }
-.connectivity-button .el-icon, .notification-button .el-icon { font-size: 17px; }
-.connectivity-button.is-success { color: #168363; }
-.connectivity-button.is-warning { color: #bc761c; }
-.connectivity-button.is-danger { color: #c44754; }
-.status-dot { width: 7px; height: 7px; border-radius: 50%; background: #94a3b8; }
-.status-button.success .status-dot { background: #16a34a; box-shadow: 0 0 0 3px #dcfce7; }
-.status-button.warning .status-dot { background: #d97706; box-shadow: 0 0 0 3px #fef3c7; }
-.status-button.danger .status-dot { background: #dc2626; box-shadow: 0 0 0 3px #fee2e2; }
 .app-sidebar.is-collapsed .brand-block { justify-content: center; padding: 0 8px; }
 .app-sidebar.is-collapsed .brand-copy { display: none; }
 .app-sidebar.is-collapsed .brand-mark { display: none; }
@@ -222,7 +198,6 @@ onUnmounted(() => {
 .app-sidebar.is-collapsed .el-menu { width: 54px; }
 .app-sidebar.is-collapsed .el-menu-item { width: 42px; padding: 0 !important; justify-content: center; }
 .app-sidebar.is-collapsed .el-menu :deep(.el-sub-menu__title) { width: 42px; padding: 0 !important; justify-content: center; }
-.app-sidebar.is-collapsed .global-status { align-items: center; margin: 8px 6px; }
 .el-main { height: 100%; min-width: 0; padding: 5px; overflow: hidden; }
 .shell-loading { display: grid; place-items: center; width: 100%; height: 100%; color: var(--el-color-primary); font-size: 22px; }
 </style>

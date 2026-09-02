@@ -20,6 +20,8 @@ import urllib.parse
 _API798_HOST = "api798.com"
 _API798_LATEST_PATH = "/latest"
 _API798_GET_CODE_PATH = "/get_code"
+_REMAIL_HOST = "remail.aishop6.com"
+_REMAIL_PICKUP_PATH = "/v1/pickup"
 _TRUSTED_OTP_PATH_PATTERN = re.compile(
     r"(?i)(?:^|/)(?:pickup|mail-api|mail-code|api/messages?)(?:/|$)"
 )
@@ -108,6 +110,13 @@ def mailbox_provider_strategy(source_url: str) -> str:
             return "api798_latest"
         if path == _API798_GET_CODE_PATH:
             return "api798_get_code"
+    # Remail's pickup response is a scoped API projection.  Treat it as a
+    # trusted mailbox source so explicit ``verificationCode`` fields are
+    # accepted by the shared parser without trusting arbitrary URL sources.
+    if parsed.scheme.lower() in {"http", "https"} and (
+        parsed.hostname or ""
+    ).casefold() == _REMAIL_HOST and parsed.path.rstrip("/").casefold() == _REMAIL_PICKUP_PATH:
+        return "remail_pickup"
     if _TRUSTED_OTP_PATH_PATTERN.search(parsed.path):
         return "trusted_path"
     return ""

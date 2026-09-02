@@ -21,6 +21,7 @@ const defaultConfig: FreeConfig = {
     browser_recycle_drain_timeout_seconds: 20, max_registrations_per_browser: 12,
     browser_launch_attempts: 3, existing_account_login: true,
   },
+  remail: { enabled: false, base_url: 'https://remail.aishop6.com', api_key: '', project_id: '', supply_policy: 'private_first', request_timeout_seconds: 20, catalog_cache_seconds: 60, order_sync_enabled: false, order_sync_interval_minutes: 30, auto_import_new_purchase_orders: false },
 }
 
 const config = reactive<FreeConfig>(structuredClone(defaultConfig))
@@ -343,6 +344,7 @@ defineExpose({ save })
     </div>
 
     <div class="settings-actions"><el-button size="small" :icon="CircleCheck" :loading="busy === 'preflight'" :disabled="running" @click="preflight">注册预检</el-button><el-button size="small" :icon="Refresh" :loading="busy === 'load'" :disabled="running" @click="load">刷新 Free 配置</el-button></div>
+    <div class="subsection"><h3>Remail 集成</h3><div class="config-grid"><el-form-item label="启用 Remail"><el-switch v-model="config.remail!.enabled" /></el-form-item><el-form-item label="API Key"><el-input v-model="config.remail!.api_key" type="password" show-password placeholder="rk-..." /></el-form-item><el-form-item label="API 地址"><el-input v-model="config.remail!.base_url" /></el-form-item><el-form-item label="项目 ID（可选）"><el-input v-model="config.remail!.project_id" /></el-form-item><el-form-item label="订单自动同步"><el-switch v-model="config.remail!.order_sync_enabled" /></el-form-item></div></div>
   </div>
 </template>
 

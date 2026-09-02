@@ -1056,6 +1056,9 @@ class FreeLiveCheckService:
             otp = build_free_mailbox_otp_provider(
                 str(context["mailbox_url"]), proxy, config,
                 log_fn=log_fn, task_id=task_id, stage_fn=stage_fn,
+                mailbox_source=str(context.get("mailbox_source") or "url"),
+                mailbox_email=str(context.get("email") or ""),
+                service_token=str(context.get("service_token") or ""),
             )
         else:
             # Preserve the historic module-level injection point used by

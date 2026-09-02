@@ -233,6 +233,28 @@ class SQLiteFreeMailboxPool(_LegacyMailboxPool):
     def import_text(self, content: str) -> int:
         return self.import_text_with_stats(content)[0]
 
+    def import_remail_order(self, order: Mapping[str, Any]) -> dict[str, Any]:
+        """Insert one long-lived Remail order as a Free mailbox resource."""
+        order_no = str(order.get("orderNo") or order.get("order_no") or "").strip()
+        email = str(order.get("deliveryEmail") or order.get("delivery_email") or "").strip().lower()
+        payload = order.get("payload") if isinstance(order.get("payload"), Mapping) else {}
+        token = str(order.get("serviceToken") or order.get("service_token") or payload.get("serviceToken") or payload.get("service_token") or "").strip()
+        if not order_no or not email or not token:
+            raise FreeRegisterError("remail_order_credentials", "导入 Remail 订单", "订单缺少交付邮箱或服务凭证", retryable=False)
+        row_id = fingerprint(f"remail:{order_no}")
+        payload = {**dict(payload), **dict(order)}
+        payload.update({"source": "remail", "order_no": order_no, "service_token": token, "remail_order_no": order_no, "email": email})
+        self.storage.upsert_remail_order(payload)
+        row = self.storage.upsert_mailbox(
+            row_id=row_id,
+            email=email,
+            mailbox_url="https://remail.aishop6.com/v1/pickup",
+            status="available",
+            payload=payload,
+        )
+        self.storage.mark_remail_order_imported(order_no, row_id)
+        return row
+
     def mark_next_batch_priority(self, row_ids: Sequence[str]) -> int:
         requested = {
             str(value or "").strip() for value in row_ids if str(value or "").strip()

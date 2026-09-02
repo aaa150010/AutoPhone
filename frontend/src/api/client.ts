@@ -121,6 +121,18 @@ export interface FreeConfig {
     browser_launch_attempts: number
     existing_account_login: boolean
   }
+  remail?: {
+    enabled: boolean
+    base_url: string
+    api_key: string
+    project_id: string
+    supply_policy: 'private_first' | 'public_only' | string
+    request_timeout_seconds: number
+    catalog_cache_seconds: number
+    order_sync_enabled: boolean
+    order_sync_interval_minutes: number
+    auto_import_new_purchase_orders: boolean
+  }
 }
 export interface FreeState {
   runtime_version?: string
@@ -294,6 +306,8 @@ export interface FreeMailboxRow {
   line_no: number
   email: string
   email_masked?: string
+  source?: string
+  mailbox_url?: string
   subject_ref_fingerprint?: string
   status: string
   cooldown_until?: number | null
@@ -337,6 +351,22 @@ export interface FreeMailboxRow {
   failure?: TaskFailure | null
 }
 export const getFreeMailboxes = () => api<{ ok: true; pool: 'free'; rows: FreeMailboxRow[]; state?: FreeState }>('/api/free/mailboxes')
+export interface RemailOrder {
+  order_no: string
+  status: string
+  delivery_email_masked?: string
+  imported: boolean
+  pool_row_id?: string
+  payload?: Record<string, any>
+  created_at?: string
+  updated_at?: string
+}
+export const getRemailProfile = () => api<{ ok: true; profile: any }>('/api/remail/profile')
+export const getRemailProjects = () => api<{ ok: true; projects: any }>('/api/remail/projects')
+export const getRemailWallet = () => api<{ ok: true; wallet: any }>('/api/remail/wallet')
+export const getRemailOrders = () => api<{ ok: true; orders: RemailOrder[]; remote_count?: number }>('/api/remail/orders')
+export const purchaseRemail = (data: { project_id: number; email_suffix: string; quantity: number; supply?: string }) => api<{ ok: true; result: any }>('/api/remail/purchase', data)
+export const importRemailOrders = (order_nos: string[]) => api<{ ok: true; imported: Array<{ order_no: string; row_id: string }>; skipped: Array<{ order_no: string; reason: string }> }>('/api/remail/orders/import', { order_nos })
 export const importFreeMailboxes = (poolContent: string, joinCurrentBatch = false) => api<{ ok: true; imported: number; skipped: number; queued?: number; active_batch_joined?: number; next_batch?: number; reason?: string; skipped_items?: Array<{ row_id: string; reason: string }>; state?: FreeState; rows: FreeMailboxRow[] }>(
   '/api/free/mailboxes/import',
   { pool_content: poolContent, join_current_batch: joinCurrentBatch },

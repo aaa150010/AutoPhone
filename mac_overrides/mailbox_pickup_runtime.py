@@ -361,9 +361,9 @@ def _values_for_keys(mapping: Mapping[str, Any], keys: Sequence[str]) -> list[An
 
 
 def _strict_explicit_code(value: Any) -> str:
-    if not isinstance(value, str):
+    if isinstance(value, bool) or not isinstance(value, (str, int, float)):
         return ""
-    candidate = value.strip()
+    candidate = str(value).strip()
     return candidate if re.fullmatch(r"\d{6}", candidate) else ""
 
 

@@ -1748,6 +1748,8 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     ordinal = max((int(item.get("ordinal") or 0) for item in self._tasks.values()), default=0) + 1
                     task_id = f"{batch_id}-import-{secrets.token_hex(3)}"
                     now = int(time.time())
+                    row_state = self.pool._row_state(row.row_id)
+                    mailbox_source = str(row_state.get("source") or "url").strip().lower()
                     task = {
                         "task_id": task_id,
                         "ordinal": ordinal,
@@ -1764,6 +1766,8 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                         "email": row.email,
                         "row_id": row.row_id,
                         "mailbox_url": row.mailbox_url,
+                        "mailbox_source": mailbox_source,
+                        "service_token": str(row_state.get("service_token") or "") if mailbox_source == "remail" else "",
                         "proxy": binding.proxy,
                         "proxy_id": binding.proxy_id,
                         "proxy_scheme": binding.scheme,
@@ -2602,7 +2606,9 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 reserved = True
                 for ordinal, (row, binding) in enumerate(zip(rows, bindings), 1):
                     task_id = f"{batch_id}-{ordinal}"
-                    self._tasks[task_id] = {"task_id": task_id, "ordinal": ordinal, "slot_id": f"{batch_id}-slot-{((ordinal - 1) % workers) + 1}", "slot_index": ((ordinal - 1) % workers) + 1, "concurrency_limit": workers, "status": "queued", "created_at": now, "updated_at": now, "batch_id": batch_id, "run_mode": "free_register", "driver": driver, "proxy_allocation_mode": str(config.get("proxy_allocation_mode") or "healthy_random"), "email": row.email, "row_id": row.row_id, "mailbox_url": row.mailbox_url, "proxy": binding.proxy, "proxy_id": binding.proxy_id, "proxy_scheme": binding.scheme, "proxy_effective_scheme": getattr(binding, "effective_scheme", "") or binding.scheme, "proxy_country": binding.country, "proxy_group": binding.group, "proxy_masked": binding.masked, "proxy_fingerprint": binding.fingerprint, "expected_exit_ip": binding.exit_ip, "registration_ip": "", "exit_ip": binding.exit_ip, "proxy_attempts": [], "cleanup_status": "pending", "progress": {"stage": "free_oauth_session", "group": "free", "started_at": now, "updated_at": now, "finished_at": None}, "result": {"twofa_status": "", "driver": driver, "expected_exit_ip": binding.exit_ip, "proxy_country": binding.country, "proxy_group": binding.group}}
+                    row_state = self.pool._row_state(row.row_id) if callable(getattr(self.pool, "_row_state", None)) else {}
+                    source = str(row_state.get("source") or "url").strip().lower()
+                    self._tasks[task_id] = {"task_id": task_id, "ordinal": ordinal, "slot_id": f"{batch_id}-slot-{((ordinal - 1) % workers) + 1}", "slot_index": ((ordinal - 1) % workers) + 1, "concurrency_limit": workers, "status": "queued", "created_at": now, "updated_at": now, "batch_id": batch_id, "run_mode": "free_register", "driver": driver, "proxy_allocation_mode": str(config.get("proxy_allocation_mode") or "healthy_random"), "email": row.email, "row_id": row.row_id, "mailbox_url": row.mailbox_url, "mailbox_source": source, "service_token": str(row_state.get("service_token") or "") if source == "remail" else "", "proxy": binding.proxy, "proxy_id": binding.proxy_id, "proxy_scheme": binding.scheme, "proxy_effective_scheme": getattr(binding, "effective_scheme", "") or binding.scheme, "proxy_country": binding.country, "proxy_group": binding.group, "proxy_masked": binding.masked, "proxy_fingerprint": binding.fingerprint, "expected_exit_ip": binding.exit_ip, "registration_ip": "", "exit_ip": binding.exit_ip, "proxy_attempts": [], "cleanup_status": "pending", "progress": {"stage": "free_oauth_session", "group": "free", "started_at": now, "updated_at": now, "finished_at": None}, "result": {"twofa_status": "", "driver": driver, "expected_exit_ip": binding.exit_ip, "proxy_country": binding.country, "proxy_group": binding.group}}
                     self._tasks[task_id]["device_id"] = f"free-{secrets.token_hex(16)}"
                     created_task_ids.append(task_id)
                     if self.mailbox_leases is not None:
@@ -3379,7 +3385,9 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             saved = self.pool.result(normalized) if row is not None else {}
             if row is None or saved.get("twofa_status") != "pending":
                 raise FreeRegisterError("free_twofa_retry", "重试 Free 账号 2FA", "该任务当前没有待重试的 2FA", retryable=False)
-            task = {"task_id": normalized, "row_id": row.row_id, "email": row.email, "result": saved, "driver": saved.get("driver") or "protocol", "status": "twofa_pending"}
+            row_state = self.pool._row_state(row.row_id)
+            source = str(row_state.get("source") or "url").strip().lower()
+            task = {"task_id": normalized, "row_id": row.row_id, "email": row.email, "mailbox_url": row.mailbox_url, "mailbox_source": source, "service_token": str(row_state.get("service_token") or "") if source == "remail" else "", "result": saved, "driver": saved.get("driver") or "protocol", "status": "twofa_pending"}
         if str(task.get("status") or "") != "twofa_pending":
             raise FreeRegisterError("free_twofa_retry", "重试 Free 账号 2FA", "该任务当前没有待重试的 2FA", retryable=False)
         return self._enqueue_retry(task, config, retry_node="free_twofa_activate", twofa_retry=True)

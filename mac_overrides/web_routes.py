@@ -198,6 +198,8 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             "/free-register",
             "/free-mailboxes",
             "/free-rebind",
+            "/remail/purchase",
+            "/remail/orders",
             "/payment-tools",
             "/network-tools",
             "/logs",
@@ -838,6 +840,107 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ordinary_mailbox_import=mailbox_admin.import_mailboxes,
     )
 
+    def _remail_client():
+        try:
+            from .remail_api import RemailClient
+        except ImportError:
+            from remail_api import RemailClient  # type: ignore[no-redef]
+        cfg = free_config_store.load() if free_config_store is not None else {}
+        rcfg = cfg.get("remail") if isinstance(cfg.get("remail"), Mapping) else {}
+        key = free_config_store.secret("remail_api_key") if free_config_store is not None else str(rcfg.get("api_key") or "")
+        return RemailClient(str(rcfg.get("base_url") or "https://remail.aishop6.com"), key, float(rcfg.get("request_timeout_seconds") or 20))
+
+    def api_remail_profile():
+        try:
+            return module.jsonify(ok=True, profile=_remail_client().profile())
+        except Exception as exc:
+            return free_error_response(exc, default_code="free_remail_profile", default_label="读取 Remail API Key")
+
+    def api_remail_projects():
+        try:
+            data = _remail_client().projects(status="listed", search="chatgpt")
+            return module.jsonify(ok=True, projects=data)
+        except Exception as exc:
+            return free_error_response(exc, default_code="free_remail_projects", default_label="读取 Remail 项目")
+
+    def api_remail_wallet():
+        try:
+            return module.jsonify(ok=True, wallet=_remail_client().wallet())
+        except Exception as exc:
+            return free_error_response(exc, default_code="free_remail_wallet", default_label="读取 Remail 钱包")
+
+    def api_remail_purchase():
+        data = module.request.get_json(silent=True) or {}
+        if not isinstance(data, Mapping):
+            return module.jsonify(ok=False, error="购买参数必须是 JSON 对象"), 400
+        try:
+            project_id = int(data.get("project_id"))
+            suffix = str(data.get("email_suffix") or "").strip()
+            quantity = max(1, min(100, int(data.get("quantity") or 1)))
+            supply = str(data.get("supply") or "private_first").strip().lower()
+            if supply not in {"private_first", "public_only"} or not suffix:
+                raise ValueError("购买参数无效")
+            client = _remail_client()
+            result = client.create_order_batch(project_id, suffix, quantity, supply=supply) if quantity >= 2 else client.create_order(project_id, suffix, supply=supply)
+            storage = getattr(getattr(free_manager, "pool", None), "storage", None) if free_manager is not None else None
+            items = result if isinstance(result, list) else [result]
+            for item in items:
+                order = item.get("order") if isinstance(item, Mapping) and isinstance(item.get("order"), Mapping) else item
+                if isinstance(order, Mapping) and storage is not None:
+                    storage.upsert_remail_order(order)
+            return module.jsonify(ok=True, result=result)
+        except Exception as exc:
+            return free_error_response(exc, default_code="free_remail_purchase", default_label="购买 Remail 邮箱")
+
+    def api_remail_orders():
+        if free_manager is None:
+            return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        try:
+            client = _remail_client()
+            remote = client.orders()
+            items = remote.get("items", []) if isinstance(remote, Mapping) else remote if isinstance(remote, list) else []
+            storage = getattr(getattr(free_manager, "pool", None), "storage", None)
+            for item in items:
+                if isinstance(item, Mapping) and storage is not None:
+                    if not item.get("serviceToken") and item.get("orderNo"):
+                        try:
+                            detail = client.order(str(item.get("orderNo")))
+                            if isinstance(detail, Mapping):
+                                item = detail
+                        except Exception:
+                            pass
+                    storage.upsert_remail_order(item)
+            rows = storage.list_remail_orders(public=True) if storage is not None else []
+            return module.jsonify(ok=True, orders=rows, remote_count=len(items))
+        except Exception as exc:
+            return free_error_response(exc, default_code="free_remail_orders", default_label="同步 Remail 订单")
+
+    def api_remail_import_orders():
+        if free_manager is None:
+            return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        data = module.request.get_json(silent=True) or {}
+        order_nos = [str(value or "").strip() for value in data.get("order_nos", [])] if isinstance(data, Mapping) and isinstance(data.get("order_nos"), list) else []
+        storage = getattr(getattr(free_manager, "pool", None), "storage", None)
+        pool = getattr(free_manager, "pool", None)
+        imported, skipped = [], []
+        if storage is None or pool is None:
+            return module.jsonify(ok=False, error="Free 存储尚未初始化"), 503
+        try:
+            for order in storage.list_remail_orders(public=False):
+                if order_nos and order.get("order_no") not in order_nos:
+                    continue
+                if order.get("imported"):
+                    skipped.append({"order_no": order.get("order_no"), "reason": "已导入"})
+                    continue
+                if str(order.get("status") or "").lower() not in {"paid", "active", "completed"}:
+                    skipped.append({"order_no": order.get("order_no"), "reason": "订单尚未激活"})
+                    continue
+                row = pool.import_remail_order(order)
+                imported.append({"order_no": order.get("order_no"), "row_id": row.get("row_id")})
+            return module.jsonify(ok=True, imported=imported, skipped=skipped, rows=pool.public_rows())
+        except Exception as exc:
+            return free_error_response(exc, default_code="free_remail_import", default_label="导入 Remail 订单")
+
     def mailbox_manager():
         if frontend_dist.exists():
             return spa_index()
@@ -1303,6 +1406,12 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/api/mailboxes", "api_mailboxes", api_mailboxes, ["GET"]),
         ("/api/free/config", "api_free_config", free_control_routes.config, ["GET", "POST"]),
         ("/api/free/config/secret", "api_free_config_secret", free_control_routes.config_secret, ["POST"]),
+        ("/api/remail/profile", "api_remail_profile", api_remail_profile, ["GET"]),
+        ("/api/remail/projects", "api_remail_projects", api_remail_projects, ["GET"]),
+        ("/api/remail/wallet", "api_remail_wallet", api_remail_wallet, ["GET"]),
+        ("/api/remail/purchase", "api_remail_purchase", api_remail_purchase, ["POST"]),
+        ("/api/remail/orders", "api_remail_orders", api_remail_orders, ["GET"]),
+        ("/api/remail/orders/import", "api_remail_import_orders", api_remail_import_orders, ["POST"]),
         ("/api/free/state", "api_free_state", api_free_state, ["GET"]),
         ("/api/free/camoufox/debug", "api_free_camoufox_debug_state", api_free_camoufox_debug_state, ["GET"]),
         ("/api/free/camoufox/debug/close", "api_free_camoufox_debug_close", api_free_camoufox_debug_close, ["POST"]),

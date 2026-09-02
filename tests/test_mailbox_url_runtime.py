@@ -71,6 +71,16 @@ def verification_body(code: str) -> str:
 
 
 class MailboxUrlRuntimeTests(unittest.TestCase):
+    def test_remail_pickup_accepts_explicit_verification_code(self):
+        payload = {"items": [{"id": "m-1", "verificationCode": 654321, "receivedAt": "2026-09-02T08:00:00Z"}]}
+        messages, _links = parse_mailbox_payload(
+            json.dumps(payload),
+            "https://remail.aishop6.com/v1/pickup",
+        )
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(messages[0].code, "654321")
+        self.assertEqual(messages[0].code_source, "explicit_code")
+
     def test_trusted_pickup_list_only_response_accepts_bare_code(self):
         result, detail_urls = parse_mailbox_payload(
             '["654321", "not-a-code"]',

@@ -6367,12 +6367,10 @@ class CamoufoxRegistrationRunner:
             float(browser_config.get("registration_timeout_seconds") or 600)
         )
         task_deadline_controller = deadline_controller
-        otp = build_free_mailbox_otp_provider(
-            str(task.get("mailbox_url") or ""), str(task.get("proxy") or ""), config,
-            log_fn=log, task_id=task_id,
-            **({"batch_id": str(task.get("batch_id") or "")} if task.get("batch_id") else {}),
-            stage_fn=stage,
-        )
+        provider_kwargs: dict[str, Any] = {"log_fn": log, "task_id": task_id, "stage_fn": stage, **({"batch_id": str(task.get("batch_id") or "")} if task.get("batch_id") else {})}
+        if str(task.get("mailbox_source") or "url").strip().lower() == "remail":
+            provider_kwargs.update({"mailbox_source": "remail", "mailbox_email": str(task.get("email") or ""), "service_token": str(task.get("service_token") or "")})
+        otp = build_free_mailbox_otp_provider(str(task.get("mailbox_url") or ""), str(task.get("proxy") or ""), config, **provider_kwargs)
         # Keep the builder's historical config identity intact.  The
         # deadline is task-local runtime state, so attach it to the provider
         # instance instead of adding a private key to the caller's mapping.

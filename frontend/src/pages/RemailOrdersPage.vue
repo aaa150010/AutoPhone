@@ -1,0 +1,14 @@
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import { ElMessage } from 'element-plus'
+import { getRemailOrders, importRemailOrders, type RemailOrder } from '../api/client'
+import PageToolbar from '../components/PageToolbar.vue'
+import WorkspacePanel from '../components/WorkspacePanel.vue'
+const loading = ref(false); const rows = ref<RemailOrder[]>([]); const selected = ref<RemailOrder[]>([]); const filter = ref('')
+const filtered = computed(() => rows.value.filter(row => !filter.value || `${row.order_no} ${row.delivery_email_masked} ${row.status}`.toLowerCase().includes(filter.value.toLowerCase())))
+async function load() { loading.value = true; try { rows.value = (await getRemailOrders()).orders || []; ElMessage.success('订单已同步') } catch (error: any) { ElMessage.error(error?.message || 'Remail 订单同步失败') } finally { loading.value = false } }
+async function importSelected() { if (!selected.value.length) return ElMessage.warning('请选择未导入订单'); loading.value = true; try { const result = await importRemailOrders(selected.value.map(row => row.order_no)); ElMessage.success(`已导入 ${result.imported.length} 个订单`); await load() } catch (error: any) { ElMessage.error(error?.message || '订单导入失败') } finally { loading.value = false } }
+onMounted(load)
+</script>
+<template><div class="remail-page"><PageToolbar title="Remail 订单查询" status="网站 / API 订单" tone="info"><el-button size="small" :loading="loading" @click="load">同步订单</el-button></PageToolbar><WorkspacePanel title="长效购买订单" fill body-padding="none"><div class="toolbar"><el-input v-model="filter" clearable placeholder="搜索订单号、邮箱或状态"/><el-button type="primary" :disabled="!selected.length" :loading="loading" @click="importSelected">导入 Free 邮箱池</el-button></div><el-table v-loading="loading" :data="filtered" height="100%" row-key="order_no" @selection-change="selected = $event"><el-table-column type="selection" width="48"/><el-table-column prop="order_no" label="订单号" min-width="180"/><el-table-column prop="delivery_email_masked" label="邮箱" min-width="190"/><el-table-column prop="status" label="状态" width="120"/><el-table-column label="入池" width="100"><template #default="scope"><el-tag :type="scope.row.imported ? 'success' : 'info'">{{ scope.row.imported ? '已导入' : '未导入' }}</el-tag></template></el-table-column><el-table-column label="商品" min-width="150"><template #default="scope">{{ scope.row.payload?.productType || scope.row.payload?.product_type || '-' }} / {{ scope.row.payload?.emailSuffix || scope.row.payload?.email_suffix || '-' }}</template></el-table-column></el-table></WorkspacePanel></div></template>
+<style scoped>.remail-page{display:grid;grid-template-rows:44px minmax(0,1fr);gap:6px;height:100%;min-width:0}.toolbar{display:flex;gap:8px;padding:8px;border-bottom:1px solid var(--workspace-border)}.toolbar .el-input{max-width:360px}</style>
