@@ -30,7 +30,7 @@ chmod +x start.command
 ./start.command
 ```
 
-也可以在 Finder 中双击 `start.command`。首次运行需要创建 Python 虚拟环境、安装依赖并构建前端，时间会比后续启动长。更新代码不会覆盖 `data/` 中的邮箱池、运行配置、结果和上传记录；不要为了更新而删除 `data/`。
+也可以在 Finder 中双击 `start.command`。首次运行需要创建 Python 虚拟环境并安装依赖，时间会比后续启动长。开发模式直接读取 Vue 源码，不需要先打包。更新代码不会覆盖 `data/` 中的邮箱池、运行配置、结果和上传记录；不要为了更新而删除 `data/`。
 
 脚本会自动做这些事：
 
@@ -45,10 +45,10 @@ chmod +x start.command
 默认地址：
 
 ```text
-http://127.0.0.1:18777/
-http://127.0.0.1:18777/mailboxes
-http://127.0.0.1:18777/accounts
-http://127.0.0.1:18777/settings
+http://127.0.0.1:5173/
+http://127.0.0.1:5173/mailboxes
+http://127.0.0.1:5173/accounts
+http://127.0.0.1:5173/settings
 ```
 
 端口固定为 `18777`。如果重复双击启动，脚本会先关闭旧的 WebUI 实例，再在同一端口启动新的。
@@ -188,7 +188,7 @@ Free 的注册页面网络和邮箱取件网络必须分开理解：
 打开邮箱管理页：
 
 ```text
-http://127.0.0.1:18777/mailboxes
+http://127.0.0.1:5173/mailboxes
 ```
 
 每行一个账号，当前常用格式如下。
@@ -310,19 +310,17 @@ Pixel、NV outbox 和批次清单分别保存在 `data/pixel_upload_records.json
 
 主代理仍可在页面里修改。SMS、邮箱取码、SUB2/NV 是否走代理由页面上的勾选项控制；NV 默认直连，只有勾选 SUB2/NV 上传代理时才使用主代理。
 
-## 前端开发与构建
+## 前端开发
 
-仓库已经包含可直接运行的 `frontend/dist/`。每次启动 `start.command` 时，脚本会自动检查 Vue 依赖并重新执行生产构建，然后再启动 Flask；因此修改 `frontend/src/` 后重启服务即可加载新页面。
+`start.command` 是统一的开发启动入口，会同时启动 Flask 和 Vite。修改 Vue 文件通过 Vite HMR 即时更新，修改 `mac_overrides/` 中的 Python 文件会触发 Flask 自动重载。
 
-修改 `frontend/src/` 后，需要重新生成生产资源：
+开发模式启动：
 
 ```sh
-cd frontend
-npm install
-npm run build
+./start.command
 ```
 
-构建结果写入 `frontend/dist/`，Flask 会从 `/assets/` 提供带哈希的 JS/CSS 文件。构建完成后刷新 `http://127.0.0.1:18777/` 即可查看新版页面。
+浏览器访问 `http://127.0.0.1:5173/`，Vite 会将 `/api` 请求代理到 Flask `http://127.0.0.1:18777/`。Python 热重载会中断正在运行的任务，因此只建议在开发调试时使用。
 
 提交前建议运行完整检查：
 
@@ -368,7 +366,7 @@ npm run build
 
 ### 端口被占用
 
-启动脚本固定使用 `18777` 端口，并会在启动前关闭旧的 gptPhone WebUI 实例。若仍提示端口被占用，通常是其他程序占用了 `18777`，先关闭那个程序后再双击 `start.command`。
+开发启动脚本使用 Flask `18777` 和 Vite `5173` 两个端口。若提示端口被占用，请先关闭占用端口的进程后再运行 `start.command`。
 
 ### 依赖安装失败
 
@@ -391,17 +389,16 @@ export CAMOUFOX_BROWSER_URL="https://你的镜像地址/camoufox-152.0.4-beta.29
 
 Intel Mac 将地址中的 `arm64` 改为 `x86_64`。如果之前复制过别人的 `mac_runtime/.venv`，启动脚本会检测到旧机器路径并自动重建，不需要手动修改 Python 路径。
 
-### 页面空白或 assets 返回 404
+### 页面无法打开
 
-如果浏览器控制台出现 `/assets/index-*.js` 或 `/assets/index-*.css` 404，先在项目里执行：
+如果 Vite 页面无法打开，先确认依赖已安装：
 
 ```sh
 cd frontend
 npm install
-npm run build
 ```
 
-然后重新双击 `start.command`，或强制刷新浏览器页面。不要直接双击 `frontend/dist/index.html`，页面需要通过 `http://127.0.0.1:18777/` 访问后端 API。
+然后重新运行 `start.command`。开发页面请通过 `http://127.0.0.1:5173/` 访问，不要直接打开 `frontend/dist/index.html`。
 
 ### 邮箱验证码一直收不到
 
@@ -420,7 +417,7 @@ iCloud IMAP 服务器是 `imap.mail.me.com:993`，通常不能用普通 Apple ID
 
 ## 项目目录说明
 
-- `start.command`: mac 双击启动脚本，固定使用 `18777` 端口；再次启动会先关闭旧实例
+- `start.command`: mac 开发启动脚本，同时运行 Flask `18777` 和 Vite `5173`
 - `plus_launcher.pyc`: 恢复出的入口字节码
 - `business_pyc/`: 选出的业务 `.pyc` 模块
 - `mac_overrides/`: mac 适配和 UI/逻辑覆盖层
@@ -437,7 +434,7 @@ iCloud IMAP 服务器是 `imap.mail.me.com:993`，通常不能用普通 Apple ID
 - `mac_overrides/importer_scheduler.py`: 目标数量控制、批次池条目预留和有界执行线程
 - `mac_overrides/runtime_policy.py`: 授权运行时的窄范围恢复策略
 - `mac_overrides/task_progress.py`: 线程安全的任务阶段追踪、阶段映射和六组实时计数
-- `frontend/`: Vue 3 + Element Plus 管理台源码和生产构建
+- `frontend/`: Vue 3 + Element Plus 管理台源码与 Vite 开发服务器
 - `tests/`: 不产生真实短信费用的假 Provider 单元测试
 - `data/`: 运行数据、配置、邮箱池状态
 - `engine/`: 运行时准备出的引擎目录

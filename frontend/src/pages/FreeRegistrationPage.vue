@@ -9,7 +9,6 @@ import ContentEmptyState from '../components/ContentEmptyState.vue'
 import FreeTaskLogDialog from '../components/FreeTaskLogDialog.vue'
 import TaskVerificationInput from '../components/TaskVerificationInput.vue'
 import TaskProgressCell from '../components/TaskProgressCell.vue'
-import { currentRelease } from '../releaseNotes'
 import {
   ACCOUNT_BANNED_DISPLAY_MESSAGE,
   freeFailureCause,
@@ -54,10 +53,10 @@ const loadingLatestCodeTaskIds = ref<string[]>([])
 const quickTargetCount = ref(defaultConfig.target_count)
 const quickConcurrency = ref(defaultConfig.concurrency)
 const quickRunDirty = ref(false)
-const nowSeconds = useTaskProgressClock(() => state.value.tasks || [], () => running.value)
+const running = computed(() => Boolean(state.value.running))
+const nowSeconds = useTaskProgressClock(() => state.value.tasks || [], () => Boolean(state.value.running))
 let timer = 0
 
-const running = computed(() => Boolean(state.value.running))
 const visibleTasks = computed(() => (state.value.tasks || []).slice().sort((a, b) => {
   const batchOrder = Number(b.created_at || 0) - Number(a.created_at || 0)
   if (batchOrder) return batchOrder
@@ -78,11 +77,6 @@ const taskCounts = computed(() => {
   return { total: visibleTasks.value.length, running: count('running') + count('queued'), success: count('success') + count('partial_success'), partial: count('partial_success'), failed: count('failed'), pending: count('twofa_pending'), rerun: count('pending_rerun'), stopped: count('stopped') }
 })
 const selectedTask = computed(() => visibleTasks.value.find(task => task.task_id === selectedTaskId.value))
-const runtimeMismatch = computed(() => {
-  const loaded = String(state.value.runtime_version || '').trim()
-  const expected = currentRelease.freeRuntimeVersion || currentRelease.version
-  return !loaded || loaded !== expected
-})
 function mergeConfig(value: any, forceQuickRun = false) {
   if (!value || typeof value !== 'object') return
   Object.assign(config, value)
@@ -617,8 +611,7 @@ onUnmounted(() => window.clearTimeout(timer))
   <div class="free-page">
     <PageToolbar title="Free 注册中心" :status="running ? '运行中' : '独立链路'" :tone="running ? 'success' : 'info'">
       <el-tag effect="plain">配置入口：运行配置 &gt; Free 注册运行</el-tag>
-      <el-tag v-if="runtimeMismatch" type="warning" effect="plain">后端需要重启</el-tag>
-      <el-tag v-else type="success" effect="plain">后端 {{ state.runtime_version }} · OTP {{ state.otp_parser_revision }}</el-tag>
+      <el-tag type="success" effect="plain">后端 {{ state.runtime_version }} · OTP {{ state.otp_parser_revision }}</el-tag>
       <el-button size="small" :icon="Setting" @click="emit('navigate', '/settings#free-register')">打开运行配置</el-button>
     </PageToolbar>
     <div class="task-view">

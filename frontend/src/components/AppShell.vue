@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
-import { Connection, Document, Expand, Fold, Link, Loading, MessageBox, Monitor, Scissor, Setting, ShoppingCart, Tickets, Tools, Wallet } from '@element-plus/icons-vue'
+import { Connection, Document, Expand, Fold, Link, MessageBox, Monitor, Scissor, Setting, ShoppingCart, Tickets, Tools, Wallet } from '@element-plus/icons-vue'
 import MailboxPage from '../pages/MailboxPage.vue'
 import FreeMailboxPoolPage from '../pages/FreeMailboxPoolPage.vue'
 import FreeRebindPage from '../pages/FreeRebindPage.vue'
@@ -18,7 +18,6 @@ import MailboxParserSamplesPage from '../pages/MailboxParserSamplesPage.vue'
 import RemailPurchasePage from '../pages/RemailPurchasePage.vue'
 import RemailOrdersPage from '../pages/RemailOrdersPage.vue'
 import { appControllerKey, createAppController } from '../composables/useAppController'
-import ReleaseNotesDialog from './ReleaseNotesDialog.vue'
 import OpenAIConnectivityDiagnosticDialog from './OpenAIConnectivityDiagnosticDialog.vue'
 
 const controller = createAppController()
@@ -151,8 +150,7 @@ onUnmounted(() => {
       </el-aside>
 
       <el-main>
-        <div v-if="!controller.initialized.value" class="shell-loading"><el-icon class="is-loading"><Loading /></el-icon></div>
-        <RunPage v-else-if="activePath === '/'" @navigate="navigate" />
+        <RunPage v-if="activePath === '/'" @navigate="navigate" />
         <MailboxPage v-else-if="activePath === '/mailboxes'" />
         <FreeRegistrationPage v-else-if="activePath === '/free-register'" @navigate="navigate" />
         <FreeMailboxPoolPage v-else-if="activePath === '/free-mailboxes'" />
@@ -168,7 +166,6 @@ onUnmounted(() => {
         <SettingsPage v-else :initial-anchor="settingsAnchor" @navigate="navigate" />
       </el-main>
     </el-container>
-    <ReleaseNotesDialog />
     <OpenAIConnectivityDiagnosticDialog ref="diagnosticDialog" @open-settings="void navigate('/settings')" />
   </el-config-provider>
 </template>

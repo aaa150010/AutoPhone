@@ -629,7 +629,14 @@ export function createAppController() {
 
   async function startPolling() {
     pollingStopped = false
-    await initialize()
+    while (!pollingStopped && !initialized.value) {
+      try {
+        await initialize()
+      } catch (error) {
+        syncError(error)
+        await new Promise(resolve => window.setTimeout(resolve, 1000))
+      }
+    }
     if (!pollingStopped) pollTimer = window.setTimeout(poll, running.value ? 700 : 1500)
   }
 
