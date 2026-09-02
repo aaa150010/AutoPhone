@@ -174,8 +174,8 @@ onMounted(() => { void load() })
       <div class="table-actions"><span>找到 {{ total }} 条 · 已选 {{ selected.length }} 条</span><div><el-button size="small" :icon="CircleCheck" :disabled="!selected.length" @click="updateStatus('resolved')">标记已解决</el-button><el-button size="small" :icon="Delete" type="danger" plain :disabled="!selected.length" @click="removeSelected">删除</el-button></div></div>
       <el-table :data="samples" height="100%" stripe v-loading="loading" @selection-change="selectRows">
         <el-table-column type="selection" width="44" />
-        <el-table-column label="样本 ID" min-width="170"><template #default="{ row }"><el-link type="primary" @click="openDetail(row)">{{ row.sample_id }}</el-link></template></el-table-column>
-        <el-table-column label="链路 / 驱动" min-width="140"><template #default="{ row }">{{ scopeLabel(row.scope) }} / {{ driverLabel(row.driver) }}</template></el-table-column>
+        <el-table-column label="样本 ID" min-width="170" show-overflow-tooltip><template #default="{ row }"><el-link type="primary" @click="openDetail(row)">{{ row.sample_id }}</el-link></template></el-table-column>
+        <el-table-column label="链路 / 驱动" min-width="140" show-overflow-tooltip><template #default="{ row }">{{ scopeLabel(row.scope) }} / {{ driverLabel(row.driver) }}</template></el-table-column>
         <el-table-column prop="stage" label="阶段" min-width="170" show-overflow-tooltip />
         <el-table-column prop="reason" label="未命中原因" min-width="220" show-overflow-tooltip />
         <el-table-column label="状态" width="90"><template #default="{ row }"><el-tag size="small" :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag></template></el-table-column>

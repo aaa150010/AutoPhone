@@ -33,6 +33,8 @@ import WorkspacePanel from '../components/WorkspacePanel.vue'
 import { useAppController } from '../composables/useAppController'
 import type { RuntimeTask } from '../types/api'
 import { buildOpenAIConnectivityView } from '../utils/openAIConnectivity'
+import { freeTaskSecretLookup } from '../utils/freeSecretLookup'
+import { safeMailboxUrl } from '../utils/safeMailboxUrl'
 import {
   MAX_RUN_LOG_PANEL_WIDTH,
   MIN_RUN_LOG_PANEL_WIDTH,
@@ -44,6 +46,7 @@ const emit = defineEmits<{ navigate: [string] }>()
 const controller = useAppController()
 const mailboxImportDialog = ref<InstanceType<typeof MailboxImportDialog>>()
 const openingMailboxUrlTaskIds = ref<string[]>([])
+const loadingFreeTaskEmailIds = ref<string[]>([])
 const loadingMailboxPasswordTaskIds = ref<string[]>([])
 const loadingMailboxTotpTaskIds = ref<string[]>([])
 const loadingMailboxLatestCodeTaskIds = ref<string[]>([])
@@ -217,6 +220,27 @@ function applyImportedMailboxes(result: any) {
 }
 
 async function copyTaskAccount(task: RuntimeTask) {
+  const taskId = String(task.task_id || '').trim()
+  if (task.run_mode === 'free_register') {
+    if (!taskId || loadingFreeTaskEmailIds.value.includes(taskId)) return
+    if (!navigator.clipboard?.writeText) {
+      ElMessage.error('当前浏览器不支持安全剪贴板写入')
+      return
+    }
+    loadingFreeTaskEmailIds.value = [...loadingFreeTaskEmailIds.value, taskId]
+    try {
+      const rowId = String((task as RuntimeTask & { row_id?: string }).row_id || '').trim()
+      const value = String((await getFreeSecret('email', freeTaskSecretLookup(taskId, rowId))).value || '').trim()
+      if (!value) throw new Error('服务端未返回可复制邮箱')
+      await navigator.clipboard.writeText(value)
+      ElMessage.success('已复制真实邮箱')
+    } catch (error: any) {
+      ElMessage.error(error?.message || '邮箱复制失败')
+    } finally {
+      loadingFreeTaskEmailIds.value = loadingFreeTaskEmailIds.value.filter(id => id !== taskId)
+    }
+    return
+  }
   const value = String(task.account || task.email || '').trim()
   if (!value) return
   if (!navigator.clipboard?.writeText) {
@@ -337,7 +361,15 @@ async function copyTaskTotp(task: RuntimeTask) {
 
 async function copyTaskLatestCode(task: RuntimeTask) {
   const taskId = String(task.task_id || '').trim()
-  if (!taskId || loadingMailboxLatestCodeTaskIds.value.includes(taskId)) return
+  if (!taskId) {
+    ElMessage.info('该任务尚未生成任务 ID')
+    return
+  }
+  if (!task.has_mailbox_url) {
+    ElMessage.info('该任务暂无取件 URL，无法提取验证码')
+    return
+  }
+  if (loadingMailboxLatestCodeTaskIds.value.includes(taskId)) return
   if (!navigator.clipboard?.writeText) {
     ElMessage.error('当前浏览器不支持安全剪贴板写入')
     return
@@ -361,7 +393,15 @@ async function copyTaskLatestCode(task: RuntimeTask) {
 
 async function openTaskMailboxUrl(task: RuntimeTask) {
   const taskId = String(task.task_id || '').trim()
-  if (!task.has_mailbox_url || !taskId || openingMailboxUrlTaskIds.value.includes(taskId)) return
+  if (!taskId) {
+    ElMessage.info('该任务尚未生成任务 ID')
+    return
+  }
+  if (!task.has_mailbox_url) {
+    ElMessage.info('该任务暂无取件 URL')
+    return
+  }
+  if (openingMailboxUrlTaskIds.value.includes(taskId)) return
   const target = window.open('', '_blank')
   if (!target) {
     ElMessage.error('浏览器阻止了新窗口，请允许弹出窗口后重试')
@@ -371,10 +411,9 @@ async function openTaskMailboxUrl(task: RuntimeTask) {
   openingMailboxUrlTaskIds.value = [...openingMailboxUrlTaskIds.value, taskId]
   try {
     const result = await getRuntimeTaskMailboxUrl(taskId)
-    const value = String(result.mailbox_url || '').trim()
-    const destination = new URL(value)
-    if (!['http:', 'https:'].includes(destination.protocol)) throw new Error('取件 URL 协议不安全')
-    target.location.replace(destination.href)
+    const destination = safeMailboxUrl(result.mailbox_url)
+    if (!destination) throw new Error('取件 URL 无效或协议不安全')
+    target.location.replace(destination)
   } catch (error: any) {
     target.close()
     ElMessage.error(error?.message || '打开取件 URL 失败')
@@ -466,6 +505,7 @@ async function disableConnectivityGuard() {
             :loading-mailbox-passwords="loadingMailboxPasswordTaskIds"
             :loading-mailbox-totps="loadingMailboxTotpTaskIds"
             :loading-mailbox-latest-codes="loadingMailboxLatestCodeTaskIds"
+            :loading-account-emails="loadingFreeTaskEmailIds"
             :active-view="taskView"
             @copy-account="copyTaskAccount"
             @mailbox-password="copyTaskPassword"

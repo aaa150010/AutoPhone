@@ -100,7 +100,7 @@ defineExpose({ open })
 
       <el-table :data="result.network" size="small" border class="diagnostic-table">
         <el-table-column type="index" label="序号" width="58" align="center" fixed="left" />
-        <el-table-column label="目标" min-width="170">
+        <el-table-column label="目标" min-width="170" show-overflow-tooltip>
           <template #default="{ row }">{{ originLabel(row.origin) }}<small>{{ row.origin }}</small></template>
         </el-table-column>
         <el-table-column label="状态" width="85">
@@ -112,7 +112,7 @@ defineExpose({ open })
         <el-table-column label="HTTP" width="75">
           <template #default="{ row }">{{ row.status_code ?? '-' }}</template>
         </el-table-column>
-        <el-table-column label="原因" min-width="250">
+        <el-table-column label="原因" min-width="250" show-overflow-tooltip>
           <template #default="{ row }">
             <span>{{ row.reason_label || '可达' }}</span>
             <small v-if="row.technical_summary">{{ row.technical_summary }}</small>

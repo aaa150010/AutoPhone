@@ -17,6 +17,9 @@ import {
   isRetryResolved,
   selectCurrentFreeFailure,
 } from '../utils/freeFailure'
+import { freeRowSecretLookup } from '../utils/freeSecretLookup'
+import { safeMailboxUrl } from '../utils/safeMailboxUrl'
+import { freeStageDetail, freeStageLabel, freeStageType } from '../utils/freeStage'
 
 const rows = ref<FreeMailboxRow[]>([])
 const selected = ref<FreeMailboxRow[]>([])
@@ -33,6 +36,7 @@ const liveStatusFilter = ref('')
 const liveBusy = ref<'fast' | 'deep' | ''>('')
 const planBusy = ref('')
 const loadingTotp = ref<string[]>([])
+const loadingEmail = ref<string[]>([])
 const loadingLatestCode = ref<string[]>([])
 const joinCurrentBatch = ref(false)
 const freeState = ref<FreeState>({ running: false, tasks: [], summary: {}, pool: {} })
@@ -65,10 +69,6 @@ const metrics = computed(() => {
 function isHistoricalDriver(row: FreeMailboxRow) {
   const driver = String(row.driver || '').trim().toLowerCase()
   return Boolean(driver) && driver !== 'protocol' && driver !== 'camoufox'
-}
-function isRemailMailbox(row: FreeMailboxRow) {
-  return String((row as any).source || '').trim().toLowerCase() === 'remail'
-    || String(row.mailbox_url || '').toLowerCase().includes('remail.aishop6.com/v1/pickup')
 }
 function mailboxDriverLabel(row: FreeMailboxRow) {
   const driver = String(row.driver || '').trim().toLowerCase()
@@ -170,9 +170,20 @@ async function quickStart() {
 }
 
 async function openLiveLog(row: FreeMailboxRow) {
-  if (!row.live_check_task_id) return
+  if (!row.live_check_task_id) {
+    unavailableMailboxAction('该邮箱暂无测活日志')
+    return
+  }
   logRow.value = row
   logDialogOpen.value = true
+}
+
+async function startLiveCheckAction(mode: 'fast' | 'deep', row: FreeMailboxRow) {
+  if (!canLiveCheck(row)) {
+    unavailableMailboxAction('该邮箱需要已保存 Token 和代理，且当前不在测活中')
+    return
+  }
+  await startLiveCheck(mode, [row])
 }
 
 function mailboxFailureCause(row: FreeMailboxRow) {
@@ -231,29 +242,39 @@ function mailboxStageLabel(row: FreeMailboxRow) {
   if (mailboxIsAccountBanned(row)) return ACCOUNT_BANNED_DISPLAY_MESSAGE
   const remaining = Number(row.cooldown_remaining || 0)
   if (remaining > 0) return `限流冷却 ${Math.ceil(remaining / 60)} 分钟`
-  return row.stage || row.status || '可用'
+  return freeStageLabel(row.stage || row.status, '可用', row.status)
 }
 
 function mailboxStageType(row: FreeMailboxRow) {
   if (mailboxIsAccountBanned(row)) return 'danger'
   if (row.cooldown_remaining) return 'warning'
-  if (row.status === 'success') return 'success'
-  if (row.status === 'failed') return 'danger'
-  if (row.status === 'pending_rerun' || row.status === 'twofa_pending') return 'warning'
-  return 'info'
+  if (['live', 'available'].includes(String(row.live_check_status || '').toLowerCase())) return 'success'
+  return freeStageType(row.stage || row.status, row.status)
+}
+
+function mailboxStageTooltip(row: FreeMailboxRow) {
+  return freeStageDetail(row.stage || row.status, mailboxStageLabel(row), row.status)
 }
 
 async function copyEmail(row: FreeMailboxRow) {
-  if (!row.row_id) return
+  const rowId = String(row.row_id || '').trim()
+  if (!rowId || loadingEmail.value.includes(rowId)) return
+  if (!navigator.clipboard?.writeText) {
+    ElMessage.error('当前浏览器不支持安全剪贴板写入')
+    return
+  }
+  loadingEmail.value = [...loadingEmail.value, rowId]
   try {
     // Public mailbox rows intentionally expose only a masked address. Resolve
     // the raw address through the existing on-demand secret boundary.
-    const value = (await getFreeSecret('email', { row_ids: [row.row_id] })).value
+    const value = (await getFreeSecret('email', freeRowSecretLookup(row.row_id))).value
     if (!value || !navigator.clipboard?.writeText) throw new Error('当前环境不支持复制')
     await navigator.clipboard.writeText(value)
     ElMessage.success('已复制邮箱')
-  } catch {
-    ElMessage.error('邮箱复制失败')
+  } catch (error: any) {
+    ElMessage.error(error?.message || '邮箱复制失败')
+  } finally {
+    loadingEmail.value = loadingEmail.value.filter(id => id !== rowId)
   }
 }
 
@@ -425,9 +446,41 @@ async function copyRow(kind: 'token' | 'password' | 'totp' | 'credential', row: 
   await copySecret(kind, [row])
 }
 
+function unavailableMailboxAction(message: string) {
+  ElMessage.info(message)
+}
+
+async function copyMailboxToken(row: FreeMailboxRow) {
+  if (!row.has_access_token) return unavailableMailboxAction('该邮箱暂无可复制的账号 Token')
+  await copyRow('token', row)
+}
+
+async function copyMailboxCredential(row: FreeMailboxRow) {
+  if (!row.has_credential) return unavailableMailboxAction('该邮箱暂无可复制的完整凭据')
+  await copyRow('credential', row)
+}
+
+async function copyMailboxPassword(row: FreeMailboxRow) {
+  if (!row.has_password) return unavailableMailboxAction('该邮箱暂无可复制的密码')
+  await copyRow('password', row)
+}
+
+async function copyMailboxTotp(row: FreeMailboxRow) {
+  if (!row.has_totp) return unavailableMailboxAction('该邮箱暂无可复制的 2FA 验证码')
+  await copyRow('totp', row)
+}
+
 async function copyLatestCode(row: FreeMailboxRow) {
   const rowId = String(row.row_id || '')
-  if (!rowId || loadingLatestCode.value.includes(rowId)) return
+  if (!rowId) {
+    unavailableMailboxAction('该邮箱暂无可用行标识')
+    return
+  }
+  if (!row.has_mailbox_url) {
+    unavailableMailboxAction('该邮箱暂无取件 URL，无法提取验证码')
+    return
+  }
+  if (loadingLatestCode.value.includes(rowId)) return
   if (!navigator.clipboard?.writeText) {
     ElMessage.error('当前浏览器不支持安全剪贴板写入')
     return
@@ -460,6 +513,12 @@ async function retryTwofa(row: FreeMailboxRow) {
   }
 }
 
+async function retryMailboxTwofa(row: FreeMailboxRow) {
+  if (isHistoricalDriver(row)) return unavailableMailboxAction('历史链路邮箱不支持 2FA 重试')
+  if (row.twofa_status !== 'pending') return unavailableMailboxAction('该邮箱当前没有待重试的 2FA 节点')
+  await retryTwofa(row)
+}
+
 async function retryPlan(row: FreeMailboxRow) {
   if (isHistoricalDriver(row) || !row.row_id || !row.has_access_token || String(row.plan_check_status || '').toLowerCase() !== 'failed' || planBusy.value) return
   planBusy.value = row.row_id
@@ -472,6 +531,13 @@ async function retryPlan(row: FreeMailboxRow) {
   } finally {
     planBusy.value = ''
   }
+}
+
+async function retryMailboxPlan(row: FreeMailboxRow) {
+  if (isHistoricalDriver(row)) return unavailableMailboxAction('历史链路邮箱不支持套餐重查')
+  if (!row.has_access_token) return unavailableMailboxAction('该邮箱暂无账号 Token，无法查询套餐')
+  if (String(row.plan_check_status || '').toLowerCase() !== 'failed') return unavailableMailboxAction('该邮箱当前没有失败的套餐查询')
+  await retryPlan(row)
 }
 
 async function setStatus(status: 'available' | 'unavailable' | 'draft') {
@@ -490,12 +556,19 @@ async function setStatus(status: 'available' | 'unavailable' | 'draft') {
 }
 
 async function openUrl(row: FreeMailboxRow) {
-  if (!row.row_id) return
+  if (!row.row_id) {
+    unavailableMailboxAction('该邮箱暂无可用行标识')
+    return
+  }
+  if (!row.has_mailbox_url) {
+    unavailableMailboxAction('该邮箱暂无取件 URL')
+    return
+  }
   try {
-    const value = (await getFreeMailboxUrl(row.row_id)).mailbox_url
-    const target = new URL(value)
-    if (!['http:', 'https:'].includes(target.protocol)) throw new Error('取件 URL 协议不安全')
-    window.open(target.href, '_blank', 'noopener,noreferrer')
+    const destination = safeMailboxUrl((await getFreeMailboxUrl(row.row_id)).mailbox_url)
+    if (!destination) throw new Error('取件 URL 无效或协议不安全')
+    const target = window.open(destination, '_blank', 'noopener,noreferrer')
+    if (!target) throw new Error('浏览器阻止了新窗口，请允许弹出窗口后重试')
   } catch (error: any) { ElMessage.error(error?.message || '打开 Free 取件地址失败') }
 }
 
@@ -544,31 +617,42 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
         >
           <el-table-column type="selection" width="42" reserve-selection />
           <el-table-column type="index" label="序号" width="58" align="center" fixed="left" />
-          <el-table-column prop="line_no" label="原序号" width="68" align="right" />
-          <el-table-column label="创建时间" width="170"><template #default="{ row }">{{ row.created_at ? new Date(typeof row.created_at === 'number' ? row.created_at * 1000 : row.created_at).toLocaleString() : '-' }}</template></el-table-column>
-          <el-table-column label="邮箱" min-width="190" show-overflow-tooltip><template #default="{ row }"><el-tooltip content="点击复制邮箱" placement="top"><el-button link class="email-copy" @click.stop="copyEmail(row)"><span>{{ row.email }}</span><el-icon><CopyDocument /></el-icon></el-button></el-tooltip></template></el-table-column>
-          <el-table-column label="链路 / 阶段" min-width="180" show-overflow-tooltip>
-            <template #default="{ row }"><el-tag size="small" effect="plain">{{ mailboxDriverLabel(row) }}</el-tag><el-tag size="small" :type="mailboxStageType(row)">{{ mailboxStageLabel(row) }}</el-tag></template>
-          </el-table-column>
-          <el-table-column label="套餐 / Plus 试用" width="178">
-            <template #default="{ row }"><el-tag size="small" :type="planTagType(row)" effect="light">{{ planLabel(row) }}</el-tag><el-tag v-if="row.plus_trial_eligible && String(row.subscription_plan || row.plan_type || '').toLowerCase() !== 'free'" size="small" type="success" effect="plain" class="trial-tag">Plus 试用</el-tag><el-tooltip v-if="!isHistoricalDriver(row) && row.has_access_token && String(row.plan_check_status || '').toLowerCase() === 'failed'" content="重新查询套餐"><el-button link size="small" :icon="Refresh" :loading="planBusy === row.row_id" :disabled="Boolean(planBusy)" aria-label="重新查询套餐" @click.stop="retryPlan(row)" /></el-tooltip></template>
+          <el-table-column label="邮箱" width="184" show-overflow-tooltip><template #default="{ row }"><el-tooltip :content="`点击复制邮箱${row.email ? `：${row.email}` : ''}`" placement="top"><el-button link class="email-copy" :loading="loadingEmail.includes(row.row_id)" @click.stop="copyEmail(row)"><span>{{ row.email }}</span><el-icon v-if="!loadingEmail.includes(row.row_id)"><CopyDocument /></el-icon></el-button></el-tooltip></template></el-table-column>
+          <el-table-column label="链路" min-width="145" show-overflow-tooltip><template #default="{ row }"><el-tooltip :content="mailboxDriverLabel(row)" placement="top"><div class="mailbox-chain-cell"><el-tag size="small" effect="plain">{{ mailboxDriverLabel(row) }}</el-tag></div></el-tooltip></template></el-table-column>
+          <el-table-column label="阶段" min-width="145" show-overflow-tooltip><template #default="{ row }"><el-tooltip :content="mailboxStageTooltip(row)" placement="top"><span class="mailbox-stage-cell"><el-tag size="small" effect="light" :type="mailboxStageType(row)">{{ mailboxStageLabel(row) }}</el-tag></span></el-tooltip></template></el-table-column>
+          <el-table-column label="套餐 / Plus 试用" width="156" show-overflow-tooltip>
+            <template #default="{ row }"><div class="mailbox-plan-cell"><el-tag size="small" :type="planTagType(row)" effect="light">{{ planLabel(row) }}</el-tag><el-tag v-if="row.plus_trial_eligible && String(row.subscription_plan || row.plan_type || '').toLowerCase() !== 'free'" size="small" type="success" effect="plain" class="trial-tag">Plus 试用</el-tag></div></template>
           </el-table-column>
           <el-table-column label="账号测活" min-width="165" show-overflow-tooltip>
-            <template #default="{ row }"><el-tag size="small" :type="liveStatusType(row.live_check_status)">{{ liveStatusLabel(row.live_check_status) }}</el-tag><small v-if="row.live_check_mode">{{ row.live_check_mode === 'deep' ? '深度' : '快速' }}</small></template>
+            <template #default="{ row }"><div class="mailbox-live-cell"><el-tag size="small" :type="liveStatusType(row.live_check_status)">{{ liveStatusLabel(row.live_check_status) }}</el-tag><small v-if="row.live_check_mode">{{ row.live_check_mode === 'deep' ? '深度' : '快速' }}</small></div></template>
           </el-table-column>
-          <el-table-column label="2FA" width="112" align="center">
-            <template #default="{ row }"><template v-if="row.has_totp"><el-tag size="small" type="success" effect="plain">已启用</el-tag><el-tooltip content="复制临时 2FA 验证码"><el-button link :icon="Key" :loading="loadingTotp.includes(row.row_id)" aria-label="复制临时 2FA 验证码" @click="copyRow('totp', row)" /></el-tooltip></template><el-button v-else-if="!isHistoricalDriver(row) && row.twofa_status === 'pending'" link type="warning" @click="retryTwofa(row)"><el-tag size="small" type="warning" effect="plain">待重试</el-tag></el-button><el-tag v-else size="small" type="info" effect="plain">未启用</el-tag></template>
+          <el-table-column label="2FA" width="92" align="center">
+            <template #default="{ row }"><el-tag v-if="row.has_totp" size="small" type="success" effect="plain">已启用</el-tag><el-tag v-else-if="row.twofa_status === 'pending'" size="small" type="warning" effect="plain">待重试</el-tag><el-tag v-else size="small" type="info" effect="plain">未启用</el-tag></template>
           </el-table-column>
-          <el-table-column label="取件" width="92" align="center"><template #default="{ row }"><el-tooltip v-if="!isRemailMailbox(row)" content="打开取件地址" placement="top"><el-button link :icon="Link" aria-label="打开取件地址" @click="openUrl(row)" /></el-tooltip><el-tooltip content="提取并复制最新验证码" placement="top"><el-button link :icon="CopyDocument" :loading="loadingLatestCode.includes(row.row_id)" aria-label="提取并复制最新验证码" @click="copyLatestCode(row)" /></el-tooltip></template></el-table-column>
-          <el-table-column label="Token" width="80" align="center"><template #default="{ row }"><el-button v-if="row.has_access_token" link :icon="CopyDocument" aria-label="复制 Token" @click="copyRow('token', row)" /><span v-else>-</span></template></el-table-column>
-          <el-table-column label="测活操作" width="118" align="center"><template #default="{ row }"><el-tooltip content="快速测活"><el-button link type="success" :icon="CircleCheck" :disabled="!canLiveCheck(row) || Boolean(liveBusy)" aria-label="快速测活" @click.stop="startLiveCheck('fast', [row])" /></el-tooltip><el-tooltip content="深度测活"><el-button link type="warning" :icon="RefreshRight" :disabled="!canLiveCheck(row) || Boolean(liveBusy)" aria-label="深度测活" @click.stop="startLiveCheck('deep', [row])" /></el-tooltip><el-tooltip content="查看测活日志"><el-button link :icon="View" :disabled="!row.live_check_task_id" aria-label="查看测活日志" @click.stop="openLiveLog(row)" /></el-tooltip></template></el-table-column>
-          <el-table-column label="敏感字段" width="160" align="center"><template #default="{ row }"><el-button v-if="row.has_credential" link :icon="CopyDocument" @click="copyRow('credential', row)">完整凭据</el-button><el-button v-if="row.has_password" link :icon="Lock" @click="copyRow('password', row)">密码</el-button></template></el-table-column>
           <el-table-column label="错误" min-width="280">
             <template #default="{ row }">
               <el-tooltip placement="top" :disabled="!mailboxFailureDetails(row).length">
                 <template #content><div class="failure-tooltip"><span v-for="item in mailboxFailureDetails(row)" :key="item">{{ item }}</span></div></template>
                 <div class="failure-cell"><template v-if="isRetryResolved(row.retry_resolved)"><strong class="resolved-text">已由重试解决</strong></template><template v-else-if="mailboxIsAccountBanned(row)"><strong>{{ ACCOUNT_BANNED_DISPLAY_MESSAGE }}</strong></template><template v-else><strong v-if="mailboxFailureNode(row).label || mailboxFailureNode(row).code">{{ mailboxFailureNode(row).label || mailboxFailureNode(row).code }}<code v-if="mailboxFailureNode(row).showCode">{{ mailboxFailureNode(row).code }}</code></strong><span>{{ mailboxFailureCause(row) }}</span></template></div>
               </el-tooltip>
+            </template>
+          </el-table-column>
+          <el-table-column label="创建时间" width="170"><template #default="{ row }">{{ row.created_at ? new Date(typeof row.created_at === 'number' ? row.created_at * 1000 : row.created_at).toLocaleString() : '-' }}</template></el-table-column>
+          <el-table-column label="操作" width="284" fixed="right" align="center">
+            <template #default="{ row }">
+              <div class="mailbox-operation-cell">
+                <el-tooltip content="打开取件地址" placement="top"><el-button link :icon="Link" aria-label="打开取件地址" @click.stop="openUrl(row)" /></el-tooltip>
+                <el-tooltip content="提取并复制最新验证码" placement="top"><el-button link :icon="CopyDocument" :loading="loadingLatestCode.includes(row.row_id)" aria-label="提取并复制最新验证码" @click.stop="copyLatestCode(row)" /></el-tooltip>
+                <el-tooltip content="复制 Token" placement="top"><el-button link :icon="CopyDocument" aria-label="复制 Token" @click.stop="copyMailboxToken(row)" /></el-tooltip>
+                <el-tooltip content="快速测活" placement="top"><el-button link type="success" :icon="CircleCheck" :disabled="Boolean(liveBusy)" aria-label="快速测活" @click.stop="startLiveCheckAction('fast', row)" /></el-tooltip>
+                <el-tooltip content="深度测活" placement="top"><el-button link type="warning" :icon="RefreshRight" :disabled="Boolean(liveBusy)" aria-label="深度测活" @click.stop="startLiveCheckAction('deep', row)" /></el-tooltip>
+                <el-tooltip content="查看测活日志" placement="top"><el-button link :icon="View" aria-label="查看测活日志" @click.stop="openLiveLog(row)" /></el-tooltip>
+                <el-tooltip content="复制完整凭据" placement="top"><el-button link :icon="CopyDocument" aria-label="复制完整凭据" @click.stop="copyMailboxCredential(row)" /></el-tooltip>
+                <el-tooltip content="复制密码" placement="top"><el-button link :icon="Lock" aria-label="复制密码" @click.stop="copyMailboxPassword(row)" /></el-tooltip>
+                <el-tooltip content="复制临时 2FA 验证码" placement="top"><el-button link :icon="Key" :loading="loadingTotp.includes(row.row_id)" aria-label="复制临时 2FA 验证码" @click.stop="copyMailboxTotp(row)" /></el-tooltip>
+                <el-tooltip content="重试 2FA" placement="top"><el-button link type="warning" :icon="Refresh" aria-label="重试 2FA" @click.stop="retryMailboxTwofa(row)" /></el-tooltip>
+                <el-tooltip content="重新查询套餐" placement="top"><el-button link :icon="Refresh" :loading="planBusy === row.row_id" :disabled="Boolean(planBusy)" aria-label="重新查询套餐" @click.stop="retryMailboxPlan(row)" /></el-tooltip>
+              </div>
             </template>
           </el-table-column>
           <template #empty><ContentEmptyState /></template>
@@ -606,6 +690,13 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
 .email-copy { max-width: 100%; gap: 5px; color: var(--el-text-color-primary); }
 .email-copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .email-copy .el-icon { flex: 0 0 auto; color: var(--el-color-primary); }
+.mailbox-chain-cell, .mailbox-plan-cell, .mailbox-live-cell { display: flex; align-items: center; min-width: 0; gap: 5px; overflow: hidden; white-space: nowrap; }
+.mailbox-chain-cell > .el-tag, .mailbox-plan-cell > .el-tag, .mailbox-live-cell > .el-tag { flex: 0 0 auto; }
+.mailbox-stage-cell { display: inline-flex; max-width: 100%; min-width: 0; overflow: hidden; vertical-align: middle; }
+.mailbox-stage-cell :deep(.el-tag) { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mailbox-live-cell small { display: inline; flex: 0 0 auto; margin-top: 0; color: var(--el-text-color-secondary); white-space: nowrap; }
+.mailbox-operation-cell { display: inline-flex; align-items: center; justify-content: center; gap: 0; min-width: 0; white-space: nowrap; }
+.mailbox-operation-cell :deep(.el-button) { width: 25px; height: 25px; margin-left: 0; padding: 4px; }
 .table-region :deep(.el-pagination) { justify-content: flex-end; border-top: 1px solid var(--workspace-border); }
 .table-region small { color: var(--el-text-color-secondary); }
 .table-region small { display: block; overflow: hidden; margin-top: 2px; text-overflow: ellipsis; white-space: nowrap; }

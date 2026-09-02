@@ -45,13 +45,13 @@ defineProps<{
 .workspace-panel.is-fill { height: 100%; display: flex; flex-direction: column; }
 .workspace-panel.is-fill > :deep(.el-card__body) { min-height: 0; flex: 1; }
 .workspace-panel.is-scroll > :deep(.el-card__body) { overflow: auto; }
-.workspace-panel > :deep(.el-card__header) { flex: 0 0 44px; height: 44px; padding: 0 13px; }
+.workspace-panel > :deep(.el-card__header) { flex: 0 0 46px; height: 46px; padding: 0 15px; border-bottom-color: var(--workspace-border); }
 .workspace-panel > :deep(.el-card__body) { min-width: 0; }
 .workspace-panel.padding-none > :deep(.el-card__body) { padding: 0; }
-.workspace-panel.padding-compact > :deep(.el-card__body) { padding: 10px; }
-.workspace-panel.padding-normal > :deep(.el-card__body) { padding: 12px 14px; }
-.panel-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 43px; }
-.panel-title { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--el-text-color-primary); font-size: 14px; font-weight: 650; }
+.workspace-panel.padding-compact > :deep(.el-card__body) { padding: 11px; }
+.workspace-panel.padding-normal > :deep(.el-card__body) { padding: 14px 16px; }
+.panel-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 45px; }
+.panel-title { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--el-text-color-primary); font-size: 14px; font-weight: 700; }
 .panel-title .el-icon { color: var(--el-color-primary); font-size: 17px; }
 .panel-title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .panel-actions { display: flex; align-items: center; gap: 7px; min-width: 0; }

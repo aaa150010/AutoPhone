@@ -267,10 +267,10 @@ watch(() => props.locationKey, (value, previous) => {
       <el-alert v-if="searchError" class="search-error" type="error" :closable="false" show-icon :title="searchError" />
       <el-table v-else class="incident-table" :data="incidents" v-loading="loading" height="100%" stripe @selection-change="selectRows">
         <el-table-column type="selection" width="46" fixed="left" />
-        <el-table-column label="日志 ID" min-width="188" fixed="left"><template #default="{ row }"><div class="incident-id"><el-link type="primary" @click="openIncident(row)">{{ row.incident_id }}</el-link><el-button text size="small" :icon="CopyDocument" aria-label="复制日志 ID" @click="copyIncidentId(row)" /></div></template></el-table-column>
+        <el-table-column label="日志 ID" min-width="188" fixed="left" show-overflow-tooltip><template #default="{ row }"><div class="incident-id"><el-link type="primary" @click="openIncident(row)">{{ row.incident_id }}</el-link><el-button text size="small" :icon="CopyDocument" aria-label="复制日志 ID" @click="copyIncidentId(row)" /></div></template></el-table-column>
         <el-table-column label="状态" width="170"><template #default="{ row }"><el-tag size="small" :type="incidentStatusType(row)">{{ incidentStatusLabel(row) }}</el-tag></template></el-table-column>
         <el-table-column prop="subject_display" label="账号" min-width="150" show-overflow-tooltip />
-        <el-table-column label="链路" min-width="150"><template #default="{ row }">{{ chainLabel(row.chain) }} / {{ driverLabel(row.driver) }}</template></el-table-column>
+        <el-table-column label="链路" min-width="150" show-overflow-tooltip><template #default="{ row }">{{ chainLabel(row.chain) }} / {{ driverLabel(row.driver) }}</template></el-table-column>
         <el-table-column label="匹配依据" min-width="150" show-overflow-tooltip><template #default="{ row }">{{ (row.match_basis || []).join('、') || '最近发生时间' }}</template></el-table-column>
         <el-table-column label="首个失败节点" min-width="210" show-overflow-tooltip><template #default="{ row }"><span class="failure-node">{{ incidentNodeLabel(row) }}</span><code>{{ row.first_node_code || '' }}</code></template></el-table-column>
         <el-table-column prop="task_id" label="任务 ID" min-width="150" show-overflow-tooltip />

@@ -12,5 +12,44 @@ watch([filter, importedFilter, pageSize], () => { currentPage.value = 1; void lo
 watch(currentPage, () => void load(false))
 onMounted(load)
 </script>
-<template><div class="remail-page"><PageToolbar title="Remail 订单查询" status="网站 / API 订单" tone="info"><el-button size="small" :loading="loading" @click="load">同步订单</el-button></PageToolbar><WorkspacePanel title="长效购买订单" fill body-padding="none"><div class="orders-content"><div class="toolbar"><el-input v-model="filter" size="small" clearable placeholder="搜索订单号、邮箱或状态"/><el-select v-model="importedFilter" size="small" class="import-filter"><el-option label="未导入 Free 池" :value="false"/><el-option label="全部订单" value="all"/><el-option label="已导入" :value="true"/></el-select><el-button size="small" type="primary" :disabled="!selected.length" :loading="loading" @click="importSelected">导入 Free 邮箱池</el-button></div><el-table v-loading="loading" :data="rows" row-key="order_no" @selection-change="selected = $event"><el-table-column type="selection" width="48"/><el-table-column type="index" label="序号" width="58"/><el-table-column prop="order_no" label="订单号" min-width="180"/><el-table-column prop="delivery_email_masked" label="邮箱" min-width="190"/><el-table-column prop="status" label="状态" width="120"/><el-table-column label="入池" width="100"><template #default="scope"><el-tag :type="scope.row.imported ? 'success' : 'info'">{{ scope.row.imported ? '已导入' : '未导入' }}</el-tag></template></el-table-column><el-table-column label="创建时间" width="170"><template #default="scope">{{ formatTime(scope.row.created_at) }}</template></el-table-column><el-table-column label="商品" min-width="150"><template #default="scope">{{ scope.row.payload?.productType || scope.row.payload?.product_type || '-' }} / {{ scope.row.payload?.emailSuffix || scope.row.payload?.email_suffix || '-' }}</template></el-table-column></el-table><div class="pager"><span>共 {{ total }} 条</span><el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" background layout="sizes, prev, pager, next" :page-sizes="[25,50,100]" :total="total" /></div></div></WorkspacePanel></div></template>
+<template>
+  <div class="remail-page">
+    <PageToolbar title="Remail 订单查询" status="网站 / API 订单" tone="info">
+      <el-button size="small" :loading="loading" @click="load">同步订单</el-button>
+    </PageToolbar>
+    <WorkspacePanel title="长效购买订单" fill body-padding="none">
+      <div class="orders-content">
+        <div class="toolbar">
+          <el-input v-model="filter" size="small" clearable placeholder="搜索订单号、邮箱或状态" />
+          <el-select v-model="importedFilter" size="small" class="import-filter">
+            <el-option label="未导入 Free 池" :value="false" />
+            <el-option label="全部订单" value="all" />
+            <el-option label="已导入" :value="true" />
+          </el-select>
+          <el-button size="small" type="primary" :disabled="!selected.length" :loading="loading" @click="importSelected">导入 Free 邮箱池</el-button>
+        </div>
+        <el-table v-loading="loading" :data="rows" row-key="order_no" @selection-change="selected = $event">
+          <el-table-column type="selection" width="48" />
+          <el-table-column type="index" label="序号" width="58" />
+          <el-table-column prop="order_no" label="订单号" min-width="180" show-overflow-tooltip />
+          <el-table-column prop="delivery_email_masked" label="邮箱" min-width="190" show-overflow-tooltip />
+          <el-table-column prop="status" label="状态" width="120" show-overflow-tooltip />
+          <el-table-column label="入池" width="100">
+            <template #default="scope"><el-tag :type="scope.row.imported ? 'success' : 'info'">{{ scope.row.imported ? '已导入' : '未导入' }}</el-tag></template>
+          </el-table-column>
+          <el-table-column label="商品" min-width="150" show-overflow-tooltip>
+            <template #default="scope">{{ scope.row.payload?.productType || scope.row.payload?.product_type || '-' }} / {{ scope.row.payload?.emailSuffix || scope.row.payload?.email_suffix || '-' }}</template>
+          </el-table-column>
+          <el-table-column label="创建时间" width="156">
+            <template #default="scope">{{ formatTime(scope.row.created_at) }}</template>
+          </el-table-column>
+        </el-table>
+        <div class="pager">
+          <span>共 {{ total }} 条</span>
+          <el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" background layout="sizes, prev, pager, next" :page-sizes="[25,50,100]" :total="total" />
+        </div>
+      </div>
+    </WorkspacePanel>
+  </div>
+</template>
 <style scoped>.remail-page{display:grid;grid-template-rows:44px minmax(0,1fr);gap:6px;height:100%;min-width:0}.orders-content{display:grid;grid-template-rows:auto minmax(0,1fr) auto;height:100%;min-height:0}.toolbar{display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid var(--workspace-border)}.toolbar .el-input{width:min(360px,100%);max-width:360px}.import-filter{width:280px}.toolbar :deep(.el-input__wrapper),.toolbar :deep(.el-select__wrapper),.toolbar :deep(.el-button){box-sizing:border-box;min-height:40px;height:40px}.toolbar :deep(.el-select){height:40px}.orders-content :deep(.el-table){min-height:0}.pager{display:flex;align-items:center;justify-content:space-between;padding:8px;border-top:1px solid var(--workspace-border);color:var(--el-text-color-secondary);font-size:12px}</style>

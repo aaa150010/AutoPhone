@@ -115,7 +115,7 @@ async function submit() {
 </template>
 
 <style scoped>
-.verification-input { display: flex; align-items: center; gap: 5px; width: 176px; min-width: 0; }
+.verification-input { display: flex; align-items: center; gap: 5px; width: 100%; max-width: 176px; min-width: 0; }
 .verification-input :deep(.el-input) { min-width: 0; }
 .verification-input :deep(.el-input__wrapper) { padding-inline: 7px; }
 .verification-input :deep(.el-input__inner) { min-width: 0; font-variant-numeric: tabular-nums; }

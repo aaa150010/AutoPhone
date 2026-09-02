@@ -244,8 +244,8 @@ function checkpointType() {
         <h3>细分耗时</h3>
         <el-table :data="timing.segments" size="small" stripe>
           <el-table-column type="index" label="序号" width="58" align="center" fixed="left" />
-          <el-table-column prop="label" label="细分阶段" min-width="210" />
-          <el-table-column prop="code" label="代码" min-width="190" />
+          <el-table-column prop="label" label="细分阶段" min-width="210" show-overflow-tooltip />
+          <el-table-column prop="code" label="代码" min-width="190" show-overflow-tooltip />
           <el-table-column label="访问" width="70" align="right">
             <template #default="{ row }">{{ row.visits }} 次</template>
           </el-table-column>
@@ -259,9 +259,9 @@ function checkpointType() {
         <h3>OTP / Camoufox 子步骤耗时</h3>
         <el-table :data="timing.substeps" size="small" stripe>
           <el-table-column type="index" label="序号" width="58" align="center" fixed="left" />
-          <el-table-column prop="stage_label" label="所属节点" min-width="180" />
-          <el-table-column prop="label" label="子步骤" min-width="220" />
-          <el-table-column prop="code" label="代码" min-width="205" />
+          <el-table-column prop="stage_label" label="所属节点" min-width="180" show-overflow-tooltip />
+          <el-table-column prop="label" label="子步骤" min-width="220" show-overflow-tooltip />
+          <el-table-column prop="code" label="代码" min-width="205" show-overflow-tooltip />
           <el-table-column label="结果" width="92" align="center">
             <template #default="{ row }">
               <el-tag size="small" :type="row.outcome === 'success' ? 'success' : row.outcome === 'skipped' ? 'info' : 'warning'">

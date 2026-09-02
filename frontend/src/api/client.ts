@@ -309,6 +309,7 @@ export interface FreeMailboxRow {
   email_masked?: string
   source?: string
   mailbox_url?: string
+  has_mailbox_url?: boolean
   subject_ref_fingerprint?: string
   status: string
   cooldown_until?: number | null

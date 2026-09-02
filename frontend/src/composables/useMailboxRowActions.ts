@@ -14,6 +14,7 @@ import {
 } from '../api/client'
 import type { MailboxRow, MailboxRowAction } from '../types/api'
 import { needsSub2Rerun } from '../utils/mailboxFilters'
+import { safeMailboxUrl } from '../utils/safeMailboxUrl'
 
 type ReadonlyValue<T> = { readonly value: T }
 type MutableValue<T> = { value: T }
@@ -94,7 +95,10 @@ export function useMailboxRowActions(options: MailboxRowActionOptions) {
   }
 
   async function openMailboxUrl(row: MailboxRow) {
-    if (!row.has_mailbox_url) return
+    if (!row.has_mailbox_url) {
+      ElMessage.info('该邮箱暂无取件 URL')
+      return
+    }
     const target = window.open('', '_blank')
     if (!target) {
       ElMessage.error('浏览器阻止了新窗口，请允许弹出窗口后重试')
@@ -103,7 +107,9 @@ export function useMailboxRowActions(options: MailboxRowActionOptions) {
     try {
       target.opener = null
       const result = await getMailboxUrl({ row_id: row.row_id, line_no: row.line_no })
-      target.location.href = String(result.mailbox_url || '')
+      const destination = safeMailboxUrl(result.mailbox_url)
+      if (!destination) throw new Error('取件 URL 无效或协议不安全')
+      target.location.replace(destination)
     } catch (error: any) {
       target.close()
       if (error instanceof ApiError && error.payload?.code === 'mailbox_row_stale') {
@@ -114,7 +120,11 @@ export function useMailboxRowActions(options: MailboxRowActionOptions) {
   }
 
   async function copyLatestCode(row: MailboxRow) {
-    if (!row.has_mailbox_url || options.rowActionLoading.value.includes(row.row_id)) return
+    if (!row.has_mailbox_url) {
+      ElMessage.info('该邮箱暂无取件 URL，无法提取验证码')
+      return
+    }
+    if (options.rowActionLoading.value.includes(row.row_id)) return
     if (!navigator.clipboard?.writeText) {
       ElMessage.error('当前浏览器不支持安全剪贴板写入')
       return

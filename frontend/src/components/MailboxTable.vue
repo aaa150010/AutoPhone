@@ -255,15 +255,14 @@ defineExpose({ clearSelection })
   >
     <el-table-column type="selection" width="45" reserve-selection />
     <el-table-column prop="display_index" label="序号" width="64" />
-    <el-table-column label="创建时间" width="170"><template #default="{ row }">{{ row.created_at ? new Date(typeof row.created_at === 'number' ? row.created_at * 1000 : row.created_at).toLocaleString() : '-' }}</template></el-table-column>
-    <el-table-column label="批次" width="132">
+    <el-table-column label="批次" width="132" show-overflow-tooltip>
       <template #default="{ row }">
         <el-tooltip :content="batchDetail(row)" placement="top">
           <span class="batch-label">{{ batchLabel(row) }}</span>
         </el-tooltip>
       </template>
     </el-table-column>
-    <el-table-column label="邮箱" min-width="230">
+    <el-table-column label="邮箱" min-width="230" show-overflow-tooltip>
       <template #default="{ row }">
         <el-tooltip v-if="row.email" content="点击复制邮箱" placement="top">
           <button
@@ -274,15 +273,6 @@ defineExpose({ clearSelection })
           >{{ row.email }}</button>
         </el-tooltip>
         <span v-else>-</span>
-      </template>
-    </el-table-column>
-    <el-table-column label="取件 URL" width="132" align="center">
-      <template #default="{ row }">
-        <template v-if="row.has_mailbox_url">
-          <el-tooltip content="打开取件网页" placement="top"><el-button link size="small" :icon="View" @click="emit('url', row)">查看</el-button></el-tooltip>
-          <el-tooltip content="提取并复制最新验证码" placement="top"><el-button link size="small" :icon="CopyDocument" @click="emit('latestCode', row)" /></el-tooltip>
-        </template>
-        <span v-else class="muted">-</span>
       </template>
     </el-table-column>
     <el-table-column label="密码" width="94" align="center">
@@ -353,7 +343,7 @@ defineExpose({ clearSelection })
         </el-tag>
       </template>
     </el-table-column>
-    <el-table-column label="OpenAI 状态" width="205">
+    <el-table-column label="OpenAI 状态" width="205" show-overflow-tooltip>
       <template #default="{ row }">
         <el-tooltip :content="`点击重新查询 OpenAI 状态 · ${sub2Detail(row)}`" placement="top">
           <button
@@ -369,7 +359,7 @@ defineExpose({ clearSelection })
         </el-tooltip>
       </template>
     </el-table-column>
-    <el-table-column label="当前阶段" width="220">
+    <el-table-column label="当前阶段" width="220" show-overflow-tooltip>
       <template #default="{ row }"><TaskProgressCell :progress="row.progress" :timing="row.timing" :now-seconds="nowSeconds" :status="row.task_status || row.status" /></template>
     </el-table-column>
     <el-table-column label="接码成本" width="110" align="right">
@@ -383,8 +373,18 @@ defineExpose({ clearSelection })
     <el-table-column label="失败原因/说明" min-width="300" show-overflow-tooltip>
       <template #default="{ row }">{{ explanation(row) }}</template>
     </el-table-column>
-    <el-table-column label="操作" width="88" fixed="right" align="center">
+    <el-table-column label="创建时间" width="156">
+      <template #default="{ row }">{{ row.created_at ? new Date(typeof row.created_at === 'number' ? row.created_at * 1000 : row.created_at).toLocaleString() : '-' }}</template>
+    </el-table-column>
+    <el-table-column label="操作" width="164" fixed="right" align="center">
       <template #default="{ row }">
+        <div class="mailbox-operation-cell">
+          <el-tooltip content="打开取件网页" placement="top">
+            <el-button link size="small" :icon="View" aria-label="打开取件网页" @click="emit('url', row)" />
+          </el-tooltip>
+          <el-tooltip content="提取并复制最新验证码" placement="top">
+            <el-button link size="small" :icon="CopyDocument" aria-label="提取并复制最新验证码" @click="emit('latestCode', row)" />
+          </el-tooltip>
         <el-dropdown
           trigger="click"
           :disabled="rowActionLoading(row)"
@@ -462,6 +462,7 @@ defineExpose({ clearSelection })
             </el-dropdown-menu>
           </template>
         </el-dropdown>
+        </div>
       </template>
     </el-table-column>
     <template #empty><ContentEmptyState /></template>
@@ -522,5 +523,7 @@ defineExpose({ clearSelection })
 .openai-status-retry:disabled { cursor: not-allowed; opacity: 0.7; }
 .openai-status-retry:focus-visible { outline: 2px solid var(--el-color-primary-light-5); outline-offset: 2px; border-radius: 2px; }
 .row-action-button { min-width: 30px; padding: 4px 8px; }
+.mailbox-operation-cell { display: inline-flex; align-items: center; justify-content: flex-start; gap: 1px; min-width: 0; white-space: nowrap; }
+.mailbox-operation-cell :deep(.el-button) { width: 25px; height: 25px; margin-left: 0; padding: 4px; }
 .danger-icon, .danger-label { color: var(--el-color-danger); }
 </style>
