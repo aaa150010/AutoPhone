@@ -20,6 +20,7 @@ from mac_overrides.mailbox_url_runtime import (
     parse_received_timestamp,
     select_latest_code,
 )
+from mac_overrides.remail_api import remail_expiry_timestamp, remail_order_expired, remail_pickup_url
 
 
 BASE_URL = "https://mail.example.test/messages/operator-token/user@example.test"
@@ -71,6 +72,19 @@ def verification_body(code: str) -> str:
 
 
 class MailboxUrlRuntimeTests(unittest.TestCase):
+    def test_remail_pickup_url_contains_scoped_parameters_without_old_credentials(self):
+        url = remail_pickup_url(
+            "https://remail.example/v1/pickup?email=old%40example.test&token=old-token",
+            "User@example.test",
+            "service-token",
+        )
+        self.assertEqual(url, "https://remail.example/v1/pickup?email=User%40example.test&token=service-token")
+
+    def test_remail_order_expiry_accepts_iso_and_millisecond_timestamps(self):
+        self.assertTrue(remail_order_expired({"status": "active", "expiresAt": "2026-09-01T00:00:00Z"}, now=1_800_000_000))
+        self.assertEqual(remail_expiry_timestamp({"valid_until": 1_700_000_000_000}), 1_700_000_000.0)
+        self.assertFalse(remail_order_expired({"status": "active"}, now=9_999_999_999))
+
     def test_remail_pickup_accepts_explicit_verification_code(self):
         payload = {"items": [{"id": "m-1", "verificationCode": 654321, "receivedAt": "2026-09-02T08:00:00Z"}]}
         messages, _links = parse_mailbox_payload(

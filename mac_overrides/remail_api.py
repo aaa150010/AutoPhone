@@ -4,8 +4,9 @@ from __future__ import annotations
 import json
 import uuid
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Mapping
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -14,6 +15,79 @@ class RemailApiError(RuntimeError):
     def __init__(self, code: str, message: str, *, status: int = 0, request_id: str = "") -> None:
         self.code, self.status, self.request_id = str(code), int(status or 0), str(request_id or "")
         super().__init__(str(message)[:300])
+
+
+_REMAIL_EXPIRY_KEYS = frozenset({
+    "expiresat", "expireat", "expiredat", "validuntil", "expiryat", "expirationdate",
+})
+
+
+def remail_pickup_url(base_url: str, email: str, service_token: str) -> str:
+    """Build the browser-openable, service-token-scoped pickup URL."""
+    address = str(email or "").strip()
+    token = str(service_token or "").strip()
+    if not address or not token:
+        raise ValueError("Remail 取件地址缺少邮箱或服务凭证")
+    parsed = urlsplit(str(base_url or "").strip())
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("Remail 取件地址不是完整的 HTTP(S) URL")
+    query = [(key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+             if key.lower() not in {"email", "token", "service_token", "servicetoken"}]
+    query.extend((("email", address), ("token", token)))
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(query), ""))
+
+
+def _remail_timestamp(value: Any) -> float | None:
+    if isinstance(value, bool) or value in (None, ""):
+        return None
+    if isinstance(value, (int, float)):
+        number = float(value)
+        if number > 10_000_000_000:
+            number /= 1000.0
+        return number if number > 0 else None
+    text = str(value).strip()
+    try:
+        number = float(text)
+    except (TypeError, ValueError):
+        number = 0.0
+    if number > 0:
+        return number / 1000.0 if number > 10_000_000_000 else number
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.timestamp()
+
+
+def remail_expiry_timestamp(value: Mapping[str, Any] | None) -> float | None:
+    """Find an order expiry field without treating token TTL fields as order expiry."""
+    if not isinstance(value, Mapping):
+        return None
+    candidates: list[float] = []
+    for key, raw in value.items():
+        normalized = str(key or "").replace("-", "_").lower()
+        compact = normalized.replace("_", "")
+        if compact in _REMAIL_EXPIRY_KEYS:
+            timestamp = _remail_timestamp(raw)
+            if timestamp is not None:
+                candidates.append(timestamp)
+        elif isinstance(raw, Mapping):
+            nested = remail_expiry_timestamp(raw)
+            if nested is not None:
+                candidates.append(nested)
+    return min(candidates) if candidates else None
+
+
+def remail_order_expired(value: Mapping[str, Any] | None, *, now: float | None = None) -> bool:
+    if not isinstance(value, Mapping):
+        return False
+    status = str(value.get("status") or value.get("orderStatus") or "").strip().lower()
+    if status in {"expired", "expire", "cancelled", "canceled", "refunded"}:
+        return True
+    expiry = remail_expiry_timestamp(value)
+    return expiry is not None and expiry <= (datetime.now(timezone.utc).timestamp() if now is None else float(now))
 
 
 @dataclass(frozen=True)
@@ -101,7 +175,7 @@ class RemailClient:
 
     def pickup(self, email: str, token: str) -> Any:
         # Pickup deliberately has no API-key header; the service token scopes it.
-        url = self.base_url.rstrip("/") + "/v1/pickup?" + urlencode({"email": email, "token": token})
+        url = remail_pickup_url(self.base_url.rstrip("/") + "/v1/pickup", email, token)
         request = Request(url, headers={
             "Accept": "application/json",
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
@@ -121,4 +195,7 @@ class RemailClient:
         return value
 
 
-__all__ = ["RemailApiError", "RemailClient"]
+__all__ = [
+    "RemailApiError", "RemailClient", "remail_pickup_url", "remail_expiry_timestamp",
+    "remail_order_expired",
+]

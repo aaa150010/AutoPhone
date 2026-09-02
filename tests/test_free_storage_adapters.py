@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -66,6 +67,34 @@ class SQLiteStorageAdapterTests(unittest.TestCase):
 
         self.assertEqual(public["email"], "a*@example.com")
         self.assertEqual(public["email_masked"], public["email"])
+
+    def test_remail_mailbox_reveals_scoped_pickup_url_and_hides_token_from_public_rows(self) -> None:
+        pool = SQLiteFreeMailboxPool(self.root)
+        row = pool.import_remail_order({
+            "orderNo": "ord-url",
+            "status": "active",
+            "deliveryEmail": "user@example.com",
+            "serviceToken": "private-service-token",
+        })
+        url = pool.reveal_mailbox_url(row["row_id"])
+        self.assertIn("email=user%40example.com", url)
+        self.assertIn("token=private-service-token", url)
+        public = json.dumps(pool.public_rows(), ensure_ascii=False)
+        self.assertNotIn("private-service-token", public)
+
+    def test_expired_remail_mailbox_is_quarantined_before_allocation(self) -> None:
+        pool = SQLiteFreeMailboxPool(self.root)
+        row = pool.import_remail_order({
+            "orderNo": "ord-expired",
+            "status": "active",
+            "deliveryEmail": "expired@example.com",
+            "serviceToken": "private-service-token",
+            "expiresAt": time.time() - 60,
+        })
+        self.assertEqual(pool.available(10), [])
+        state = pool._row_state(row["row_id"])
+        self.assertEqual(state["status"], "unavailable")
+        self.assertTrue(state["remail_expired"])
 
     def test_mailbox_adapter_keeps_new_imports_first(self) -> None:
         pool = SQLiteFreeMailboxPool(self.root)

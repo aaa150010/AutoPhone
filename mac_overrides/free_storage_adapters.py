@@ -42,6 +42,7 @@ try:
     from .free_register_store import FreeTaskStore as _LegacyTaskStore, _account_material_line
     from .free_proxy_store import FreeProxyPool as _LegacyProxyPool
     from .free_storage import FreeSQLiteStore, RevisionConflict, _partition_json, _stored_bool
+    from .remail_api import remail_order_expired, remail_pickup_url
 except ImportError:  # pragma: no cover - recovery imports
     from free_failure_runtime import canonical_failure, merge_account_result_fields, normalize_password_result  # type: ignore[no-redef]
     from free_register_common import (  # type: ignore[no-redef]
@@ -59,6 +60,7 @@ except ImportError:  # pragma: no cover - recovery imports
     from free_register_store import FreeTaskStore as _LegacyTaskStore, _account_material_line  # type: ignore[no-redef]
     from free_proxy_store import FreeProxyPool as _LegacyProxyPool  # type: ignore[no-redef]
     from free_storage import FreeSQLiteStore, RevisionConflict, _partition_json, _stored_bool  # type: ignore[no-redef]
+    from remail_api import remail_order_expired, remail_pickup_url  # type: ignore[no-redef]
 
 
 _ACTIVE_MAILBOX_STATUSES = frozenset({"reserved", "queued", "running"})
@@ -287,8 +289,20 @@ class SQLiteFreeMailboxPool(_LegacyMailboxPool):
         return marked
 
     def available(self, count: int) -> list[FreeMailbox]:
+        rows = []
+        for row in self._ordered_rows():
+            payload = row.get("payload") if isinstance(row.get("payload"), Mapping) else {}
+            if str(payload.get("source") or "").strip().lower() == "remail" and remail_order_expired(payload):
+                if str(row.get("status") or "available") not in _ACTIVE_MAILBOX_STATUSES:
+                    self.storage.update_mailbox(
+                        str(row.get("row_id") or ""),
+                        status="unavailable",
+                        payload_patch={"remail_expired": True, "error": "Remail 订单已过期"},
+                    )
+                continue
+            rows.append(row)
         rows = [
-            row for row in self._ordered_rows()
+            row for row in rows
             if str(row.get("status") or "available") == "available"
             # A stale/manual status reset must not turn an already-submitted
             # mailbox back into a fresh-registration candidate.  Explicit
@@ -333,6 +347,17 @@ class SQLiteFreeMailboxPool(_LegacyMailboxPool):
         # Validate and update the complete selection in one SQLite
         # transaction.  The old row-by-row implementation could leave the
         # first mailboxes reserved when a later row lost a race.
+        for mailbox in rows:
+            state = self._row_state(mailbox.row_id)
+            if str(state.get("source") or "").strip().lower() == "remail" and remail_order_expired(state):
+                self.storage.update_mailbox(
+                    mailbox.row_id,
+                    status="unavailable",
+                    payload_patch={"remail_expired": True, "error": "Remail 订单已过期"},
+                )
+                raise FreeRegisterError(
+                    "free_pool_reserve", "预留 Free 邮箱", "Remail 订单已过期，不能继续分配", retryable=False,
+                )
         reserved = self.storage.reserve_mailboxes(
             [
                 {
@@ -444,7 +469,17 @@ class SQLiteFreeMailboxPool(_LegacyMailboxPool):
             raise FreeRegisterError(
                 "free_mailbox_url", "读取 Free 取件地址", "Free 邮箱行不存在或已变化", retryable=False
             )
-        return str(row.get("mailbox_url") or "")
+        mailbox_url = str(row.get("mailbox_url") or "").strip()
+        payload = row.get("payload") if isinstance(row.get("payload"), Mapping) else {}
+        if str(payload.get("source") or "").strip().lower() == "remail":
+            token = str(payload.get("service_token") or payload.get("serviceToken") or "").strip()
+            try:
+                return remail_pickup_url(mailbox_url, str(row.get("email") or ""), token)
+            except ValueError as exc:
+                raise FreeRegisterError(
+                    "free_mailbox_url", "读取 Free 取件地址", "Remail 订单缺少有效取件凭证", retryable=False,
+                ) from exc
+        return mailbox_url
 
     def release(self, row_id: str, *, owner: str = "", reusable: bool = True) -> bool:
         """Compatibility release helper used by adapters and maintenance code."""

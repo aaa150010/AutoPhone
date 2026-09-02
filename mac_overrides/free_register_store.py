@@ -45,6 +45,7 @@ try:
         proxy_error_detail,
     )
     from .free_proxy_store import FreeProxyPool as StructuredFreeProxyPool
+    from .remail_api import remail_order_expired, remail_pickup_url
 except ImportError:
     from free_failure_runtime import (  # type: ignore[no-redef]
         canonical_failure,
@@ -77,6 +78,7 @@ except ImportError:
         proxy_error_detail,
     )
     from free_proxy_store import FreeProxyPool as StructuredFreeProxyPool  # type: ignore[no-redef]
+    from remail_api import remail_order_expired, remail_pickup_url  # type: ignore[no-redef]
 
 
 def _timestamp_number(value: Any, default: float = 0.0) -> float:
@@ -260,11 +262,16 @@ class FreeMailboxPool:
         with self._lock:
             state = self._state()["rows"]
             now = time.time()
-            available = [
-                row for row in self.entries()
-                if str(state.get(row.row_id, {}).get("status") or "available") == "available"
-                and _cooldown_timestamp(state.get(row.row_id, {}).get("cooldown_until")) <= now
-            ]
+            available = []
+            for row in self.entries():
+                row_state = state.get(row.row_id, {})
+                if str(row_state.get("source") or "").strip().lower() == "remail" and remail_order_expired(row_state, now=now):
+                    if str(row_state.get("status") or "available") not in ACTIVE_POOL_STATUSES:
+                        row_state.update({"status": "unavailable", "remail_expired": True, "error": "Remail 订单已过期"})
+                    continue
+                if str(row_state.get("status") or "available") == "available" and _cooldown_timestamp(row_state.get("cooldown_until")) <= now:
+                    available.append(row)
+            atomic_write(self.state_path, {"version": 2, "rows": state})
             if any(state.get(row.row_id, {}).get("next_batch_priority") for row in available):
                 original_order = {row.row_id: index for index, row in enumerate(available)}
                 def priority(row: FreeMailbox) -> int:
@@ -284,6 +291,10 @@ class FreeMailboxPool:
             state = self._state()
             for row in rows:
                 current = state["rows"].setdefault(row.row_id, {})
+                if str(current.get("source") or "").strip().lower() == "remail" and remail_order_expired(current):
+                    current.update({"status": "unavailable", "remail_expired": True, "error": "Remail 订单已过期"})
+                    atomic_write(self.state_path, state)
+                    raise FreeRegisterError("free_pool_reserve", "预留 Free 邮箱", "Remail 订单已过期，不能继续分配", retryable=False)
                 if current.get("status") not in (None, "available") or _cooldown_timestamp(current.get("cooldown_until")) > time.time():
                     raise FreeRegisterError(
                         "free_pool_reserve", "预留 Free 邮箱", "Free 邮箱已被其他任务预留"
@@ -398,6 +409,12 @@ class FreeMailboxPool:
             raise FreeRegisterError(
                 "free_mailbox_url", "读取 Free 取件地址", "Free 邮箱行不存在或已变化", retryable=False
             )
+        state = self._row_state(row.row_id)
+        if str(state.get("source") or "").strip().lower() == "remail":
+            try:
+                return remail_pickup_url(row.mailbox_url, row.email, str(state.get("service_token") or state.get("serviceToken") or ""))
+            except ValueError as exc:
+                raise FreeRegisterError("free_mailbox_url", "读取 Free 取件地址", "Remail 订单缺少有效取件凭证", retryable=False) from exc
         return row.mailbox_url
 
     def delete(self, row_ids: Sequence[str]) -> int:
