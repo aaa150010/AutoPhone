@@ -272,6 +272,8 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
         </template>
         <el-table class="panel-table" :data="state.mailboxes" height="100%" size="small" @selection-change="handleMailboxSelection">
           <el-table-column type="selection" width="42" />
+          <el-table-column type="index" label="序号" width="58" />
+          <el-table-column label="创建时间" width="170"><template #default="{ row }">{{ row.created_at ? new Date(typeof row.created_at === 'number' ? row.created_at * 1000 : row.created_at).toLocaleString() : '-' }}</template></el-table-column>
           <el-table-column prop="email" label="目标邮箱" min-width="220" show-overflow-tooltip />
           <el-table-column label="状态" width="180" align="center" show-overflow-tooltip><template #default="{ row }"><el-tag :type="statusType(row.status, row)" size="small">{{ statusLabel(row.status, row) }}</el-tag></template></el-table-column>
           <el-table-column label="取件" width="92" align="center"><template #default="{ row }"><el-tooltip content="打开取件地址" placement="top"><el-button link :icon="Link" aria-label="打开取件地址" @click="openMailboxUrl(row)" /></el-tooltip><el-tooltip content="提取并复制最新验证码" placement="top"><el-button link :icon="CopyDocument" :loading="loadingLatestCode.includes(row.row_id)" aria-label="提取并复制最新验证码" @click="copyLatestCode(row)" /></el-tooltip></template></el-table-column>
@@ -299,7 +301,7 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
 
     <WorkspacePanel class="tasks-panel" title="换绑任务" subtitle="保留原 Free 行 ID，新邮箱单独记录" fill body-padding="none">
       <el-table class="panel-table" :data="state.tasks" height="100%" size="small">
-        <el-table-column label="源账号" min-width="190" show-overflow-tooltip><template #default="{ row }"><div>{{ row.source_email }}</div><span class="muted">{{ row.source_row_id?.slice(0, 12) }}</span></template></el-table-column>
+        <el-table-column type="index" label="序号" width="58" /><el-table-column label="创建时间" width="170"><template #default="{ row }">{{ row.created_at ? new Date(typeof row.created_at === 'number' ? row.created_at * 1000 : row.created_at).toLocaleString() : '-' }}</template></el-table-column><el-table-column label="源账号" min-width="190" show-overflow-tooltip><template #default="{ row }"><div>{{ row.source_email }}</div><span class="muted">{{ row.source_row_id?.slice(0, 12) }}</span></template></el-table-column>
         <el-table-column label="目标邮箱" min-width="190" show-overflow-tooltip prop="target_email" />
         <el-table-column label="阶段" min-width="150" show-overflow-tooltip><template #default="{ row }">{{ row.stage_label || row.stage || '-' }}</template></el-table-column>
         <el-table-column label="状态" width="180" align="center" show-overflow-tooltip><template #default="{ row }"><el-tag :type="statusType(row.status, row)" size="small">{{ statusLabel(row.status, row) }}</el-tag></template></el-table-column>

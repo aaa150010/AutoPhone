@@ -5,6 +5,7 @@ import SmsSettingsSection from './SmsSettingsSection.vue'
 import IntegrationSettingsSection from './IntegrationSettingsSection.vue'
 import EmailNotificationSettingsSection from './EmailNotificationSettingsSection.vue'
 import FreeRegisterSettingsSection from './FreeRegisterSettingsSection.vue'
+import RemailSettingsSection from './RemailSettingsSection.vue'
 import type { SmsKeyStatus, NotificationRuntimeStatus } from '../types/api'
 
 interface SettingsNavNode {
@@ -30,9 +31,11 @@ const emit = defineEmits<{
   navigate: [string]
 }>()
 const freeSettings = ref<InstanceType<typeof FreeRegisterSettingsSection>>()
+const remailSettings = ref<InstanceType<typeof RemailSettingsSection>>()
 
 async function saveFreeConfig() {
   await freeSettings.value?.save()
+  await remailSettings.value?.save()
 }
 
 defineExpose({ saveFreeConfig })
@@ -70,6 +73,7 @@ const navigation: SettingsNavNode[] = [
       { key: 'sms-providers', label: '平台 Key', anchor: 'sms' },
     ],
   },
+  { key: 'remail', label: 'Remail 运行配置', anchor: 'remail' },
   {
     key: 'integration',
     label: '平台集成',
@@ -142,6 +146,9 @@ watch(() => props.initialAnchor, (anchor) => {
             @update:model-value="emit('update:modelValue', $event)"
             @query-balances="emit('querySmsBalances')"
           />
+        </section>
+        <section data-settings-anchor="remail" class="settings-anchor">
+          <RemailSettingsSection ref="remailSettings" @dirty-change="value => emit('freeDirtyChange', value)" />
         </section>
         <section data-settings-anchor="integration" class="settings-anchor">
           <IntegrationSettingsSection

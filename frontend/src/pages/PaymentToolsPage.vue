@@ -48,8 +48,10 @@ function statusType(status: string) {
 function statusLabel(status: string) {
   return ({ succeeded: '成功', failed: '失败', cancelled: '已取消', awaiting_confirmation: '待确认', queued: '排队中', running: '运行中' } as Record<string, string>)[status] || status
 }
-function formatTime(value?: number) {
-  return value ? new Date(value * 1000).toLocaleString() : '-'
+function formatTime(value?: number | string) {
+  if (!value) return '-'
+  const date = typeof value === 'number' ? new Date(value * 1000) : new Date(value)
+  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString()
 }
 async function refresh() {
   loading.value = true

@@ -13,11 +13,15 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.102',
-  freeRuntimeVersion: '1.6.102',
-  title: '邮箱通知摘要格式优化',
+  version: '1.6.103',
+  freeRuntimeVersion: '1.6.103',
+  title: 'Remail 订单分页与列表排序优化',
   releasedAt: '2026-09-02',
   sections: [
+    {
+      title: 'Remail 订单与运行配置优化',
+      usage: 'Remail 订单查询支持分页，默认显示尚未导入 Free 邮箱池的订单；业务列表统一按创建时间倒序，新导入数据置顶并展示创建时间。Remail 配置已拆分为独立导航页面，运行中的复制、取件和日志查看操作保持可用。',
+    },
     {
       title: '邮箱通知结果摘要优化',
       usage: '普通接码、Free 协议和 Camoufox 邮件通知统一优先显示成功、失败和总数，批次编号不再出现在邮件主题或正文中；链路名称改为“接码”“协议”“Camoufox”，接码 Key 余额不足时保留脱敏 Key 标识和余额信息。',

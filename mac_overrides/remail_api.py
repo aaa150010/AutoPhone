@@ -87,7 +87,7 @@ class RemailClient:
 
     def orders(self, **query: Any) -> Any:
         query.setdefault("serviceMode", "purchase")
-        query.setdefault("limit", 100)
+        query.setdefault("limit", 50)
         return self._request("GET", "/v1/open/orders", query=query)
 
     def order(self, order_no: str) -> Any:

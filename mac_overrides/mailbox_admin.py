@@ -8,7 +8,17 @@ from pathlib import Path
 import re
 from threading import RLock
 import time
+from datetime import datetime
 from typing import Any, Callable, Mapping, Protocol, Sequence
+
+
+def _created_timestamp(value: Any, fallback: int = 0) -> int:
+    try:
+        if isinstance(value, (int, float)):
+            return int(value)
+        return int(datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp())
+    except (TypeError, ValueError, OverflowError):
+        return int(fallback)
 
 try:
     from .mailbox_source_lock import MailboxSourceLockMixin
@@ -569,6 +579,7 @@ class MailboxAdminService(MailboxImportMixin, MailboxSourceLockMixin):
                     "task_status": str(task.get("status") or ""),
                     "progress": progress,
                     "updated_at": updated_at,
+                    "created_at": _created_timestamp(task.get("created_at"), updated_at),
                     "batch_id": str(task.get("batch_id") or ""),
                     "batch_started_at": task.get("batch_started_at") or 0,
                     "run_mode": str(task.get("run_mode") or ""),
@@ -802,6 +813,7 @@ class MailboxAdminService(MailboxImportMixin, MailboxSourceLockMixin):
                         or ""
                     ),
                     "updated_at": updated_at,
+                    "created_at": _created_timestamp(result.get("created_at") or result_payload.get("created_at") or batch_member.get("created_at") or live_task.get("created_at") or 0, updated_at),
                     "source_row": masked_source_row(row),
                     "sub2_status": sub2_status,
                     "quota_status": quota_status.get("status") or "",

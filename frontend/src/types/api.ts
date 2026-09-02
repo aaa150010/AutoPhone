@@ -427,6 +427,7 @@ export interface AppState {
 }
 
 export interface MailboxRow {
+  created_at?: number | string
   row_id: string
   line_no: number
   display_index?: number

@@ -255,6 +255,7 @@ defineExpose({ clearSelection })
   >
     <el-table-column type="selection" width="45" reserve-selection />
     <el-table-column prop="display_index" label="序号" width="64" />
+    <el-table-column label="创建时间" width="170"><template #default="{ row }">{{ row.created_at ? new Date(typeof row.created_at === 'number' ? row.created_at * 1000 : row.created_at).toLocaleString() : '-' }}</template></el-table-column>
     <el-table-column label="批次" width="132">
       <template #default="{ row }">
         <el-tooltip :content="batchDetail(row)" placement="top">

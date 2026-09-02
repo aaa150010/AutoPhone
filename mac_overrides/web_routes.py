@@ -856,6 +856,26 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         except Exception as exc:
             return free_error_response(exc, default_code="free_remail_profile", default_label="读取 Remail API Key")
 
+    def api_remail_config():
+        if free_config_store is None:
+            return module.jsonify(ok=False, error="Free 配置尚未初始化"), 503
+        if module.request.method == "GET":
+            return module.jsonify(ok=True, config=(free_config_store.public().get("remail") or {}), state=free_manager.public_state() if free_manager is not None else {})
+        data = module.request.get_json(silent=True) or {}
+        if not isinstance(data, Mapping):
+            return module.jsonify(ok=False, error="Remail 配置必须是 JSON 对象"), 400
+        if free_manager is not None and free_manager.public_state().get("running"):
+            return module.jsonify(ok=False, error="Free 任务运行中，停止后才能修改 Remail 配置"), 409
+        try:
+            current = free_config_store.load()
+            merged = dict(current)
+            merged["remail"] = dict(data)
+            normalized = free_config_store.normalize(merged, previous=current)
+            free_config_store.save(normalized)
+            return module.jsonify(ok=True, config=(free_config_store.public().get("remail") or {}), state=free_manager.public_state() if free_manager is not None else {})
+        except Exception as exc:
+            return free_error_response(exc, default_code="free_remail_config", default_label="保存 Remail 配置")
+
     def api_remail_projects():
         try:
             data = _remail_client().projects(status="listed", search="chatgpt")
@@ -897,7 +917,13 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             return module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
         try:
             client = _remail_client()
-            remote = client.orders()
+            args = module.request.args
+            page = max(1, int(args.get("page", 1) or 1))
+            page_size = max(1, min(100, int(args.get("page_size", 50) or 50)))
+            imported_arg = str(args.get("imported", "false") or "false").strip().lower()
+            imported_filter = None if imported_arg in {"", "all", "null"} else imported_arg in {"1", "true", "yes", "on"}
+            search = str(args.get("search", "") or "").strip()
+            remote = client.orders(page=page, limit=page_size)
             items = remote.get("items", []) if isinstance(remote, Mapping) else remote if isinstance(remote, list) else []
             storage = getattr(getattr(free_manager, "pool", None), "storage", None)
             for item in items:
@@ -910,8 +936,12 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                         except Exception:
                             pass
                     storage.upsert_remail_order(item)
-            rows = storage.list_remail_orders(public=True) if storage is not None else []
-            return module.jsonify(ok=True, orders=rows, remote_count=len(items))
+            total = storage.count_remail_orders(imported=imported_filter, search=search) if storage is not None else 0
+            rows = storage.list_remail_orders(imported=imported_filter, search=search, public=True, limit=page_size, offset=(page - 1) * page_size) if storage is not None else []
+            remote_total = remote.get("total") if isinstance(remote, Mapping) else None
+            if isinstance(remote_total, int) and not search:
+                total = remote_total
+            return module.jsonify(ok=True, orders=rows, remote_count=len(items), total=total, page=page, page_size=page_size, has_more=(page * page_size < total))
         except Exception as exc:
             return free_error_response(exc, default_code="free_remail_orders", default_label="同步 Remail 订单")
 
@@ -1407,6 +1437,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/api/free/config", "api_free_config", free_control_routes.config, ["GET", "POST"]),
         ("/api/free/config/secret", "api_free_config_secret", free_control_routes.config_secret, ["POST"]),
         ("/api/remail/profile", "api_remail_profile", api_remail_profile, ["GET"]),
+        ("/api/remail/config", "api_remail_config", api_remail_config, ["GET", "POST"]),
         ("/api/remail/projects", "api_remail_projects", api_remail_projects, ["GET"]),
         ("/api/remail/wallet", "api_remail_wallet", api_remail_wallet, ["GET"]),
         ("/api/remail/purchase", "api_remail_purchase", api_remail_purchase, ["POST"]),

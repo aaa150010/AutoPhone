@@ -1851,7 +1851,7 @@ class FreeSQLiteStore:
         params.extend([max(1, int(limit)), max(0, int(offset))])
         with self._connection() as db:
             rows = db.execute(
-                f"SELECT * FROM mailboxes WHERE {' AND '.join(clauses)} ORDER BY created_at ASC, row_id ASC LIMIT ? OFFSET ?",
+                f"SELECT * FROM mailboxes WHERE {' AND '.join(clauses)} ORDER BY created_at DESC, row_id DESC LIMIT ? OFFSET ?",
                 params,
             ).fetchall()
         return [self._mailbox_dict(row, public=public) for row in rows]
@@ -3300,7 +3300,7 @@ class FreeSQLiteStore:
         assert row is not None
         return self._remail_order_dict(row)
 
-    def list_remail_orders(self, *, status: str | None = None, imported: bool | None = None, public: bool = False, limit: int = 500) -> list[dict[str, Any]]:
+    def list_remail_orders(self, *, status: str | None = None, imported: bool | None = None, search: str | None = None, public: bool = False, limit: int = 500, offset: int = 0) -> list[dict[str, Any]]:
         clauses = ["1=1"]
         params: list[Any] = []
         if status:
@@ -3309,10 +3309,29 @@ class FreeSQLiteStore:
         if imported is not None:
             clauses.append("imported=?")
             params.append(int(bool(imported)))
-        params.append(max(1, min(5000, int(limit))))
+        if search:
+            needle = f"%{str(search).strip().lower()}%"
+            clauses.append("(lower(order_no) LIKE ? OR lower(delivery_email) LIKE ? OR lower(status) LIKE ?)")
+            params.extend([needle, needle, needle])
+        params.extend([max(1, min(5000, int(limit))), max(0, int(offset))])
         with self._connection() as db:
-            rows = db.execute(f"SELECT * FROM remail_orders WHERE {' AND '.join(clauses)} ORDER BY updated_at DESC, order_no DESC LIMIT ?", params).fetchall()
+            rows = db.execute(f"SELECT * FROM remail_orders WHERE {' AND '.join(clauses)} ORDER BY created_at DESC, order_no DESC LIMIT ? OFFSET ?", params).fetchall()
         return [self._remail_order_dict(row, public=public) for row in rows]
+
+    def count_remail_orders(self, *, status: str | None = None, imported: bool | None = None, search: str | None = None) -> int:
+        clauses = ["1=1"]
+        params: list[Any] = []
+        if status:
+            clauses.append("status=?"); params.append(str(status))
+        if imported is not None:
+            clauses.append("imported=?"); params.append(int(bool(imported)))
+        if search:
+            needle = f"%{str(search).strip().lower()}%"
+            clauses.append("(lower(order_no) LIKE ? OR lower(delivery_email) LIKE ? OR lower(status) LIKE ?)")
+            params.extend([needle, needle, needle])
+        with self._connection() as db:
+            row = db.execute(f"SELECT COUNT(*) FROM remail_orders WHERE {' AND '.join(clauses)}", params).fetchone()
+        return int(row[0] if row else 0)
 
     def mark_remail_order_imported(self, order_no: str, pool_row_id: str) -> dict[str, Any] | None:
         with self._transaction():

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import copy
+from datetime import datetime
 import hashlib
 import json
 from pathlib import Path
@@ -56,6 +57,15 @@ def _safe_failure(value: Any) -> str:
     text = _text(value, 240)
     text = re.sub(r"(?i)(https?|socks[45]h?)://[^\s/@:]+:[^\s/@]+@", r"\1://", text)
     return re.sub(r"(?i)(password|passwd|token|authorization)\s*[=:]\s*[^\s,;]+", r"\1=[已隐藏]", text)
+
+
+def _created_number(value: Any) -> float:
+    try:
+        if isinstance(value, (int, float)):
+            return float(value)
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
 
 
 def _fingerprint(host: str, port: int, username: str, password: str) -> str:
@@ -129,7 +139,7 @@ def _public(row: Mapping[str, Any]) -> dict[str, Any]:
         for key in (
             "proxy_id", "scheme", "country", "group", "enabled", "status", "lease_owner",
             "lease_until", "last_checked_at", "last_exit_ip", "latency_ms", "consecutive_failures",
-            "last_failure", "source", "subscription_id",
+            "last_failure", "source", "subscription_id", "created_at",
         )
     } | {
         "masked": mask_proxy(_proxy_url(row)),
@@ -190,6 +200,7 @@ class NetworkToolsService:
                 row.setdefault("consecutive_failures", 0)
                 row.setdefault("quarantined_until", None)
                 row.setdefault("last_failure", None)
+                row.setdefault("created_at", time.time())
                 self._proxies[str(proxy_id)] = row
 
     def _save(self) -> None:
@@ -223,7 +234,7 @@ class NetworkToolsService:
     def public(self) -> dict[str, Any]:
         with self._lock:
             rows = [_public(row) for row in self._proxies.values()]
-        rows.sort(key=lambda row: (row.get("country") or "ZZ", row.get("group") or "", row.get("proxy_id") or ""))
+        rows.sort(key=lambda row: (_created_number(row.get("created_at")), row.get("proxy_id") or ""), reverse=True)
         groups: dict[tuple[str, str], dict[str, Any]] = {}
         for row in rows:
             key = (str(row.get("country") or "ZZ"), str(row.get("group") or "默认组"))
@@ -263,6 +274,7 @@ class NetworkToolsService:
                 # imported as HTTP and later corrected to SOCKS5/SOCKS5H.
                 merged = {**existing, **parsed}
                 merged.update({"country": normalized_country, "group": normalized_group, "source": source, "enabled": True})
+                merged.setdefault("created_at", time.time())
                 parsed = merged
                 parsed.setdefault("status", "unknown")
                 parsed.setdefault("consecutive_failures", 0)

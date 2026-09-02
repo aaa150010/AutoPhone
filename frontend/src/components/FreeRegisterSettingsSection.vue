@@ -344,7 +344,6 @@ defineExpose({ save })
     </div>
 
     <div class="settings-actions"><el-button size="small" :icon="CircleCheck" :loading="busy === 'preflight'" :disabled="running" @click="preflight">注册预检</el-button><el-button size="small" :icon="Refresh" :loading="busy === 'load'" :disabled="running" @click="load">刷新 Free 配置</el-button></div>
-    <div class="subsection"><h3>Remail 集成</h3><div class="config-grid"><el-form-item label="启用 Remail"><el-switch v-model="config.remail!.enabled" /></el-form-item><el-form-item label="API Key"><el-input v-model="config.remail!.api_key" type="password" show-password placeholder="rk-..." /></el-form-item><el-form-item label="API 地址"><el-input v-model="config.remail!.base_url" /></el-form-item><el-form-item label="项目 ID（可选）"><el-input v-model="config.remail!.project_id" /></el-form-item><el-form-item label="订单自动同步"><el-switch v-model="config.remail!.order_sync_enabled" /></el-form-item></div></div>
   </div>
 </template>
 

@@ -8,6 +8,7 @@ import WorkspacePanel from '../components/WorkspacePanel.vue'
 const loading = ref(false)
 const projects = ref<any[]>([])
 const wallet = ref<any>({})
+const walletBalance = computed(() => wallet.value.consumerBalance ?? wallet.value.balance ?? wallet.value.amount ?? '-')
 const projectId = ref<number | undefined>()
 const suffix = ref('')
 const quantity = ref(1)
@@ -42,7 +43,7 @@ onMounted(load)
       <el-form-item label="邮箱类型 / 后缀"><el-select v-model="suffix" filterable placeholder="选择有库存商品"><el-option v-for="item in products" :key="`${item.type}-${item.suffix}`" :label="`${item.type} · ${item.suffix} · 库存 ${item.available ?? '-'}`" :value="item.suffix" /></el-select></el-form-item>
       <el-form-item label="数量"><el-input-number v-model="quantity" :min="1" :max="100" /></el-form-item>
       <el-form-item label="库存策略"><el-radio-group v-model="supply"><el-radio value="private_first">私有优先</el-radio><el-radio value="public_only">仅公共库存</el-radio></el-radio-group></el-form-item>
-    </el-form><div class="actions"><span>钱包余额：{{ wallet.balance ?? wallet.amount ?? '-' }}</span><el-button type="primary" :loading="loading" @click="purchase">创建购买订单</el-button></div></WorkspacePanel>
+    </el-form><div class="actions"><span>钱包余额：{{ walletBalance }} 积分</span><el-button type="primary" :loading="loading" @click="purchase">创建购买订单</el-button></div></WorkspacePanel>
   </div>
 </template>
 <style scoped>.remail-page{display:grid;grid-template-rows:44px minmax(0,1fr);gap:6px;height:100%;min-width:0}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(220px,1fr));gap:0 14px}.form-grid :deep(.el-select),.form-grid :deep(.el-input-number){width:100%}.actions{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--workspace-border);padding-top:12px;color:var(--el-text-color-secondary)}</style>

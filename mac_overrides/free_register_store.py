@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import threading
 import time
+from datetime import datetime
 from typing import Any, Callable, Mapping, Sequence
 
 try:
@@ -76,6 +77,18 @@ except ImportError:
         proxy_error_detail,
     )
     from free_proxy_store import FreeProxyPool as StructuredFreeProxyPool  # type: ignore[no-redef]
+
+
+def _timestamp_number(value: Any, default: float = 0.0) -> float:
+    try:
+        if isinstance(value, (int, float)):
+            return float(value)
+        text = str(value or "").strip()
+        if text:
+            return datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError, OverflowError):
+        pass
+    return float(default)
 
 
 ACTIVE_POOL_STATUSES = frozenset({"reserved", "queued", "running"})
@@ -163,11 +176,13 @@ class FreeMailboxPool:
             added = sum(entry.row_id not in existing_ids for entry in incoming)
             self._write_entries(combined)
             state = self._state()
+            fresh = [entry for entry in incoming if entry.row_id not in existing_ids]
+            now = time.time()
+            for index, entry in enumerate(fresh):
+                row_state = state["rows"].setdefault(entry.row_id, {"email": entry.email, "mailbox_url": entry.mailbox_url, "status": "available"})
+                row_state.setdefault("created_at", now + (len(fresh) - index) / 1_000_000)
             for entry in combined:
-                state["rows"].setdefault(
-                    entry.row_id,
-                    {"email": entry.email, "mailbox_url": entry.mailbox_url, "status": "available"},
-                )
+                state["rows"].setdefault(entry.row_id, {"email": entry.email, "mailbox_url": entry.mailbox_url, "status": "available", "created_at": now})
             atomic_write(self.state_path, state)
         return added, max(0, len(incoming) - added)
 
@@ -442,10 +457,18 @@ class FreeMailboxPool:
 
     def public_rows(self) -> list[dict[str, Any]]:
         with self._lock:
-            state = self._state()["rows"]
+            state_doc = self._state()
+            state = state_doc["rows"]
             output = []
-            for row in self.entries():
+            entries = self.entries()
+            for position, row in enumerate(entries):
                 current = state.get(row.row_id, {})
+                if not isinstance(current, Mapping):
+                    current = {}
+                if not current.get("created_at"):
+                    current = dict(current)
+                    current["created_at"] = time.time() - position
+                    state[row.row_id] = current
                 result = self.result(row.row_id)
                 current_status = sanitize_public_status(current.get("status"), default="available")
                 if result:
@@ -496,6 +519,7 @@ class FreeMailboxPool:
                 output.append({
                     "row_id": public_row_id,
                     "line_no": public_line_no,
+                    "created_at": _timestamp_number(current.get("created_at"), time.time() - position),
                     # ``email`` is retained as a UI-compatible alias, but it
                     # is never the raw mailbox address in a public row.
                     "email": email_masked,
@@ -561,6 +585,10 @@ class FreeMailboxPool:
                     # in a mailbox-list response.
                     "progress": sanitize_public_progress(current.get("progress")) if isinstance(current.get("progress"), Mapping) else None,
                 })
+            output.sort(key=lambda item: (_timestamp_number(item.get("created_at"), 0), str(item.get("row_id") or "")), reverse=True)
+            for index, item in enumerate(output, 1):
+                item["display_index"] = index
+            atomic_write(self.state_path, state_doc)
             return output
 
     def export_success(self, row_ids: Sequence[str] = ()) -> str:

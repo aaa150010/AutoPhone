@@ -302,6 +302,7 @@ export const deleteDiagnostics = (incidentIds: string[]) => api<{ ok: true; dele
 export const clearDiagnostics = () => api<{ ok: true; deleted: number }>('/api/diagnostics/clear-all', {})
 export const getDiagnosticsHealth = () => api<{ ok: true; health: Record<string, any> }>('/api/diagnostics/health')
 export interface FreeMailboxRow {
+  created_at?: number | string
   row_id: string
   line_no: number
   email: string
@@ -364,9 +365,11 @@ export interface RemailOrder {
 export const getRemailProfile = () => api<{ ok: true; profile: any }>('/api/remail/profile')
 export const getRemailProjects = () => api<{ ok: true; projects: any }>('/api/remail/projects')
 export const getRemailWallet = () => api<{ ok: true; wallet: any }>('/api/remail/wallet')
-export const getRemailOrders = () => api<{ ok: true; orders: RemailOrder[]; remote_count?: number }>('/api/remail/orders')
+export const getRemailOrders = (query: { page?: number; page_size?: number; imported?: boolean | 'all'; search?: string } = {}) => api<{ ok: true; orders: RemailOrder[]; remote_count?: number; total: number; page: number; page_size: number; has_more: boolean }>(`/api/remail/orders?${new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined && value !== '').map(([key, value]) => [key, String(value)]))}`)
 export const purchaseRemail = (data: { project_id: number; email_suffix: string; quantity: number; supply?: string }) => api<{ ok: true; result: any }>('/api/remail/purchase', data)
 export const importRemailOrders = (order_nos: string[]) => api<{ ok: true; imported: Array<{ order_no: string; row_id: string }>; skipped: Array<{ order_no: string; reason: string }> }>('/api/remail/orders/import', { order_nos })
+export const getRemailConfig = () => api<{ ok: true; config: FreeConfig['remail']; state: FreeState }>('/api/remail/config')
+export const saveRemailConfig = (config: Partial<NonNullable<FreeConfig['remail']>>) => api<{ ok: true; config: FreeConfig['remail']; state: FreeState }>('/api/remail/config', config)
 export const importFreeMailboxes = (poolContent: string, joinCurrentBatch = false) => api<{ ok: true; imported: number; skipped: number; queued?: number; active_batch_joined?: number; next_batch?: number; reason?: string; skipped_items?: Array<{ row_id: string; reason: string }>; state?: FreeState; rows: FreeMailboxRow[] }>(
   '/api/free/mailboxes/import',
   { pool_content: poolContent, join_current_batch: joinCurrentBatch },
@@ -517,6 +520,7 @@ export const getFreeTotp = (ids: { task_id?: string; row_id?: string; task_ids?:
 }>('/api/free/totp', ids)
 
 export interface FreeRebindMailboxRow {
+  created_at?: number | string
   row_id: string
   line_no: number
   email: string
@@ -811,6 +815,7 @@ export const retryPaymentTask = (taskId: string) => api<{ ok: true; task?: Payme
 export const getPaymentSecret = (taskId: string) => api<{ ok: true; value: string }>(`/api/tools/payment/tasks/${encodeURIComponent(taskId)}/secret`)
 
 export interface NetworkProxyRow {
+  created_at?: number | string
   proxy_id: string
   fingerprint?: string
   masked: string
