@@ -3207,6 +3207,58 @@ class WebGuiSecurityTests(unittest.TestCase):
             module._TASK_PROGRESS.reset()
             module._TASK_CONTEXT.reset(token)
 
+    def test_password_otp_validate_transport_omits_sentinel_headers(self):
+        module = self.module
+        calls = []
+        originals = {
+            "begin": module._auth_request_runtime_ext.begin_request,
+            "finish": module._auth_request_runtime_ext.finish_request,
+            "lease": module._with_transport_protocol_lease,
+        }
+
+        class Response:
+            status_code = 200
+            headers = {"content-type": "application/json"}
+
+            @staticmethod
+            def json():
+                return {"ok": True}
+
+        class Session:
+            def post(self, url, **kwargs):
+                calls.append((url, kwargs))
+                return Response()
+
+        transport = SimpleNamespace(
+            session=Session(),
+            device_id="device-private",
+            config={},
+        )
+        try:
+            module._auth_request_runtime_ext.begin_request = lambda *_args, **kwargs: {
+                "stage": kwargs["stage"],
+            }
+            module._auth_request_runtime_ext.finish_request = lambda *_args, **_kwargs: {}
+            module._with_transport_protocol_lease = lambda _transport, operation: operation()
+            result = module._real_post_auth_json_without_sentinel(
+                transport,
+                "/api/accounts/email-otp/validate",
+                {"code": "redacted"},
+                flow="password_add_reauth_email_otp",
+                referer="https://auth.openai.com/email-verification",
+            )
+        finally:
+            module._auth_request_runtime_ext.begin_request = originals["begin"]
+            module._auth_request_runtime_ext.finish_request = originals["finish"]
+            module._with_transport_protocol_lease = originals["lease"]
+
+        self.assertEqual(result["_status"], 200)
+        self.assertEqual(len(calls), 1)
+        sent_headers = {str(key).lower(): str(value) for key, value in calls[0][1]["headers"].items()}
+        self.assertNotIn("openai-sentinel-token", sent_headers)
+        self.assertNotIn("openai-sentinel-so-token", sent_headers)
+        self.assertEqual(sent_headers["oai-device-id"], "device-private")
+
     def test_expired_mfa_step_never_reenters_dynamic_challenge(self):
         module = self.module
         original_patches = module._TOTP_PATCHES

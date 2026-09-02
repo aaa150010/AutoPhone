@@ -2802,6 +2802,87 @@ def _real_post_auth_json(self, path, payload, *, flow, referer, timeout=30):
     return response
 
 
+def _real_post_auth_json_without_sentinel(self, path, payload, *, flow, referer, timeout=30):
+    """POST an Auth JSON envelope without generating a Sentinel token.
+
+    Auth's password-add reauthentication accepts the email OTP validation as
+    a same-origin JSON request without Sentinel (the HAR/AutoRegister path).
+    Keep this as a separate transport method so the recovered generic helper,
+    and therefore ordinary registration/MFA behavior, remains unchanged.
+    """
+    stage = {
+        "/api/accounts/email-otp/validate": "email_code_verifying",
+        "/api/accounts/mfa/verify": "mfa_otp_verifying",
+        "/api/accounts/phone-otp/validate": "sms_verifying",
+    }.get(str(path), "oauth_authorize_node")
+    _set_current_task_stage(stage)
+    request_context = _auth_request_runtime_ext.begin_request(
+        self,
+        _AUTH_SESSIONS,
+        endpoint=path,
+        stage=stage,
+    )
+
+    def request():
+        # Match RealCodexTransport._headers()' browser envelope, but do not
+        # call it: that recovered method unconditionally asks SentinelRunner
+        # for a token.  request_headers() still adds the per-request flow
+        # invocation id and explicitly strips any accidental Sentinel fields.
+        headers = dict(getattr(_codex_oauth_chain, "JSON_HEADERS", {}) or {})
+        headers.update({
+            "referer": str(referer or ""),
+            "oai-device-id": str(getattr(self, "device_id", "") or ""),
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-origin",
+        })
+        headers = _auth_request_runtime_ext.request_headers(
+            self,
+            headers,
+            include_sentinel=False,
+        )
+        try:
+            response = self.session.post(
+                f"{_codex_oauth_chain.AUTH}{path}",
+                json=payload,
+                headers=headers,
+                allow_redirects=False,
+                timeout=timeout,
+            )
+            parser = getattr(self, "_gptphone_json_response", None)
+            if not callable(parser):
+                parser = getattr(_codex_oauth_chain, "_json_response", None)
+            data = parser(response) if callable(parser) else {}
+            return data if isinstance(data, dict) else {}
+        except Exception as exc:
+            return {
+                "_status": 0,
+                "_content_type": "",
+                "_body": str(exc)[:220],
+                "_body_summary": str(exc)[:220],
+                "_location": "",
+                "error": str(exc)[:220],
+            }
+
+    response = _with_transport_protocol_lease(self, request)
+    finished = _auth_request_runtime_ext.finish_request(
+        self,
+        _AUTH_SESSIONS,
+        request_context,
+        response,
+    )
+    self._gptphone_last_request_context = finished
+    if _auth_session_runtime_ext.is_session_invalid(response):
+        _checkpoint_delete_after_auth(self)
+        _auth_request_runtime_ext.invalidate_auth_session(
+            self,
+            _AUTH_SESSIONS,
+            response,
+            stage=str(request_context.get("stage") or "oauth_authorize_node"),
+        )
+    return response
+
+
 def _observe_auth_step(transport, response, stage):
     _auth_request_runtime_ext.observe_auth_response(
         transport,
@@ -3801,6 +3882,7 @@ _codex_oauth_chain.RealCodexTransport._new_session = _real_new_session
 _codex_oauth_chain.RealCodexTransport.import_phase1_session = _real_import_phase1_session
 _codex_oauth_chain.RealCodexTransport._headers = _real_headers
 _codex_oauth_chain.RealCodexTransport._post_auth_json = _real_post_auth_json
+_codex_oauth_chain.RealCodexTransport._post_auth_json_without_sentinel = _real_post_auth_json_without_sentinel
 _codex_oauth_chain.RealCodexTransport.send_email_otp = _real_send_email_otp
 _codex_oauth_chain.RealCodexTransport.send_passwordless_otp = _real_send_passwordless_otp
 _codex_oauth_chain.RealCodexTransport.submit_email_identifier = _real_submit_email_identifier

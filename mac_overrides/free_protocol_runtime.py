@@ -50,6 +50,7 @@ try:
         mfa_enabled_from_payload,
         password_retry_allowed,
     )
+    from .mfa_retry_runtime import mfa_factor_id_from_response
     from .free_register_common import (
         FIXED_PASSWORD,
         FreeRegisterError,
@@ -91,6 +92,7 @@ except ImportError:
         mfa_enabled_from_payload,
         password_retry_allowed,
     )
+    from mfa_retry_runtime import mfa_factor_id_from_response  # type: ignore[no-redef]
     from free_register_common import (  # type: ignore[no-redef]
         FIXED_PASSWORD, FreeRegisterError, FreeTwoFaPending, configured_free_password,
         plus_trial_from_accounts as _plus_trial_from_accounts,
@@ -304,16 +306,48 @@ def _response_provider_code(response: Any, data: Any = None) -> str:
 
 
 def _response_continue_url(response: Any) -> str:
+    """Extract a continuation without letting a nested page URL win.
+
+    Auth envelopes may contain both the current page URL (for example
+    ``page.url=/email-verification``) and the actual next step in a
+    top-level or nested ``continue_url``.  The Camoufox/shared account
+    service treats the explicit continuation fields as authoritative and
+    only falls back to a generic ``url`` after walking the whole envelope.
+    Keep protocol on that same contract so password and OAuth callback
+    responses cannot be misrouted by a page URL.
+    """
     if not isinstance(response, Mapping):
         return ""
-    page = response.get("page")
-    sources = (page, response) if isinstance(page, Mapping) else (response,)
-    for source in sources:
-        for key in ("continue_url", "external_url", "redirect_url", "next_url", "location", "url"):
-            value = str(source.get(key) or "").strip()
-            if value:
-                return value
-    return ""
+    queue: list[Mapping[str, Any]] = [response]
+    seen: set[int] = set()
+    generic_urls: list[str] = []
+    strong_keys = (
+        "continue_url",
+        "external_url",
+        "redirect_url",
+        "next_url",
+        "location",
+        "_location",
+    )
+    while queue and len(seen) < 32:
+        source = queue.pop(0)
+        identity = id(source)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        for key in strong_keys:
+            value = source.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        value = source.get("url")
+        if isinstance(value, str) and value.strip():
+            generic_urls.append(value.strip())
+        for value in source.values():
+            if isinstance(value, Mapping):
+                queue.append(value)
+            elif isinstance(value, (list, tuple)):
+                queue.extend(item for item in value if isinstance(item, Mapping))
+    return generic_urls[0] if generic_urls else ""
 
 
 def _explicit_false(value: Any) -> bool:
@@ -959,6 +993,10 @@ class FreeProtocolMixin:
                             "provider_code": str(exc.provider_code or ""),
                         },
                     })
+                    if exc.page_type:
+                        result["password_failure"]["page_type"] = str(exc.page_type)
+                    if exc.safe_page:
+                        result["password_failure"]["safe_page"] = str(exc.safe_page)
                 else:
                     result.update(password_result)
                 saved_password = str(result.get("password") or "").strip()
@@ -1128,6 +1166,10 @@ class FreeProtocolMixin:
                             "provider_code": str(exc.provider_code or ""),
                         },
                     }
+                    if exc.page_type:
+                        password_result["password_failure"]["page_type"] = str(exc.page_type)
+                    if exc.safe_page:
+                        password_result["password_failure"]["safe_page"] = str(exc.safe_page)
                 result.update(password_result)
             elif registration_password_used and account_flow == "signup":
                 result.update({
@@ -1391,7 +1433,14 @@ class FreeProtocolMixin:
                 value = {}
             return dict(value) if isinstance(value, Mapping) else {}
 
-        def fail(message: str, response: Any = None, data: Any = None) -> None:
+        def fail(
+            message: str,
+            response: Any = None,
+            data: Any = None,
+            *,
+            safe_page: str = "",
+            page_type: str = "",
+        ) -> None:
             raise FreeRegisterError(
                 phase[0],
                 phase[1],
@@ -1400,6 +1449,8 @@ class FreeProtocolMixin:
                 provider_code=_response_provider_code(response, data),
                 error_code=phase[2],
                 action_hint=phase[3],
+                safe_page=safe_page,
+                page_type=page_type,
             )
 
         def status_ok(response: Any) -> bool:
@@ -1474,9 +1525,36 @@ class FreeProtocolMixin:
                 headers["content-type"] = "application/x-www-form-urlencoded"
             return headers
 
-        def auth_post(path: str, payload: Mapping[str, Any], *, flow: str, referer: str, timeout: int = 30) -> dict[str, Any]:
+        def no_sentinel_headers(referer: str) -> dict[str, str]:
+            """Build the compatibility fallback envelope without Sentinel."""
+            headers = auth_headers(referer)
+            for key in tuple(headers):
+                if str(key).lower() in {"openai-sentinel-token", "openai-sentinel-so-token"}:
+                    headers.pop(key, None)
+            return headers
+
+        def auth_post(
+            path: str,
+            payload: Mapping[str, Any],
+            *,
+            flow: str,
+            referer: str,
+            timeout: int = 30,
+            include_sentinel: bool = True,
+        ) -> dict[str, Any]:
             """Call the recovered transport helper, with an old-runtime fallback."""
-            helper = getattr(transport, "_post_auth_json", None)
+            # The browser/HAR password re-authentication validates the OTP as
+            # a plain same-origin JSON request.  The recovered generic helper
+            # always creates and sends a Sentinel token, which is valid for
+            # authorize/MFA flows but causes this password continuation to be
+            # rejected as ``wrong_email_otp_code``.  A dedicated transport
+            # boundary keeps that exception explicit and cannot affect the
+            # ordinary registration or 2FA calls.
+            helper = getattr(
+                transport,
+                "_post_auth_json" if include_sentinel else "_post_auth_json_without_sentinel",
+                None,
+            )
             if callable(helper):
                 value = helper(path, dict(payload), flow=flow, referer=referer, timeout=timeout)
                 return dict(value) if isinstance(value, Mapping) else {}
@@ -1484,7 +1562,7 @@ class FreeProtocolMixin:
                 response = session.post(
                     f"https://auth.openai.com{path}",
                     json=dict(payload),
-                    headers=auth_headers(referer),
+                    headers=auth_headers(referer) if include_sentinel else no_sentinel_headers(referer),
                     allow_redirects=False,
                     timeout=timeout,
                 )
@@ -1495,6 +1573,24 @@ class FreeProtocolMixin:
             if status is not None:
                 value.setdefault("_status", status)
             return value
+
+        def task_totp_secret() -> str:
+            """Read a previously enrolled TOTP seed from the task-local result.
+
+            Retry tasks carry the merged durable result (including private
+            fields) in memory.  Do not query ``mfa_info`` here: password-only
+            registrations must never probe 2FA, and the seed is needed only
+            when the password continuation explicitly returns an MFA page.
+            """
+            candidates: list[Any] = [task.get("totp_secret")]
+            saved_result = task.get("result")
+            if isinstance(saved_result, Mapping):
+                candidates.append(saved_result.get("totp_secret"))
+            for candidate in candidates:
+                value = str(candidate or "").strip()
+                if value:
+                    return value
+            return ""
 
         # This endpoint is the only admission check for the post-registration
         # password operation.  An explicit ``eligible: false`` means the
@@ -1661,6 +1757,7 @@ class FreeProtocolMixin:
             flow="password_add_reauth_email_otp",
             referer=f"{auth_origin}/email-verification",
             timeout=30,
+            include_sentinel=False,
         )
         verified_status = _response_status(verified)
         if (verified_status is not None and not 200 <= verified_status < 300) or _explicit_false(verified.get("ok")):
@@ -1670,14 +1767,123 @@ class FreeProtocolMixin:
                 verified,
             )
         reset_url = _response_continue_url(verified)
+        verified_page = verified.get("page") if isinstance(verified, Mapping) else None
+        verified_page_type = ""
+        if isinstance(verified_page, Mapping):
+            verified_page_type = str(verified_page.get("type") or "").strip().lower()
+        try:
+            verified_path = str(urlsplit(reset_url).path or "").rstrip("/").lower()
+        except (TypeError, ValueError):
+            verified_path = ""
+        mfa_page = verified_page_type in {"mfa_challenge", "mfa-challenge", "mfa"} or verified_path.startswith("/mfa-challenge")
+        if mfa_page:
+            # An account with 2FA enabled can require a TOTP challenge during
+            # password re-authentication.  This branch is activated solely by
+            # the server page; ``auto_set_2fa`` remains an independent signup
+            # option and is never consulted as a prerequisite.
+            phase[:] = [
+                "free_password_mfa_challenge",
+                "密码设置 2FA 验证",
+                "free_password_mfa_required",
+                "保留账号和 Token，确认已保存 2FA 后重试密码设置",
+            ]
+            stage(task_id, "free_password_mfa_challenge")
+            factor_id = mfa_factor_id_from_response(
+                verified,
+                continue_url_fn=_response_continue_url,
+            )
+            secret = task_totp_secret()
+            if not factor_id:
+                fail(
+                    "密码设置 2FA 页面缺少验证因子",
+                    verified,
+                    verified,
+                    safe_page=_sanitize_safe_page(reset_url),
+                    page_type=verified_page_type or "mfa_challenge",
+                )
+            if not secret:
+                raise FreeRegisterError(
+                    "free_password_mfa_required",
+                    "密码设置 2FA 验证",
+                    "密码设置要求 2FA，但当前账号没有已保存的 TOTP",
+                    retryable=False,
+                    error_code="free_password_totp_missing",
+                    action_hint="先完成 2FA 激活，或关闭密码设置的 2FA 要求后重试",
+                    safe_page=_sanitize_safe_page(reset_url),
+                    page_type=verified_page_type or "mfa_challenge",
+                )
+            phase[:] = [
+                "free_password_mfa_validate",
+                "验证密码设置 2FA 动态码",
+                "free_password_mfa_validate_failed",
+                "保留账号和 Token，确认 2FA 时间同步后重试密码设置",
+            ]
+            stage(task_id, "free_password_mfa_validate")
+            issued = auth_post(
+                "/api/accounts/mfa/issue_challenge",
+                {"id": factor_id, "type": "totp", "force_fresh_challenge": False},
+                flow="mfa_otp_issue",
+                referer=f"{auth_origin}/mfa-challenge/{factor_id}",
+                timeout=30,
+                include_sentinel=False,
+            )
+            issued_status = _response_status(issued)
+            if (issued_status is not None and not 200 <= issued_status < 300) or _explicit_false(issued.get("ok")):
+                fail(
+                    f"密码设置 2FA 挑战初始化失败（HTTP {issued_status or '-'}）",
+                    issued,
+                    issued,
+                    safe_page=_sanitize_safe_page(reset_url),
+                    page_type="mfa_challenge",
+                )
+            mfa_verified = auth_post(
+                "/api/accounts/mfa/verify",
+                {"id": factor_id, "type": "totp", "code": self._totp_code(secret)},
+                flow="mfa_otp_verify",
+                referer=f"{auth_origin}/mfa-challenge/{factor_id}",
+                timeout=30,
+                # AutoRegister's protocol reference sends the MFA verify
+                # envelope without Sentinel; keep this limited to the
+                # password re-auth branch and leave normal MFA unchanged.
+                include_sentinel=False,
+            )
+            mfa_status = _response_status(mfa_verified)
+            if (mfa_status is not None and not 200 <= mfa_status < 300) or _explicit_false(mfa_verified.get("ok")):
+                fail(
+                    f"密码设置 2FA 验证失败（HTTP {mfa_status or '-'}）",
+                    mfa_verified,
+                    mfa_verified,
+                    safe_page=_sanitize_safe_page(reset_url),
+                    page_type="mfa_challenge",
+                )
+            reset_url = _response_continue_url(mfa_verified)
+            if not reset_url:
+                fail(
+                    "密码设置 2FA 响应缺少新密码页面地址",
+                    mfa_verified,
+                    mfa_verified,
+                    page_type="mfa_challenge",
+                )
         if not reset_url:
             fail("密码设置 OTP 响应缺少新密码页面地址", verified, verified)
         try:
             parsed_reset = urlsplit(reset_url)
         except (TypeError, ValueError):
             parsed_reset = None
-        if parsed_reset is None or parsed_reset.scheme.casefold() != "https" or (parsed_reset.hostname or "").casefold() != "auth.openai.com" or not parsed_reset.path.startswith("/reset-password/"):
-            fail("密码设置 OTP 响应地址不是 auth.openai.com/reset-password 页面", verified, verified)
+        reset_path = str(parsed_reset.path or "").rstrip("/") if parsed_reset is not None else ""
+        if (
+            parsed_reset is None
+            or parsed_reset.scheme.casefold() != "https"
+            or (parsed_reset.hostname or "").casefold() != "auth.openai.com"
+            or not (reset_path == "/reset-password" or reset_path.startswith("/reset-password/"))
+        ):
+            fail(
+                "密码设置 OTP 响应地址不是 auth.openai.com/reset-password 页面",
+                verified,
+                verified,
+                safe_page=_sanitize_safe_page(reset_url),
+                page_type=verified_page_type,
+            )
 
         # The browser loads the continuation page before submitting the JSON
         # password/add request.  Keep the GET for cookies and server-side

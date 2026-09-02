@@ -74,6 +74,8 @@ STAGES = {
         _stage("free_password_reauth_authorize", "打开密码设置授权页面", "free"),
         _stage("free_password_otp_wait", "等待密码设置邮箱验证码", "free"),
         _stage("free_password_otp_validate", "验证密码设置邮箱验证码", "free"),
+        _stage("free_password_mfa_challenge", "密码设置 2FA 验证", "free"),
+        _stage("free_password_mfa_validate", "验证密码设置 2FA 动态码", "free"),
         _stage("free_password_enroll", "打开新密码页面", "free"),
         _stage("free_password_add", "提交 Free 账号密码", "free"),
         _stage("free_password_callback", "刷新密码设置会话", "free"),

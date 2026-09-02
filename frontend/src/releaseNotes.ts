@@ -13,11 +13,19 @@ export interface ReleaseNotes {
 
 // Keep user-visible release notes here. App components must not embed release copy.
 export const currentRelease: ReleaseNotes = {
-  version: '1.6.99',
-  freeRuntimeVersion: '1.6.99',
-  title: 'Free 协议 NextAuth 前置与 Token 修复',
+  version: '1.6.101',
+  freeRuntimeVersion: '1.6.101',
+  title: 'Free 协议密码 2FA 分支修复',
   releasedAt: '2026-09-02',
   sections: [
+    {
+      title: 'Free protocol 密码设置按账号状态处理 2FA',
+      usage: '密码设置默认不会主动查询或触发 2FA；只有服务端在邮箱验证码后明确返回 mfa-challenge 且账号已有已保存 TOTP 时，才完成协议 TOTP 并继续密码页。未启用 2FA 的账号直接进入密码设置，Camoufox 链路保持隔离。',
+    },
+    {
+      title: 'Free protocol 密码设置 continuation 修复',
+      usage: '密码验证码响应同时包含当前页面地址和下一步地址时，协议链路现在优先使用显式 continuation_url，避免误回到邮箱验证页；Camoufox 链路保持原有实现和数据契约不变。',
+    },
     {
       title: 'Free 协议新建入口对齐 Windows 链路',
       usage: 'Free protocol 注册按 AutoRegister/Windows 参考顺序复用同一任务的 providers、CSRF、signin/openai(login_or_signup) 和 authorize 会话；邮箱 OTP 后直接进入资料页，避免错误落入 login_password 或手机号分支。Camoufox 链路保持隔离不变。',

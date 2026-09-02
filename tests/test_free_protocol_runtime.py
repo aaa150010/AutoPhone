@@ -578,15 +578,29 @@ class FreeProtocolRuntimeTests(unittest.TestCase):
                 self.session = Session()
                 self.device_id = "device"
                 self.auth_calls = []
+                self.no_sentinel_calls = []
                 self.callbacks = []
 
             def _post_auth_json(self, path, payload, **kwargs):
                 self.auth_calls.append((path, payload, kwargs))
-                if path.endswith("email-otp/validate"):
-                    return {"_status": 200, "continue_url": "https://auth.openai.com/reset-password/password"}
                 if path.endswith("password/add"):
                     return {"_status": 200, "continue_url": "https://chatgpt.com/api/auth/callback/openai?state=password"}
                 return {"_status": 200}
+
+            def _post_auth_json_without_sentinel(self, path, payload, **kwargs):
+                self.no_sentinel_calls.append((path, payload, kwargs))
+                if path.endswith("email-otp/validate"):
+                    # Real Auth responses include the current page URL under
+                    # ``page.url`` alongside the top-level continuation.
+                    return {
+                        "_status": 200,
+                        "continue_url": "https://auth.openai.com/reset-password",
+                        "page": {
+                            "type": "email_verification",
+                            "url": "https://auth.openai.com/email-verification",
+                        },
+                    }
+                return self._post_auth_json(path, payload, **kwargs)
 
             def complete_chatgpt_callback(self, url):
                 self.callbacks.append(url)
@@ -616,9 +630,193 @@ class FreeProtocolRuntimeTests(unittest.TestCase):
         self.assertEqual(query["post_login_add_password"], ["true"])
         self.assertEqual(query["max_age"], ["0"])
         self.assertEqual(transport.callbacks, ["https://chatgpt.com/api/auth/callback/openai?state=password"])
+        self.assertEqual(
+            [call[0] for call in transport.no_sentinel_calls],
+            ["/api/accounts/email-otp/validate"],
+        )
+        self.assertNotIn(
+            "/api/accounts/email-otp/validate",
+            [call[0] for call in transport.auth_calls],
+        )
         self.assertNotIn(
             "https://chatgpt.com/backend-api/accounts/mfa_info",
             [url for _kind, url, _kwargs in transport.session.events],
+        )
+
+    def test_password_reauth_handles_server_mfa_only_when_challenged(self):
+        class Otp:
+            def prepare(self, *args, **kwargs):
+                return None
+
+            def mark_sent(self, *args, **kwargs):
+                return None
+
+            def wait_code(self, _email, **kwargs):
+                return "123456"
+
+        class Session:
+            def get(self, url, **kwargs):
+                if url.endswith("/add_password/eligibility"):
+                    return _Response(200, {"eligible": True})
+                if url.endswith("/api/auth/csrf"):
+                    return _Response(200, {"csrfToken": "csrf-private"})
+                return _Response(200, {})
+
+            def post(self, url, **kwargs):
+                if "/api/auth/signin/openai?" in url:
+                    return _Response(200, {"url": "https://auth.openai.com/authorize/password"})
+                return _Response(200, {})
+
+        class Transport:
+            def __init__(self):
+                self.session = Session()
+                self.device_id = "device"
+                self.auth_calls = []
+                self.no_sentinel_calls = []
+                self.callbacks = []
+
+            def _post_auth_json_without_sentinel(self, path, payload, **kwargs):
+                self.no_sentinel_calls.append((path, payload, kwargs))
+                if path == "/api/accounts/mfa/verify":
+                    return {
+                        "_status": 200,
+                        "continue_url": "https://auth.openai.com/reset-password",
+                    }
+                if path == "/api/accounts/mfa/issue_challenge":
+                    return {"_status": 200, "ok": True}
+                return {
+                    "_status": 200,
+                    "page": {
+                        "type": "mfa_challenge",
+                        "url": "https://auth.openai.com/mfa-challenge/factor-private",
+                        "payload": {"factor_id": "factor-private"},
+                    },
+                }
+
+            def _post_auth_json(self, path, payload, **kwargs):
+                self.auth_calls.append((path, payload, kwargs))
+                if path.endswith("/mfa/verify"):
+                    return {"_status": 200}
+                if path.endswith("/password/add"):
+                    return {
+                        "_status": 200,
+                        "continue_url": "https://chatgpt.com/api/auth/callback/openai?state=password",
+                    }
+                return {"_status": 200}
+
+            def complete_chatgpt_callback(self, url):
+                self.callbacks.append(url)
+                return {"_status": 200}
+
+            def chatgpt_access_token(self):
+                return "fresh-session-token"
+
+        transport = Transport()
+        result = _Manager()._set_password(
+            transport,
+            "stale-session-token",
+            {**_task(), "result": {"totp_secret": "JBSWY3DPEHPK3PXP"}},
+            runtime.FIXED_PASSWORD,
+            {},
+            Otp(),
+            lambda *_args: None,
+        )
+
+        self.assertEqual(result["password_status"], "enabled")
+        self.assertEqual(
+            [call[0] for call in transport.no_sentinel_calls],
+            [
+                "/api/accounts/email-otp/validate",
+                "/api/accounts/mfa/issue_challenge",
+                "/api/accounts/mfa/verify",
+            ],
+        )
+        self.assertEqual(
+            [call[0] for call in transport.auth_calls],
+            ["/api/accounts/password/add"],
+        )
+        mfa_payload = transport.no_sentinel_calls[2][1]
+        self.assertEqual(mfa_payload["id"], "factor-private")
+        self.assertEqual(mfa_payload["type"], "totp")
+        self.assertRegex(mfa_payload["code"], r"^\d{6}$")
+        self.assertEqual(
+            transport.callbacks,
+            ["https://chatgpt.com/api/auth/callback/openai?state=password"],
+        )
+
+    def test_password_reauth_mfa_without_saved_totp_is_not_fabricated(self):
+        class Otp:
+            def prepare(self, *args, **kwargs):
+                return None
+
+            def mark_sent(self, *args, **kwargs):
+                return None
+
+            def wait_code(self, _email, **kwargs):
+                return "123456"
+
+        class Session:
+            def get(self, url, **kwargs):
+                if url.endswith("/add_password/eligibility"):
+                    return _Response(200, {"eligible": True})
+                if url.endswith("/api/auth/csrf"):
+                    return _Response(200, {"csrfToken": "csrf-private"})
+                return _Response(200, {})
+
+            def post(self, url, **kwargs):
+                if "/api/auth/signin/openai?" in url:
+                    return _Response(200, {"url": "https://auth.openai.com/authorize/password"})
+                return _Response(200, {})
+
+        class Transport:
+            def __init__(self):
+                self.session = Session()
+                self.device_id = "device"
+
+            def _post_auth_json_without_sentinel(self, path, payload, **kwargs):
+                return {
+                    "_status": 200,
+                    "page": {
+                        "type": "mfa_challenge",
+                        "url": "https://auth.openai.com/mfa-challenge/factor-private",
+                        "payload": {"factor_id": "factor-private"},
+                    },
+                }
+
+        with self.assertRaises(runtime.FreeRegisterError) as raised:
+            _Manager()._set_password(
+                Transport(), "token", _task(), runtime.FIXED_PASSWORD, {}, Otp(), lambda *_args: None,
+            )
+        self.assertEqual(raised.exception.error_code, "free_password_totp_missing")
+        self.assertEqual(raised.exception.node_code, "free_password_mfa_required")
+
+    def test_continue_url_prefers_explicit_nested_continuation_over_page_url(self):
+        response = {
+            "continue_url": "https://auth.openai.com/reset-password",
+            "page": {
+                "type": "email_verification",
+                "url": "https://auth.openai.com/email-verification",
+            },
+        }
+
+        self.assertEqual(
+            runtime._response_continue_url(response),
+            "https://auth.openai.com/reset-password",
+        )
+
+    def test_continue_url_walks_nested_payload_before_generic_url_fallback(self):
+        response = {
+            "url": "https://auth.openai.com/email-verification",
+            "page": {
+                "payload": {
+                    "continue_url": "https://chatgpt.com/api/auth/callback/openai",
+                },
+            },
+        }
+
+        self.assertEqual(
+            runtime._response_continue_url(response),
+            "https://chatgpt.com/api/auth/callback/openai",
         )
 
     def test_twofa_failures_keep_exact_subnode_and_provider_fields(self):

@@ -601,6 +601,8 @@ _ACTION_HINTS = {
     "free_plan_check": "保留已注册账号，稍后重新查询套餐状态",
     "free_twofa_enroll": "保留已注册账号和 Token，稍后重试 2FA",
     "free_twofa_activate": "保留已注册账号和 Token，稍后重试 2FA",
+    "free_password_mfa_required": "确认账号已保存 TOTP 后重试密码设置",
+    "free_password_mfa_validate": "确认 2FA 时间同步后重试密码设置",
 }
 
 FAILURE_KEYS = (
