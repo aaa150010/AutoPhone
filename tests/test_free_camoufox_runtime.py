@@ -779,6 +779,24 @@ class CamoufoxRuntimeTests(unittest.TestCase):
             },
         )
 
+    def test_email_submit_enter_prefers_native_form_dispatch(self):
+        class Page:
+            def __init__(self):
+                self.calls = []
+
+            async def evaluate(self, script, selector):
+                self.calls.append((script, selector))
+                return True
+
+            def locator(self, _selector):
+                raise AssertionError("native form dispatch should avoid locator press")
+
+        page = Page()
+        self.assertTrue(asyncio.run(runtime._submit_visible_form(page, "input[type='email']")))
+        self.assertEqual(len(page.calls), 1)
+        self.assertEqual(page.calls[0][1], "input[type='email']")
+        self.assertIn("requestSubmit", page.calls[0][0])
+
     def test_click_first_uses_one_shared_timeout_for_all_selectors(self):
         wait_timeouts = []
         clock = [0.0]
@@ -1164,9 +1182,15 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         class Page:
             def __init__(self, url):
                 self.url = url
+                self.script = ""
+                self.load_state_calls = []
 
             async def evaluate(self, _script, _arguments):
+                self.script = _script
                 return {"ok": True, "url": self.url}
+
+            async def wait_for_load_state(self, state, **kwargs):
+                self.load_state_calls.append((state, kwargs))
 
         trusted = "https://auth.openai.com/authorize-start?state=opaque"
         self.assertEqual(
@@ -1174,10 +1198,17 @@ class CamoufoxRuntimeTests(unittest.TestCase):
             trusted,
         )
         entry_shell = "https://chatgpt.com/auth/login?email=user%40example.test"
-        self.assertEqual(
-            asyncio.run(runtime._browser_signin_url(Page(entry_shell), "user@example.test")),
-            entry_shell,
+        entry_result = asyncio.run(
+            runtime._browser_signin_url(Page(entry_shell), "user@example.test")
         )
+        self.assertIn("auth.openai.com/api/accounts/authorize", entry_result)
+        self.assertNotIn("chatgpt.com/auth/login", entry_result)
+        page = Page(trusted)
+        asyncio.run(runtime._browser_signin_url(page, "user@example.test"))
+        self.assertIn("redirect: 'manual'", page.script)
+        self.assertIn("effectiveDeviceId", page.script)
+        self.assertIn("opaqueredirect", page.script)
+        self.assertEqual(page.load_state_calls[0][0], "domcontentloaded")
         self.assertEqual(
             asyncio.run(
                 runtime._browser_signin_url(
@@ -1188,12 +1219,86 @@ class CamoufoxRuntimeTests(unittest.TestCase):
             "",
         )
 
+    def test_same_origin_signin_falls_back_to_reference_authorize_route(self):
+        class Page:
+            url = "https://chatgpt.com/auth/login"
+
+            async def evaluate(self, _script, _arguments):
+                return {"ok": True, "url": ""}
+
+            async def wait_for_load_state(self, _state, **_kwargs):
+                return None
+
+        result = asyncio.run(runtime._browser_signin_url(Page(), "user@example.test"))
+        self.assertIn("auth.openai.com/api/accounts/authorize", result)
+        self.assertIn("screen_hint=login_or_signup", result)
+
+    def test_same_origin_signin_fetch_failure_uses_first_party_authorize_route(self):
+        class Page:
+            url = "https://chatgpt.com/auth/login"
+
+            async def evaluate(self, _script, _arguments):
+                return {"ok": False, "url": ""}
+
+            async def wait_for_load_state(self, _state, **_kwargs):
+                return None
+
+        result = asyncio.run(runtime._browser_signin_url(Page(), "user@example.test"))
+        self.assertIn("auth.openai.com/api/accounts/authorize", result)
+
+        class ExternalPage(Page):
+            url = "https://accounts.google.com/o/oauth2/auth"
+
+        self.assertEqual(
+            asyncio.run(runtime._browser_signin_url(ExternalPage(), "user@example.test")),
+            "",
+        )
+
     def test_chatgpt_entry_url_classifier_rejects_external_and_other_paths(self):
         self.assertTrue(runtime._is_chatgpt_entry_url("https://chatgpt.com/auth/login?email=masked"))
         self.assertTrue(runtime._is_chatgpt_entry_url("https://chatgpt.com/auth/login"))
         self.assertFalse(runtime._is_chatgpt_entry_url("https://auth.openai.com/authorize/test"))
         self.assertFalse(runtime._is_chatgpt_entry_url("https://chatgpt.com/"))
         self.assertFalse(runtime._is_chatgpt_entry_url("https://accounts.google.com/o/oauth2/auth"))
+
+    def test_entry_recovery_continue_is_dispatch_only(self):
+        class Button:
+            def __init__(self):
+                self.click_kwargs = None
+
+            async def is_visible(self, **_kwargs):
+                return True
+
+            async def inner_text(self, **_kwargs):
+                return "Continue"
+
+            async def is_enabled(self, **_kwargs):
+                return True
+
+            async def click(self, **kwargs):
+                self.click_kwargs = kwargs
+
+        class Buttons:
+            def __init__(self, button):
+                self.button = button
+
+            async def count(self):
+                return 1
+
+            def nth(self, _index):
+                return self.button
+
+        button = Button()
+
+        class Page:
+            def locator(self, _selector):
+                return Buttons(button)
+
+        self.assertEqual(
+            asyncio.run(runtime._click_exact_button_text(Page(), ("Continue",))),
+            "continue",
+        )
+        self.assertEqual(button.click_kwargs, {"timeout": 3000, "no_wait_after": True})
 
     def test_auth_openai_email_shell_is_not_unknown(self):
         class Page(_FakePage):
@@ -1203,6 +1308,86 @@ class CamoufoxRuntimeTests(unittest.TestCase):
                 return _FakeLocator(visible="email" in selector)
 
         self.assertEqual(asyncio.run(runtime._page_state(Page())), "entry")
+
+    def test_check_your_inbox_shell_beats_email_entry_form(self):
+        class Page(_FakePage):
+            url = "https://auth.openai.com/log-in"
+
+            async def title(self):
+                return "Check your inbox - OpenAI"
+
+            def locator(self, selector):
+                if selector == "body":
+                    class Body:
+                        async def inner_text(self, **_kwargs):
+                            return "We sent a verification code to your email."
+
+                    return Body()
+                return _FakeLocator(visible="email" in selector)
+
+        self.assertEqual(asyncio.run(runtime._page_state(Page())), "email_verification")
+
+    def test_email_verification_url_beats_stale_email_entry_form(self):
+        class Page(_FakePage):
+            url = "https://auth.openai.com/email-verification"
+
+            async def title(self):
+                return "Check your inbox - OpenAI"
+
+            def locator(self, selector):
+                if selector == "body":
+                    class Body:
+                        async def inner_text(self, **_kwargs):
+                            return "Check your inbox to continue."
+
+                    return Body()
+                return _FakeLocator(visible="email" in selector)
+
+        self.assertEqual(asyncio.run(runtime._page_state(Page())), "email_verification")
+
+    def test_entry_transition_recheck_does_not_recover_after_verification_appears(self):
+        class Clock:
+            now = 0.0
+
+        async def fast_sleep(seconds):
+            Clock.now += float(seconds or 0.0)
+
+        stable_result = {
+            "ok": True,
+            "reason": "form_request_submit",
+            "form_present": True,
+            "input_selector": "#entry-email",
+            "submit_selector": "button[type='submit']",
+        }
+        challenge = runtime.CamoufoxBrowserError(
+            "free_camoufox_challenge", "等待安全验证", "challenge",
+            error_code="challenge",
+        )
+        # The final state read is the re-check directly before entry recovery.
+        states = ("entry",) * 13 + ("email_verification", "security")
+        with (
+            patch.object(runtime.time, "monotonic", side_effect=lambda: Clock.now),
+            patch.object(runtime.asyncio, "sleep", side_effect=fast_sleep),
+            patch.object(runtime, "_goto_with_retry", new=AsyncMock()),
+            patch.object(runtime, "_wait_for_any_selector", new=AsyncMock(return_value="#entry-email")),
+            patch.object(runtime, "_submit_email_form_stable", new=AsyncMock(return_value=stable_result)) as submit_email,
+            patch.object(runtime, "_click_visible_submit", new=AsyncMock(return_value=True)),
+            patch.object(runtime, "_page_state", new=AsyncMock(side_effect=states)),
+            patch.object(runtime, "_browser_signin_url", new=AsyncMock()) as signin,
+            patch.object(runtime, "_wait_challenge_then_stop", new=AsyncMock(side_effect=challenge)),
+        ):
+            with self.assertRaises(runtime.CamoufoxBrowserError) as raised:
+                asyncio.run(
+                    runtime._browser_flow(
+                        _EntryPage(), email="user@example.test", password="password",
+                        otp_callback=lambda: "", config={"registration_timeout_seconds": 60},
+                        log=lambda *_args: None, otp_prepare=Mock(), otp_mark_sent=Mock(),
+                    )
+                )
+
+        self.assertEqual(raised.exception.error_code, "challenge")
+        submit_email.assert_awaited_once()
+        signin.assert_not_awaited()
 
     def test_entry_recovery_uses_form_then_signin_once_and_preserves_timeout(self):
         class Clock:
@@ -2084,6 +2269,28 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         self.assertIn("security challenge", serialized)
         self.assertIn("Verification code", serialized)
 
+    def test_debug_trace_captures_property_based_request_failure(self):
+        class TracePage(_FakePage):
+            def __init__(self):
+                self.handlers = {}
+
+            def on(self, event, callback):
+                self.handlers[event] = callback
+
+        class FailedRequest:
+            method = "GET"
+            url = "https://chatgpt.com/api/auth/csrf"
+            failure = "NS_ERROR_NET_RESET"
+
+        page = TracePage()
+        trace = runtime._page_debug_trace(page)
+        page.handlers["requestfailed"](FailedRequest())
+        events = trace.snapshot()
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["kind"], "request_failed")
+        self.assertEqual(events[0]["failure"], "NS_ERROR_NET_RESET")
+        self.assertEqual(events[0]["url"], "https://chatgpt.com/api/auth/csrf")
+
     def test_debug_url_redacts_short_numeric_and_alphanumeric_otp_path_segments(self):
         for suffix in ("1234", "12345", "1234567", "A1B2C3"):
             safe = runtime._safe_event_url(f"https://chatgpt.com/auth/verify/{suffix}")
@@ -2364,6 +2571,13 @@ class CamoufoxRuntimeTests(unittest.TestCase):
             error_code="camoufox_home_not_confirmed",
         )
         self.assertFalse(runtime.CamoufoxBrowserPool._debug_retain_allowed(error))
+
+    def test_entry_transition_timeout_retains_debug_context_for_post_submit_trace(self):
+        error = runtime.CamoufoxBrowserError(
+            "free_camoufox_navigation", "打开 Camoufox 注册页面", "timeout",
+            error_code="camoufox_entry_transition_timeout",
+        )
+        self.assertTrue(runtime.CamoufoxBrowserPool._debug_retain_allowed(error))
 
     def test_slot_admission_reserves_capacity_atomically_with_debug_holds(self):
         """Concurrent waiters cannot overbook capacity released by debug holds."""

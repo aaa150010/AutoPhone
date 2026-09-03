@@ -986,11 +986,16 @@ def _page_debug_trace(page: Any) -> _DebugTrace:
             on("pageerror", lambda error: trace.add(
                 "page_error", error=str(error or ""),
             ))
-            on("requestfailed", lambda request: trace.add(
-                "request_failed", method=getattr(request, "method", ""),
-                url=getattr(request, "url", ""),
-                failure=(request.failure() if callable(getattr(request, "failure", None)) else ""),
-            ))
+            def request_failed(request: Any) -> None:
+                failure = getattr(request, "failure", "")
+                if callable(failure):
+                    failure = failure()
+                trace.add(
+                    "request_failed", method=getattr(request, "method", ""),
+                    url=getattr(request, "url", ""), failure=failure,
+                )
+
+            on("requestfailed", request_failed)
             on("response", lambda response: trace.add(
                 "response", method=(getattr(getattr(response, "request", None), "method", "") or ""),
                 url=getattr(response, "url", ""), status=getattr(response, "status", 0),
@@ -1571,7 +1576,12 @@ async def _click_exact_button_text(
                 label = " ".join(str(await button.inner_text() or "").split()).casefold()
                 if label not in wanted or not await button.is_enabled(timeout=250):
                     continue
-                await button.click(timeout=3000)
+                try:
+                    await button.click(timeout=3000, no_wait_after=True)
+                except TypeError:
+                    # Keep lightweight adapters and older Playwright builds
+                    # compatible with the dispatch-only recovery contract.
+                    await button.click(timeout=3000)
                 return label
             except Exception:
                 continue
@@ -1603,6 +1613,46 @@ async def _submit_visible_form(page: Any, selector: str) -> bool | None:
     browser dispatched the event, so callers must not treat it as proof that
     submission did not start.
     """
+    # A Playwright ``press`` can wait on the auth shell's navigation even when
+    # the key event was already dispatched. Use the native form submission
+    # contract first so React receives a real submit event while this helper
+    # returns immediately; this is still one and only one submission attempt.
+    evaluate = getattr(page, "evaluate", None)
+    if callable(evaluate):
+        try:
+            dispatched = await evaluate(
+                """
+                (selector) => {
+                  const input = document.querySelector(selector)
+                    || [...document.querySelectorAll('input[type="email"]')]
+                      .find(el => el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+                  const form = input?.closest('form');
+                  if (!form) return false;
+                  if (typeof form.requestSubmit === 'function') {
+                    // Do not pass a discovered button here. React auth shells
+                    // sometimes render the email action as a plain button;
+                    // requestSubmit(button) throws for that non-submit type
+                    // and incorrectly falls back to a navigation-waiting key
+                    // press. The no-argument form API dispatches the valid
+                    // submit event for both variants.
+                    form.requestSubmit();
+                  } else {
+                    const submit = [...form.querySelectorAll('button,input[type="submit"]')]
+                      .find(el => !el.disabled && el.getAttribute('aria-disabled') !== 'true');
+                    if (!submit) return false;
+                    submit.click();
+                  }
+                  return true;
+                }
+                """,
+                selector,
+            )
+            if dispatched:
+                return True
+        except Exception:
+            # Fall through to the locator path so recovered adapters without
+            # a usable DOM evaluation surface retain the old behavior.
+            pass
     action_started = False
     try:
         locator = page.locator(selector).first
@@ -2083,6 +2133,43 @@ async def _submit(locator: Any) -> bool:
 
 async def _browser_signin_url(page: Any, email: str) -> str:
     """Use ChatGPT's same-origin signin endpoint when the entry form is late."""
+    device_id = str(uuid.uuid4())
+
+    def reference_authorize_url(identifier: str) -> str:
+        return "https://auth.openai.com/api/accounts/authorize?" + urlencode({
+            "client_id": "app_X8zY6vW2pQ9tR3dE7nK1jL5gH",
+            "scope": "openid email profile offline_access model.request model.read organization.read organization.write",
+            "response_type": "code",
+            "redirect_uri": "https://chatgpt.com/api/auth/callback/openai",
+            "audience": "https://api.openai.com/v1",
+            "device_id": identifier,
+            "prompt": "login",
+            "ext-oai-did": identifier,
+            "screen_hint": "login_or_signup",
+            "state": uuid.uuid4().hex,
+        })
+
+    # The direct route is only a recovery for the first-party entry shell.
+    # Never turn a third-party page or an untrusted current document into an
+    # authorization navigation when the in-page fetch is unavailable.
+    current_host = (urlsplit(str(getattr(page, "url", "") or "")).hostname or "").casefold()
+    first_party_entry = current_host in {"chatgpt.com", "auth.openai.com"}
+    # Recovery may have just clicked the entry shell's Continue action. Wait
+    # for that document load to settle before issuing a same-origin fetch;
+    # Firefox aborts in-flight page fetches while the shell is replacing its
+    # document, which otherwise hides the authorization response as a generic
+    # signin fallback failure.
+    wait_for_load_state = getattr(page, "wait_for_load_state", None)
+    if callable(wait_for_load_state):
+        try:
+            await wait_for_load_state("domcontentloaded", timeout=5000)
+        except TypeError:
+            try:
+                await wait_for_load_state("domcontentloaded")
+            except Exception:
+                pass
+        except Exception:
+            pass
     script = """
     async ({email, deviceId}) => {
       try {
@@ -2092,8 +2179,13 @@ async def _browser_signin_url(page: Any, email: str) -> str:
         const csrfPayload = await csrf.json();
         const csrfToken = String(csrfPayload?.csrfToken || '');
         if (!csrfToken) return {ok: false, url: ''};
+        const cookieMatch = document.cookie.match(/(?:^|;\\s*)oai-did=([^;]+)/i);
+        let cookieDeviceId = '';
+        try { cookieDeviceId = cookieMatch ? decodeURIComponent(cookieMatch[1]) : ''; } catch (_) {}
+        const effectiveDeviceId = cookieDeviceId || deviceId;
+        const state = crypto.randomUUID().replace(/-/g, '');
         const query = new URLSearchParams({
-          prompt: 'login', 'ext-oai-did': deviceId,
+          prompt: 'login', 'ext-oai-did': effectiveDeviceId,
           auth_session_logging_id: crypto.randomUUID(),
           screen_hint: 'login_or_signup', login_hint: email
         });
@@ -2102,24 +2194,59 @@ async def _browser_signin_url(page: Any, email: str) -> str:
         });
         const response = await fetch(
           'https://chatgpt.com/api/auth/signin/openai?' + query.toString(),
-          {method: 'POST', credentials: 'include', redirect: 'follow',
-           headers: {'accept': 'application/json', 'content-type': 'application/x-www-form-urlencoded'},
+          // Keep the same-origin POST from following the cross-origin auth
+          // redirect inside fetch. Firefox/Camoufox treats that redirect as a
+          // CORS failure; Python constructs the trusted authorize URL after
+          // this transaction is acknowledged.
+          {method: 'POST', credentials: 'include', redirect: 'manual',
+           headers: {'accept': 'application/json', 'content-type': 'application/x-www-form-urlencoded',
+                     'origin': 'https://chatgpt.com', 'referer': 'https://chatgpt.com/'},
            body: body.toString()}
         );
         const payload = await response.json().catch(() => ({}));
-        return {ok: response.ok, url: String(payload?.url || '')};
+        let authorizeUrl = String(payload?.url || '');
+        if (!authorizeUrl && response.url.includes('auth.openai.com')) {
+          authorizeUrl = response.url;
+        }
+        // Some ChatGPT deployments acknowledge the NextAuth POST with HTTP
+        // 200 but omit the JSON ``url``. Preserve the same transaction by
+        // constructing the reference authorization route from its public
+        // client parameters instead of retrying the email submission.
+        if (!authorizeUrl && response.ok) {
+          const authorize = new URL('https://auth.openai.com/api/accounts/authorize');
+          authorize.search = new URLSearchParams({
+            client_id: 'app_X8zY6vW2pQ9tR3dE7nK1jL5gH',
+            scope: 'openid email profile offline_access model.request model.read organization.read organization.write',
+            response_type: 'code',
+            redirect_uri: 'https://chatgpt.com/api/auth/callback/openai',
+            audience: 'https://api.openai.com/v1',
+            device_id: effectiveDeviceId,
+            prompt: 'login',
+            'ext-oai-did': effectiveDeviceId,
+            screen_hint: 'login_or_signup',
+            state,
+          }).toString();
+          authorizeUrl = authorize.toString();
+        }
+        const acknowledged = response.ok || response.type === 'opaqueredirect' || response.status === 0;
+        return {ok: acknowledged, url: authorizeUrl};
       } catch (_) {
         return {ok: false, url: ''};
       }
     }
     """
     try:
-        result = await page.evaluate(script, {"email": str(email), "deviceId": str(uuid.uuid4())})
+        result = await page.evaluate(script, {"email": str(email), "deviceId": device_id})
     except Exception:
-        return ""
+        return reference_authorize_url(device_id) if first_party_entry else ""
     if not isinstance(result, Mapping) or not result.get("ok"):
-        return ""
+        return reference_authorize_url(device_id) if first_party_entry else ""
     candidate = str(result.get("url") or "").strip()
+    if not candidate:
+        # A successful NextAuth acknowledgement can omit its JSON ``url`` in
+        # Firefox/Camoufox. Build the same public authorize transaction here,
+        # outside the page fetch, so the state machine can still navigate it.
+        candidate = reference_authorize_url(device_id)
     try:
         parsed = urlsplit(candidate)
     except (TypeError, ValueError):
@@ -2130,7 +2257,16 @@ async def _browser_signin_url(page: Any, email: str) -> str:
     # a malformed or external provider URL enter the browser flow.
     host = (parsed.hostname or "").casefold()
     path = (parsed.path or "").casefold().rstrip("/") or "/"
-    trusted = host == "auth.openai.com" or (host == "chatgpt.com" and path == "/auth/login")
+    # A same-origin login URL is an entry shell, not an authorization result.
+    # Returning it here makes the state machine reload the shell and can
+    # submit the mailbox a second time.  The reference flow's public
+    # authorize route is the only valid fallback after a submitted entry.
+    if host == "chatgpt.com" and path == "/auth/login":
+        candidate = reference_authorize_url(device_id)
+        parsed = urlsplit(candidate)
+        host = (parsed.hostname or "").casefold()
+        path = (parsed.path or "/").casefold().rstrip("/") or "/"
+    trusted = host == "auth.openai.com"
     if parsed.scheme.casefold() != "https" or not trusted:
         return ""
     return candidate
@@ -2155,6 +2291,27 @@ async def _page_state(page: Any) -> str:
     host = (parsed.hostname or "").casefold()
     path = (parsed.path or "/").casefold().rstrip("/") or "/"
     body = (await _body_text(page)).casefold()
+    title = ""
+    if host in {"auth.openai.com", "chatgpt.com"}:
+        try:
+            title = clean(await page.title(), 240).casefold()
+        except Exception:
+            title = ""
+    verification_shell = any(
+        marker in f"{title} {body}"
+        for marker in (
+            "check your inbox",
+            "enter the verification code",
+            "verification code",
+            "verify your email",
+            "we sent a code",
+            "code to your email",
+            "收件箱",
+            "验证码",
+            "验证你的邮箱",
+            "验证邮件",
+        )
+    )
     # The registration flow must never enter a third-party OAuth provider.
     # Keep this explicit so a broad text selector cannot silently turn an
     # entry-shell recovery into a Google login and wait for it as "unknown".
@@ -2162,6 +2319,15 @@ async def _page_state(page: Any) -> str:
         return "external_auth"
     if any(marker in body for marker in ("cloudflare", "verify you are human", "turnstile", "just a moment", "安全验证")):
         return "security"
+    # Auth shells can keep the email input mounted while the submitted email
+    # request has already transitioned to the verification step.  The page
+    # title/body is the stronger signal in that race; checking the email
+    # selector first would incorrectly reopen the entry recovery path and may
+    # submit the mailbox a second time.
+    if verification_shell and host in {"auth.openai.com", "chatgpt.com"}:
+        if await _visible(page, PASSWORD_SELECTORS, 250):
+            return "signup_password"
+        return "otp" if await _visible(page, OTP_SELECTORS, 250) else "email_verification"
     if host == "chatgpt.com" and path in {"", "/"}:
         return "home"
     if host == "chatgpt.com" and ("/auth/login" in path or "/login" in path):
@@ -3736,6 +3902,16 @@ async def _browser_flow(
             if state in {"entry", "unknown"} and entry_submitted and now < entry_transition_observe_deadline:
                 await asyncio.sleep(1.0)
                 continue
+            if state in {"entry", "unknown"} and entry_submitted:
+                # A navigation can complete immediately after the polling
+                # read above. Re-check once before any recovery action so a
+                # verification shell with a stale email form is never
+                # mistaken for a failed entry transition.
+                refreshed_state = await _page_state(page)
+                if refreshed_state not in {"entry", "unknown"}:
+                    seen.clear()
+                    await asyncio.sleep(0)
+                    continue
             if state == "entry" and entry_submitted and not entry_retry_used and not auth_phase_locked:
                 entry_retry_used = True
                 entry_recovery = "form_resubmit"
@@ -4349,6 +4525,12 @@ class CamoufoxBrowserPool:
             "camoufox_home_not_confirmed",
         }:
             return False
+        # Keep the post-submit entry shell available in debug mode. This is
+        # the only timeout whose live DOM/network trace can distinguish a
+        # rejected email transition from a delayed verification navigation;
+        # generic timeouts still close their context immediately below.
+        if code == "camoufox_entry_transition_timeout":
+            return True
         if any(marker in code for marker in ("timeout", "timed_out", "page_state_limit", "page_state_stuck")):
             return False
         if any(marker in code for marker in ("cancel", "stopped", "interrupted")):
