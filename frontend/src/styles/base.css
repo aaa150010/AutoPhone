@@ -5,7 +5,7 @@
   --workspace-border-strong: #d4dbe5;
   --workspace-radius: 8px;
   --workspace-shadow: 0 1px 3px rgba(28, 39, 54, 0.045);
-  --workspace-control-height: 34px;
+  --workspace-control-height: 32px;
   --workspace-accent: #f26a21;
   --workspace-accent-soft: #fff0e7;
   --el-color-primary: #3b82f6;
@@ -65,6 +65,9 @@ body { overflow: hidden; background: var(--workspace-page); font-size: 13px; }
 .el-input__wrapper.is-focus,
 .el-select__wrapper.is-focused { box-shadow: 0 0 0 1px var(--el-color-primary) inset, 0 0 0 3px var(--el-color-primary-light-9); }
 .el-input-number { height: var(--workspace-control-height); }
+.el-input--small .el-input__wrapper,
+.el-select--small .el-select__wrapper,
+.el-input-number--small { min-height: 30px; height: 30px; }
 .el-input__inner,
 .el-textarea__inner { font-size: 13px; letter-spacing: 0; }
 .el-tag { border-radius: 999px; font-size: 12px; font-weight: 600; }

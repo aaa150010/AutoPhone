@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { CopyDocument, Delete, Key, Lock, Plus, Refresh, RefreshRight, Tickets, Link, Download, CircleCheck, Warning, View, VideoPlay, Upload } from '@element-plus/icons-vue'
+import { CircleCheck, Collection, CopyDocument, Delete, Document, DocumentCopy, Download, Key, Link, Lock, MoreFilled, Plus, PriceTag, Refresh, RefreshLeft, RefreshRight, Tickets, Upload, View, VideoPlay, Warning } from '@element-plus/icons-vue'
 import { deleteFreeMailboxes, exportFreeResults, formatFreeMailboxes, getFreeLiveCheckState, getFreeMailboxLatestCode, getFreeMailboxUrl, getFreeMailboxes, getFreeSecret, getFreeTotp, importFreeMailboxes, retryFreeTwofa, setFreeMailboxStatus, startFree, startFreeLiveCheck, startFreePlanCheck, transferFreeMailboxes } from '../api/client'
 import type { FreeLiveCheckState, FreeMailboxRow, FreeState } from '../api/client'
 import ContentEmptyState from './ContentEmptyState.vue'
@@ -572,6 +572,20 @@ async function openUrl(row: FreeMailboxRow) {
   } catch (error: any) { ElMessage.error(error?.message || '打开 Free 取件地址失败') }
 }
 
+async function handleMailboxAction(command: string, row: FreeMailboxRow) {
+  if (command === 'open_url') return openUrl(row)
+  if (command === 'latest_code') return copyLatestCode(row)
+  if (command === 'token') return copyMailboxToken(row)
+  if (command === 'fast_live') return startLiveCheckAction('fast', row)
+  if (command === 'deep_live') return startLiveCheckAction('deep', row)
+  if (command === 'live_log') return openLiveLog(row)
+  if (command === 'credential') return copyMailboxCredential(row)
+  if (command === 'password') return copyMailboxPassword(row)
+  if (command === 'totp') return copyMailboxTotp(row)
+  if (command === 'twofa') return retryMailboxTwofa(row)
+  if (command === 'plan') return retryMailboxPlan(row)
+}
+
 async function exportResults() {
   try {
     const result = await exportFreeResults(selected.value.map(row => row.row_id))
@@ -616,7 +630,6 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
           @selection-change="selected = $event"
         >
           <el-table-column type="selection" width="42" reserve-selection />
-          <el-table-column type="index" label="序号" width="58" align="center" fixed="left" />
           <el-table-column label="邮箱" width="184" show-overflow-tooltip><template #default="{ row }"><el-tooltip :content="`点击复制邮箱${row.email ? `：${row.email}` : ''}`" placement="top"><el-button link class="email-copy" :loading="loadingEmail.includes(row.row_id)" @click.stop="copyEmail(row)"><span>{{ row.email }}</span><el-icon v-if="!loadingEmail.includes(row.row_id)"><CopyDocument /></el-icon></el-button></el-tooltip></template></el-table-column>
           <el-table-column label="链路" min-width="145" show-overflow-tooltip><template #default="{ row }"><el-tooltip :content="mailboxDriverLabel(row)" placement="top"><div class="mailbox-chain-cell"><el-tag size="small" effect="plain">{{ mailboxDriverLabel(row) }}</el-tag></div></el-tooltip></template></el-table-column>
           <el-table-column label="阶段" min-width="145" show-overflow-tooltip><template #default="{ row }"><el-tooltip :content="mailboxStageTooltip(row)" placement="top"><span class="mailbox-stage-cell"><el-tag size="small" effect="light" :type="mailboxStageType(row)">{{ mailboxStageLabel(row) }}</el-tag></span></el-tooltip></template></el-table-column>
@@ -638,21 +651,26 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
             </template>
           </el-table-column>
           <el-table-column label="创建时间" width="170"><template #default="{ row }">{{ row.created_at ? new Date(typeof row.created_at === 'number' ? row.created_at * 1000 : row.created_at).toLocaleString() : '-' }}</template></el-table-column>
-          <el-table-column label="操作" width="284" fixed="right" align="center">
+          <el-table-column label="操作" width="82" fixed="right" align="center">
             <template #default="{ row }">
-              <div class="mailbox-operation-cell">
-                <el-tooltip content="打开取件地址" placement="top"><el-button link :icon="Link" aria-label="打开取件地址" @click.stop="openUrl(row)" /></el-tooltip>
-                <el-tooltip content="提取并复制最新验证码" placement="top"><el-button link :icon="CopyDocument" :loading="loadingLatestCode.includes(row.row_id)" aria-label="提取并复制最新验证码" @click.stop="copyLatestCode(row)" /></el-tooltip>
-                <el-tooltip content="复制 Token" placement="top"><el-button link :icon="CopyDocument" aria-label="复制 Token" @click.stop="copyMailboxToken(row)" /></el-tooltip>
-                <el-tooltip content="快速测活" placement="top"><el-button link type="success" :icon="CircleCheck" :disabled="Boolean(liveBusy)" aria-label="快速测活" @click.stop="startLiveCheckAction('fast', row)" /></el-tooltip>
-                <el-tooltip content="深度测活" placement="top"><el-button link type="warning" :icon="RefreshRight" :disabled="Boolean(liveBusy)" aria-label="深度测活" @click.stop="startLiveCheckAction('deep', row)" /></el-tooltip>
-                <el-tooltip content="查看测活日志" placement="top"><el-button link :icon="View" aria-label="查看测活日志" @click.stop="openLiveLog(row)" /></el-tooltip>
-                <el-tooltip content="复制完整凭据" placement="top"><el-button link :icon="CopyDocument" aria-label="复制完整凭据" @click.stop="copyMailboxCredential(row)" /></el-tooltip>
-                <el-tooltip content="复制密码" placement="top"><el-button link :icon="Lock" aria-label="复制密码" @click.stop="copyMailboxPassword(row)" /></el-tooltip>
-                <el-tooltip content="复制临时 2FA 验证码" placement="top"><el-button link :icon="Key" :loading="loadingTotp.includes(row.row_id)" aria-label="复制临时 2FA 验证码" @click.stop="copyMailboxTotp(row)" /></el-tooltip>
-                <el-tooltip content="重试 2FA" placement="top"><el-button link type="warning" :icon="Refresh" aria-label="重试 2FA" @click.stop="retryMailboxTwofa(row)" /></el-tooltip>
-                <el-tooltip content="重新查询套餐" placement="top"><el-button link :icon="Refresh" :loading="planBusy === row.row_id" :disabled="Boolean(planBusy)" aria-label="重新查询套餐" @click.stop="retryMailboxPlan(row)" /></el-tooltip>
-              </div>
+              <el-dropdown trigger="click" @command="(command: string) => handleMailboxAction(command, row)">
+                <el-button link class="row-action-button" aria-label="打开邮箱操作菜单" title="打开邮箱操作菜单"><el-icon><MoreFilled /></el-icon></el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="open_url"><el-icon><Link /></el-icon>打开取件地址</el-dropdown-item>
+                    <el-dropdown-item command="latest_code"><el-icon><Tickets /></el-icon>提取并复制最新验证码</el-dropdown-item>
+                    <el-dropdown-item command="token"><el-icon><Key /></el-icon>复制 Token</el-dropdown-item>
+                    <el-dropdown-item command="fast_live"><el-icon><CircleCheck /></el-icon>快速测活</el-dropdown-item>
+                    <el-dropdown-item command="deep_live"><el-icon><RefreshRight /></el-icon>深度测活</el-dropdown-item>
+                    <el-dropdown-item command="live_log"><el-icon><Document /></el-icon>查看测活日志</el-dropdown-item>
+                    <el-dropdown-item command="credential"><el-icon><DocumentCopy /></el-icon>复制完整凭据</el-dropdown-item>
+                    <el-dropdown-item command="password"><el-icon><Lock /></el-icon>复制密码</el-dropdown-item>
+                    <el-dropdown-item command="totp"><el-icon><Collection /></el-icon>复制临时 2FA 验证码</el-dropdown-item>
+                    <el-dropdown-item command="twofa"><el-icon><RefreshLeft /></el-icon>重试 2FA</el-dropdown-item>
+                    <el-dropdown-item command="plan"><el-icon><PriceTag /></el-icon>重新查询套餐</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
             </template>
           </el-table-column>
           <template #empty><ContentEmptyState /></template>

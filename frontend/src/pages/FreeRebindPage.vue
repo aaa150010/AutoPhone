@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { CopyDocument, Delete, Link, Plus, Refresh, VideoPlay } from '@element-plus/icons-vue'
+import { CopyDocument, Delete, Link, MoreFilled, Plus, Refresh, Tickets, VideoPlay } from '@element-plus/icons-vue'
 import PageToolbar from '../components/PageToolbar.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import {
@@ -223,6 +223,15 @@ async function retry(task: FreeRebindTask) {
   }
 }
 
+function handleMailboxAction(command: string, row: FreeRebindMailboxRow) {
+  if (command === 'open_url') return openMailboxUrl(row)
+  if (command === 'latest_code') return copyLatestCode(row)
+}
+
+function handleTaskAction(command: string, row: FreeRebindTask) {
+  if (command === 'retry') return retry(row)
+}
+
 async function stop() {
   try {
     await stopFreeRebind()
@@ -272,12 +281,11 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
         </template>
           <el-table class="panel-table" :data="state.mailboxes" height="100%" size="small" @selection-change="handleMailboxSelection">
           <el-table-column type="selection" width="42" />
-          <el-table-column type="index" label="序号" width="58" />
           <el-table-column prop="email" label="目标邮箱" min-width="220" show-overflow-tooltip />
           <el-table-column label="状态" width="180" align="center" show-overflow-tooltip><template #default="{ row }"><el-tag :type="statusType(row.status, row)" size="small">{{ statusLabel(row.status, row) }}</el-tag></template></el-table-column>
           <el-table-column label="错误" min-width="180" show-overflow-tooltip><template #default="{ row }"><span class="muted">{{ isAccountBannedRow(row) ? ACCOUNT_BANNED_DISPLAY_MESSAGE : (row.error || '-') }}</span></template></el-table-column>
           <el-table-column label="创建时间" width="156"><template #default="{ row }">{{ row.created_at ? new Date(typeof row.created_at === 'number' ? row.created_at * 1000 : row.created_at).toLocaleString() : '-' }}</template></el-table-column>
-          <el-table-column label="操作" width="118" align="center" fixed="right"><template #default="{ row }"><div class="task-operation-cell"><el-tooltip content="打开取件地址" placement="top"><el-button link :icon="Link" aria-label="打开取件地址" @click.stop="openMailboxUrl(row)" /></el-tooltip><el-tooltip content="提取并复制最新验证码" placement="top"><el-button link :icon="CopyDocument" :loading="loadingLatestCode.includes(row.row_id)" aria-label="提取并复制最新验证码" @click.stop="copyLatestCode(row)" /></el-tooltip></div></template></el-table-column>
+          <el-table-column label="操作" width="82" align="center" fixed="right"><template #default="{ row }"><el-dropdown trigger="click" @command="(command: string) => handleMailboxAction(command, row)"><el-button link class="row-action-button" aria-label="打开换绑邮箱操作菜单" title="打开换绑邮箱操作菜单"><el-icon><MoreFilled /></el-icon></el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="open_url"><el-icon><Link /></el-icon>打开取件地址</el-dropdown-item><el-dropdown-item command="latest_code"><el-icon><Tickets /></el-icon>提取并复制最新验证码</el-dropdown-item></el-dropdown-menu></template></el-dropdown></template></el-table-column>
         </el-table>
       </WorkspacePanel>
 
@@ -301,14 +309,14 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
 
     <WorkspacePanel class="tasks-panel" title="换绑任务" subtitle="保留原 Free 行 ID，新邮箱单独记录" fill body-padding="none">
       <el-table class="panel-table" :data="state.tasks" height="100%" size="small">
-        <el-table-column type="index" label="序号" width="58" /><el-table-column label="源账号" min-width="190" show-overflow-tooltip><template #default="{ row }"><div>{{ row.source_email }}</div><span class="muted">{{ row.source_row_id?.slice(0, 12) }}</span></template></el-table-column>
+        <el-table-column label="源账号" min-width="190" show-overflow-tooltip><template #default="{ row }"><div>{{ row.source_email }}</div><span class="muted">{{ row.source_row_id?.slice(0, 12) }}</span></template></el-table-column>
         <el-table-column label="目标邮箱" min-width="190" show-overflow-tooltip prop="target_email" />
         <el-table-column label="阶段" min-width="150" show-overflow-tooltip><template #default="{ row }">{{ row.stage_label || row.stage || '-' }}</template></el-table-column>
         <el-table-column label="状态" width="180" align="center" show-overflow-tooltip><template #default="{ row }"><el-tag :type="statusType(row.status, row)" size="small">{{ statusLabel(row.status, row) }}</el-tag></template></el-table-column>
         <el-table-column label="套餐 / Plus" width="160" show-overflow-tooltip><template #default="{ row }"><span>{{ row.plan_type || '-' }}</span><el-tag v-if="row.plus_trial_eligible" size="small" type="success" class="plus-tag">可试用</el-tag></template></el-table-column>
         <el-table-column label="结果" min-width="220" show-overflow-tooltip><template #default="{ row }"><span v-if="row.status === 'success'" class="success-text">已绑定：{{ row.new_bound_email || row.target_email }}</span><span v-else class="muted">{{ isAccountBannedRow(row) ? ACCOUNT_BANNED_DISPLAY_MESSAGE : (row.error || '-') }}</span></template></el-table-column>
         <el-table-column label="创建时间" width="156"><template #default="{ row }">{{ row.created_at ? new Date(typeof row.created_at === 'number' ? row.created_at * 1000 : row.created_at).toLocaleString() : '-' }}</template></el-table-column>
-        <el-table-column label="操作" width="82" align="center" fixed="right"><template #default="{ row }"><el-tooltip content="重试换绑" placement="top"><el-button link type="warning" :icon="VideoPlay" aria-label="重试换绑" @click="retry(row)" /></el-tooltip></template></el-table-column>
+        <el-table-column label="操作" width="82" align="center" fixed="right"><template #default="{ row }"><el-dropdown trigger="click" @command="(command: string) => handleTaskAction(command, row)"><el-button link class="row-action-button" aria-label="打开换绑任务操作菜单" title="打开换绑任务操作菜单"><el-icon><MoreFilled /></el-icon></el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="retry"><el-icon><VideoPlay /></el-icon>重试换绑</el-dropdown-item></el-dropdown-menu></template></el-dropdown></template></el-table-column>
       </el-table>
     </WorkspacePanel>
 

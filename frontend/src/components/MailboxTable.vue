@@ -12,6 +12,7 @@ import {
   RefreshLeft,
   RefreshRight,
   Refresh,
+  Tickets,
   View,
 } from '@element-plus/icons-vue'
 import ContentEmptyState from './ContentEmptyState.vue'
@@ -254,7 +255,6 @@ defineExpose({ clearSelection })
     @selection-change="emit('select', $event)"
   >
     <el-table-column type="selection" width="45" reserve-selection />
-    <el-table-column prop="display_index" label="序号" width="64" />
     <el-table-column label="批次" width="132" show-overflow-tooltip>
       <template #default="{ row }">
         <el-tooltip :content="batchDetail(row)" placement="top">
@@ -376,15 +376,8 @@ defineExpose({ clearSelection })
     <el-table-column label="创建时间" width="156">
       <template #default="{ row }">{{ row.created_at ? new Date(typeof row.created_at === 'number' ? row.created_at * 1000 : row.created_at).toLocaleString() : '-' }}</template>
     </el-table-column>
-    <el-table-column label="操作" width="164" fixed="right" align="center">
+    <el-table-column label="操作" width="82" fixed="right" align="center">
       <template #default="{ row }">
-        <div class="mailbox-operation-cell">
-          <el-tooltip content="打开取件网页" placement="top">
-            <el-button link size="small" :icon="View" aria-label="打开取件网页" @click="emit('url', row)" />
-          </el-tooltip>
-          <el-tooltip content="提取并复制最新验证码" placement="top">
-            <el-button link size="small" :icon="CopyDocument" aria-label="提取并复制最新验证码" @click="emit('latestCode', row)" />
-          </el-tooltip>
         <el-dropdown
           trigger="click"
           :disabled="rowActionLoading(row)"
@@ -412,6 +405,9 @@ defineExpose({ clearSelection })
               </el-dropdown-item>
               <el-dropdown-item v-if="row.has_mailbox_url" command="open_url">
                 <el-icon><Link /></el-icon>打开取件 URL
+              </el-dropdown-item>
+              <el-dropdown-item command="copy_latest_code">
+                <el-icon><Tickets /></el-icon>提取并复制最新验证码
               </el-dropdown-item>
               <el-dropdown-item
                 v-if="row.status === 'available'"
@@ -462,7 +458,6 @@ defineExpose({ clearSelection })
             </el-dropdown-menu>
           </template>
         </el-dropdown>
-        </div>
       </template>
     </el-table-column>
     <template #empty><ContentEmptyState /></template>

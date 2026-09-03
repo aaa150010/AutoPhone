@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { CopyDocument, Document, Key, Loading, View } from '@element-plus/icons-vue'
+import { CopyDocument, Document, Key, Link, Loading, MoreFilled, Tickets, View, Warning } from '@element-plus/icons-vue'
 import ContentEmptyState from './ContentEmptyState.vue'
 import TaskDetailsDrawer from './TaskDetailsDrawer.vue'
 import TaskProgressCell from './TaskProgressCell.vue'
@@ -165,6 +165,14 @@ function selectFreeTasks(rows: RuntimeTask[]) {
 function emitFreeSecret(kind: 'token' | 'password' | 'totp' | 'credential', rows: RuntimeTask[]) {
   emit('freeSecret', { kind, tasks: rows.filter(row => row.run_mode === 'free_register') })
 }
+
+function handleRowAction(command: string, row: RuntimeTask) {
+  if (command === 'details') return openDetails(row)
+  if (command === 'mailbox_url') return emit('mailboxUrl', row)
+  if (command === 'latest_code') return emit('mailboxLatestCode', row)
+  if (command === 'token') return emitFreeSecret('token', [row])
+  if (command === 'incident') return emit('diagnostic', row)
+}
 </script>
 
 <template>
@@ -177,7 +185,6 @@ function emitFreeSecret(kind: 'token' | 'password' | 'totp' | 'credential', rows
     </div>
     <el-table class="task-table" :data="visibleTasks" :row-key="taskRowKey" stripe height="100%" @selection-change="selectFreeTasks">
       <el-table-column type="selection" width="42" reserve-selection />
-      <el-table-column type="index" label="序号" width="58" align="center" fixed="left" />
       <el-table-column label="邮箱" min-width="154">
         <template #default="{ row }">
           <el-tooltip v-if="row.email || row.account" :content="String(row.email || row.account)" placement="top"><button type="button" class="copyable-account" @click="emit('copyAccount', row)"><span>{{ row.email || row.account }}</span><el-icon v-if="row.run_mode === 'free_register'" :class="{ 'is-loading': loadingAccountEmails.includes(row.task_id) }"><Loading v-if="loadingAccountEmails.includes(row.task_id)" /><CopyDocument v-else /></el-icon></button></el-tooltip>
@@ -196,7 +203,7 @@ function emitFreeSecret(kind: 'token' | 'password' | 'totp' | 'credential', rows
       <el-table-column label="待处理事项" min-width="280" show-overflow-tooltip>
         <template #default="{ row }"><span v-if="isRetryResolved(row.retry_resolved)" class="muted">已由重试解决</span><div v-else-if="row.failure" class="failure-actions"><el-tooltip :content="failureTooltip(row)" placement="top"><span class="failure-detail" :class="{ 'account-banned-detail': isAccountBanned(row) }"><template v-if="isAccountBanned(row)">{{ ACCOUNT_BANNED_DISPLAY_MESSAGE }}</template><template v-else><span class="failure-node">{{ failureIdentity(row).label || failureIdentity(row).code }}<code v-if="failureIdentity(row).showCode">{{ failureIdentity(row).code }}</code></span>{{ failureCause(row) }}</template></span></el-tooltip><el-button v-if="!isHistoricalDriver(row) && row.run_mode === 'free_register' && row.status === 'twofa_pending'" link type="warning" @click="emit('freeTwofaRetry', row)">重试 2FA</el-button></div><el-button v-else-if="!isHistoricalDriver(row) && row.run_mode === 'free_register' && row.status === 'twofa_pending'" link type="warning" @click="emit('freeTwofaRetry', row)">重试 2FA</el-button><TaskVerificationInput v-else-if="!isHistoricalDriver(row) && shouldShowManualVerification(row) && !acceptedVerificationKeys.has(verificationKey(row))" :task-id="row.task_id" :request="row.manual_verification" :now-seconds="nowSeconds" @accepted="markVerificationAccepted(row)" /><span v-else class="muted">-</span></template>
       </el-table-column>
-      <el-table-column label="操作" width="150" fixed="right" align="center"><template #default="{ row }"><div class="task-operation-cell"><el-tooltip content="查看任务详情"><el-button link :icon="Document" aria-label="查看任务详情" @click="openDetails(row)" /></el-tooltip><el-tooltip content="打开取件网页"><el-button link :icon="View" :loading="openingMailboxUrls.includes(row.task_id)" aria-label="打开取件网页" @click="emit('mailboxUrl', row)" /></el-tooltip><el-tooltip content="提取并复制最新验证码"><el-button link :icon="CopyDocument" :loading="loadingMailboxLatestCodes.includes(row.task_id)" aria-label="提取并复制最新验证码" @click="emit('mailboxLatestCode', row)" /></el-tooltip><el-tooltip content="复制账号 Token"><el-button link :icon="CopyDocument" aria-label="复制账号 Token" @click="emitFreeSecret('token', [row])" /></el-tooltip><el-tooltip content="打开故障日志"><el-button link :icon="View" aria-label="打开故障日志" @click="emit('diagnostic', row)" /></el-tooltip></div></template></el-table-column>
+      <el-table-column label="操作" width="82" fixed="right" align="center"><template #default="{ row }"><el-dropdown trigger="click" @command="(command: string) => handleRowAction(command, row)"><el-button link class="row-action-button" aria-label="打开任务操作菜单" title="打开任务操作菜单"><el-icon><MoreFilled /></el-icon></el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="details"><el-icon><Document /></el-icon>查看任务详情</el-dropdown-item><el-dropdown-item command="mailbox_url"><el-icon><Link /></el-icon>打开取件网页</el-dropdown-item><el-dropdown-item command="latest_code"><el-icon><Tickets /></el-icon>提取并复制最新验证码</el-dropdown-item><el-dropdown-item command="token"><el-icon><Key /></el-icon>复制账号 Token</el-dropdown-item><el-dropdown-item command="incident"><el-icon><Warning /></el-icon>打开故障日志</el-dropdown-item></el-dropdown-menu></template></el-dropdown></template></el-table-column>
       <template #empty><ContentEmptyState /></template>
     </el-table>
   </div>

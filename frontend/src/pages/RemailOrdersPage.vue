@@ -30,7 +30,6 @@ onMounted(load)
         </div>
         <el-table v-loading="loading" :data="rows" row-key="order_no" @selection-change="selected = $event">
           <el-table-column type="selection" width="48" />
-          <el-table-column type="index" label="序号" width="58" />
           <el-table-column prop="order_no" label="订单号" min-width="180" show-overflow-tooltip />
           <el-table-column prop="delivery_email_masked" label="邮箱" min-width="190" show-overflow-tooltip />
           <el-table-column prop="status" label="状态" width="120" show-overflow-tooltip />
@@ -52,4 +51,4 @@ onMounted(load)
     </WorkspacePanel>
   </div>
 </template>
-<style scoped>.remail-page{display:grid;grid-template-rows:44px minmax(0,1fr);gap:6px;height:100%;min-width:0}.orders-content{display:grid;grid-template-rows:auto minmax(0,1fr) auto;height:100%;min-height:0}.toolbar{display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid var(--workspace-border)}.toolbar .el-input{width:min(360px,100%);max-width:360px}.import-filter{width:280px}.toolbar :deep(.el-input__wrapper),.toolbar :deep(.el-select__wrapper),.toolbar :deep(.el-button){box-sizing:border-box;min-height:40px;height:40px}.toolbar :deep(.el-select){height:40px}.orders-content :deep(.el-table){min-height:0}.pager{display:flex;align-items:center;justify-content:space-between;padding:8px;border-top:1px solid var(--workspace-border);color:var(--el-text-color-secondary);font-size:12px}</style>
+<style scoped>.remail-page{display:grid;grid-template-rows:44px minmax(0,1fr);gap:6px;height:100%;min-width:0}.orders-content{display:grid;grid-template-rows:auto minmax(0,1fr) auto;height:100%;min-height:0}.toolbar{display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid var(--workspace-border)}.toolbar .el-input{width:min(360px,100%);max-width:360px}.import-filter{width:280px}.toolbar :deep(.el-input__wrapper),.toolbar :deep(.el-select__wrapper),.toolbar :deep(.el-button){box-sizing:border-box;min-height:30px;height:30px}.toolbar :deep(.el-select){height:30px}.orders-content :deep(.el-table){min-height:0}.pager{display:flex;align-items:center;justify-content:space-between;padding:8px;border-top:1px solid var(--workspace-border);color:var(--el-text-color-secondary);font-size:12px}</style>

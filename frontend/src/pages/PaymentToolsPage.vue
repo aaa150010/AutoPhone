@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { CopyDocument, QuestionFilled, Refresh, View } from '@element-plus/icons-vue'
+import { CopyDocument, MoreFilled, QuestionFilled, Refresh, View } from '@element-plus/icons-vue'
 import {
   confirmPaymentTask,
   createPaymentTasks,
@@ -138,6 +138,12 @@ async function retry(task: PaymentTask) {
     ElMessage.error(error?.message || '重试失败')
   }
 }
+
+function handleTaskAction(command: string, task: PaymentTask) {
+  if (command === 'logs') return openLogs(task)
+  if (command === 'copy') return copyResult(task)
+  if (command === 'retry') return retry(task)
+}
 function toggleRow(row: FreeMailboxRow) {
   if (!row.row_id) return
   selectedRows.value = selectedRows.value.includes(row.row_id)
@@ -176,7 +182,7 @@ onMounted(async () => { await Promise.all([loadConfig(), refresh()]) })
     <section class="tool-section task-section">
       <div class="section-title"><span>提链任务</span><el-input v-model="filter" class="filter-input" clearable placeholder="搜索邮箱、状态、节点或模式" /></div>
       <el-table v-loading="loading" :data="filteredTasks" row-key="task_id" height="360" border>
-        <el-table-column label="#" width="58" fixed="left" type="index" /><el-table-column prop="email" label="账号" min-width="210" show-overflow-tooltip /><el-table-column prop="mode" label="模式" width="120" show-overflow-tooltip /><el-table-column prop="channel" label="通道" width="105" show-overflow-tooltip /><el-table-column prop="stage" label="阶段" min-width="150" show-overflow-tooltip /><el-table-column label="状态" width="100"><template #default="scope"><el-tag :type="statusType(scope.row.status)">{{ statusLabel(scope.row.status) }}</el-tag></template></el-table-column><el-table-column label="结果" min-width="150" show-overflow-tooltip><template #default="scope"><span v-if="scope.row.result_summary?.result_host">{{ scope.row.result_summary.result_host }}</span><span v-else>-</span></template></el-table-column><el-table-column label="时间" width="160"><template #default="scope">{{ formatTime(scope.row.updated_at) }}</template></el-table-column><el-table-column label="操作" width="170" fixed="right"><template #default="scope"><el-button link :icon="View" title="查看日志" @click="openLogs(scope.row)" /><el-button v-if="scope.row.status === 'succeeded'" link :icon="CopyDocument" title="复制支付链接" @click="copyResult(scope.row)" /><el-button v-if="['failed', 'cancelled'].includes(scope.row.status)" link :icon="Refresh" title="重试" @click="retry(scope.row)" /></template></el-table-column>
+        <el-table-column prop="email" label="账号" min-width="210" show-overflow-tooltip /><el-table-column prop="mode" label="模式" width="120" show-overflow-tooltip /><el-table-column prop="channel" label="通道" width="105" show-overflow-tooltip /><el-table-column prop="stage" label="阶段" min-width="150" show-overflow-tooltip /><el-table-column label="状态" width="100"><template #default="scope"><el-tag :type="statusType(scope.row.status)">{{ statusLabel(scope.row.status) }}</el-tag></template></el-table-column><el-table-column label="结果" min-width="150" show-overflow-tooltip><template #default="scope"><span v-if="scope.row.result_summary?.result_host">{{ scope.row.result_summary.result_host }}</span><span v-else>-</span></template></el-table-column><el-table-column label="时间" width="160"><template #default="scope">{{ formatTime(scope.row.updated_at) }}</template></el-table-column><el-table-column label="操作" width="82" fixed="right" align="center"><template #default="scope"><el-dropdown trigger="click" @command="(command: string) => handleTaskAction(command, scope.row)"><el-button link aria-label="打开支付任务操作菜单" title="打开支付任务操作菜单"><el-icon><MoreFilled /></el-icon></el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="logs"><el-icon><View /></el-icon>查看日志</el-dropdown-item><el-dropdown-item v-if="scope.row.status === 'succeeded'" command="copy"><el-icon><CopyDocument /></el-icon>复制支付链接</el-dropdown-item><el-dropdown-item v-if="['failed', 'cancelled'].includes(scope.row.status)" command="retry"><el-icon><Refresh /></el-icon>重试任务</el-dropdown-item></el-dropdown-menu></template></el-dropdown></template></el-table-column>
       </el-table><ContentEmptyState v-if="!filteredTasks.length && !loading" description="还没有支付提链任务" />
     </section>
 
