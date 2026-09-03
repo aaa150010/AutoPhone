@@ -2,7 +2,6 @@
 import { onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getRemailOrders, importRemailOrders, type RemailOrder } from '../api/client'
-import PageToolbar from '../components/PageToolbar.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 const loading = ref(false); const rows = ref<RemailOrder[]>([]); const selected = ref<RemailOrder[]>([]); const filter = ref(''); const importedFilter = ref<boolean | 'all'>(false); const currentPage = ref(1); const pageSize = ref(50); const total = ref(0)
 const formatTime = (value?: string) => value ? new Date(value).toLocaleString() : '-'
@@ -14,9 +13,6 @@ onMounted(load)
 </script>
 <template>
   <div class="remail-page">
-    <PageToolbar title="Remail 订单查询" status="网站 / API 订单" tone="info">
-      <el-button size="small" :loading="loading" @click="load">同步订单</el-button>
-    </PageToolbar>
     <WorkspacePanel title="长效购买订单" fill body-padding="none">
       <div class="orders-content">
         <div class="toolbar">
@@ -27,6 +23,7 @@ onMounted(load)
             <el-option label="已导入" :value="true" />
           </el-select>
           <el-button size="small" type="primary" :disabled="!selected.length" :loading="loading" @click="importSelected">导入 Free 邮箱池</el-button>
+          <el-button size="small" :loading="loading" @click="load">同步订单</el-button>
         </div>
         <el-table v-loading="loading" :data="rows" row-key="order_no" @selection-change="selected = $event">
           <el-table-column type="selection" width="48" />
@@ -51,4 +48,4 @@ onMounted(load)
     </WorkspacePanel>
   </div>
 </template>
-<style scoped>.remail-page{display:grid;grid-template-rows:44px minmax(0,1fr);gap:6px;height:100%;min-width:0}.orders-content{display:grid;grid-template-rows:auto minmax(0,1fr) auto;height:100%;min-height:0}.toolbar{display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid var(--workspace-border)}.toolbar .el-input{width:min(360px,100%);max-width:360px}.import-filter{width:280px}.toolbar :deep(.el-input__wrapper),.toolbar :deep(.el-select__wrapper),.toolbar :deep(.el-button){box-sizing:border-box;min-height:30px;height:30px}.toolbar :deep(.el-select){height:30px}.orders-content :deep(.el-table){min-height:0}.pager{display:flex;align-items:center;justify-content:space-between;padding:8px;border-top:1px solid var(--workspace-border);color:var(--el-text-color-secondary);font-size:12px}</style>
+<style scoped>.remail-page{height:100%;min-width:0}.remail-page :deep(.workspace-panel){height:100%}.orders-content{display:grid;grid-template-rows:auto minmax(0,1fr) auto;height:100%;min-height:0}.toolbar{display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid var(--workspace-border)}.toolbar .el-input{width:220px;max-width:220px}.import-filter{width:180px}.toolbar :deep(.el-input__wrapper),.toolbar :deep(.el-select__wrapper),.toolbar :deep(.el-button){box-sizing:border-box;min-height:30px;height:30px}.toolbar :deep(.el-select){width:180px;height:30px}.orders-content :deep(.el-table){min-height:0}.pager{display:flex;align-items:center;justify-content:space-between;padding:8px;border-top:1px solid var(--workspace-border);color:var(--el-text-color-secondary);font-size:12px}.pager :deep(.el-pagination){height:30px}</style>

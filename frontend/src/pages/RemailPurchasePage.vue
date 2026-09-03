@@ -2,7 +2,6 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getRemailProjects, getRemailWallet, purchaseRemail } from '../api/client'
-import PageToolbar from '../components/PageToolbar.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 
 const loading = ref(false)
@@ -37,13 +36,13 @@ async function purchase() {
 onMounted(load)
 </script>
 <template>
-  <div class="remail-page"><PageToolbar title="Remail 购买" status="ChatGPT 长效邮箱" tone="warning"><el-button size="small" :loading="loading" @click="load">刷新目录</el-button></PageToolbar>
-    <WorkspacePanel title="购买参数" fill body-padding="compact"><el-form label-position="top" class="form-grid">
-      <el-form-item label="ChatGPT 项目"><el-select v-model="projectId" filterable><el-option v-for="item in projects" :key="item.id" :label="item.name || item.id" :value="Number(item.id)" /></el-select></el-form-item>
-      <el-form-item label="邮箱类型 / 后缀"><el-select v-model="suffix" filterable placeholder="选择有库存商品"><el-option v-for="item in products" :key="`${item.type}-${item.suffix}`" :label="`${item.type} · ${item.suffix} · 库存 ${item.available ?? '-'}`" :value="item.suffix" /></el-select></el-form-item>
-      <el-form-item label="数量"><el-input-number v-model="quantity" :min="1" :max="100" /></el-form-item>
-      <el-form-item label="库存策略"><el-radio-group v-model="supply"><el-radio value="private_first">私有优先</el-radio><el-radio value="public_only">仅公共库存</el-radio></el-radio-group></el-form-item>
-    </el-form><div class="actions"><span>钱包余额：{{ walletBalance }} 积分</span><el-button type="primary" :loading="loading" @click="purchase">创建购买订单</el-button></div></WorkspacePanel>
+  <div class="remail-page">
+    <WorkspacePanel title="购买参数" fill body-padding="compact"><template #actions><el-button size="small" :loading="loading" @click="load">刷新目录</el-button></template><el-form label-position="top" class="form-grid">
+      <el-form-item label="ChatGPT 项目"><el-select v-model="projectId" size="small" filterable><el-option v-for="item in projects" :key="item.id" :label="item.name || item.id" :value="Number(item.id)" /></el-select></el-form-item>
+      <el-form-item label="邮箱类型 / 后缀"><el-select v-model="suffix" size="small" filterable placeholder="选择有库存商品"><el-option v-for="item in products" :key="`${item.type}-${item.suffix}`" :label="`${item.type} · ${item.suffix} · 库存 ${item.available ?? '-'}`" :value="item.suffix" /></el-select></el-form-item>
+      <el-form-item label="数量"><el-input-number v-model="quantity" size="small" :min="1" :max="100" /></el-form-item>
+      <el-form-item label="库存策略"><el-radio-group v-model="supply" size="small"><el-radio value="private_first">私有优先</el-radio><el-radio value="public_only">仅公共库存</el-radio></el-radio-group></el-form-item>
+    </el-form><div class="actions"><span>钱包余额：{{ walletBalance }} 积分</span><el-button size="small" type="primary" :loading="loading" @click="purchase">创建购买订单</el-button></div></WorkspacePanel>
   </div>
 </template>
-<style scoped>.remail-page{display:grid;grid-template-rows:44px minmax(0,1fr);gap:6px;height:100%;min-width:0}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(220px,1fr));gap:0 14px}.form-grid :deep(.el-select),.form-grid :deep(.el-input-number){width:100%}.actions{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--workspace-border);padding-top:12px;color:var(--el-text-color-secondary)}</style>
+<style scoped>.remail-page{height:100%;min-width:0}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(180px,260px));gap:0 14px;align-items:start}.form-grid :deep(.el-select),.form-grid :deep(.el-input-number){width:100%;max-width:260px}.form-grid :deep(.el-radio-group){min-height:30px;align-items:center}.actions{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--workspace-border);padding-top:12px;color:var(--el-text-color-secondary)}.actions :deep(.el-button){min-height:30px;height:30px}</style>
