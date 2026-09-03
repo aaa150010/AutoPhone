@@ -2171,6 +2171,86 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         row_id = manager.pool.entries()[0].row_id
         self.assertEqual(manager.secret([], "totp", row_ids=[row_id]), "JBSWY3DPEHPK3PXP")
 
+    def test_registration_retry_preserves_remail_source_and_service_token(self):
+        free_root = self.data_dir / "free_register"
+        free_root.mkdir()
+        captured = []
+        worker_finished = threading.Event()
+
+        def runner(task, _config, _stop, _stage, _log, **_kwargs):
+            captured.append(dict(task))
+            worker_finished.set()
+            return {"access_token": "token-private", "twofa_status": "disabled"}
+
+        manager = FreeRegisterManager(
+            free_root,
+            runner=runner,
+            proxy_probe=lambda _proxy, _url: "203.0.113.30",
+        )
+        row = manager.pool.import_remail_order({
+            "orderNo": "order-1",
+            "deliveryEmail": "remail@example.test",
+            "serviceToken": "service-token",
+        })
+        manager.proxies.import_text("http://proxy-remail.test:8000\n")
+        manager._tasks["failed-remail"] = {
+            "task_id": "failed-remail",
+            "status": "failed",
+            "row_id": row["row_id"],
+            "driver": "camoufox",
+            "failure": {"node_code": "free_camoufox_browser"},
+        }
+
+        manager.rerun("failed-remail", {"driver": "camoufox", "concurrency": 1})
+        self.assertTrue(worker_finished.wait(2))
+        deadline = time.time() + 3
+        while manager.public_state()["running"] and time.time() < deadline:
+            time.sleep(0.01)
+
+        self.assertEqual(len(captured), 1)
+        self.assertEqual(captured[0]["mailbox_source"], "remail")
+        self.assertEqual(captured[0]["service_token"], "service-token")
+        self.assertEqual(captured[0]["mailbox_url"], "https://remail.aishop6.com/v1/pickup")
+
+    def test_registration_retry_keeps_regular_mailbox_url_as_url_source(self):
+        free_root = self.data_dir / "free_register"
+        free_root.mkdir()
+        captured = []
+        worker_finished = threading.Event()
+
+        def runner(task, _config, _stop, _stage, _log, **_kwargs):
+            captured.append(dict(task))
+            worker_finished.set()
+            return {"access_token": "token-private", "twofa_status": "disabled"}
+
+        manager = FreeRegisterManager(
+            free_root,
+            runner=runner,
+            proxy_probe=lambda _proxy, _url: "203.0.113.31",
+        )
+        mailbox_url = "https://mail.example.test/pickup?email=url%40example.test&token=url-token"
+        manager.pool.import_text(f"url@example.test----{mailbox_url}\n")
+        manager.proxies.import_text("http://proxy-url.test:8000\n")
+        row = manager.pool.entries()[0]
+        manager._tasks["failed-url"] = {
+            "task_id": "failed-url",
+            "status": "failed",
+            "row_id": row.row_id,
+            "driver": "camoufox",
+            "failure": {"node_code": "free_camoufox_browser"},
+        }
+
+        manager.rerun("failed-url", {"driver": "camoufox", "concurrency": 1})
+        self.assertTrue(worker_finished.wait(2))
+        deadline = time.time() + 3
+        while manager.public_state()["running"] and time.time() < deadline:
+            time.sleep(0.01)
+
+        self.assertEqual(len(captured), 1)
+        self.assertEqual(captured[0]["mailbox_source"], "url")
+        self.assertEqual(captured[0]["service_token"], "")
+        self.assertEqual(captured[0]["mailbox_url"], mailbox_url)
+
     def _seed_password_retry_task(self, manager, *, task_id="password-task"):
         """Create a durable account snapshot for continuation-only tests."""
         manager.pool.import_text(

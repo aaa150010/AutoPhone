@@ -481,9 +481,13 @@ onUnmounted(() => {
     <WorkspacePanel title="邮箱状态" :icon="MessageBox" fill body-padding="none">
       <template #actions>
         <span v-if="selectedRows.length" class="selected-count">已选 {{ selectedRows.length }}</span>
-        <el-tooltip content="导入邮箱" placement="top"><el-button type="primary" :disabled="mutating || batchBusy" :icon="Upload" aria-label="导入邮箱" @click="mailboxImportDialog?.open()" /></el-tooltip>
-        <el-input v-model="searchText" class="search-input" clearable placeholder="搜索邮箱、状态、说明" :prefix-icon="Search" />
-          <el-select v-model="filter" class="filter-select">
+      </template>
+
+      <div class="mailbox-toolbar">
+        <div class="toolbar-section filter-row">
+          <span class="toolbar-label">筛选</span>
+          <el-input v-model="searchText" size="small" class="search-input" clearable placeholder="搜索邮箱、状态、说明" :prefix-icon="Search" />
+          <el-select v-model="filter" size="small" class="filter-select">
           <el-option label="全部" value="all" />
           <el-option label="最近运行批次" value="latest_batch" />
           <el-option label="最近运行批次失败" value="latest_batch_failed" />
@@ -493,29 +497,33 @@ onUnmounted(() => {
           <el-option label="已使用" value="consumed" />
           <el-option label="失败" value="failed" />
           </el-select>
-        <el-select v-model="batchFilter" class="batch-filter-select" filterable>
+          <el-select v-model="batchFilter" size="small" class="batch-filter-select" filterable>
           <el-option label="全部批次" value="all" />
           <el-option v-for="batch in batchOptions" :key="batch.batchId" :label="batch.batchId" :value="batch.batchId" />
-        </el-select>
-        <el-select v-model="sub2Filter" class="sub2-filter-select">
+          </el-select>
+          <el-select v-model="sub2Filter" size="small" class="sub2-filter-select">
           <el-option label="全部 OpenAI" value="all" />
           <el-option label="OpenAI 测试失败" value="test_failure" />
           <el-option label="OpenAI 401/404（需重试）" value="needs_rerun" />
           <el-option label="网络断开" value="network_disconnected" />
           <el-option label="HTTP 400" value="http_400" />
-        </el-select>
-        <el-select v-model="quotaFilter" class="quota-filter-select">
+          </el-select>
+          <el-select v-model="quotaFilter" size="small" class="quota-filter-select">
           <el-option label="全部额度" value="all" />
           <el-option label="有剩余额度" value="remaining" />
           <el-option label="已查询额度" value="queried" />
-        </el-select>
-        <el-button :loading="queryingQuota" :disabled="mutating || batchBusy" @click="queryQuotas">
-          <el-icon><DataAnalysis /></el-icon>{{ queryingQuota && quotaProgress ? `查询额度 ${quotaProgress}` : '批量查询额度' }}
-        </el-button>
-        <el-button :loading="testingSub2" :disabled="mutating || batchBusy" @click="testSub2">
-          <el-icon><Connection /></el-icon>{{ testingSub2 && openaiTestProgress ? `测试 OpenAI ${openaiTestProgress}` : '批量测试 OpenAI' }}
-        </el-button>
-        <MailboxActionMenus
+          </el-select>
+        </div>
+        <div class="toolbar-section action-row">
+          <span class="toolbar-label">批量操作</span>
+          <el-tooltip content="导入邮箱" placement="top"><el-button size="small" type="primary" :disabled="mutating || batchBusy" :icon="Upload" aria-label="导入邮箱" @click="mailboxImportDialog?.open()" /></el-tooltip>
+          <el-button size="small" :loading="queryingQuota" :disabled="mutating || batchBusy" @click="queryQuotas">
+            <el-icon><DataAnalysis /></el-icon>{{ queryingQuota && quotaProgress ? `查询额度 ${quotaProgress}` : '批量查询额度' }}
+          </el-button>
+          <el-button size="small" :loading="testingSub2" :disabled="mutating || batchBusy" @click="testSub2">
+            <el-icon><Connection /></el-icon>{{ testingSub2 && openaiTestProgress ? `测试 OpenAI ${openaiTestProgress}` : '批量测试 OpenAI' }}
+          </el-button>
+          <MailboxActionMenus
           :relogin-disabled="mutating || batchBusy || controller.runtime.value.running || !selectedRows.length || selectedRows.some(row => !needsSub2Rerun(row.sub2_status))"
           :restore-disabled="mutating || batchBusy || !selectedRows.length"
           :draft-disabled="mutating || batchBusy || !canMoveMailboxRowsToDraft(selectedRows)"
@@ -538,8 +546,9 @@ onUnmounted(() => {
           @source-export="exportSource"
           @website="uploadWebsiteMailboxes"
           @delete="mutate('/api/mailboxes/delete', '确定删除选中的邮箱？')"
-        />
-      </template>
+          />
+        </div>
+      </div>
 
       <div class="table-region">
         <MailboxTable
@@ -592,13 +601,20 @@ onUnmounted(() => {
 
 <style scoped>
 .mailbox-page { display: grid; grid-template-rows: 52px minmax(0, 1fr); gap: 6px; width: 100%; height: 100%; min-width: 0; min-height: 0; }
+.mailbox-page :deep(.workspace-panel > .el-card__body) { display: flex; flex-direction: column; min-height: 0; }
 .selected-count { color: var(--el-color-primary); font-size: 13px; white-space: nowrap; }
+.mailbox-toolbar { display: grid; grid-template-rows: auto auto; gap: 6px; flex: 0 0 auto; padding: 8px 10px; border-bottom: 1px solid var(--workspace-border); background: #fbfcfd; }
+.toolbar-section { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.toolbar-label { flex: 0 0 52px; color: var(--el-text-color-secondary); font-size: 12px; font-weight: 650; }
 .search-input { width: 220px; }
-.filter-select { width: 150px; }
-.batch-filter-select { width: 180px; }
-.sub2-filter-select { width: 190px; }
-.quota-filter-select { width: 155px; }
-.table-region { display: grid; grid-template-rows: minmax(0, 1fr) 46px; width: 100%; height: 100%; min-height: 0; padding: 8px 10px 0; }
+.filter-select { width: 140px; }
+.batch-filter-select { width: 170px; }
+.sub2-filter-select { width: 180px; }
+.quota-filter-select { width: 145px; }
+.mailbox-toolbar :deep(.el-input__wrapper), .mailbox-toolbar :deep(.el-select__wrapper), .mailbox-toolbar :deep(.el-button) { min-height: 30px; height: 30px; }
+.action-row :deep(.mailbox-action-menus) { gap: 6px; }
+.action-row :deep(.mailbox-action-menus .el-button) { min-height: 30px; height: 30px; }
+.table-region { display: grid; grid-template-rows: minmax(0, 1fr) 46px; flex: 1 1 auto; width: 100%; height: 100%; min-height: 0; padding: 8px 10px 0; }
 .pager { justify-content: flex-end; border-top: 1px solid var(--workspace-border); }
 
 </style>

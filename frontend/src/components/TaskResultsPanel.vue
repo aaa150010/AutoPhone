@@ -185,25 +185,25 @@ function handleRowAction(command: string, row: RuntimeTask) {
     </div>
     <el-table class="task-table" :data="visibleTasks" :row-key="taskRowKey" stripe height="100%" @selection-change="selectFreeTasks">
       <el-table-column type="selection" width="42" reserve-selection />
-      <el-table-column label="邮箱" min-width="154">
+      <el-table-column label="邮箱" min-width="142">
         <template #default="{ row }">
           <el-tooltip v-if="row.email || row.account" :content="String(row.email || row.account)" placement="top"><button type="button" class="copyable-account" @click="emit('copyAccount', row)"><span>{{ row.email || row.account }}</span><el-icon v-if="row.run_mode === 'free_register'" :class="{ 'is-loading': loadingAccountEmails.includes(row.task_id) }"><Loading v-if="loadingAccountEmails.includes(row.task_id)" /><CopyDocument v-else /></el-icon></button></el-tooltip>
           <span v-else>-</span>
         </template>
       </el-table-column>
-      <el-table-column label="密码" width="66" align="center">
+      <el-table-column label="密码" width="58" align="center">
         <template #default="{ row }"><el-tooltip v-if="row.run_mode === 'free_register' && row.result?.has_password" content="复制注册密码" placement="top"><el-button link :icon="Key" aria-label="复制注册密码" @click="emitFreeSecret('password', [row])" /></el-tooltip><el-tooltip v-else-if="row.has_mailbox_password" content="复制邮箱密码" placement="top"><el-button link :icon="Key" :loading="loadingMailboxPasswords.includes(row.task_id)" aria-label="复制邮箱密码" @click="emit('mailboxPassword', row)" /></el-tooltip><span v-else class="muted">-</span></template>
       </el-table-column>
-      <el-table-column label="2FA" width="62" align="center">
+      <el-table-column label="2FA" width="56" align="center">
         <template #default="{ row }"><el-tooltip v-if="row.run_mode === 'free_register' && row.result?.has_totp" content="复制注册 2FA 密钥" placement="top"><el-button link :icon="CopyDocument" aria-label="复制注册 2FA 密钥" @click="emitFreeSecret('totp', [row])" /></el-tooltip><el-tooltip v-else-if="row.has_totp" content="复制临时 2FA 验证码" placement="top"><el-button link :icon="CopyDocument" :loading="loadingMailboxTotps.includes(row.task_id)" aria-label="复制临时 2FA 验证码" @click="emit('mailboxTotp', row)" /></el-tooltip><span v-else class="muted">-</span></template>
       </el-table-column>
-      <el-table-column label="当前阶段 / 结果" min-width="340">
+      <el-table-column label="当前阶段 / 结果" min-width="230">
         <template #default="{ row }"><div class="result-cell"><TaskProgressCell :progress="row.progress" :timing="row.timing" :now-seconds="nowSeconds" :status="row.status" /><el-tag class="result-tag" :type="statusType(row.status, row)">{{ statusLabel(row.status, row) }}</el-tag></div></template>
       </el-table-column>
-      <el-table-column label="待处理事项" min-width="280" show-overflow-tooltip>
+      <el-table-column label="待处理事项" min-width="190" show-overflow-tooltip>
         <template #default="{ row }"><span v-if="isRetryResolved(row.retry_resolved)" class="muted">已由重试解决</span><div v-else-if="row.failure" class="failure-actions"><el-tooltip :content="failureTooltip(row)" placement="top"><span class="failure-detail" :class="{ 'account-banned-detail': isAccountBanned(row) }"><template v-if="isAccountBanned(row)">{{ ACCOUNT_BANNED_DISPLAY_MESSAGE }}</template><template v-else><span class="failure-node">{{ failureIdentity(row).label || failureIdentity(row).code }}<code v-if="failureIdentity(row).showCode">{{ failureIdentity(row).code }}</code></span>{{ failureCause(row) }}</template></span></el-tooltip><el-button v-if="!isHistoricalDriver(row) && row.run_mode === 'free_register' && row.status === 'twofa_pending'" link type="warning" @click="emit('freeTwofaRetry', row)">重试 2FA</el-button></div><el-button v-else-if="!isHistoricalDriver(row) && row.run_mode === 'free_register' && row.status === 'twofa_pending'" link type="warning" @click="emit('freeTwofaRetry', row)">重试 2FA</el-button><TaskVerificationInput v-else-if="!isHistoricalDriver(row) && shouldShowManualVerification(row) && !acceptedVerificationKeys.has(verificationKey(row))" :task-id="row.task_id" :request="row.manual_verification" :now-seconds="nowSeconds" @accepted="markVerificationAccepted(row)" /><span v-else class="muted">-</span></template>
       </el-table-column>
-      <el-table-column label="操作" width="82" fixed="right" align="center"><template #default="{ row }"><el-dropdown trigger="click" @command="(command: string) => handleRowAction(command, row)"><el-button link class="row-action-button" aria-label="打开任务操作菜单" title="打开任务操作菜单"><el-icon><MoreFilled /></el-icon></el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="details"><el-icon><Document /></el-icon>查看任务详情</el-dropdown-item><el-dropdown-item command="mailbox_url"><el-icon><Link /></el-icon>打开取件网页</el-dropdown-item><el-dropdown-item command="latest_code"><el-icon><Tickets /></el-icon>提取并复制最新验证码</el-dropdown-item><el-dropdown-item command="token"><el-icon><Key /></el-icon>复制账号 Token</el-dropdown-item><el-dropdown-item command="incident"><el-icon><Warning /></el-icon>打开故障日志</el-dropdown-item></el-dropdown-menu></template></el-dropdown></template></el-table-column>
+      <el-table-column label="操作" width="62" fixed="right" align="center"><template #default="{ row }"><el-dropdown trigger="click" @command="(command: string) => handleRowAction(command, row)"><el-button link class="row-action-button" aria-label="打开任务操作菜单" title="打开任务操作菜单"><el-icon><MoreFilled /></el-icon></el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="details"><el-icon><Document /></el-icon>查看任务详情</el-dropdown-item><el-dropdown-item command="mailbox_url"><el-icon><Link /></el-icon>打开取件网页</el-dropdown-item><el-dropdown-item command="latest_code"><el-icon><Tickets /></el-icon>提取并复制最新验证码</el-dropdown-item><el-dropdown-item command="token"><el-icon><Key /></el-icon>复制账号 Token</el-dropdown-item><el-dropdown-item command="incident"><el-icon><Warning /></el-icon>打开故障日志</el-dropdown-item></el-dropdown-menu></template></el-dropdown></template></el-table-column>
       <template #empty><ContentEmptyState /></template>
     </el-table>
   </div>
@@ -227,7 +227,7 @@ function handleRowAction(command: string, row: RuntimeTask) {
 .task-operation-cell { display: inline-flex; align-items: center; justify-content: center; gap: 0; min-width: 0; white-space: nowrap; }
 .task-operation-cell :deep(.el-button) { width: 25px; height: 25px; margin-left: 0; padding: 4px; }
 .failure-actions { display: flex; align-items: center; min-width: 0; gap: 6px; }
-.failure-detail { display: inline-flex; max-width: 100%; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.failure-detail { display: inline-flex; min-width: 0; flex: 1 1 auto; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .failure-node { flex: none; color: var(--el-color-danger); font-weight: 600; }
 .failure-node code { margin-left: 4px; color: var(--el-text-color-secondary); font-size: 10px; font-weight: 500; }
 .muted { color: var(--el-text-color-secondary); }

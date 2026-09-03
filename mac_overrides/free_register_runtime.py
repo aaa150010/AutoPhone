@@ -3227,6 +3227,23 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             mailbox = self.pool.entry(row_id)
             if mailbox is None:
                 raise FreeRegisterError("free_rerun", "重跑 Free 账号", "Free 邮箱记录不存在", retryable=False)
+            # The SQLite/legacy mailbox row keeps Remail's service token in
+            # its private payload while ``FreeMailbox.mailbox_url`` remains
+            # the stable base endpoint.  Preserve that source boundary when
+            # creating a retry task; otherwise the Camoufox adapter defaults
+            # to the generic URL client and requests the bare Remail endpoint
+            # without its email/token query parameters.
+            mailbox_source = str(
+                row_state.get("source") or original.get("mailbox_source") or "url"
+            ).strip().lower()
+            if mailbox_source != "remail":
+                mailbox_source = "url"
+            service_token = str(
+                row_state.get("service_token")
+                or row_state.get("serviceToken")
+                or original.get("service_token")
+                or ""
+            ).strip()
             reserved = False
             mailbox_lease_acquired = False
             if not continuation:
@@ -3374,6 +3391,8 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     "email": mailbox.email,
                     "row_id": row_id,
                     "mailbox_url": mailbox.mailbox_url,
+                    "mailbox_source": mailbox_source,
+                    "service_token": service_token if mailbox_source == "remail" else "",
                     "proxy": binding.proxy,
                     "proxy_id": binding.proxy_id,
                     "proxy_scheme": binding.scheme,

@@ -54,6 +54,7 @@ const taskCounts = ref({ pending: 0, running: 0, all: 0 })
 const connectivityView = computed(() => buildOpenAIConnectivityView(controller.runtime.value))
 const logPanelWidth = ref(700)
 const resizingLogPanel = ref(false)
+const visibleLogPanelWidth = computed(() => Math.min(logPanelWidth.value, 560))
 
 function updateLogPanelWidth(clientX: number) {
   const next = Math.round(window.innerWidth - clientX - 5)
@@ -458,18 +459,14 @@ async function disableConnectivityGuard() {
         />
       </div>
 
-      <div class="run-workspace" :style="{ gridTemplateColumns: `minmax(0, 1fr) 7px ${logPanelWidth}px` }">
+      <div class="run-workspace" :style="{ gridTemplateColumns: `minmax(660px, 1fr) 7px minmax(360px, ${visibleLogPanelWidth}px)` }">
         <WorkspacePanel class="task-workspace" title="任务结果" :icon="Tickets" fill body-padding="none">
-          <template #actions>
+          <div class="task-workspace-toolbar">
+            <div class="task-toolbar-main">
             <div class="task-summary-tabs" role="tablist" aria-label="任务结果分类">
               <button type="button" role="tab" :aria-selected="taskView === 'pending'" :class="{ active: taskView === 'pending', urgent: taskCounts.pending }" @click="taskView = 'pending'"><el-icon><WarningFilled /></el-icon><span>待处理</span><b>{{ taskCounts.pending }}</b></button>
               <button type="button" role="tab" :aria-selected="taskView === 'running'" :class="{ active: taskView === 'running' }" @click="taskView = 'running'"><el-icon><VideoPlay /></el-icon><span>运行中</span><b>{{ taskCounts.running }}</b></button>
               <button type="button" role="tab" :aria-selected="taskView === 'all'" :class="{ active: taskView === 'all' }" @click="taskView = 'all'"><el-icon><Tickets /></el-icon><span>全部</span><b>{{ taskCounts.all }}</b></button>
-            </div>
-            <div v-if="batchId" class="batch-identity">
-              <span>运行批次</span>
-              <strong>{{ batchId }}</strong>
-              <b>已完成 {{ batchCompleted }}/{{ batchTarget }}</b>
             </div>
             <div class="run-toolbar-actions">
               <el-tooltip content="运行配置" placement="top"><el-button size="small" :icon="Setting" aria-label="运行配置" @click="emit('navigate', '/settings')" /></el-tooltip>
@@ -480,7 +477,13 @@ async function disableConnectivityGuard() {
               <el-tooltip v-else content="开始运行" placement="top"><el-button size="small" type="primary" :icon="VideoPlay" :loading="controller.actions.starting" :disabled="controller.running.value || !controller.hasPool.value" aria-label="开始运行" @click="start" /></el-tooltip>
               <el-tooltip content="停止" placement="top"><el-button size="small" type="danger" plain :icon="VideoPause" :loading="controller.actions.stopping" :disabled="!controller.running.value" aria-label="停止" @click="stop" /></el-tooltip>
             </div>
-          </template>
+            </div>
+            <div v-if="batchId" class="batch-identity">
+              <span>运行批次</span>
+              <strong>{{ batchId }}</strong>
+              <b>已完成 {{ batchCompleted }}/{{ batchTarget }}</b>
+            </div>
+          </div>
           <TaskResultsPanel
             :tasks="tasks as RuntimeTask[]"
             :opening-mailbox-urls="openingMailboxUrlTaskIds"
@@ -553,22 +556,26 @@ async function disableConnectivityGuard() {
 .log-resizer:hover::after,
 .log-resizer:focus-visible::after { left: 2px; width: 3px; background: #4c7fb7; }
 .log-resizer:focus-visible { outline: none; }
-.batch-identity { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.task-workspace-toolbar { flex: 0 0 auto; min-width: 0; padding: 6px 10px 7px; border-bottom: 1px solid #e1eae7; background: #fff; }
+.task-toolbar-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.batch-identity { display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: 5px; padding-top: 5px; border-top: 1px solid #eef2f1; }
 .run-toolbar-actions { display: flex; align-items: center; gap: 5px; min-width: 0; }
 .run-toolbar-actions :deep(.el-button + .el-button) { margin-left: 0; }
-.task-summary-tabs { display: grid; grid-template-columns: repeat(3, 120px); align-content: center; justify-content: start; gap: 3px; min-width: 0; }
-.task-summary-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 0; height: 26px; border: 1px solid transparent; border-radius: 4px; padding: 0 8px; background: transparent; color: #586a67; font-size: 12px; font-weight: 600; cursor: pointer; }
+.task-summary-tabs { display: grid; grid-template-columns: repeat(3, minmax(76px, 92px)); align-content: center; justify-content: start; gap: 3px; min-width: 0; flex: 0 1 auto; }
+.task-summary-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 0; height: 26px; border: 1px solid transparent; border-radius: 4px; padding: 0 6px; background: transparent; color: #586a67; font-size: 12px; font-weight: 600; cursor: pointer; }
 .task-summary-tabs button:hover { background: #edf4f2; color: #0f6b5b; }
 .task-summary-tabs button.active { border-color: #83bdae; background: #e8f4f0; color: #0b6757; font-weight: 700; }
 .task-summary-tabs button.active.urgent { border-color: #df9da5; background: #fff1f2; color: #9f2435; }
 .task-summary-tabs button .el-icon { width: 14px; height: 14px; font-size: 14px; }
+.task-summary-tabs button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-summary-tabs b { display: inline-grid; place-items: center; min-width: 18px; height: 16px; padding: 0 4px; border-radius: 8px; background: #e1e8e6; color: #52635f; font-size: 9px; }
 .task-summary-tabs button.active b { background: #0f6b5b; color: #fff; }
 .task-summary-tabs button.urgent, .task-summary-tabs button.active.urgent { color: #a52b3b; }
 .task-summary-tabs button.urgent b, .task-summary-tabs button.active.urgent b { background: #c83f4f; color: #fff; }
 .batch-identity span { color: var(--el-text-color-secondary); font-size: 11px; white-space: nowrap; }
 .batch-identity strong {
-  max-width: 260px;
+  min-width: 0;
+  max-width: 320px;
   overflow: hidden;
   color: var(--run-blue);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -586,6 +593,7 @@ async function disableConnectivityGuard() {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+.task-toolbar-main .run-toolbar-actions { margin-left: auto; }
 
 .run-page :deep(.workspace-panel) { border-color: #d9e5e1; box-shadow: 0 1px 4px rgba(25, 75, 65, .05); }
 .run-page :deep(.workspace-panel > .el-card__header) { border-bottom-color: #e1eae7; background: #fafcfb; }

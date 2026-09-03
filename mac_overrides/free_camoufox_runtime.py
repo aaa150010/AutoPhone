@@ -1627,7 +1627,9 @@ async def _submit_visible_form(page: Any, selector: str) -> bool | None:
             else:
                 await press("Enter", no_wait_after=True)
         return True
-    except Exception:
+    except Exception as exc:
+        if action_started:
+            _record_email_submit_action_failure(page, "enter", exc)
         return None if action_started else False
 
 
@@ -1653,8 +1655,71 @@ async def _click_visible_submit(page: Any, selector: str) -> bool | None:
         # waiting, so return as soon as Playwright dispatches the click.
         await locator.click(timeout=3000, no_wait_after=True)
         return True
-    except Exception:
+    except Exception as exc:
+        if action_started:
+            _record_email_submit_action_failure(page, "click", exc)
         return None if action_started else False
+
+
+def _record_email_submit_action_failure(page: Any, action: str, exc: BaseException) -> None:
+    """Keep only a classified, credential-free submit dispatch failure."""
+    text = str(exc or "").casefold()
+    if _browser_process_lost(exc):
+        category = "browser_process_lost"
+    elif "timeout" in text or "timed out" in text:
+        category = "action_timeout"
+    elif any(marker in text for marker in (
+        "not attached", "detached", "stale", "strict mode violation",
+    )):
+        category = "locator_unavailable"
+    elif _is_transient_navigation_error(exc):
+        category = "transport_error"
+    else:
+        category = "browser_action_error"
+    evidence = {
+        "action": "click" if action == "click" else "enter",
+        "exception_type": type(exc).__name__[:80] or "UnknownError",
+        "category": category,
+        "safe_page": _safe_url(page),
+    }
+    try:
+        setattr(page, "_gptphone_email_submit_action_failure", evidence)
+    except Exception:
+        # Some lightweight or recovered page adapters do not permit custom
+        # attributes. The uncertain outcome remains safe; it simply has less
+        # local evidence.
+        pass
+
+
+async def _email_submit_uncertain_diagnostic(
+    page: Any,
+    *,
+    reason: str,
+    form_present: bool,
+    input_selector: str = "",
+    submit_selector: str = "",
+) -> str:
+    """Build a bounded diagnostic for an irreversible email submit attempt."""
+    evidence = getattr(page, "_gptphone_email_submit_action_failure", {})
+    if not isinstance(evidence, Mapping):
+        evidence = {}
+    try:
+        observed_state = await _page_state(page)
+    except Exception:
+        observed_state = "unknown"
+    diagnostic = {
+        "phase": "entry",
+        "reason": reason,
+        "form_present": bool(form_present),
+        "input_selector": clean(input_selector, 120),
+        "submit_selector": clean(submit_selector, 120),
+        "action": clean(evidence.get("action"), 20) or "unknown",
+        "exception_type": clean(evidence.get("exception_type"), 80) or "unavailable",
+        "failure_category": clean(evidence.get("category"), 80) or "unavailable",
+        "safe_page": _safe_event_url(evidence.get("safe_page")) or _safe_url(page),
+        "observed_page_state": clean(observed_state, 40) or "unknown",
+    }
+    return json.dumps(diagnostic, ensure_ascii=False)[:500]
 
 
 async def _auth_error_text(page: Any) -> str:
@@ -2059,11 +2124,29 @@ async def _browser_signin_url(page: Any, email: str) -> str:
         parsed = urlsplit(candidate)
     except (TypeError, ValueError):
         return ""
-    # The same-origin endpoint must hand back the OpenAI authorization route;
-    # never let a malformed or external provider URL enter the browser flow.
-    if parsed.scheme.casefold() != "https" or (parsed.hostname or "").casefold() != "auth.openai.com":
+    # The normal response is the OpenAI authorization route.  Some ChatGPT
+    # shells briefly return their own login route (often with an ``email``
+    # query) instead; callers handle that as a form-reopen signal.  Never let
+    # a malformed or external provider URL enter the browser flow.
+    host = (parsed.hostname or "").casefold()
+    path = (parsed.path or "").casefold().rstrip("/") or "/"
+    trusted = host == "auth.openai.com" or (host == "chatgpt.com" and path == "/auth/login")
+    if parsed.scheme.casefold() != "https" or not trusted:
         return ""
     return candidate
+
+
+def _is_chatgpt_entry_url(value: str) -> bool:
+    """Return whether a signin response is the ChatGPT entry shell."""
+    try:
+        parsed = urlsplit(str(value or ""))
+    except (TypeError, ValueError):
+        return False
+    return (
+        parsed.scheme.casefold() == "https"
+        and (parsed.hostname or "").casefold() == "chatgpt.com"
+        and (parsed.path or "").casefold().rstrip("/") == "/auth/login"
+    )
 
 
 async def _page_state(page: Any) -> str:
@@ -3080,11 +3163,12 @@ async def _browser_flow(
                     "free_camoufox_signup_email", "填写 Camoufox 注册邮箱",
                     "邮箱提交动作结果不确定，已停止自动回退",
                     error_code="camoufox_email_submit_uncertain",
-                    diagnostic=json.dumps({
-                        "phase": "entry", "reason": "click_outcome_unknown",
-                        "form_present": entry_form_present,
-                        "submit_selector": clean(entry_submit_selector, 120),
-                    }, ensure_ascii=False),
+                    diagnostic=await _email_submit_uncertain_diagnostic(
+                        page,
+                        reason="click_outcome_unknown",
+                        form_present=entry_form_present,
+                        submit_selector=entry_submit_selector,
+                    ),
                     safe_page=_safe_url(page), page_type="entry",
                 )
             if clicked:
@@ -3116,11 +3200,12 @@ async def _browser_flow(
                         "free_camoufox_signup_email", "填写 Camoufox 注册邮箱",
                         "邮箱回车提交动作结果不确定，已停止自动回退",
                         error_code="camoufox_email_submit_uncertain",
-                        diagnostic=json.dumps({
-                            "phase": "entry", "reason": "enter_outcome_unknown",
-                            "form_present": entry_form_present,
-                            "input_selector": clean(fallback_input_selector, 120),
-                        }, ensure_ascii=False),
+                        diagnostic=await _email_submit_uncertain_diagnostic(
+                            page,
+                            reason="enter_outcome_unknown",
+                            form_present=entry_form_present,
+                            input_selector=fallback_input_selector,
+                        ),
                         safe_page=_safe_url(page), page_type="entry",
                     )
                 if not entered:
@@ -3169,11 +3254,12 @@ async def _browser_flow(
                 "free_camoufox_signup_email", "填写 Camoufox 注册邮箱",
                 "邮箱回车提交动作结果不确定，已停止自动回退",
                 error_code="camoufox_email_submit_uncertain",
-                diagnostic=json.dumps({
-                    "phase": "entry", "reason": "enter_outcome_unknown",
-                    "form_present": entry_form_present,
-                    "input_selector": clean(selector, 120),
-                }, ensure_ascii=False),
+                diagnostic=await _email_submit_uncertain_diagnostic(
+                    page,
+                    reason="enter_outcome_unknown",
+                    form_present=entry_form_present,
+                    input_selector=selector,
+                ),
                 safe_page=_safe_url(page), page_type="entry",
             )
         if not entered:
@@ -3535,6 +3621,10 @@ async def _browser_flow(
                 page, authorize_url, timeout_ms=min(timeout * 1000, 90_000),
                 proxy_retryable=False, log=log,
             )
+            if _is_chatgpt_entry_url(authorize_url):
+                selector = await _wait_for_any_selector(page, EMAIL_SELECTORS, timeout=8)
+                if selector:
+                    await submit_entry_email(selector, recovery=True)
             entry_submitted = True
             entry_transition_started = time.monotonic()
             entry_transition_deadline = entry_transition_started + 45.0
@@ -3698,6 +3788,13 @@ async def _browser_flow(
                     timeout_ms=min(timeout * 1000, 90_000, max(1, int(remaining * 1000))),
                     proxy_retryable=False, log=log,
                 )
+                if _is_chatgpt_entry_url(authorize_url):
+                    selector = await _wait_for_any_selector(
+                        page, EMAIL_SELECTORS,
+                        timeout=min(8.0, max(0.1, entry_transition_deadline - time.monotonic())),
+                    )
+                    if selector:
+                        await submit_entry_email(selector, recovery=True)
                 entry_transition_observe_deadline = min(
                     entry_transition_deadline,
                     time.monotonic() + 12.0,

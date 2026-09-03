@@ -751,6 +751,34 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         )
         self.assertEqual(calls, [{"key": "Enter", "no_wait_after": True}])
 
+    def test_email_submit_enter_failure_records_safe_action_category(self):
+        class Locator:
+            first = None
+
+            def __init__(self):
+                self.first = self
+
+            async def press(self, *_args, **_kwargs):
+                raise RuntimeError("Target page, context or browser has been closed")
+
+        class Page:
+            url = "https://auth.openai.com/log-in?token=private"
+
+            def locator(self, _selector):
+                return Locator()
+
+        page = Page()
+        self.assertIsNone(asyncio.run(runtime._submit_visible_form(page, "#entry-email")))
+        self.assertEqual(
+            page._gptphone_email_submit_action_failure,
+            {
+                "action": "enter",
+                "exception_type": "RuntimeError",
+                "category": "browser_process_lost",
+                "safe_page": "https://auth.openai.com/log-in",
+            },
+        )
+
     def test_click_first_uses_one_shared_timeout_for_all_selectors(self):
         wait_timeouts = []
         clock = [0.0]
@@ -921,6 +949,49 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         self.assertEqual(raised.exception.error_code, "camoufox_email_submit_failed")
         self.assertEqual(events, ["confirm", "abort"])
 
+    def test_entry_submit_uncertain_includes_safe_action_evidence(self):
+        stable_result = {
+            "ok": True,
+            "reason": "form_prepared",
+            "form_present": True,
+            "input_selector": "#entry-email",
+            "submit_selector": "#entry-submit",
+        }
+        page = _EntryPage()
+        page._gptphone_email_submit_action_failure = {
+            "action": "enter",
+            "exception_type": "RuntimeError",
+            "category": "browser_process_lost",
+            "safe_page": "https://chatgpt.com/auth/login",
+        }
+        with (
+            patch.object(runtime.asyncio, "sleep", new=AsyncMock()),
+            patch.object(runtime, "_goto_with_retry", new=AsyncMock()),
+            patch.object(runtime, "_wait_for_any_selector", new=AsyncMock(return_value="#entry-email")),
+            patch.object(runtime, "_submit_email_form_stable", new=AsyncMock(return_value=stable_result)),
+            patch.object(runtime, "_click_visible_submit", new=AsyncMock(return_value=False)),
+            patch.object(runtime, "_fill_input_like_user", new=AsyncMock(return_value=True)),
+            patch.object(runtime, "_submit_visible_form", new=AsyncMock(return_value=None)),
+            patch.object(runtime, "_page_state", new=AsyncMock(return_value="entry")),
+        ):
+            with self.assertRaises(runtime.CamoufoxBrowserError) as raised:
+                asyncio.run(
+                    runtime._browser_flow(
+                        page, email="user@example.test", password="password",
+                        otp_callback=lambda: "", config={"registration_timeout_seconds": 60},
+                        log=lambda *_args: None, otp_prepare=Mock(), otp_mark_sent=Mock(),
+                    )
+                )
+
+        self.assertEqual(raised.exception.error_code, "camoufox_email_submit_uncertain")
+        diagnostic = json.loads(raised.exception.diagnostic)
+        self.assertEqual(diagnostic["reason"], "enter_outcome_unknown")
+        self.assertEqual(diagnostic["action"], "enter")
+        self.assertEqual(diagnostic["exception_type"], "RuntimeError")
+        self.assertEqual(diagnostic["failure_category"], "browser_process_lost")
+        self.assertEqual(diagnostic["safe_page"], "https://chatgpt.com/auth/login")
+        self.assertEqual(diagnostic["observed_page_state"], "entry")
+
     def test_entry_submit_exception_does_not_abort_uncertain_confirmation(self):
         stable_result = {
             "ok": True,
@@ -1089,7 +1160,7 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         stable.assert_awaited_once()
         signin.assert_not_awaited()
 
-    def test_same_origin_signin_accepts_only_auth_openai_authority(self):
+    def test_same_origin_signin_accepts_trusted_auth_and_entry_authorities(self):
         class Page:
             def __init__(self, url):
                 self.url = url
@@ -1102,6 +1173,11 @@ class CamoufoxRuntimeTests(unittest.TestCase):
             asyncio.run(runtime._browser_signin_url(Page(trusted), "user@example.test")),
             trusted,
         )
+        entry_shell = "https://chatgpt.com/auth/login?email=user%40example.test"
+        self.assertEqual(
+            asyncio.run(runtime._browser_signin_url(Page(entry_shell), "user@example.test")),
+            entry_shell,
+        )
         self.assertEqual(
             asyncio.run(
                 runtime._browser_signin_url(
@@ -1111,6 +1187,13 @@ class CamoufoxRuntimeTests(unittest.TestCase):
             ),
             "",
         )
+
+    def test_chatgpt_entry_url_classifier_rejects_external_and_other_paths(self):
+        self.assertTrue(runtime._is_chatgpt_entry_url("https://chatgpt.com/auth/login?email=masked"))
+        self.assertTrue(runtime._is_chatgpt_entry_url("https://chatgpt.com/auth/login"))
+        self.assertFalse(runtime._is_chatgpt_entry_url("https://auth.openai.com/authorize/test"))
+        self.assertFalse(runtime._is_chatgpt_entry_url("https://chatgpt.com/"))
+        self.assertFalse(runtime._is_chatgpt_entry_url("https://accounts.google.com/o/oauth2/auth"))
 
     def test_auth_openai_email_shell_is_not_unknown(self):
         class Page(_FakePage):

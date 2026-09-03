@@ -80,7 +80,7 @@ function handleMoreCommand(command: string) {
       :disabled="accountDisabled"
       @command="handleAccountCommand"
     >
-      <el-button :disabled="accountDisabled">
+      <el-button size="small" :disabled="accountDisabled">
         <el-icon v-if="accountLoading" class="is-loading"><Loading /></el-icon>
         <el-icon v-else><Tools /></el-icon>
         账号维护
@@ -122,7 +122,7 @@ function handleMoreCommand(command: string) {
       :disabled="transferDisabled"
       @command="handleTransferCommand"
     >
-      <el-button :disabled="transferDisabled">
+      <el-button size="small" :disabled="transferDisabled">
         <el-icon v-if="transferLoading" class="is-loading"><Loading /></el-icon>
         <el-icon v-else><UploadFilled /></el-icon>
         导出与邮箱
@@ -159,7 +159,7 @@ function handleMoreCommand(command: string) {
       trigger="click"
       @command="handleMoreCommand"
     >
-      <el-button>
+      <el-button size="small">
         <el-icon><MoreFilled /></el-icon>
         更多操作
         <el-icon class="menu-chevron"><ArrowDown /></el-icon>

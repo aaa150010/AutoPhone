@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { CircleCheck, CopyDocument, Delete, Document, Key, Link, Lock, MoreFilled, Refresh, RefreshLeft, RefreshRight, Setting, Tickets, VideoPause, VideoPlay, View, Warning } from '@element-plus/icons-vue'
-import { deleteFreeTasks, freeBatchRetry, getFreeConfig, getFreeMailboxUrl, getFreeSecret, getFreeState, getFreeTaskLatestCode, preflightFree, rerunFreeTask, retryFreePassword, retryFreeTwofa, startFree, startFreePlanCheck, stopFree, type FreeConfig, type FreeState } from '../api/client'
+import { CircleCheck, CircleClose, CopyDocument, Delete, Document, Key, Link, Lock, MoreFilled, Refresh, RefreshLeft, RefreshRight, Setting, Tickets, VideoPause, VideoPlay, View, Warning } from '@element-plus/icons-vue'
+import { closeFreeCamoufoxDebug, deleteFreeTasks, freeBatchRetry, getFreeConfig, getFreeMailboxUrl, getFreeSecret, getFreeState, getFreeTaskLatestCode, preflightFree, rerunFreeTask, retryFreePassword, retryFreeTwofa, startFree, startFreePlanCheck, stopFree, type FreeConfig, type FreeState } from '../api/client'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import ContentEmptyState from '../components/ContentEmptyState.vue'
 import FreeTaskLogDialog from '../components/FreeTaskLogDialog.vue'
@@ -48,7 +48,7 @@ const taskTable = ref<any>()
 const logDialogOpen = ref(false)
 const logDialog = ref<{ refresh: (options?: { forceLatest?: boolean; silent?: boolean }) => Promise<void> }>()
 const loading = ref(false)
-const busy = ref<'preflight' | 'start' | 'stop' | ''>('')
+const busy = ref<'preflight' | 'start' | 'stop' | 'close-debug' | ''>('')
 const planBusy = ref('')
 const openingMailboxUrlTaskIds = ref<string[]>([])
 const loadingLatestCodeTaskIds = ref<string[]>([])
@@ -57,6 +57,7 @@ const quickTargetCount = ref(defaultConfig.target_count)
 const quickConcurrency = ref(defaultConfig.concurrency)
 const quickRunDirty = ref(false)
 const running = computed(() => Boolean(state.value.running))
+const debugWindowsOpen = computed(() => Number(state.value.camoufox_debug?.open_contexts || 0) > 0)
 const nowSeconds = useTaskProgressClock(() => state.value.tasks || [], () => Boolean(state.value.running))
 let timer = 0
 
@@ -234,6 +235,20 @@ async function stop() {
     ElMessage.success('已请求停止 Free 注册')
   } catch (error: any) {
     ElMessage.error(error?.message || '停止 Free 注册失败')
+  } finally {
+    busy.value = ''
+  }
+}
+
+async function closeDebugWindows() {
+  if (!debugWindowsOpen.value || busy.value) return
+  busy.value = 'close-debug'
+  try {
+    const result = await closeFreeCamoufoxDebug()
+    state.value = result.state || state.value
+    ElMessage.success(`已关闭 ${Number(result.closed_contexts || 0)} 个调试窗口`)
+  } catch (error: any) {
+    ElMessage.error(error?.message || '关闭 Camoufox 调试窗口失败')
   } finally {
     busy.value = ''
   }
@@ -714,6 +729,9 @@ onUnmounted(() => window.clearTimeout(timer))
             <el-button size="small" :icon="CircleCheck" :loading="busy === 'preflight'" :disabled="running" @click="preflight">预检</el-button>
             <el-button size="small" type="primary" :icon="VideoPlay" :loading="busy === 'start'" :disabled="running || !Number(state.pool?.available || 0)" @click="start">开始注册</el-button>
             <el-button size="small" type="danger" plain :icon="VideoPause" :loading="busy === 'stop'" :disabled="!running" @click="stop">停止</el-button>
+            <el-tooltip content="关闭保留的 Camoufox 调试窗口" placement="top">
+              <el-button size="small" plain :icon="CircleClose" :loading="busy === 'close-debug'" :disabled="!debugWindowsOpen || Boolean(busy)" aria-label="关闭 Camoufox 调试窗口" @click="closeDebugWindows">关闭调试窗口</el-button>
+            </el-tooltip>
             <el-button size="small" :icon="Setting" @click="emit('navigate', '/settings#free-register')">运行配置</el-button>
           </div>
           <div class="task-filter-bar">

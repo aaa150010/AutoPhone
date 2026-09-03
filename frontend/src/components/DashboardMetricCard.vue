@@ -30,19 +30,19 @@ const numericValue = computed(() => (
     class="metric-card"
     :class="[
       `tone-${tone || 'primary'}`,
-      { compact, framed, active, 'is-interactive': interactive, 'is-numeric': numericValue !== null },
+      { compact, framed, active, 'has-detail': Boolean(detail), 'is-interactive': interactive, 'is-numeric': numericValue !== null },
     ]"
     :aria-pressed="interactive ? active : undefined"
     @click="interactive && emit('activate')"
   >
     <el-icon class="metric-icon"><component :is="icon" /></el-icon>
     <div class="metric-copy">
-      <span>{{ title }}</span>
+      <span :title="title">{{ title }}</span>
       <strong class="metric-value">
         <RollingMetricValue v-if="numericValue !== null" :value="numericValue" />
         <template v-else>{{ value }}</template>
       </strong>
-      <small v-if="detail" class="metric-detail">{{ detail }}</small>
+      <small v-if="detail" class="metric-detail" :title="detail">{{ detail }}</small>
     </div>
   </component>
 </template>
@@ -57,13 +57,19 @@ const numericValue = computed(() => (
 .metric-card.is-interactive:active { transform: translateY(0); }
 @media (prefers-reduced-motion: reduce) { .metric-card.is-interactive { transition: none; } }
 .metric-icon { display: grid; place-items: center; flex: 0 0 28px; width: 28px; height: 28px; border-radius: 5px; font-size: 16px; }
-.metric-copy { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
-.metric-copy > span { overflow: hidden; color: var(--el-text-color-secondary); font-size: 13px; line-height: 18px; text-overflow: ellipsis; white-space: nowrap; }
-.metric-value { display: block; max-width: 100%; overflow: hidden; margin-top: 0; color: #18212f; font-size: 21px; line-height: 24px; font-weight: 720; font-variant-numeric: tabular-nums; letter-spacing: 0; text-overflow: ellipsis; white-space: nowrap; }
-.metric-detail { overflow: hidden; color: var(--el-text-color-secondary); font-size: 11px; line-height: 14px; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.metric-copy { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); grid-template-rows: 27px 14px; column-gap: 7px; align-items: center; flex: 1 1 auto; min-width: 0; overflow: hidden; }
+.metric-copy > span { grid-column: 1; grid-row: 1; min-width: 0; max-width: 100%; overflow: hidden; color: var(--el-text-color-secondary); font-size: 13px; line-height: 18px; text-overflow: ellipsis; white-space: nowrap; }
+.metric-value { grid-column: 2; grid-row: 1; min-width: 0; max-width: 100%; overflow: hidden; margin-top: 0; color: #18212f; font-size: 21px; line-height: 24px; font-weight: 720; font-variant-numeric: tabular-nums; letter-spacing: 0; text-overflow: ellipsis; white-space: nowrap; }
+.metric-detail { grid-column: 1 / -1; grid-row: 2; min-width: 0; max-width: 100%; overflow: hidden; color: var(--el-text-color-secondary); font-size: 11px; line-height: 14px; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.metric-card:not(.has-detail) .metric-copy { display: flex; align-items: center; align-self: stretch; gap: 7px; }
+.metric-card:not(.has-detail) .metric-copy > span,
+.metric-card:not(.has-detail) .metric-value { grid-column: auto; grid-row: auto; }
+.metric-card:not(.has-detail) .metric-copy > span { flex: 0 1 auto; }
+.metric-card:not(.has-detail) .metric-value { flex: 0 0 auto; }
 .metric-card.is-numeric .metric-value { font-size: 24px; line-height: 27px; }
 .metric-card.compact { min-height: 46px; height: 46px; padding: 4px 6px; }
 .metric-card.compact .metric-icon { flex-basis: 24px; width: 24px; height: 24px; font-size: 14px; }
+.metric-card.compact .metric-copy { grid-template-rows: 24px 13px; column-gap: 5px; }
 .metric-card.compact .metric-copy > span { font-size: 12px; line-height: 15px; }
 .metric-card.compact .metric-value { margin-top: 0; font-size: 17px; line-height: 20px; }
 .metric-card.compact.is-numeric .metric-value { font-size: 21px; line-height: 24px; }
