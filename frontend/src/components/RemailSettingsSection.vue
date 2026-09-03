@@ -21,13 +21,13 @@ onMounted(load)
     <div class="section-heading-row"><div><h2 class="section-title">Remail 运行配置</h2><p class="section-hint">配置 Remail API、供应策略和订单同步。运行任务期间不能修改。</p></div><el-button size="small" :icon="Refresh" :loading="loading" @click="load">刷新</el-button></div>
     <el-form label-position="top" class="config-grid" @change="markDirty">
       <el-form-item label="启用 Remail"><el-switch v-model="config.enabled" @change="markDirty" /></el-form-item>
-      <el-form-item label="API Key"><el-input v-model="config.api_key" type="password" show-password placeholder="rk-..." @input="markDirty" /></el-form-item>
-      <el-form-item label="API 地址"><el-input v-model="config.base_url" @input="markDirty" /></el-form-item>
-      <el-form-item label="项目 ID"><el-input v-model="config.project_id" @input="markDirty" /></el-form-item>
-      <el-form-item label="供应策略"><el-select v-model="config.supply_policy" @change="markDirty"><el-option label="私有优先" value="private_first" /><el-option label="仅公开供应" value="public_only" /></el-select></el-form-item>
-      <el-form-item label="请求超时（秒）"><el-input-number v-model="config.request_timeout_seconds" :min="3" :max="120" @change="markDirty" /></el-form-item>
-      <el-form-item label="目录缓存（秒）"><el-input-number v-model="config.catalog_cache_seconds" :min="0" :max="3600" @change="markDirty" /></el-form-item>
-      <el-form-item label="订单自动同步间隔（分钟）"><el-input-number v-model="config.order_sync_interval_minutes" :min="1" :max="1440" @change="markDirty" /></el-form-item>
+      <el-form-item label="API Key"><el-input v-model="config.api_key" size="small" type="password" show-password placeholder="rk-..." @input="markDirty" /></el-form-item>
+      <el-form-item label="API 地址"><el-input v-model="config.base_url" size="small" @input="markDirty" /></el-form-item>
+      <el-form-item label="项目 ID"><el-input v-model="config.project_id" size="small" @input="markDirty" /></el-form-item>
+      <el-form-item label="供应策略"><el-select v-model="config.supply_policy" size="small" @change="markDirty"><el-option label="私有优先" value="private_first" /><el-option label="仅公开供应" value="public_only" /></el-select></el-form-item>
+      <el-form-item label="请求超时（秒）"><el-input-number v-model="config.request_timeout_seconds" size="small" :min="3" :max="120" @change="markDirty" /></el-form-item>
+      <el-form-item label="目录缓存（秒）"><el-input-number v-model="config.catalog_cache_seconds" size="small" :min="0" :max="3600" @change="markDirty" /></el-form-item>
+      <el-form-item label="订单自动同步间隔（分钟）"><el-input-number v-model="config.order_sync_interval_minutes" size="small" :min="1" :max="1440" @change="markDirty" /></el-form-item>
       <el-form-item label="订单同步"><el-switch v-model="config.order_sync_enabled" @change="markDirty" /></el-form-item>
       <el-form-item label="新订单自动导入 Free 池"><el-switch v-model="config.auto_import_new_purchase_orders" @change="markDirty" /></el-form-item>
     </el-form>
@@ -36,5 +36,7 @@ onMounted(load)
 </template>
 
 <style scoped>
-.section-heading-row { display:flex; align-items:center; gap:10px; }.section-heading-row > div:first-child { margin-right:auto; }.section-title { margin:0; font-size:14px; }.section-hint { margin:3px 0 0; color:var(--el-text-color-secondary); font-size:12px; }.config-grid { display:grid; grid-template-columns:repeat(3,minmax(180px,1fr)); gap:0 14px; margin-top:14px; }.config-grid :deep(.el-select),.config-grid :deep(.el-input-number){width:100%;}.settings-actions { display:flex; justify-content:flex-end; margin-top:8px; padding-top:12px; border-top:1px solid var(--workspace-border); }
+.section-heading-row { display:flex; align-items:center; gap:10px; }.section-heading-row > div:first-child { margin-right:auto; }.section-title { margin:0; font-size:14px; }.section-hint { margin:3px 0 0; color:var(--el-text-color-secondary); font-size:12px; }.config-grid { display:grid; grid-template-columns:repeat(4,minmax(150px,220px)); gap:0 10px; margin-top:10px; align-items:start; }.config-grid :deep(.el-input),.config-grid :deep(.el-select),.config-grid :deep(.el-input-number){width:100%;max-width:220px;}.config-grid :deep(.el-input__wrapper),.config-grid :deep(.el-select__wrapper),.config-grid :deep(.el-input-number){min-height:28px;height:28px;}.settings-actions { display:flex; justify-content:flex-end; margin-top:6px; padding-top:10px; border-top:1px solid var(--workspace-border); }
+@media (max-width: 1100px) { .config-grid { grid-template-columns:repeat(3,minmax(150px,220px)); } }
+@media (max-width: 760px) { .config-grid { grid-template-columns:repeat(2,minmax(140px,1fr)); } .config-grid :deep(.el-input),.config-grid :deep(.el-select),.config-grid :deep(.el-input-number) { max-width:none; } }
 </style>

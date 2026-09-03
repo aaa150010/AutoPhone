@@ -342,11 +342,6 @@ export interface FreeMailboxRow {
   has_totp?: boolean
   has_credential?: boolean
   credential_line?: string
-  rebind_email?: string
-  rebind_task_id?: string
-  rebind_status?: string
-  rebind_plan_type?: string
-  rebind_plus_trial_eligible?: boolean
   task_id?: string
   retry_resolved?: boolean | string
   error?: string
@@ -389,7 +384,6 @@ export const setFreeMailboxStatus = (status: 'available' | 'unavailable' | 'draf
 )
 export const getFreeMailboxUrl = (rowId: string) => api<{ ok: true; mailbox_url: string }>('/api/free/mailboxes/url', { row_id: rowId })
 export const getFreeMailboxLatestCode = (rowId: string) => api<{ ok: true; kind: 'email'; code: string; message: string; fetched_at?: number }>('/api/free/mailboxes/latest-code', { row_id: rowId })
-export const getFreeRebindMailboxLatestCode = (rowId: string) => api<{ ok: true; kind: 'email'; code: string; message: string; fetched_at?: number }>('/api/free/rebind/mailboxes/latest-code', { row_id: rowId })
 export const getFreeTaskLatestCode = (taskId: string) => api<{ ok: true; kind: 'email'; code: string; message: string; fetched_at?: number }>('/api/free/tasks/latest-code', { task_id: taskId })
 export const freeBatchRetry = (taskIds: string[]) => api<{ ok: true; accepted: Array<{ task_id: string; retry_task: any }>; accepted_count: number; skipped: Array<{ task_id: string; reason: string }>; skipped_count: number; rejected: Array<{ task_id: string; reason: string }>; rejected_count: number; state?: FreeState }>('/api/free/retry/batch', { task_ids: taskIds })
 export interface FreeLiveCheckState {
@@ -520,84 +514,6 @@ export const getFreeTotp = (ids: { task_id?: string; row_id?: string; task_ids?:
   remaining: number
 }>('/api/free/totp', ids)
 
-export interface FreeRebindMailboxRow {
-  created_at?: number | string
-  row_id: string
-  line_no: number
-  email: string
-  status: string
-  task_id?: string
-  error?: string
-  failure?: TaskFailure | null
-}
-
-export interface FreeRebindSourceRow {
-  row_id: string
-  email: string
-  driver?: string
-  status?: string
-  plan_type?: string
-  plus_trial_eligible?: boolean
-  has_password: boolean
-  has_totp: boolean
-  proxy_masked?: string
-  rebind_email?: string
-  rebind_status?: string
-}
-
-export interface FreeRebindTask {
-  task_id: string
-  source_row_id: string
-  source_email: string
-  target_row_id: string
-  target_email: string
-  new_bound_email?: string
-  status: string
-  stage?: string
-  stage_label?: string
-  created_at?: number
-  updated_at?: number
-  proxy_masked?: string
-  plan_type?: string
-  subscription_plan?: string
-  plus_trial_eligible?: boolean
-  plan_check_status?: string
-  error?: string
-  failure?: TaskFailure | null
-}
-
-export interface FreeRebindState {
-  running: boolean
-  tasks: FreeRebindTask[]
-  sources: FreeRebindSourceRow[]
-  mailboxes: FreeRebindMailboxRow[]
-  summary?: { total?: number; active?: number; success?: number; failed?: number; stopped?: number }
-}
-
-export const getFreeRebindState = () => api<{ ok: true } & FreeRebindState>('/api/free/rebind/state')
-export const getFreeRebindMailboxes = () => api<{ ok: true; pool: 'free_rebind'; rows: FreeRebindMailboxRow[] }>('/api/free/rebind/mailboxes')
-export const getFreeRebindMailboxUrl = (rowId: string) => api<{ ok: true; mailbox_url: string }>('/api/free/rebind/mailboxes/url', { row_id: rowId })
-export const importFreeRebindMailboxes = (poolContent: string) => api<{ ok: true; imported: number; skipped: number; rows: FreeRebindMailboxRow[] }>(
-  '/api/free/rebind/mailboxes/import',
-  { pool_content: poolContent },
-)
-export const deleteFreeRebindMailboxes = (rowIds: string[]) => api<{ ok: true; deleted: number; rows: FreeRebindMailboxRow[] }>(
-  '/api/free/rebind/mailboxes/delete',
-  { row_ids: rowIds },
-)
-export const setFreeRebindMailboxStatus = (status: 'available' | 'unavailable', rowIds: string[]) => api<{ ok: true; updated: number; rows: FreeRebindMailboxRow[] }>(
-  `/api/free/rebind/mailboxes/${status}`,
-  { row_ids: rowIds },
-)
-export const startFreeRebind = (sourceRowId: string, targetRowId: string) => api<{ ok: true; task: FreeRebindTask; state: FreeRebindState }>(
-  '/api/free/rebind/start',
-  { source_row_id: sourceRowId, target_row_id: targetRowId },
-)
-export const retryFreeRebind = (taskId: string) => api<{ ok: true; task: FreeRebindTask; state: FreeRebindState }>(
-  '/api/free/rebind/retry',
-  { task_id: taskId },
-)
-export const stopFreeRebind = () => api<{ ok: true; state: FreeRebindState }>('/api/free/rebind/stop', {})
 export const retryFreeTwofa = (id: string) => api<{ ok: true; task: any; state?: AppState }>(
   '/api/free/2fa/retry',
   { task_id: id, row_id: id },
@@ -765,86 +681,3 @@ export const testEmailNotification = (data: Record<string, any>) => api('/api/no
 export const querySmsBalances = (data: Record<string, any>) => (
   api<{ ok: true; queried_at: number; sms_key_statuses: SmsKeyStatus[] }>('/api/sms/balances', data)
 )
-
-export interface PaymentToolConfig {
-  mode: 'local' | 'manual' | 'cdk' | 'http' | 'pay153' | string
-  workers: number
-  timeout_seconds: number
-  country: string
-  currency: string
-  plan: string
-  channel: string
-  apply_checkout_update: boolean
-  checkout_proxy: string
-  update_proxy: string
-  cdk_base_url: string
-  cdk: string
-  http_endpoint: string
-  http_api_token: string
-  pay153_url: string
-  pay153_headless: boolean
-}
-export interface PaymentTask {
-  task_id: string
-  source: string
-  row_id?: string
-  email?: string
-  mode: string
-  channel: string
-  plan: string
-  country: string
-  currency: string
-  status: string
-  stage: string
-  target_domain?: string
-  confirmed?: boolean
-  created_at?: number
-  updated_at?: number
-  retry_count?: number
-  logs_count?: number
-  result_summary?: { has_result?: boolean; result_kind?: string; result_host?: string }
-  failure?: { node_code?: string; node_label?: string; public_message?: string; retryable?: boolean } | null
-}
-export const getPaymentConfig = () => api<{ ok: true; config: PaymentToolConfig; state: { tasks: PaymentTask[]; summary: Record<string, number> } }>('/api/tools/payment/config')
-export const savePaymentConfig = (config: Partial<PaymentToolConfig>) => api<{ ok: true; config: PaymentToolConfig }>('/api/tools/payment/config', config)
-export const getPaymentTasks = () => api<{ ok: true; tasks: PaymentTask[]; summary: Record<string, number> }>('/api/tools/payment/tasks')
-export const createPaymentTasks = (payload: Record<string, any>) => api<{ ok: true; tasks: PaymentTask[]; requires_confirmation?: boolean }>('/api/tools/payment/tasks', payload)
-export const getPaymentTaskLogs = (taskId: string) => api<{ ok: true; task_id: string; logs: Array<{ time?: number; stage?: string; level?: string; message?: string }> }>(`/api/tools/payment/tasks/${encodeURIComponent(taskId)}/logs`)
-export const confirmPaymentTask = (taskId: string, targetDomain: string) => api<{ ok: true; task?: PaymentTask }>(`/api/tools/payment/tasks/${encodeURIComponent(taskId)}/confirm`, { target_domain: targetDomain })
-export const cancelPaymentTask = (taskId: string) => api<{ ok: true; task?: PaymentTask }>(`/api/tools/payment/tasks/${encodeURIComponent(taskId)}/cancel`, {})
-export const retryPaymentTask = (taskId: string) => api<{ ok: true; task?: PaymentTask }>(`/api/tools/payment/tasks/${encodeURIComponent(taskId)}/retry`, {})
-export const getPaymentSecret = (taskId: string) => api<{ ok: true; value: string }>(`/api/tools/payment/tasks/${encodeURIComponent(taskId)}/secret`)
-
-export interface NetworkProxyRow {
-  created_at?: number | string
-  proxy_id: string
-  fingerprint?: string
-  masked: string
-  scheme: string
-  country: string
-  group: string
-  enabled: boolean
-  status: string
-  latency_ms?: number | null
-  consecutive_failures?: number
-  last_checked_at?: number | null
-  last_failure?: string | null
-}
-export interface NetworkToolGroup {
-  country: string
-  group: string
-  total: number
-  enabled: number
-  available: number
-  leased: number
-  quarantined: number
-  schemes: string[]
-}
-export const getNetworkTools = () => api<{ ok: true; rows: NetworkProxyRow[]; groups: NetworkToolGroup[]; total: number; config: Record<string, any> }>('/api/tools/proxies')
-export const saveNetworkToolsConfig = (config: Record<string, any>) => api<{ ok: true; config: Record<string, any> }>('/api/tools/proxies/config', config)
-export const importNetworkProxies = (payload: { proxy_content: string; country?: string; group?: string; scheme?: string }) => api<{ ok: true; imported: number; skipped: number; rows: NetworkProxyRow[]; groups: NetworkToolGroup[] }>('/api/tools/proxies/import', payload)
-export const importNetworkSubscription = (payload: { subscription_url: string; content: string; country?: string; group?: string }) => api<{ ok: true; subscription_id: string; node_count: number; imported: number; rows: NetworkProxyRow[]; groups: NetworkToolGroup[] }>('/api/tools/proxies/subscriptions', payload)
-export const testNetworkSubscription = (payload: { subscription_id: string; target_url?: string; exit_url?: string }) => api<{ ok: true; tested: boolean; available: boolean; message?: string; proxy_to_target_ms?: number }>('/api/tools/proxies/subscriptions/test', payload)
-export const testNetworkProxy = (payload: { proxy_id: string; mode: 'quick' | 'deep'; target_url?: string; exit_url?: string }) => api<{ ok: true; result?: any; proxy_id?: string; local_to_proxy_ms?: number; proxy_to_target_ms?: number }>('/api/tools/proxies/test', payload)
-export const updateNetworkGroup = (payload: { country: string; group: string; action: string; new_group?: string; enabled?: boolean }) => api<{ ok: true; rows: NetworkProxyRow[]; groups: NetworkToolGroup[] }>('/api/tools/proxies/group', payload)
-export const deleteNetworkGroup = (country: string, group: string) => api<{ ok: true; rows: NetworkProxyRow[]; groups: NetworkToolGroup[] }>('/api/tools/proxies/group/delete', { country, group })

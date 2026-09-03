@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleCheck, CopyDocument, Delete, Download, Refresh, Search, View, Warning } from '@element-plus/icons-vue'
 import {
@@ -12,7 +12,6 @@ import {
   revealMailboxParserSample,
   updateMailboxParserSampleStatus,
 } from '../api/client'
-import PageToolbar from '../components/PageToolbar.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import type { MailboxParserSample, MailboxParserSampleReparse } from '../types/api'
 
@@ -27,9 +26,6 @@ const detail = ref<MailboxParserSample | null>(null)
 const detailOpen = ref(false)
 const rawOpen = ref(false)
 const reparse = ref<MailboxParserSampleReparse | null>(null)
-const health = ref<Record<string, any>>({})
-
-const healthSummary = computed(() => Object.values(health.value).reduce((sum: number, item: any) => sum + Number(item?.samples || 0), 0))
 const statusOptions = [
   { label: '全部状态', value: '' },
   { label: '待处理', value: 'new' },
@@ -67,7 +63,6 @@ async function load() {
     const result = await getMailboxParserSamples({ ...query.value, limit: pageSize, offset: (page.value - 1) * pageSize })
     samples.value = result.samples || []
     total.value = Number(result.total || 0)
-    health.value = result.health || {}
     selected.value = []
   } catch (error: any) { ElMessage.error(error?.message || '解析样本读取失败') } finally { loading.value = false }
 }
@@ -124,7 +119,7 @@ async function removeSelected() {
   try { await ElMessageBox.confirm(`确定删除选中的 ${ids.length} 条解析样本？`, '删除解析样本', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }); await deleteMailboxParserSamples(ids); ElMessage.success('解析样本已删除'); await load() } catch (error: any) { if (!['cancel', 'close', '取消'].includes(String(error))) ElMessage.error(error?.message || '样本删除失败') }
 }
 async function cleanup() {
-  try { const result = await cleanupMailboxParserSamples(); health.value = result.health || {}; await load(); ElMessage.success(`已清理 ${result.deleted || 0} 条过期样本`) } catch (error: any) { ElMessage.error(error?.message || '样本清理失败') }
+  try { const result = await cleanupMailboxParserSamples(); await load(); ElMessage.success(`已清理 ${result.deleted || 0} 条过期样本`) } catch (error: any) { ElMessage.error(error?.message || '样本清理失败') }
 }
 function downloadFixture() {
   if (!detail.value) return
@@ -156,11 +151,11 @@ onMounted(() => { void load() })
 
 <template>
   <div class="sample-page">
-    <PageToolbar title="邮箱解析样本" :status="`${healthSummary} 条样本`" tone="warning">
-      <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
-      <el-button :icon="Warning" @click="cleanup">清理过期</el-button>
-    </PageToolbar>
     <WorkspacePanel title="筛选" :icon="Search" body-padding="normal">
+      <template #actions>
+        <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
+        <el-button :icon="Warning" @click="cleanup">清理过期</el-button>
+      </template>
       <el-form :model="query" inline @submit.prevent="search">
         <el-form-item label="链路"><el-select v-model="query.scope" style="width: 130px"><el-option v-for="item in scopeOptions" :key="item.value" v-bind="item" /></el-select></el-form-item>
         <el-form-item label="状态"><el-select v-model="query.status" style="width: 130px"><el-option v-for="item in statusOptions" :key="item.value" v-bind="item" /></el-select></el-form-item>
@@ -203,7 +198,7 @@ onMounted(() => { void load() })
 </template>
 
 <style scoped>
-.sample-page { display: grid; grid-template-rows: 44px auto minmax(0, 1fr); gap: 7px; width: 100%; height: 100%; min-height: 0; }
+.sample-page { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 7px; width: 100%; height: 100%; min-height: 0; }
 .sample-page :deep(.workspace-panel.is-fill) { min-height: 0; height: 100%; }
 .sample-page :deep(.workspace-panel.is-fill .workspace-panel__body) { min-height: 0; }
 .table-actions, .drawer-actions, .status-actions, .reparse-metrics { display: flex; align-items: center; gap: 8px; }

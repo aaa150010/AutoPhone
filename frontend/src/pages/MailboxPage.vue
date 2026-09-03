@@ -6,6 +6,7 @@ import {
   DataAnalysis,
   MessageBox,
   Search,
+  Upload,
 } from '@element-plus/icons-vue'
 import {
   api,
@@ -23,7 +24,6 @@ import MailboxDraftDialog from '../components/MailboxDraftDialog.vue'
 import MailboxImportDialog from '../components/MailboxImportDialog.vue'
 import MailboxMetrics from '../components/MailboxMetrics.vue'
 import MailboxTable from '../components/MailboxTable.vue'
-import PageToolbar from '../components/PageToolbar.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import { useAppController } from '../composables/useAppController'
 import { useMailboxBatchOperations } from '../composables/useMailboxBatchOperations'
@@ -470,9 +470,6 @@ onUnmounted(() => {
 
 <template>
   <div class="mailbox-page">
-    <PageToolbar title="邮箱管理" status="邮箱池" tone="info">
-      <el-button type="primary" :disabled="mutating || batchBusy" @click="mailboxImportDialog?.open()"><el-icon><Upload /></el-icon>导入邮箱</el-button>
-    </PageToolbar>
     <MailboxMetrics
       :counts="data.counts"
       :active-filter="filter"
@@ -484,6 +481,7 @@ onUnmounted(() => {
     <WorkspacePanel title="邮箱状态" :icon="MessageBox" fill body-padding="none">
       <template #actions>
         <span v-if="selectedRows.length" class="selected-count">已选 {{ selectedRows.length }}</span>
+        <el-tooltip content="导入邮箱" placement="top"><el-button type="primary" :disabled="mutating || batchBusy" :icon="Upload" aria-label="导入邮箱" @click="mailboxImportDialog?.open()" /></el-tooltip>
         <el-input v-model="searchText" class="search-input" clearable placeholder="搜索邮箱、状态、说明" :prefix-icon="Search" />
           <el-select v-model="filter" class="filter-select">
           <el-option label="全部" value="all" />
@@ -593,7 +591,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.mailbox-page { display: grid; grid-template-rows: 44px 78px minmax(0, 1fr); gap: 6px; width: 100%; height: 100%; min-width: 0; min-height: 0; }
+.mailbox-page { display: grid; grid-template-rows: 52px minmax(0, 1fr); gap: 6px; width: 100%; height: 100%; min-width: 0; min-height: 0; }
 .selected-count { color: var(--el-color-primary); font-size: 13px; white-space: nowrap; }
 .search-input { width: 220px; }
 .filter-select { width: 150px; }

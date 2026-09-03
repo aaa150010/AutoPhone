@@ -3,7 +3,6 @@ import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { CircleCheck, CircleClose, Connection, Link, Search } from '@element-plus/icons-vue'
 import { ApiError, testMailboxUrl } from '../api/client'
-import PageToolbar from '../components/PageToolbar.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import type { MailboxUrlTestResult } from '../types/api'
 
@@ -11,7 +10,6 @@ const value = ref('')
 const loading = ref(false)
 const result = ref<MailboxUrlTestResult | null>(null)
 
-const resultTone = computed(() => result.value?.ok ? 'success' : result.value ? 'warning' : 'info')
 const resultLabel = computed(() => result.value?.ok ? '已取到验证码' : result.value ? '未取到验证码' : '待测试')
 const diagnostics = computed(() => result.value?.diagnostics || {
   listing_messages: 0,
@@ -65,15 +63,14 @@ function clearTest() {
 
 <template>
   <div class="url-test-page">
-    <PageToolbar title="URL测试" :status="resultLabel" :tone="resultTone">
-      <el-button :disabled="loading" @click="clearTest"><el-icon><CircleClose /></el-icon>清空</el-button>
-      <el-button type="primary" :loading="loading" :disabled="!value.trim()" @click="runTest">
-        <el-icon><Search /></el-icon>开始测试
-      </el-button>
-    </PageToolbar>
-
     <div class="url-test-grid">
       <WorkspacePanel title="取件地址" :icon="Link" body-padding="normal">
+        <template #actions>
+          <el-button :disabled="loading" @click="clearTest"><el-icon><CircleClose /></el-icon>清空</el-button>
+          <el-button type="primary" :loading="loading" :disabled="!value.trim()" @click="runTest">
+            <el-icon><Search /></el-icon>开始测试
+          </el-button>
+        </template>
         <el-input
           v-model="value"
           type="textarea"
@@ -130,8 +127,8 @@ function clearTest() {
 </template>
 
 <style scoped>
-.url-test-page { display: grid; grid-template-rows: 44px minmax(0, 1fr); gap: 6px; width: 100%; height: 100%; min-width: 0; min-height: 0; }
-.url-test-grid { display: grid; grid-template-columns: minmax(440px, .9fr) minmax(520px, 1.1fr); gap: 7px; min-height: 0; }
+.url-test-page { width: 100%; height: 100%; min-width: 0; min-height: 0; }
+.url-test-grid { display: grid; grid-template-columns: minmax(440px, .9fr) minmax(520px, 1.1fr); gap: 7px; height: 100%; min-height: 0; }
 .url-test-grid :deep(.workspace-panel) { min-height: 0; }
 .url-test-grid :deep(.workspace-panel.is-fill) { height: 100%; }
 .field-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; color: #7b8798; font-size: 12px; }

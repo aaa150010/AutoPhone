@@ -2,17 +2,14 @@
 import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
-import { Connection, Document, Expand, Fold, Link, MessageBox, Monitor, Scissor, Setting, ShoppingCart, Tickets, Tools, Wallet } from '@element-plus/icons-vue'
+import { Document, Expand, Fold, Link, MessageBox, Monitor, Scissor, Setting, ShoppingCart, Tickets, Wallet } from '@element-plus/icons-vue'
 import MailboxPage from '../pages/MailboxPage.vue'
 import FreeMailboxPoolPage from '../pages/FreeMailboxPoolPage.vue'
-import FreeRebindPage from '../pages/FreeRebindPage.vue'
 import FreeRegistrationPage from '../pages/FreeRegistrationPage.vue'
 import MailboxSplitterPage from '../pages/MailboxSplitterPage.vue'
 import UrlMailboxTestPage from '../pages/UrlMailboxTestPage.vue'
 import RunPage from '../pages/RunPage.vue'
 import SettingsPage from '../pages/SettingsPage.vue'
-import PaymentToolsPage from '../pages/PaymentToolsPage.vue'
-import NetworkToolsPage from '../pages/NetworkToolsPage.vue'
 import LogCenterPage from '../pages/LogCenterPage.vue'
 import MailboxParserSamplesPage from '../pages/MailboxParserSamplesPage.vue'
 import RemailPurchasePage from '../pages/RemailPurchasePage.vue'
@@ -23,7 +20,7 @@ import OpenAIConnectivityDiagnosticDialog from './OpenAIConnectivityDiagnosticDi
 const controller = createAppController()
 provide(appControllerKey, controller)
 
-const routes = new Set(['/', '/mailboxes', '/free-register', '/free-mailboxes', '/free-rebind', '/splitter', '/url-test', '/settings', '/payment-tools', '/network-tools', '/logs', '/mailbox-parser-samples', '/remail/purchase', '/remail/orders'])
+const routes = new Set(['/', '/mailboxes', '/free-register', '/free-mailboxes', '/splitter', '/url-test', '/settings', '/logs', '/mailbox-parser-samples', '/remail/purchase', '/remail/orders'])
 const pathFromLocation = () => `${routes.has(window.location.pathname) ? window.location.pathname : '/'}${window.location.search}${window.location.hash}`
 const activePath = ref(routes.has(window.location.pathname) ? window.location.pathname : '/')
 const currentLocation = ref(pathFromLocation())
@@ -112,7 +109,7 @@ onUnmounted(() => {
           <el-tooltip :content="sidebarCollapsed ? '展开菜单' : '收缩菜单'" placement="right"><el-button class="sidebar-toggle" link :icon="sidebarCollapsed ? Expand : Fold" aria-label="收缩或展开左侧菜单" @click="toggleSidebar" /></el-tooltip>
         </div>
 
-        <el-menu :default-active="activePath" :default-openeds="sidebarCollapsed ? [] : ['sms-workspace', 'free-workspace', 'remail-workspace', 'tool-workspace', 'diagnostic-workspace', 'system-settings']" :collapse="sidebarCollapsed" :collapse-transition="false" @select="selectPage">
+        <el-menu :default-active="activePath" :default-openeds="sidebarCollapsed ? [] : ['sms-workspace', 'free-workspace', 'remail-workspace', 'diagnostic-workspace', 'system-settings']" :collapse="sidebarCollapsed" :collapse-transition="false" @select="selectPage">
           <el-sub-menu index="sms-workspace">
             <template #title><el-icon><MessageBox /></el-icon><span>接码工作台</span></template>
             <el-menu-item index="/"><el-icon><Monitor /></el-icon><span>接码运行中心</span></el-menu-item>
@@ -124,17 +121,11 @@ onUnmounted(() => {
             <template #title><el-icon><Setting /></el-icon><span>Free 注册</span></template>
             <el-menu-item index="/free-register"><el-icon><Monitor /></el-icon><span>Free 注册运行</span></el-menu-item>
             <el-menu-item index="/free-mailboxes"><el-icon><Tickets /></el-icon><span>Free 邮箱管理</span></el-menu-item>
-            <el-menu-item index="/free-rebind"><el-icon><Link /></el-icon><span>Free 邮箱换绑</span></el-menu-item>
           </el-sub-menu>
           <el-sub-menu index="remail-workspace">
             <template #title><el-icon><Wallet /></el-icon><span>Remail 管理</span></template>
             <el-menu-item index="/remail/purchase"><el-icon><ShoppingCart /></el-icon><span>Remail 购买</span></el-menu-item>
             <el-menu-item index="/remail/orders"><el-icon><Document /></el-icon><span>Remail 订单查询</span></el-menu-item>
-          </el-sub-menu>
-          <el-sub-menu index="tool-workspace">
-            <template #title><el-icon><Tools /></el-icon><span>支付与网络工具</span></template>
-            <el-menu-item index="/payment-tools"><el-icon><Wallet /></el-icon><span>支付链接工作台</span></el-menu-item>
-            <el-menu-item index="/network-tools"><el-icon><Connection /></el-icon><span>代理与网络工具</span></el-menu-item>
           </el-sub-menu>
           <el-sub-menu index="diagnostic-workspace">
             <template #title><el-icon><Document /></el-icon><span>诊断与审计</span></template>
@@ -154,11 +145,8 @@ onUnmounted(() => {
         <MailboxPage v-else-if="activePath === '/mailboxes'" />
         <FreeRegistrationPage v-else-if="activePath === '/free-register'" @navigate="navigate" />
         <FreeMailboxPoolPage v-else-if="activePath === '/free-mailboxes'" />
-        <FreeRebindPage v-else-if="activePath === '/free-rebind'" />
         <MailboxSplitterPage v-else-if="activePath === '/splitter'" />
         <UrlMailboxTestPage v-else-if="activePath === '/url-test'" />
-        <PaymentToolsPage v-else-if="activePath === '/payment-tools'" />
-        <NetworkToolsPage v-else-if="activePath === '/network-tools'" />
         <LogCenterPage v-else-if="activePath === '/logs'" :location-key="currentLocation" />
         <MailboxParserSamplesPage v-else-if="activePath === '/mailbox-parser-samples'" />
         <RemailPurchasePage v-else-if="activePath === '/remail/purchase'" />

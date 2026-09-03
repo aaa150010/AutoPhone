@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { CircleCheck, Connection, CopyDocument, Delete, Document, Key, Link, Lock, MoreFilled, Refresh, RefreshLeft, RefreshRight, Setting, Tickets, VideoPause, VideoPlay, View, Warning } from '@element-plus/icons-vue'
-import { closeFreeCamoufoxDebug, deleteFreeTasks, freeBatchRetry, getFreeConfig, getFreeMailboxUrl, getFreeSecret, getFreeState, getFreeTaskLatestCode, preflightFree, rerunFreeTask, retryFreePassword, retryFreeTwofa, startFree, startFreePlanCheck, stopFree, type FreeConfig, type FreeState } from '../api/client'
-import PageToolbar from '../components/PageToolbar.vue'
+import { CircleCheck, CopyDocument, Delete, Document, Key, Link, Lock, MoreFilled, Refresh, RefreshLeft, RefreshRight, Setting, Tickets, VideoPause, VideoPlay, View, Warning } from '@element-plus/icons-vue'
+import { deleteFreeTasks, freeBatchRetry, getFreeConfig, getFreeMailboxUrl, getFreeSecret, getFreeState, getFreeTaskLatestCode, preflightFree, rerunFreeTask, retryFreePassword, retryFreeTwofa, startFree, startFreePlanCheck, stopFree, type FreeConfig, type FreeState } from '../api/client'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import ContentEmptyState from '../components/ContentEmptyState.vue'
 import FreeTaskLogDialog from '../components/FreeTaskLogDialog.vue'
@@ -637,16 +636,6 @@ async function refreshPlan(task: any) {
   }
 }
 
-const camoufoxDebug = computed(() => state.value.camoufox_debug || {})
-const camoufoxDebugSessions = computed(() => Array.isArray(camoufoxDebug.value.sessions) ? camoufoxDebug.value.sessions : [])
-const camoufoxDebugCapacity = computed(() => Number(camoufoxDebug.value.capacity || (Number(config.camoufox.pool_size || 0) * Number(config.camoufox.max_contexts_per_browser || 0))))
-const camoufoxDebugBrowserCount = computed(() => Number(camoufoxDebug.value.browser_count || config.camoufox.pool_size || 0))
-const camoufoxDebugUsed = computed(() => Number(camoufoxDebug.value.used ?? camoufoxDebugSessions.value.length))
-const camoufoxDebugAvailable = computed(() => Math.max(0, Number(camoufoxDebug.value.available ?? camoufoxDebugCapacity.value - camoufoxDebugUsed.value)))
-const camoufoxDebugOpenContexts = computed(() => Number(camoufoxDebug.value.open_contexts ?? camoufoxDebugUsed.value))
-const camoufoxDebugClosingContexts = computed(() => Number(camoufoxDebug.value.closing_contexts || 0))
-const camoufoxDebugHeadless = computed(() => typeof camoufoxDebug.value.headless === 'boolean' ? camoufoxDebug.value.headless : (Boolean(config.camoufox.debug_mode) ? false : Boolean(config.camoufox.headless)))
-
 async function copyDebugReference(value: string, label: string) {
   const reference = String(value || '').trim()
   if (!reference) return
@@ -659,17 +648,6 @@ async function copyDebugReference(value: string, label: string) {
     ElMessage.success(`${label}已复制`)
   } catch {
     ElMessage.error(`${label}复制失败`)
-  }
-}
-
-async function closeCamoufoxDebug(sessionId = '') {
-  try {
-    const result = await closeFreeCamoufoxDebug(sessionId)
-    state.value = result.state || state.value
-    ElMessage.success(sessionId ? '调试窗口已关闭' : '调试窗口已全部关闭')
-    await refresh()
-  } catch (error: any) {
-    ElMessage.error(error?.message || '关闭 Camoufox 调试窗口失败')
   }
 }
 
@@ -724,14 +702,9 @@ onUnmounted(() => window.clearTimeout(timer))
 
 <template>
   <div class="free-page">
-    <PageToolbar title="Free 注册中心" :status="running ? '运行中' : '独立链路'" :tone="running ? 'success' : 'info'">
-      <el-tag effect="plain">配置入口：运行配置 &gt; Free 注册运行</el-tag>
-      <el-tag type="success" effect="plain">后端 {{ state.runtime_version }} · OTP {{ state.otp_parser_revision }}</el-tag>
-      <el-button size="small" :icon="Setting" @click="emit('navigate', '/settings#free-register')">打开运行配置</el-button>
-    </PageToolbar>
     <div class="task-view">
-      <WorkspacePanel title="Free 注册任务" :icon="Connection" fill body-padding="none">
-        <div class="task-panel" :class="{ 'has-camoufox-debug': config.driver === 'camoufox' || camoufoxDebugSessions.length }">
+      <WorkspacePanel fill body-padding="none">
+        <div class="task-panel">
           <div class="run-snapshot task-summary"><div><span>可用 Free 邮箱</span><strong class="is-good">{{ Number(state.pool?.available || 0) }}</strong></div><div><span>任务总数</span><strong>{{ taskCounts.total }}</strong></div><div><span>排队 / 运行</span><strong>{{ taskCounts.running }}</strong></div><div><span>成功</span><strong class="is-good">{{ taskCounts.success - taskCounts.partial }}</strong></div><div><span>部分成功</span><strong class="is-warn">{{ taskCounts.partial }}</strong></div><div><span>失败</span><strong class="is-bad">{{ taskCounts.failed }}</strong></div><div><span>待重跑</span><strong class="is-warn">{{ taskCounts.rerun }}</strong></div><div><span>2FA 待重试</span><strong class="is-warn">{{ taskCounts.pending }}</strong></div></div>
           <div class="task-start-bar">
             <el-tag effect="plain">{{ config.driver === 'camoufox' ? 'Camoufox' : '全协议' }}</el-tag>
@@ -741,30 +714,7 @@ onUnmounted(() => window.clearTimeout(timer))
             <el-button size="small" :icon="CircleCheck" :loading="busy === 'preflight'" :disabled="running" @click="preflight">预检</el-button>
             <el-button size="small" type="primary" :icon="VideoPlay" :loading="busy === 'start'" :disabled="running || !Number(state.pool?.available || 0)" @click="start">开始注册</el-button>
             <el-button size="small" type="danger" plain :icon="VideoPause" :loading="busy === 'stop'" :disabled="!running" @click="stop">停止</el-button>
-          </div>
-          <div v-if="config.driver === 'camoufox' || camoufoxDebugSessions.length" class="camoufox-debug-bar">
-            <div class="camoufox-debug-summary">
-              <el-tag type="warning" effect="plain">Camoufox 调试窗口 {{ camoufoxDebugSessions.length }} / {{ camoufoxDebugCapacity || '-' }}</el-tag>
-              <span class="muted">浏览器进程 {{ camoufoxDebugBrowserCount }} · 调试 context {{ camoufoxDebugUsed }} / {{ camoufoxDebugCapacity || '-' }} · 可用 {{ camoufoxDebugAvailable }} · 活动 context {{ camoufoxDebugOpenContexts }}<template v-if="camoufoxDebugClosingContexts"> · 正在关闭 {{ camoufoxDebugClosingContexts }}</template></span>
-              <span v-if="!camoufoxDebugHeadless" class="muted">有头模式</span>
-            </div>
-            <span class="muted">失败页面和安全挑战会保留；超时、取消、成功和浏览器断开会回收。</span>
-            <div v-if="camoufoxDebugSessions.length" class="camoufox-debug-session-list">
-              <div v-for="session in camoufoxDebugSessions" :key="session.session_id" class="camoufox-debug-session">
-                <div class="camoufox-debug-session-info">
-                  <strong>{{ session.task_id || session.session_id }}</strong>
-                  <span>{{ session.node_label || session.error_code || '失败页面' }}<template v-if="session.page_type"> · {{ session.page_type }}</template></span>
-                  <small v-if="session.safe_page" class="task-subline">{{ session.safe_page }}</small>
-                  <small class="task-subline">现场 {{ session.artifact_id || '-' }} · 日志 {{ session.incident_id || '-' }}</small>
-                </div>
-                <div class="camoufox-debug-session-actions">
-                  <el-button v-if="session.artifact_id" text size="small" :icon="CopyDocument" aria-label="复制现场 ID" @click="copyDebugReference(session.artifact_id, '现场 ID')" />
-                  <el-button v-if="session.incident_id" text size="small" :icon="View" aria-label="打开故障日志" @click="openIncidentCenter(session.incident_id)" />
-                  <el-button text size="small" :icon="Delete" aria-label="关闭调试窗口" @click="closeCamoufoxDebug(session.session_id)" />
-                </div>
-              </div>
-            </div>
-            <el-button v-if="camoufoxDebugSessions.length" size="small" type="warning" plain :icon="Delete" @click="closeCamoufoxDebug()">关闭全部调试窗口</el-button>
+            <el-button size="small" :icon="Setting" @click="emit('navigate', '/settings#free-register')">运行配置</el-button>
           </div>
           <div class="task-filter-bar">
             <el-input v-model="taskSearch" size="small" clearable placeholder="搜索邮箱、任务 ID 或失败节点" />
@@ -844,12 +794,11 @@ onUnmounted(() => window.clearTimeout(timer))
 </template>
 
 <style scoped>
-.free-page { display: grid; grid-template-rows: 44px minmax(0, 1fr); gap: 6px; width: 100%; height: 100%; min-width: 0; min-height: 0; }
+.free-page { width: 100%; height: 100%; min-width: 0; min-height: 0; }
 .muted { color: var(--el-text-color-secondary); font-size: 12px; }
 .task-view { min-width: 0; min-height: 0; height: 100%; }
 .task-view :deep(.workspace-panel) { height: 100%; }
 .task-panel { display: grid; grid-template-rows: auto auto auto auto minmax(0, 1fr); gap: 8px; height: 100%; min-height: 0; padding: 10px; }
-.task-panel.has-camoufox-debug { grid-template-rows: auto auto auto auto auto minmax(0, 1fr); }
 .run-snapshot { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--workspace-border); border-radius: var(--workspace-radius); overflow: hidden; }
 .run-snapshot > div { display: grid; grid-template-rows: 18px 22px; align-items: center; min-height: 48px; padding: 5px 10px; background: #f8fafc; }
 .run-snapshot span { color: var(--el-text-color-secondary); font-size: 13px; }
@@ -860,18 +809,6 @@ onUnmounted(() => window.clearTimeout(timer))
 .task-start-bar, .task-filter-bar, .task-actions { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .task-start-bar { min-height: 32px; }
 .task-start-bar .muted { margin-right: auto; }
-.camoufox-debug-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; min-width: 0; padding: 6px 8px; border: 1px solid var(--el-color-warning-light-5); background: var(--el-color-warning-light-9); }
-.camoufox-debug-bar > .muted { margin-right: auto; }
-.camoufox-debug-summary { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
-.camoufox-debug-session-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); flex: 1 1 100%; gap: 4px; min-width: min(100%, 360px); }
-.camoufox-debug-session { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 4px 6px; border: 1px solid var(--el-color-warning-light-7); background: rgb(255 255 255 / 0.55); }
-.camoufox-debug-session-info { display: grid; min-width: 0; margin-right: auto; line-height: 15px; }
-.camoufox-debug-session-info strong, .camoufox-debug-session-info span, .camoufox-debug-session-info small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.camoufox-debug-session-info strong { color: var(--el-text-color-primary); font-size: 11px; }
-.camoufox-debug-session-info span { color: var(--el-color-warning-dark-2); font-size: 11px; }
-.camoufox-debug-session-info .task-subline { max-width: 100%; }
-.camoufox-debug-session-actions { display: inline-flex; align-items: center; flex: 0 0 auto; gap: 2px; }
-.camoufox-debug-session-actions :deep(.el-button) { height: 22px; padding: 0 3px; }
 .quick-run-field { display: inline-flex; align-items: center; gap: 8px; color: var(--el-text-color-regular); font-size: 14px; white-space: nowrap; }
 /* Keep numeric controls compact while preserving Element Plus' native
    keyboard, validation, and spinner behavior. */

@@ -48,25 +48,25 @@ const numericValue = computed(() => (
 </template>
 
 <style scoped>
-.metric-card { display: flex; align-items: center; gap: 11px; width: 100%; min-width: 0; min-height: 78px; padding: 8px 10px; border: 0; background: transparent; color: inherit; font: inherit; letter-spacing: 0; text-align: left; }
-.metric-card.framed { height: 78px; border: 1px solid var(--workspace-border); border-radius: 6px; background: #fff; box-shadow: 0 1px 3px rgba(22, 34, 51, .07); }
+.metric-card { display: flex; align-items: center; gap: 9px; width: 100%; min-width: 0; min-height: 52px; padding: 6px 9px; border: 0; background: transparent; color: inherit; font: inherit; letter-spacing: 0; text-align: left; }
+.metric-card.framed { height: 52px; border: 1px solid var(--workspace-border); border-radius: 6px; background: #fff; box-shadow: 0 1px 3px rgba(22, 34, 51, .07); }
 .metric-card.is-interactive { cursor: pointer; transition: border-color .16s ease, box-shadow .16s ease, background-color .16s ease, transform .16s ease; }
 .metric-card.is-interactive:hover { transform: translateY(-1px); border-color: var(--el-color-primary-light-5); background: var(--el-color-primary-light-9); box-shadow: 0 4px 10px rgba(22, 34, 51, .13); }
 .metric-card.is-interactive:focus-visible { outline: 2px solid var(--el-color-primary-light-5); outline-offset: 2px; }
 .metric-card.is-interactive.active { border-color: var(--el-color-primary); background: var(--el-color-primary-light-9); box-shadow: 0 0 0 1px var(--el-color-primary-light-5), 0 3px 8px rgba(22, 34, 51, .1); }
 .metric-card.is-interactive:active { transform: translateY(0); }
 @media (prefers-reduced-motion: reduce) { .metric-card.is-interactive { transition: none; } }
-.metric-icon { display: grid; place-items: center; flex: 0 0 36px; width: 36px; height: 36px; border-radius: 6px; font-size: 19px; }
+.metric-icon { display: grid; place-items: center; flex: 0 0 28px; width: 28px; height: 28px; border-radius: 5px; font-size: 16px; }
 .metric-copy { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
 .metric-copy > span { overflow: hidden; color: var(--el-text-color-secondary); font-size: 13px; line-height: 18px; text-overflow: ellipsis; white-space: nowrap; }
-.metric-value { display: block; max-width: 100%; overflow: hidden; margin-top: 1px; color: #18212f; font-size: 22px; line-height: 26px; font-weight: 720; font-variant-numeric: tabular-nums; letter-spacing: 0; text-overflow: ellipsis; white-space: nowrap; }
+.metric-value { display: block; max-width: 100%; overflow: hidden; margin-top: 0; color: #18212f; font-size: 21px; line-height: 24px; font-weight: 720; font-variant-numeric: tabular-nums; letter-spacing: 0; text-overflow: ellipsis; white-space: nowrap; }
 .metric-detail { overflow: hidden; color: var(--el-text-color-secondary); font-size: 11px; line-height: 14px; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
-.metric-card.is-numeric .metric-value { font-size: 32px; line-height: 36px; }
-.metric-card.compact { min-height: 58px; padding: 5px; }
-.metric-card.compact .metric-icon { flex-basis: 30px; width: 30px; height: 30px; font-size: 16px; }
+.metric-card.is-numeric .metric-value { font-size: 24px; line-height: 27px; }
+.metric-card.compact { min-height: 46px; height: 46px; padding: 4px 6px; }
+.metric-card.compact .metric-icon { flex-basis: 24px; width: 24px; height: 24px; font-size: 14px; }
 .metric-card.compact .metric-copy > span { font-size: 12px; line-height: 15px; }
-.metric-card.compact .metric-value { margin-top: 0; font-size: 18px; line-height: 22px; }
-.metric-card.compact.is-numeric .metric-value { font-size: 27px; line-height: 30px; }
+.metric-card.compact .metric-value { margin-top: 0; font-size: 17px; line-height: 20px; }
+.metric-card.compact.is-numeric .metric-value { font-size: 21px; line-height: 24px; }
 .tone-primary .metric-icon { background: var(--el-color-primary-light-9); color: var(--el-color-primary); }
 .tone-success .metric-icon { background: var(--el-color-success-light-9); color: var(--el-color-success); }
 .tone-danger .metric-icon { background: var(--el-color-danger-light-9); color: var(--el-color-danger); }

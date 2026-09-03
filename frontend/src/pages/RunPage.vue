@@ -27,7 +27,6 @@ import DashboardMetricCard from '../components/DashboardMetricCard.vue'
 import LogPanel from '../components/LogPanel.vue'
 import MailboxImportDialog from '../components/MailboxImportDialog.vue'
 import OpenAIConnectivityBanner from '../components/OpenAIConnectivityBanner.vue'
-import PageToolbar from '../components/PageToolbar.vue'
 import TaskResultsPanel from '../components/TaskResultsPanel.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import { useAppController } from '../composables/useAppController'
@@ -180,16 +179,6 @@ const metrics = computed(() => [
   },
 ] as const)
 
-const statusLabel = computed(() => {
-  if (controller.runtime.value.sms_safe_stop) return '异常停止'
-  if (controller.runtime.value.stop_requested) return controller.running.value ? '正在停止' : '已停止'
-  return controller.running.value ? '运行中' : '空闲'
-})
-const statusTone = computed(() => controller.runtime.value.sms_safe_stop
-  ? 'danger'
-  : controller.runtime.value.stop_requested
-    ? 'warning'
-    : controller.running.value ? 'success' : 'info')
 async function start() {
   if (controller.dirty.value) {
     emit('navigate', '/settings')
@@ -445,25 +434,9 @@ async function disableConnectivityGuard() {
   <div
     class="run-page"
     :class="{
-      'is-running': controller.running.value && !controller.runtime.value.stop_requested,
-      'is-stopping': controller.runtime.value.stop_requested,
       'has-connectivity-banner': Boolean(connectivityView.banner),
     }"
   >
-    <PageToolbar title="运行中心" :status="statusLabel" :tone="statusTone">
-      <el-button @click="emit('navigate', '/settings')"><el-icon><Setting /></el-icon>运行配置</el-button>
-      <el-button @click="mailboxImportDialog?.open()"><el-icon><Upload /></el-icon>导入邮箱</el-button>
-      <el-tooltip v-if="controller.dirty.value" content="存在未保存配置，请先进入运行配置保存" placement="bottom">
-        <span><el-button type="primary" disabled><el-icon><VideoPlay /></el-icon>开始运行</el-button></span>
-      </el-tooltip>
-      <el-button v-else type="primary" :loading="controller.actions.starting" :disabled="controller.running.value || !controller.hasPool.value" @click="start">
-        <el-icon><VideoPlay /></el-icon>开始运行
-      </el-button>
-      <el-button type="danger" plain :loading="controller.actions.stopping" :disabled="!controller.running.value" @click="stop">
-        <el-icon><VideoPause /></el-icon>停止
-      </el-button>
-    </PageToolbar>
-
     <OpenAIConnectivityBanner
       :view="connectivityView"
       :disabling-guard="controller.actions.updatingConnectivityGuard"
@@ -497,6 +470,15 @@ async function disableConnectivityGuard() {
               <span>运行批次</span>
               <strong>{{ batchId }}</strong>
               <b>已完成 {{ batchCompleted }}/{{ batchTarget }}</b>
+            </div>
+            <div class="run-toolbar-actions">
+              <el-tooltip content="运行配置" placement="top"><el-button size="small" :icon="Setting" aria-label="运行配置" @click="emit('navigate', '/settings')" /></el-tooltip>
+              <el-tooltip content="导入邮箱" placement="top"><el-button size="small" :icon="Upload" aria-label="导入邮箱" @click="mailboxImportDialog?.open()" /></el-tooltip>
+              <el-tooltip v-if="controller.dirty.value" content="存在未保存配置，请先进入运行配置保存" placement="bottom">
+                <span><el-button size="small" type="primary" :icon="VideoPlay" aria-label="开始运行" disabled /></span>
+              </el-tooltip>
+              <el-tooltip v-else content="开始运行" placement="top"><el-button size="small" type="primary" :icon="VideoPlay" :loading="controller.actions.starting" :disabled="controller.running.value || !controller.hasPool.value" aria-label="开始运行" @click="start" /></el-tooltip>
+              <el-tooltip content="停止" placement="top"><el-button size="small" type="danger" plain :icon="VideoPause" :loading="controller.actions.stopping" :disabled="!controller.running.value" aria-label="停止" @click="stop" /></el-tooltip>
             </div>
           </template>
           <TaskResultsPanel
@@ -544,15 +526,15 @@ async function disableConnectivityGuard() {
   --run-red: #b54949;
   --run-red-soft: #fff3f2;
   display: grid;
-  grid-template-rows: 44px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 6px;
   width: 100%;
   height: 100%;
   min-width: 0;
   min-height: 0;
 }
-.run-page.has-connectivity-banner { grid-template-rows: 44px 40px minmax(0, 1fr); }
-.console-grid { display: grid; grid-template-rows: 88px minmax(0, 1fr); gap: 6px; min-width: 0; min-height: 0; }
+.run-page.has-connectivity-banner { grid-template-rows: 40px minmax(0, 1fr); }
+.console-grid { display: grid; grid-template-rows: 52px minmax(0, 1fr); gap: 6px; min-width: 0; min-height: 0; }
 .metrics-row { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; min-width: 0; min-height: 0; }
 .metrics-row :deep(.metric-card) { min-height: 0; height: 100%; }
 .metrics-row :deep(.tone-primary .metric-icon) { background: var(--run-blue-soft); color: var(--run-blue); }
@@ -572,6 +554,8 @@ async function disableConnectivityGuard() {
 .log-resizer:focus-visible::after { left: 2px; width: 3px; background: #4c7fb7; }
 .log-resizer:focus-visible { outline: none; }
 .batch-identity { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.run-toolbar-actions { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.run-toolbar-actions :deep(.el-button + .el-button) { margin-left: 0; }
 .task-summary-tabs { display: grid; grid-template-columns: repeat(3, 120px); align-content: center; justify-content: start; gap: 3px; min-width: 0; }
 .task-summary-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 0; height: 26px; border: 1px solid transparent; border-radius: 4px; padding: 0 8px; background: transparent; color: #586a67; font-size: 12px; font-weight: 600; cursor: pointer; }
 .task-summary-tabs button:hover { background: #edf4f2; color: #0f6b5b; }
@@ -603,18 +587,6 @@ async function disableConnectivityGuard() {
   white-space: nowrap;
 }
 
-.run-page :deep(.page-toolbar) {
-  padding: 0 10px;
-  border: 1px solid #d9e5e1;
-  border-radius: 6px;
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(22, 34, 51, .05);
-}
-.run-page.is-running :deep(.page-toolbar .el-tag--success) {
-  --el-tag-bg-color: var(--run-blue-soft);
-  --el-tag-border-color: #b9ddd4;
-  --el-tag-text-color: var(--run-blue);
-}
 .run-page :deep(.workspace-panel) { border-color: #d9e5e1; box-shadow: 0 1px 4px rgba(25, 75, 65, .05); }
 .run-page :deep(.workspace-panel > .el-card__header) { border-bottom-color: #e1eae7; background: #fafcfb; }
 .run-page :deep(.workspace-panel .panel-title .el-icon) { color: var(--run-blue); }

@@ -56,7 +56,6 @@ const chainOptions = [
   { label: '全部链路', value: '' },
   { label: '普通流程', value: 'ordinary' },
   { label: 'Free 注册', value: 'free' },
-  { label: 'Free 换绑', value: 'free_rebind' },
   { label: '支付', value: 'payment' },
   { label: '网络', value: 'network' },
 ]
@@ -76,7 +75,7 @@ function outcomeType(value: any, status?: any) {
   return 'info'
 }
 function chainLabel(value: any) {
-  return ({ ordinary: '普通流程', free: 'Free', free_rebind: 'Free 换绑', payment: '支付', network: '网络' } as Record<string, string>)[String(value || '')] || String(value || '未知链路')
+  return ({ ordinary: '普通流程', free: 'Free', payment: '支付', network: '网络' } as Record<string, string>)[String(value || '')] || String(value || '未知链路')
 }
 function driverLabel(value: any) {
   const driver = String(value || '').trim().toLowerCase()
@@ -240,10 +239,6 @@ watch(() => props.locationKey, (value, previous) => {
 
 <template>
   <div class="log-center">
-    <div class="page-toolbar">
-      <div><h2>日志中心</h2><span class="subtitle">统一检索普通流程、Free 链路和换绑故障档案</span></div>
-      <div class="toolbar-actions"><el-button :icon="Refresh" :loading="loading" @click="runSearch">刷新</el-button><el-button :icon="Warning" :loading="healthLoading" @click="refreshHealth">健康状态</el-button><el-button type="danger" plain :icon="Delete" :disabled="!incidents.length" @click="clearAll">清空全部</el-button></div>
-    </div>
     <el-card shadow="never" class="search-panel">
       <el-form :model="query" label-position="top" @submit.prevent="runSearch">
         <div class="search-grid">
@@ -263,7 +258,7 @@ watch(() => props.locationKey, (value, previous) => {
     </el-card>
     <div class="health-strip"><span>诊断库：{{ health.incidents ?? '-' }} 条故障 / {{ health.events ?? '-' }} 条事件</span><span :class="health.integrity_failures ? 'health-danger' : 'health-ok'">完整性异常 {{ health.integrity_failures ?? 0 }}</span><span class="health-path">详细事件默认保留 30 天</span></div>
     <el-card shadow="never" class="result-panel">
-      <div class="result-actions"><span>已选 {{ selected.length }} 条</span><el-button size="small" :icon="Delete" type="danger" plain :disabled="!selected.length" @click="deleteSelected">删除选中</el-button></div>
+      <div class="result-actions"><span>已选 {{ selected.length }} 条</span><div class="toolbar-actions"><el-button size="small" :icon="Refresh" :loading="loading" @click="runSearch">刷新</el-button><el-button size="small" :icon="Warning" :loading="healthLoading" @click="refreshHealth">健康状态</el-button><el-button size="small" :icon="Delete" type="danger" plain :disabled="!selected.length" @click="deleteSelected">删除选中</el-button><el-button size="small" type="danger" plain :icon="Delete" :disabled="!incidents.length" @click="clearAll">清空全部</el-button></div></div>
       <el-alert v-if="searchError" class="search-error" type="error" :closable="false" show-icon :title="searchError" />
       <el-table v-else class="incident-table" :data="incidents" v-loading="loading" height="100%" stripe @selection-change="selectRows">
         <el-table-column type="selection" width="46" fixed="left" />
@@ -292,11 +287,9 @@ watch(() => props.locationKey, (value, previous) => {
 </template>
 
 <style scoped>
-.log-center { display: grid; grid-template-rows: auto auto auto minmax(0, 1fr); gap: 8px; width: 100%; height: 100%; min-height: 0; padding: 8px; }
-.page-toolbar, .result-actions, .search-actions, .health-strip, .detail-actions, .incident-id, .event-row { display: flex; align-items: center; }
-.page-toolbar { justify-content: space-between; gap: 12px; min-height: 38px; }
-.page-toolbar h2 { margin: 0; color: var(--el-text-color-primary); font-size: 18px; line-height: 24px; }
-.subtitle, .health-strip, .fact-note, .unknown-note { color: var(--el-text-color-secondary); font-size: 12px; }
+.log-center { display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 8px; width: 100%; height: 100%; min-height: 0; padding: 8px; }
+.result-actions, .search-actions, .health-strip, .detail-actions, .incident-id, .event-row { display: flex; align-items: center; }
+.health-strip, .fact-note, .unknown-note { color: var(--el-text-color-secondary); font-size: 12px; }
 .toolbar-actions, .search-actions, .detail-actions { gap: 8px; }
 .search-panel { border: 1px solid var(--workspace-border); }
 .search-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 12px; }

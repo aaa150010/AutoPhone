@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CopyDocument, Delete, Download, Scissor } from '@element-plus/icons-vue'
-import PageToolbar from '../components/PageToolbar.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import { useMailboxSplitter } from '../composables/useMailboxSplitter'
 import { mailboxSplitFilename } from '../utils/mailboxSplitter'
@@ -48,11 +47,10 @@ async function clearSource() {
 
 <template>
   <div class="splitter-page">
-    <PageToolbar title="邮箱分割器" status="仅本机内存" tone="info">
-      <el-button :disabled="!state.source" @click="clearSource"><el-icon><Delete /></el-icon>清空</el-button>
-    </PageToolbar>
-
     <WorkspacePanel class="source-panel" title="原始数据" :icon="Scissor" fill body-padding="none">
+      <template #actions>
+        <el-button :disabled="!state.source" @click="clearSource"><el-icon><Delete /></el-icon>清空</el-button>
+      </template>
       <el-input
         v-model="state.source"
         class="source-input"
@@ -93,7 +91,7 @@ async function clearSource() {
 </template>
 
 <style scoped>
-.splitter-page { display: grid; grid-template-rows: 44px minmax(210px, 0.8fr) 54px minmax(260px, 1fr); gap: 6px; width: 100%; height: 100%; min-width: 0; min-height: 0; }
+.splitter-page { display: grid; grid-template-rows: minmax(210px, 0.8fr) 54px minmax(260px, 1fr); gap: 6px; width: 100%; height: 100%; min-width: 0; min-height: 0; }
 .source-panel { min-height: 0; }
 .source-input,
 .result-input { width: 100%; height: 100%; }

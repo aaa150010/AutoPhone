@@ -2,10 +2,6 @@
 
 这是一个 macOS 可双击运行的 Element Plus WebUI 工具，包含彼此隔离的“接码工作台”和“Free 注册”两套流程。接码工作台负责 ChatGPT/OpenAI Auth、邮箱取码、必要时手机接码及 SUB2/Pixel/NV 后续处理；Free 注册可选择全协议或 Camoufox，并使用独立邮箱池、代理池、配置、任务、日志和结果。
 
-`1.6.32` 新增“支付与网络工具”分组。支付链接工作台使用 `${GPTPHONE_DATA_DIR}/payment_tools/`，默认优先本地协议提炼，也支持手动粘贴、CDK/SSE、HTTP API 和可选 `pay.153.ink` 浏览器适配器；第三方模式在每批任务启动前显示目标域名、通道和账号数量，必须明确确认，且不会执行支付扣款。支付 Token 不进入任务列表、日志或前端本地存储，最终链接只能通过按需复制读取。
-
-代理与网络工具使用 `${GPTPHONE_DATA_DIR}/network_tools/`，与 Free 代理池和普通代理池完全隔离。支持 HTTP/HTTPS/SOCKS4/SOCKS5/SOCKS5H、Clash/V2Ray 订阅解析、快速测活和深度测活；测活固定使用选中的代理，不换代理、不回退本机代理。订阅节点只有在检测到独立 Mihomo 时才会真实测试，否则明确显示“仅解析、无法真实节点测试”。
-
 支付本地提炼模块来自同级 `codex-auto-register` 项目的 MIT 授权实现，保留来源说明和许可证文件；本项目没有引入其 GPT 浏览器注册主链路。
 
 ## 快速启动

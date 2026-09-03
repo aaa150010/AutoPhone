@@ -2,7 +2,6 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Operation, Setting } from '@element-plus/icons-vue'
-import PageToolbar from '../components/PageToolbar.vue'
 import RunOperationBar from '../components/RunOperationBar.vue'
 import RunStartDialog from '../components/RunStartDialog.vue'
 import SettingsForm from '../components/SettingsForm.vue'
@@ -18,10 +17,6 @@ const freeDirty = ref(false)
 const savingAll = ref(false)
 const dirty = computed(() => controller.dirty.value || freeDirty.value)
 
-const statusLabel = computed(() => controller.running.value
-  ? controller.runtime.value.stop_requested ? '正在停止' : '运行中'
-  : '空闲')
-const statusTone = computed(() => controller.running.value ? 'success' : 'info')
 function messageFor(error: any) {
   return error?.message || String(error || '操作失败')
 }
@@ -143,10 +138,6 @@ onMounted(async () => {
 
 <template>
   <div class="settings-page">
-    <PageToolbar title="运行配置" :status="statusLabel" :tone="statusTone">
-      <el-tag v-if="dirty" type="warning" effect="light">有未保存修改</el-tag>
-    </PageToolbar>
-
     <div class="settings-grid">
       <WorkspacePanel title="配置参数" :icon="Setting" fill body-padding="none">
         <SettingsForm
@@ -198,8 +189,8 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.settings-page { display: grid; grid-template-rows: 44px minmax(0, 1fr); gap: 6px; width: 100%; height: 100%; min-width: 0; min-height: 0; }
-.settings-grid { display: grid; grid-template-columns: minmax(720px, 1fr) 380px; gap: 8px; min-width: 0; min-height: 0; }
+.settings-page { width: 100%; height: 100%; min-width: 0; min-height: 0; }
+.settings-grid { display: grid; grid-template-columns: minmax(720px, 1fr) 380px; gap: 8px; width: 100%; height: 100%; min-width: 0; min-height: 0; }
 .run-snapshot { display: grid; gap: 1px; margin-bottom: 10px; border: 1px solid var(--workspace-border); border-radius: var(--workspace-radius); overflow: hidden; }
 .run-snapshot > div { display: grid; grid-template-columns: 80px minmax(0, 1fr); align-items: center; column-gap: 16px; min-height: 36px; padding: 0 12px; background: #f8fafc; }
 .run-snapshot span { color: var(--el-text-color-secondary); font-size: 13px; }
