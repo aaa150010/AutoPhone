@@ -3755,7 +3755,9 @@ async def _browser_flow(
             timing_fn, "free_camoufox_signup", "camoufox_initial_navigation",
             (time.monotonic() - navigation_started) * 1000, "success",
         )
-        await asyncio.sleep(1.5)
+        # The selector wait below already covers the post-navigation render
+        # delay. Avoid an unconditional sleep when the auth shell is ready
+        # immediately, while retaining the same bounded readiness window.
         form_wait_started = time.monotonic()
         email_selector = await _wait_for_any_selector(page, EMAIL_SELECTORS, timeout=12)
         emit_timing(

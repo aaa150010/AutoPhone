@@ -462,7 +462,9 @@ class CamoufoxRuntimeTests(unittest.TestCase):
             def locator(self, _selector):
                 return Locator()
 
-        clock = [0.0]
+        # Keep the fake monotonic clock away from the runtime's zero-value
+        # "not started" sentinels; production monotonic clocks are non-zero.
+        clock = [100.0]
         events = []
 
         async def fake_sleep(seconds):
@@ -538,7 +540,9 @@ class CamoufoxRuntimeTests(unittest.TestCase):
             def locator(self, _selector):
                 return Locator()
 
-        clock = [0.0]
+        # Keep the fake monotonic clock away from the runtime's zero-value
+        # "not started" sentinels; production monotonic clocks are non-zero.
+        clock = [100.0]
         events = []
 
         async def fake_sleep(seconds):
