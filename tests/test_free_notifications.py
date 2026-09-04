@@ -131,7 +131,8 @@ class FreeNotificationSummaryTests(unittest.TestCase):
         self.assertEqual(summary["total"], 1)
         self.assertEqual(summary["success"], 1)
         self.assertEqual(summary["twofa_pending"], 0)
-        self.assertEqual(summary["duration_ms"], 300)
+        self.assertEqual(summary["average_duration_ms"], 300)
+        self.assertEqual(summary["average_duration_seconds"], 0.3)
         self.assertEqual(summary["emails"], ["a***@example.test"])
         self.assertEqual(summary["incident_ids"], ["LOG-20260827-DEF456"])
         serialized = repr(summary)
@@ -153,7 +154,7 @@ class FreeNotificationSummaryTests(unittest.TestCase):
         self.assertEqual(summary["incident_ids"], [])
         self.assertEqual(summary["emails"], ["<邮箱>"])
 
-    def test_summary_uses_batch_wall_clock_duration_for_concurrent_tasks(self) -> None:
+    def test_summary_uses_average_task_duration_for_concurrent_tasks(self) -> None:
         summary = summarize_free_batch(
             [
                 {"row_id": "row-a", "email": "a@example.test", "status": "success", "created_at": 100, "timing": {"started_at": 100, "finished_at": 112, "elapsed_ms": 12000}},
@@ -161,8 +162,45 @@ class FreeNotificationSummaryTests(unittest.TestCase):
             ],
             batch_id="free-batch-wall",
         )
-        self.assertEqual(summary["duration_ms"], 12000)
-        self.assertEqual(summary["duration_seconds"], 12.0)
+        self.assertEqual(summary["average_duration_ms"], 11000)
+        self.assertEqual(summary["average_duration_seconds"], 11.0)
+
+    def test_batch_email_reports_average_task_duration(self) -> None:
+        sent: list[object] = []
+
+        class FakeSender:
+            def __init__(self, _config: object) -> None:
+                self._settings = SimpleNamespace(
+                    sender="notifier@example.test",
+                    recipients=("ops@example.test",),
+                )
+
+            def _send_message(self, message: object) -> None:
+                sent.append(message)
+
+        config = {
+            "enabled": True,
+            "username": "notifier@example.test",
+            "password": "smtp-secret",
+            "sender": "notifier@example.test",
+            "recipients": ["ops@example.test"],
+        }
+        tasks = [
+            {"row_id": "row-a", "driver": "protocol", "status": "success", "timing": {"elapsed_ms": 10_000}},
+            {"row_id": "row-b", "driver": "protocol", "status": "success", "timing": {"elapsed_ms": 14_000}},
+        ]
+        with patch("mac_overrides.free_notifications.SmtpNotificationSender", FakeSender):
+            adapter = FreeBatchNotificationAdapter(lambda: config)
+            self.assertTrue(adapter.submit(tasks, batch_id="free-average-email"))
+            queue = adapter._queue
+            self.assertIsNotNone(queue)
+            assert queue is not None
+            self.assertTrue(queue.wait_until_idle(timeout=2))
+            adapter.close()
+
+        body = sent[0].get_content()
+        self.assertIn("平均耗时：12.0 秒", body)
+        self.assertNotIn("总耗时", body)
 
 
 if __name__ == "__main__":

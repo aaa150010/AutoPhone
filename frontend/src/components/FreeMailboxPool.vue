@@ -646,7 +646,7 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
             <template #default="{ row }">
               <el-tooltip placement="top" :disabled="!mailboxFailureDetails(row).length">
                 <template #content><div class="failure-tooltip"><span v-for="item in mailboxFailureDetails(row)" :key="item">{{ item }}</span></div></template>
-                <div class="failure-cell"><template v-if="isRetryResolved(row.retry_resolved)"><strong class="resolved-text">已由重试解决</strong></template><template v-else-if="mailboxIsAccountBanned(row)"><strong>{{ ACCOUNT_BANNED_DISPLAY_MESSAGE }}</strong></template><template v-else><strong v-if="mailboxFailureNode(row).label || mailboxFailureNode(row).code">{{ mailboxFailureNode(row).label || mailboxFailureNode(row).code }}<code v-if="mailboxFailureNode(row).showCode">{{ mailboxFailureNode(row).code }}</code></strong><span>{{ mailboxFailureCause(row) }}</span></template></div>
+                <div class="failure-cell"><span class="failure-summary"><template v-if="isRetryResolved(row.retry_resolved)"><strong class="resolved-text">已由重试解决</strong></template><template v-else-if="mailboxIsAccountBanned(row)"><strong>{{ ACCOUNT_BANNED_DISPLAY_MESSAGE }}</strong></template><template v-else><strong v-if="mailboxFailureNode(row).label || mailboxFailureNode(row).code">{{ mailboxFailureNode(row).label || mailboxFailureNode(row).code }}<code v-if="mailboxFailureNode(row).showCode">{{ mailboxFailureNode(row).code }}</code></strong><span>{{ mailboxFailureCause(row) }}</span></template></span></div>
               </el-tooltip>
             </template>
           </el-table-column>
@@ -718,8 +718,9 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
 .table-region :deep(.el-pagination) { justify-content: flex-end; border-top: 1px solid var(--workspace-border); }
 .table-region small { color: var(--el-text-color-secondary); }
 .table-region small { display: block; overflow: hidden; margin-top: 2px; text-overflow: ellipsis; white-space: nowrap; }
-.failure-cell { display: grid; min-width: 0; line-height: 16px; }
-.failure-cell strong, .failure-cell span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.failure-cell { min-width: 0; max-width: 100%; overflow: hidden; line-height: 16px; }
+.failure-summary { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.failure-summary strong, .failure-summary span { white-space: nowrap; }
 .failure-cell strong { color: var(--el-color-danger); font-size: 12px; font-weight: 650; }
 .failure-cell code { margin-left: 5px; color: var(--el-text-color-secondary); font-size: 10px; }
 .failure-cell span { color: var(--el-text-color-regular); font-size: 11px; }

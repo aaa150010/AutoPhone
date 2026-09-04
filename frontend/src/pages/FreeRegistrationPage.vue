@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { CircleCheck, CircleClose, CopyDocument, Delete, Document, Key, Link, Lock, MoreFilled, Refresh, RefreshLeft, RefreshRight, Setting, Tickets, VideoPause, VideoPlay, View, Warning } from '@element-plus/icons-vue'
+import { CircleCheck, CircleClose, CopyDocument, Delete, Document, Key, Link, Lock, MoreFilled, Refresh, RefreshLeft, RefreshRight, Setting, Tickets, VideoPause, VideoPlay, Warning } from '@element-plus/icons-vue'
 import { closeFreeCamoufoxDebug, deleteFreeTasks, freeBatchRetry, getFreeConfig, getFreeMailboxUrl, getFreeSecret, getFreeState, getFreeTaskLatestCode, preflightFree, rerunFreeTask, retryFreePassword, retryFreeTwofa, startFree, startFreePlanCheck, stopFree, type FreeConfig, type FreeState } from '../api/client'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import ContentEmptyState from '../components/ContentEmptyState.vue'
@@ -354,10 +354,6 @@ function automaticOtpRemaining(task: any) {
   return Math.max(0, Math.floor(Number(verification.deadline_at || 0) - nowSeconds.value))
 }
 
-async function copyIncidentId(value: string) {
-  await copyDebugReference(value, '日志 ID')
-}
-
 function openIncidentCenter(value: string) {
   const incidentId = String(value || '').trim()
   if (incidentId) emit('navigate', `/logs?incident_id=${encodeURIComponent(incidentId)}`)
@@ -425,14 +421,6 @@ async function handleTaskAction(command: string, task: any) {
 
 function taskIncidentId(task: any) {
   return String(task?.incident_id || task?.failure?.incident_id || '').trim()
-}
-
-function taskDebugSessionId(task: any) {
-  return String(task?.failure?.debug_session_id || task?.debug_session_id || '').trim()
-}
-
-function taskDebugArtifactId(task: any) {
-  return String(task?.failure?.debug_artifact_id || task?.failure?.artifact_id || task?.debug_artifact_id || task?.artifact_id || '').trim()
 }
 
 function taskPlanLabel(task: any) {
@@ -651,21 +639,6 @@ async function refreshPlan(task: any) {
   }
 }
 
-async function copyDebugReference(value: string, label: string) {
-  const reference = String(value || '').trim()
-  if (!reference) return
-  if (!navigator.clipboard?.writeText) {
-    ElMessage.warning('当前环境不支持复制')
-    return
-  }
-  try {
-    await navigator.clipboard.writeText(reference)
-    ElMessage.success(`${label}已复制`)
-  } catch {
-    ElMessage.error(`${label}复制失败`)
-  }
-}
-
 function taskStatusLabel(status: string) {
   return ({ queued: '排队', running: '运行中', success: '成功', partial_success: '部分成功', failed: '失败', pending_rerun: '待重跑', stopped: '已停止', twofa_pending: '2FA 待重试', account_banned: ACCOUNT_BANNED_DISPLAY_MESSAGE } as Record<string, string>)[status] || status || '-'
 }
@@ -751,8 +724,8 @@ onUnmounted(() => window.clearTimeout(timer))
           <div class="task-actions"><span class="muted">已选 {{ selectedTasks.length }} 个</span><el-button v-if="['success', 'partial_success', 'twofa_pending', 'pending_rerun'].includes(taskStatusFilter)" size="small" type="warning" :icon="Refresh" :disabled="!selectedTasks.some(task => !isHistoricalDriver(task) && (['failed', 'stopped', 'pending_rerun', 'twofa_pending'].includes(String(task.status || '')) || canRetryPassword(task)))" @click="batchRetryCurrentNode">按当前失败节点批量重试</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('token', selectedTasks, 'Token')">复制 Token</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('password', selectedTasks, '密码')">复制密码</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('totp', selectedTasks, 'TOTP')">复制 TOTP</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('credential', selectedTasks, '完整凭据')">复制完整凭据</el-button><el-button size="small" :icon="CopyDocument" :disabled="!filteredTasks.some(task => task.result?.has_access_token)" @click="copyTaskTokens(filteredTasks)">复制当前筛选 Token</el-button><el-button size="small" type="danger" plain :icon="Delete" :disabled="!selectedTasks.length || loading" @click="deleteSelectedTasks">删除选中</el-button><el-button size="small" :icon="Refresh" @click="refresh">刷新任务</el-button></div>
           <el-table ref="taskTable" :data="filteredTasks" row-key="task_id" height="100%" size="small" @selection-change="handleTaskSelection">
             <el-table-column type="selection" width="42" reserve-selection />
-            <el-table-column label="账号" width="184" show-overflow-tooltip><template #default="{ row }"><el-tooltip v-if="row.email" :content="`${String(row.email)}${row.task_id ? ` · 任务 ${row.task_id}` : ''}`" placement="top"><el-button link class="email-copy" :loading="loadingEmailTaskIds.includes(String(row.task_id || ''))" @click.stop="copyTaskEmail(row)"><strong>{{ row.email }}</strong><el-icon v-if="!loadingEmailTaskIds.includes(String(row.task_id || ''))"><CopyDocument /></el-icon></el-button></el-tooltip><span v-else>-</span></template></el-table-column>
-            <el-table-column label="验证码" width="154" align="center"><template #default="{ row }"><TaskVerificationInput v-if="!isHistoricalDriver(row) && row.manual_verification?.can_submit" :task-id="row.task_id" :request="row.manual_verification" :now-seconds="nowSeconds" /><span v-else-if="!isHistoricalDriver(row) && row.mailbox_verification?.phase === 'automatic'" class="automatic-otp-wait">自动取码 <strong>{{ automaticOtpRemaining(row) }}s</strong></span><span v-else class="muted">-</span></template></el-table-column>
+            <el-table-column label="账号" width="160" show-overflow-tooltip><template #default="{ row }"><el-tooltip v-if="row.email" :content="`${String(row.email)}${row.task_id ? ` · 任务 ${row.task_id}` : ''}`" placement="top"><el-button link class="email-copy" :loading="loadingEmailTaskIds.includes(String(row.task_id || ''))" @click.stop="copyTaskEmail(row)"><strong>{{ row.email }}</strong><el-icon v-if="!loadingEmailTaskIds.includes(String(row.task_id || ''))"><CopyDocument /></el-icon></el-button></el-tooltip><span v-else>-</span></template></el-table-column>
+            <el-table-column label="验证码" width="132" align="center"><template #default="{ row }"><TaskVerificationInput v-if="!isHistoricalDriver(row) && row.manual_verification?.can_submit" :task-id="row.task_id" :request="row.manual_verification" :now-seconds="nowSeconds" /><span v-else-if="!isHistoricalDriver(row) && row.mailbox_verification?.phase === 'automatic'" class="automatic-otp-wait">自动取码 <strong>{{ automaticOtpRemaining(row) }}s</strong></span><span v-else class="muted">-</span></template></el-table-column>
             <el-table-column label="链路" min-width="118" show-overflow-tooltip><template #default="{ row }"><el-tooltip :content="taskChainTooltip(row)" placement="top"><div class="task-chain-cell"><el-tag size="small" effect="plain">{{ taskDriverLabel(row.driver) }}</el-tag></div></el-tooltip></template></el-table-column>
             <el-table-column label="阶段" min-width="168" show-overflow-tooltip><template #default="{ row }"><el-tooltip :content="taskStageTooltip(row)" placement="top"><span class="task-stage-cell"><el-tag size="small" effect="light" :type="taskStageType(row)">{{ taskStageLabel(row) }}</el-tag></span></el-tooltip></template></el-table-column>
             <el-table-column label="耗时" min-width="190"><template #default="{ row }"><TaskProgressCell :progress="row.progress" :timing="row.timing" :now-seconds="nowSeconds" :status="row.status" /></template></el-table-column>
@@ -765,19 +738,7 @@ onUnmounted(() => window.clearTimeout(timer))
                 <el-tooltip placement="top" :disabled="!taskFailureDetails(row).length">
                   <template #content><div class="failure-tooltip"><span v-for="item in taskFailureDetails(row)" :key="item">{{ item }}</span></div></template>
                   <div class="failure-cell">
-                    <template v-if="isRetryResolved(row.retry_resolved)"><strong class="resolved-text">已由重试解决</strong></template>
-                    <template v-else-if="taskIsAccountBanned(row)"><strong>{{ ACCOUNT_BANNED_DISPLAY_MESSAGE }}<code>{{ taskFailureNode(row).code || 'account_banned' }}</code></strong></template>
-                    <template v-else>
-                      <strong v-if="taskFailureNode(row).label || taskFailureNode(row).code">{{ taskFailureNode(row).label || taskFailureNode(row).code }}<code v-if="taskFailureNode(row).showCode">{{ taskFailureNode(row).code }}</code></strong>
-                      <span>{{ taskFailureCause(row) }}</span>
-                      <span v-if="taskNeedsExistingPassword(row)" class="failure-action-hint">需补录真实密码后再处理；不会使用注册默认密码</span>
-                    </template>
-                    <small v-if="taskIncidentId(row) || taskDebugSessionId(row) || taskDebugArtifactId(row)" class="task-incident">
-                      <el-button v-if="taskIncidentId(row)" text size="small" :icon="CopyDocument" @click.stop="copyIncidentId(taskIncidentId(row))">日志 ID {{ taskIncidentId(row) }}</el-button>
-                      <el-button v-if="taskIncidentId(row)" text size="small" :icon="View" aria-label="打开故障详情" @click.stop="openIncidentCenter(taskIncidentId(row))" />
-                      <el-button v-if="taskDebugSessionId(row)" text size="small" :icon="CopyDocument" @click.stop="copyDebugReference(taskDebugSessionId(row), '调试会话 ID')">窗口 {{ taskDebugSessionId(row) }}</el-button>
-                      <el-button v-if="taskDebugArtifactId(row)" text size="small" :icon="CopyDocument" @click.stop="copyDebugReference(taskDebugArtifactId(row), '现场 ID')">现场 {{ taskDebugArtifactId(row) }}</el-button>
-                    </small>
+                    <span class="failure-summary"><template v-if="isRetryResolved(row.retry_resolved)"><strong class="resolved-text">已由重试解决</strong></template><template v-else-if="taskIsAccountBanned(row)"><strong>{{ ACCOUNT_BANNED_DISPLAY_MESSAGE }}<code>{{ taskFailureNode(row).code || 'account_banned' }}</code></strong></template><template v-else><strong v-if="taskFailureNode(row).label || taskFailureNode(row).code">{{ taskFailureNode(row).label || taskFailureNode(row).code }}<code v-if="taskFailureNode(row).showCode">{{ taskFailureNode(row).code }}</code></strong><span>{{ taskFailureCause(row) }}</span><span v-if="taskNeedsExistingPassword(row)" class="failure-action-hint">需补录真实密码后再处理；不会使用注册默认密码</span></template></span>
                   </div>
                 </el-tooltip>
               </template>
@@ -879,15 +840,13 @@ onUnmounted(() => window.clearTimeout(timer))
 .email-copy { display: inline-flex; max-width: 100%; min-width: 0; gap: 5px; color: var(--el-text-color-primary); }
 .email-copy strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .email-copy .el-icon { flex: 0 0 auto; color: var(--el-color-primary); }
-.failure-cell { display: grid; min-width: 0; line-height: 16px; }
-.failure-cell strong, .failure-cell span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.failure-cell { min-width: 0; max-width: 100%; overflow: hidden; line-height: 16px; }
+.failure-summary { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.failure-summary strong, .failure-summary span { white-space: nowrap; }
 .failure-cell strong { color: var(--el-color-danger); font-size: 12px; font-weight: 650; }
 .failure-cell code { margin-left: 5px; color: var(--el-text-color-secondary); font-size: 10px; font-weight: 500; }
 .failure-cell span { color: var(--el-text-color-regular); font-size: 11px; }
 .failure-cell .failure-action-hint { color: var(--el-color-warning-dark-2); font-size: 11px; }
-.task-incident { display: flex; align-items: center; min-width: 0; gap: 2px; line-height: 16px; }
-.task-incident .el-button { min-width: 0; padding: 0 2px; color: var(--el-color-primary); font-size: 10px; }
-.task-incident .el-button:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .automatic-otp-wait { display: inline-flex; align-items: center; justify-content: center; gap: 5px; width: 100%; min-width: 0; color: var(--el-text-color-secondary); font-size: 12px; white-space: nowrap; }
 .automatic-otp-wait strong { color: var(--el-color-warning-dark-2); font-variant-numeric: tabular-nums; }
 .failure-tooltip { display: grid; max-width: 520px; gap: 4px; line-height: 18px; }

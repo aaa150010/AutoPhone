@@ -102,8 +102,6 @@ def summarize_free_batch(tasks: Any, *, batch_id: str = "") -> dict[str, Any]:
         safe_batch = ""
     counts = {"total": len(rows), "success": 0, "failed": 0, "partial": 0, "twofa_pending": 0, "stopped": 0}
     total_ms = 0
-    wall_start: int | None = None
-    wall_finish: int | None = None
     slowest: dict[str, Any] | None = None
     first_failure: dict[str, Any] | None = None
     incidents: list[str] = []
@@ -119,21 +117,6 @@ def summarize_free_batch(tasks: Any, *, batch_id: str = "") -> dict[str, Any]:
         try: elapsed = max(0, int(timing.get("elapsed_ms") or 0))
         except (TypeError, ValueError): elapsed = 0
         total_ms += elapsed
-        # Accounts in one batch run concurrently. Use the first-start to
-        # last-finish span for the batch duration, with the summed duration as
-        # a fallback for legacy snapshots without wall-clock markers.
-        try:
-            started = int(timing.get("started_at") or task.get("created_at") or 0)
-        except (TypeError, ValueError):
-            started = 0
-        try:
-            finished = int(timing.get("finished_at") or 0)
-        except (TypeError, ValueError):
-            finished = 0
-        if started > 0:
-            wall_start = started if wall_start is None else min(wall_start, started)
-        if finished > 0:
-            wall_finish = finished if wall_finish is None else max(wall_finish, finished)
         candidate = timing.get("slowest_node") if isinstance(timing.get("slowest_node"), Mapping) else None
         if candidate:
             try: duration = max(0, int(candidate.get("duration_ms") or 0))
@@ -149,17 +132,15 @@ def summarize_free_batch(tasks: Any, *, batch_id: str = "") -> dict[str, Any]:
         email = _mask_email(task.get("email"))
         if email not in emails:
             emails.append(email)
-    batch_duration_ms = total_ms
-    if wall_start is not None and wall_finish is not None and wall_finish >= wall_start:
-        batch_duration_ms = (wall_finish - wall_start) * 1000
+    average_duration_ms = round(total_ms / len(rows)) if rows else 0
     return {
         "batch_id": safe_batch,
         "driver": driver,
         "drivers": driver_codes,
         "chain": chain,
         **counts,
-        "duration_ms": batch_duration_ms,
-        "duration_seconds": round(batch_duration_ms / 1000, 3),
+        "average_duration_ms": average_duration_ms,
+        "average_duration_seconds": round(average_duration_ms / 1000, 3),
         "slowest_node": slowest,
         "first_failure": first_failure,
         "incident_ids": incidents[:20],
@@ -212,7 +193,7 @@ class FreeBatchNotificationAdapter:
             lines = [
                 f"结果：{' ｜ '.join(result_parts)}",
                 f"链路：{chain}",
-                f"总耗时：{summary.get('duration_seconds', 0)} 秒",
+                f"平均耗时：{summary.get('average_duration_seconds', 0)} 秒",
                 f"最慢节点：{slowest.get('label') or '-'} ({int(slowest.get('duration_ms') or 0)} ms)",
                 f"首个失败节点：{failure.get('label') or '-'}",
                 f"脱敏日志 ID：{', '.join(summary.get('incident_ids') or ()) or '-'}",
