@@ -146,6 +146,10 @@ PROFILE_SUBMIT_SELECTORS = (
     "button:has-text('Continue')", "button:has-text('Sign up')",
     "button:has-text('Create account')", "button:has-text('完成')",
 )
+_POST_ENTRY_AUTH_STATES = frozenset({
+    "otp", "otp_wait", "email_verification", "signup_password",
+    "login_password", "profile", "oauth_callback", "home",
+})
 
 
 class CamoufoxDependencyError(FreeRegisterError):
@@ -1361,6 +1365,21 @@ async def _wait_for_any_selector(page: Any, selectors: tuple[str, ...], *, timeo
     return None
 
 
+async def _wait_for_entry_hydration(page: Any, *, timeout: float = 1.5) -> None:
+    """Give the first-party auth shell time to bind its React submit handler.
+
+    The email input can be painted before the auth bundle has installed its
+    delegated submit listener. A native click in that small window reloads
+    ``/auth/login`` instead of starting the OAuth transaction. Keep this
+    bounded grace period only for real browser pages; lightweight test and
+    transport doubles do not expose Playwright's event API and remain
+    immediate.
+    """
+    if not callable(getattr(page, "on", None)):
+        return
+    await asyncio.sleep(max(0.0, min(3.0, float(timeout))))
+
+
 async def _find_visible_selector(page: Any, selectors: tuple[str, ...]) -> str | None:
     for selector in selectors:
         try:
@@ -1805,13 +1824,36 @@ async def _accept_about_you_consents(page: Any, log: Callable[[str, str], None])
 
 
 async def _confirm_birthday(page: Any, log: Callable[[str, str], None], *, timeout: float = 1.0) -> bool:
+    """Confirm the optional birthday modal without delaying every profile.
+
+    The modal is only mounted for some account/profile combinations.  A page
+    with no dialog should return after a short mount grace period; once a
+    dialog exists, retain the reference flow's full bounded wait so a delayed
+    React render is still handled safely.
+    """
     selectors = (
         "[role='dialog'] button:has-text('OK')",
         "[role='dialog'] button:has-text('Confirm')",
         "button:has-text('OK')",
     )
-    deadline = time.monotonic() + max(0.0, float(timeout))
+    budget = max(0.0, float(timeout))
+    deadline = time.monotonic() + budget
+    dialog_probe_deadline = min(deadline, time.monotonic() + min(1.0, budget))
+    dialog_count_supported = True
     while time.monotonic() <= deadline:
+        if dialog_count_supported:
+            try:
+                dialogs = page.locator("[role='dialog']")
+                dialog_count = int(await dialogs.count())
+            except Exception:
+                dialog_count_supported = False
+            else:
+                if dialog_count <= 0:
+                    if time.monotonic() >= dialog_probe_deadline:
+                        return False
+                    remaining_probe = max(0.01, dialog_probe_deadline - time.monotonic())
+                    await asyncio.sleep(min(0.2, remaining_probe))
+                    continue
         for selector in selectors:
             try:
                 locator = page.locator(selector).first
@@ -1833,6 +1875,7 @@ async def _goto_with_retry(
     proxy_retryable: bool,
     attempts: int = 1,
     log: Callable[..., Any] | None = None,
+    accept_usable_entry: bool = True,
 ) -> Any:
     """Navigate like aBaiFreeGPT while retaining AutoPhone's safe errors.
 
@@ -1895,7 +1938,7 @@ async def _goto_with_retry(
                 email_selector = await _wait_for_any_selector(
                     page, EMAIL_SELECTORS, timeout=2,
                 )
-                if email_selector:
+                if email_selector and accept_usable_entry:
                     if callable(log):
                         try:
                             log(
@@ -1925,6 +1968,39 @@ async def _goto_with_retry(
         diagnostic=_navigation_diagnostic(last_error, page) if last_error else "category=navigation_error",
         safe_page=_safe_url(page), page_type="navigation",
     ) from last_error
+
+
+def _is_navigation_timeout_failure(error: BaseException) -> bool:
+    """Return whether a wrapped navigation failure is specifically a timeout."""
+    if getattr(error, "error_code", "") != "camoufox_navigation_failed":
+        return False
+    diagnostic = str(getattr(error, "diagnostic", "") or "").casefold()
+    return "category=navigation_timeout" in diagnostic
+
+
+async def _wait_for_post_entry_auth_state(
+    page: Any,
+    *,
+    timeout: float = 5.0,
+    poll_interval: float = 0.25,
+) -> str:
+    """Confirm a late auth navigation after ``page.goto`` timed out.
+
+    Firefox can finish the redirect and render the auth page while the
+    Playwright navigation promise is still pending. This helper only observes
+    page state; it never clicks, submits, consumes OTP, or rotates a proxy.
+    """
+    deadline = time.monotonic() + max(0.0, float(timeout))
+    state = await _page_state(page)
+    if state == "security" or state in _POST_ENTRY_AUTH_STATES:
+        return state
+    while time.monotonic() < deadline:
+        remaining = max(0.01, deadline - time.monotonic())
+        await asyncio.sleep(max(0.01, min(float(poll_interval), remaining)))
+        state = await _page_state(page)
+        if state == "security" or state in _POST_ENTRY_AUTH_STATES:
+            return state
+    return state
 
 
 async def _response_retry_after(response: Any) -> int:
@@ -2146,6 +2222,7 @@ async def _browser_signin_url(page: Any, email: str) -> str:
             "prompt": "login",
             "ext-oai-did": identifier,
             "screen_hint": "login_or_signup",
+            "login_hint": str(email),
             "state": uuid.uuid4().hex,
         })
 
@@ -2194,11 +2271,11 @@ async def _browser_signin_url(page: Any, email: str) -> str:
         });
         const response = await fetch(
           'https://chatgpt.com/api/auth/signin/openai?' + query.toString(),
-          // Keep the same-origin POST from following the cross-origin auth
-          // redirect inside fetch. Firefox/Camoufox treats that redirect as a
-          // CORS failure; Python constructs the trusted authorize URL after
-          // this transaction is acknowledged.
-          {method: 'POST', credentials: 'include', redirect: 'manual',
+          // Follow the first-party NextAuth redirect like the reference
+          // browser flow. The JSON response contains the server-issued
+          // transaction state; fabricating a fresh state after a manual
+          // redirect can send the browser straight back to /auth/login.
+          {method: 'POST', credentials: 'include', redirect: 'follow',
            headers: {'accept': 'application/json', 'content-type': 'application/x-www-form-urlencoded',
                      'origin': 'https://chatgpt.com', 'referer': 'https://chatgpt.com/'},
            body: body.toString()}
@@ -2224,6 +2301,7 @@ async def _browser_signin_url(page: Any, email: str) -> str:
             prompt: 'login',
             'ext-oai-did': effectiveDeviceId,
             screen_hint: 'login_or_signup',
+            login_hint: email,
             state,
           }).toString();
           authorizeUrl = authorize.toString();
@@ -3458,19 +3536,28 @@ async def _browser_flow(
         )
         return fallback
 
-    async def entry_diagnostic(state: str) -> str:
+    async def entry_diagnostic(
+        state: str,
+        *,
+        navigation_phase: str = "",
+        goto_timeout: bool = False,
+    ) -> str:
         snapshot = await _snapshot(page)
-        return json.dumps({
+        payload = {
             "phase": "entry",
             "submitted": bool(entry_submitted),
             "recovery": entry_recovery,
+            "navigation_phase": navigation_phase or entry_recovery or "state_machine",
+            "goto_timeout": bool(goto_timeout),
+            "observed_page_state": str(state or "unknown"),
             "safe_page": snapshot.get("url"),
             "page_type": state,
             "form_present": bool(entry_form_present),
             "submit_selector": clean(entry_submit_selector, 120),
             "title": sanitize_failure_text(snapshot.get("title"), 160),
             "sensitive_markers": _safe_body_markers(snapshot.get("body")),
-        }, ensure_ascii=False)[:500]
+        }
+        return json.dumps(payload, ensure_ascii=False)[:500]
 
     async def wait_for_state(*states: str, seconds: float = 45.0) -> str:
         grace_remaining = budget_grace_remaining()
@@ -3755,9 +3842,10 @@ async def _browser_flow(
             timing_fn, "free_camoufox_signup", "camoufox_initial_navigation",
             (time.monotonic() - navigation_started) * 1000, "success",
         )
-        # The selector wait below already covers the post-navigation render
-        # delay. Avoid an unconditional sleep when the auth shell is ready
-        # immediately, while retaining the same bounded readiness window.
+        # The selector may be visible before React has installed the auth
+        # shell's delegated submit handler. Match the reference flow's short
+        # hydration grace so the first click cannot become a native reload.
+        await _wait_for_entry_hydration(page)
         form_wait_started = time.monotonic()
         email_selector = await _wait_for_any_selector(page, EMAIL_SELECTORS, timeout=12)
         emit_timing(
@@ -3854,10 +3942,7 @@ async def _browser_flow(
                 "success",
             )
             entry_transition_recorded = True
-        auth_states = {
-            "otp", "otp_wait", "email_verification", "signup_password",
-            "login_password", "profile", "oauth_callback", "home", "security",
-        }
+        auth_states = _POST_ENTRY_AUTH_STATES | {"security"}
         if state in auth_states:
             auth_phase_locked = True
         elif state == "entry" and auth_phase_locked:
@@ -3961,11 +4046,57 @@ async def _browser_flow(
                 remaining = max(0.0, entry_transition_deadline - time.monotonic())
                 if remaining <= 0.0:
                     continue
-                await _goto_with_retry(
-                    page, authorize_url,
-                    timeout_ms=min(timeout * 1000, 90_000, max(1, int(remaining * 1000))),
-                    proxy_retryable=False, log=log,
-                )
+                try:
+                    await _goto_with_retry(
+                        page, authorize_url,
+                        # The ordinary 45s entry budget can have less than a
+                        # second left after its one allowed form recovery.  A
+                        # cross-origin auth document took longer than that in
+                        # the retained production trace, so give only this
+                        # recovery navigation a bounded 15s dispatch window.
+                        timeout_ms=min(
+                            timeout * 1000,
+                            90_000,
+                            max(15_000, int(remaining * 1000)),
+                        ),
+                        proxy_retryable=False,
+                        log=log,
+                        # The previous ChatGPT email form remains in the DOM
+                        # while auth.openai.com is loading.  It is stale state,
+                        # not proof that this navigation is usable.
+                        accept_usable_entry=False,
+                    )
+                except CamoufoxBrowserError as exc:
+                    if not _is_navigation_timeout_failure(exc):
+                        raise
+                    recovered_state = await _wait_for_post_entry_auth_state(
+                        page, timeout=5.0, poll_interval=0.25,
+                    )
+                    if recovered_state == "security":
+                        await _wait_challenge_then_stop(page, timeout=30)
+                        recovered_state = await _page_state(page)
+                    if recovered_state not in _POST_ENTRY_AUTH_STATES:
+                        error_text = await _auth_error_text(page)
+                        raise CamoufoxBrowserError(
+                            "free_camoufox_navigation", "打开 Camoufox 注册页面",
+                            error_text or "邮箱已提交，但 Camoufox 登录入口在限定时间内未跳转",
+                            retryable=False,
+                            error_code="camoufox_entry_transition_timeout",
+                            diagnostic=await entry_diagnostic(
+                                recovered_state,
+                                navigation_phase="same_origin_signin",
+                                goto_timeout=True,
+                            ),
+                            safe_page=_safe_url(page),
+                            page_type=recovered_state,
+                        ) from exc
+                    auth_phase_locked = True
+                    log(
+                        "Camoufox signin 导航等待超时，但页面已进入认证状态，继续状态机",
+                        "warn",
+                        safe_page=_safe_url(page),
+                        page_type=recovered_state,
+                    )
                 if _is_chatgpt_entry_url(authorize_url):
                     selector = await _wait_for_any_selector(
                         page, EMAIL_SELECTORS,

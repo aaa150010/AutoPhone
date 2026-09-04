@@ -236,6 +236,30 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         self.assertEqual(page.locator_instance.click_calls, 0)
         self.assertEqual(page.locator_instance.fill_calls, ["", "25"])
 
+    def test_entry_hydration_grace_is_bounded_and_skipped_for_lightweight_pages(self):
+        class BrowserPage:
+            def on(self, *_args):
+                return None
+
+        class LightweightPage:
+            pass
+
+        clock = [100.0]
+
+        async def fake_sleep(seconds):
+            clock[0] += float(seconds or 0.0)
+
+        with (
+            patch.object(runtime.asyncio, "sleep", side_effect=fake_sleep),
+            patch.object(runtime.time, "monotonic", side_effect=lambda: clock[0]),
+        ):
+            asyncio.run(runtime._wait_for_entry_hydration(BrowserPage(), timeout=1.5))
+            browser_elapsed = clock[0] - 100.0
+            asyncio.run(runtime._wait_for_entry_hydration(LightweightPage(), timeout=1.5))
+
+        self.assertEqual(browser_elapsed, 1.5)
+        self.assertEqual(clock[0] - 100.0, 1.5)
+
     @staticmethod
     def _config(**overrides):
         value = {
@@ -517,6 +541,85 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         # not repeat the full profile-submit duration.
         self.assertEqual(profile_events["profile_async_submit_wait"][2], 1000)
         self.assertEqual(profile_events["profile_home_state_wait"][2], 1000)
+
+    def test_birthday_confirmation_returns_quickly_when_no_modal_is_mounted(self):
+        class Locator:
+            first = None
+
+            def __init__(self):
+                self.first = self
+
+            async def count(self):
+                return 0
+
+            async def is_visible(self, **_kwargs):
+                raise AssertionError("a selector probe should not run without a mounted dialog")
+
+        class Page:
+            def locator(self, _selector):
+                return Locator()
+
+        clock = [100.0]
+
+        async def fake_sleep(seconds):
+            clock[0] += float(seconds or 0.0)
+
+        with (
+            patch.object(runtime.time, "monotonic", side_effect=lambda: clock[0]),
+            patch.object(runtime.asyncio, "sleep", side_effect=fake_sleep),
+        ):
+            confirmed = asyncio.run(
+                runtime._confirm_birthday(Page(), lambda *_args: None, timeout=5.0)
+            )
+
+        self.assertFalse(confirmed)
+        self.assertLessEqual(clock[0] - 100.0, 1.0)
+
+    def test_birthday_confirmation_keeps_waiting_for_a_delayed_modal(self):
+        class Locator:
+            first = None
+
+            def __init__(self, page, selector):
+                self.page = page
+                self.selector = selector
+                self.first = self
+
+            async def count(self):
+                if self.selector == "[role='dialog']":
+                    self.page.dialog_polls += 1
+                    return 0 if self.page.dialog_polls == 1 else 1
+                return 1
+
+            async def is_visible(self, **_kwargs):
+                return self.selector.endswith("OK')")
+
+            async def click(self, **_kwargs):
+                self.page.clicked = True
+
+        class Page:
+            dialog_polls = 0
+            clicked = False
+
+            def locator(self, selector):
+                return Locator(self, selector)
+
+        clock = [100.0]
+
+        async def fake_sleep(seconds):
+            clock[0] += float(seconds or 0.0)
+
+        page = Page()
+        with (
+            patch.object(runtime.time, "monotonic", side_effect=lambda: clock[0]),
+            patch.object(runtime.asyncio, "sleep", side_effect=fake_sleep),
+        ):
+            confirmed = asyncio.run(
+                runtime._confirm_birthday(page, lambda *_args: None, timeout=5.0)
+            )
+
+        self.assertTrue(confirmed)
+        self.assertTrue(page.clicked)
+        self.assertGreaterEqual(clock[0] - 100.0, 0.2)
 
     def test_profile_security_transition_is_not_reported_as_success(self):
         class Locator:
@@ -1209,8 +1312,9 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         self.assertNotIn("chatgpt.com/auth/login", entry_result)
         page = Page(trusted)
         asyncio.run(runtime._browser_signin_url(page, "user@example.test"))
-        self.assertIn("redirect: 'manual'", page.script)
+        self.assertIn("redirect: 'follow'", page.script)
         self.assertIn("effectiveDeviceId", page.script)
+        self.assertIn("login_hint: email", page.script)
         self.assertIn("opaqueredirect", page.script)
         self.assertEqual(page.load_state_calls[0][0], "domcontentloaded")
         self.assertEqual(
@@ -1236,6 +1340,7 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         result = asyncio.run(runtime._browser_signin_url(Page(), "user@example.test"))
         self.assertIn("auth.openai.com/api/accounts/authorize", result)
         self.assertIn("screen_hint=login_or_signup", result)
+        self.assertIn("login_hint=user%40example.test", result)
 
     def test_same_origin_signin_fetch_failure_uses_first_party_authorize_route(self):
         class Page:
@@ -1462,6 +1567,166 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         self.assertNotIn("user@example.test", raised.exception.diagnostic)
         self.assertIn("<邮箱>", raised.exception.diagnostic)
 
+    def test_post_entry_navigation_timeout_accepts_authenticated_states(self):
+        for state in (
+            "email_verification", "otp", "signup_password", "login_password",
+            "profile", "oauth_callback", "home", "security",
+        ):
+            with self.subTest(state=state), patch.object(
+                runtime, "_page_state", new=AsyncMock(return_value=state),
+            ):
+                observed = asyncio.run(
+                    runtime._wait_for_post_entry_auth_state(
+                        _EntryPage(), timeout=0.0, poll_interval=0.25,
+                    )
+                )
+            self.assertEqual(observed, state)
+
+    def test_signin_navigation_timeout_continues_when_email_verification_is_ready(self):
+        class Clock:
+            now = 0.0
+
+        async def fast_sleep(seconds):
+            Clock.now += float(seconds or 0.0)
+
+        stable_result = {
+            "ok": True,
+            "reason": "form_request_submit",
+            "form_present": True,
+            "input_selector": "#entry-email",
+            "submit_selector": "submit",
+        }
+        timeout_error = runtime.CamoufoxBrowserError(
+            "free_camoufox_navigation", "打开 Camoufox 注册页面", "timeout",
+            retryable=False,
+            error_code="camoufox_navigation_failed",
+            diagnostic="category=navigation_timeout; exception_type=TimeoutError; safe_page=https://auth.openai.com/authorize",
+            safe_page="https://auth.openai.com/authorize",
+            page_type="navigation",
+        )
+        challenge = runtime.CamoufoxBrowserError(
+            "free_camoufox_challenge", "等待安全验证", "challenge",
+            error_code="challenge",
+        )
+        page = _EntryPage()
+        otp_mark_sent = Mock()
+        states = ("entry",) * 14 + ("email_verification", "security")
+        with (
+            patch.object(runtime.time, "monotonic", side_effect=lambda: Clock.now),
+            patch.object(runtime.asyncio, "sleep", side_effect=fast_sleep),
+            patch.object(
+                runtime,
+                "_goto_with_retry",
+                new=AsyncMock(side_effect=(None, timeout_error)),
+            ) as goto,
+            patch.object(
+                runtime,
+                "_wait_for_any_selector",
+                new=AsyncMock(side_effect=("#entry-email", "#entry-email", None)),
+            ),
+            patch.object(runtime, "_submit_email_form_stable", new=AsyncMock(return_value=stable_result)) as submit_email,
+            patch.object(runtime, "_click_visible_submit", new=AsyncMock(return_value=False)),
+            patch.object(runtime, "_submit_visible_form", new=AsyncMock(return_value=True)),
+            patch.object(runtime, "_click_exact_button_text", new=AsyncMock(return_value="continue")),
+            patch.object(runtime, "_browser_signin_url", new=AsyncMock(return_value="https://auth.openai.com/authorize/test")) as signin,
+            patch.object(runtime, "_page_state", new=AsyncMock(side_effect=states)),
+            patch.object(runtime, "_auth_error_text", new=AsyncMock(return_value="")),
+            patch.object(runtime, "_wait_challenge_then_stop", new=AsyncMock(side_effect=challenge)) as stop,
+        ):
+            with self.assertRaises(runtime.CamoufoxBrowserError) as raised:
+                asyncio.run(
+                    runtime._browser_flow(
+                        page,
+                        email="user@example.test",
+                        password="password",
+                        otp_callback=lambda: "",
+                        config={"registration_timeout_seconds": 1200},
+                        log=lambda *_args, **_kwargs: None,
+                        otp_prepare=Mock(),
+                        otp_mark_sent=otp_mark_sent,
+                    )
+                )
+
+        self.assertEqual(raised.exception.error_code, "challenge")
+        self.assertEqual(goto.await_count, 2)
+        self.assertGreaterEqual(goto.await_args_list[1].kwargs["timeout_ms"], 15_000)
+        self.assertFalse(goto.await_args_list[1].kwargs["accept_usable_entry"])
+        otp_mark_sent.assert_not_called()
+        signin.assert_awaited_once_with(page, "user@example.test")
+        stop.assert_awaited_once()
+
+    def test_signin_navigation_timeout_stays_non_retryable_when_entry_never_moves(self):
+        class Clock:
+            now = 0.0
+
+        async def fast_sleep(seconds):
+            Clock.now += float(seconds or 0.0)
+
+        stable_result = {
+            "ok": True,
+            "reason": "form_request_submit",
+            "form_present": True,
+            "input_selector": "#entry-email",
+            "submit_selector": "submit",
+        }
+        timeout_error = runtime.CamoufoxBrowserError(
+            "free_camoufox_navigation", "打开 Camoufox 注册页面", "timeout",
+            retryable=False,
+            error_code="camoufox_navigation_failed",
+            diagnostic="category=navigation_timeout; exception_type=TimeoutError; safe_page=https://auth.openai.com/authorize",
+            safe_page="https://auth.openai.com/authorize",
+            page_type="navigation",
+        )
+        page = _EntryPage()
+        states = ("entry",) * 40
+        with (
+            patch.object(runtime.time, "monotonic", side_effect=lambda: Clock.now),
+            patch.object(runtime.asyncio, "sleep", side_effect=fast_sleep),
+            patch.object(
+                runtime,
+                "_goto_with_retry",
+                new=AsyncMock(side_effect=(None, timeout_error)),
+            ),
+            patch.object(
+                runtime,
+                "_wait_for_any_selector",
+                new=AsyncMock(side_effect=("#entry-email", "#entry-email", None)),
+            ),
+            patch.object(runtime, "_submit_email_form_stable", new=AsyncMock(return_value=stable_result)),
+            patch.object(runtime, "_click_visible_submit", new=AsyncMock(return_value=False)),
+            patch.object(runtime, "_submit_visible_form", new=AsyncMock(return_value=True)),
+            patch.object(runtime, "_click_exact_button_text", new=AsyncMock(return_value="continue")),
+            patch.object(runtime, "_browser_signin_url", new=AsyncMock(return_value="https://auth.openai.com/authorize/test")),
+            patch.object(runtime, "_page_state", new=AsyncMock(side_effect=states)),
+            patch.object(runtime, "_auth_error_text", new=AsyncMock(return_value="")),
+            patch.object(runtime, "_snapshot", new=AsyncMock(return_value={
+                "url": "https://auth.openai.com/authorize",
+                "title": "Get started",
+                "body": "email=user@example.test",
+            })),
+        ):
+            with self.assertRaises(runtime.CamoufoxBrowserError) as raised:
+                asyncio.run(
+                    runtime._browser_flow(
+                        page,
+                        email="user@example.test",
+                        password="password",
+                        otp_callback=lambda: "",
+                        config={"registration_timeout_seconds": 1200},
+                        log=lambda *_args, **_kwargs: None,
+                        otp_prepare=Mock(),
+                        otp_mark_sent=Mock(),
+                    )
+                )
+
+        self.assertEqual(raised.exception.error_code, "camoufox_entry_transition_timeout")
+        self.assertFalse(raised.exception.retryable)
+        diagnostic = json.loads(raised.exception.diagnostic)
+        self.assertEqual(diagnostic["navigation_phase"], "same_origin_signin")
+        self.assertTrue(diagnostic["goto_timeout"])
+        self.assertEqual(diagnostic["observed_page_state"], "entry")
+        self.assertEqual(diagnostic["safe_page"], "https://auth.openai.com/authorize")
+
     def test_entry_signin_fallback_failure_does_not_consume_otp(self):
         class Clock:
             now = 0.0
@@ -1584,6 +1849,28 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         )
         self.assertIsNone(result)
         self.assertEqual(len(page.goto_calls), 1)
+
+    def test_recovery_navigation_does_not_accept_stale_entry_form(self):
+        class Error(Exception):
+            pass
+
+        page = _NavigationPage(
+            goto_error=Error("page.goto: Timeout 15000ms exceeded"),
+            email_visible=True,
+        )
+        with self.assertRaises(runtime.CamoufoxBrowserError) as raised:
+            asyncio.run(
+                runtime._goto_with_retry(
+                    page,
+                    "https://auth.openai.com/api/accounts/authorize",
+                    timeout_ms=15000,
+                    proxy_retryable=False,
+                    accept_usable_entry=False,
+                )
+            )
+        self.assertEqual(raised.exception.error_code, "camoufox_navigation_failed")
+        self.assertIn("category=navigation_timeout", raised.exception.diagnostic)
+        self.assertFalse(getattr(raised.exception, "proxy_retryable", True))
 
     def test_navigation_timeout_without_form_keeps_safe_category(self):
         page = _NavigationPage(goto_error=TimeoutError("page.goto: Timeout"))
