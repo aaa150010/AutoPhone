@@ -82,6 +82,20 @@ class SQLiteStorageAdapterTests(unittest.TestCase):
         public = json.dumps(pool.public_rows(), ensure_ascii=False)
         self.assertNotIn("private-service-token", public)
 
+    def test_icloud_remail_order_uses_same_import_contract_as_outlook(self) -> None:
+        pool = SQLiteFreeMailboxPool(self.root)
+        row = pool.import_remail_order({
+            "orderNo": "ord-icloud",
+            "status": "active",
+            "productType": "icloud",
+            "deliveryEmail": "relay@icloud.com",
+            "serviceToken": "icloud-service-token",
+        })
+        self.assertEqual(row["email"], "relay@icloud.com")
+        state = pool._row_state(row["row_id"])
+        self.assertEqual(state["source"], "remail")
+        self.assertEqual(state["service_token"], "icloud-service-token")
+
     def test_expired_remail_mailbox_is_quarantined_before_allocation(self) -> None:
         pool = SQLiteFreeMailboxPool(self.root)
         row = pool.import_remail_order({

@@ -850,6 +850,13 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         key = free_config_store.secret("remail_api_key") if free_config_store is not None else str(rcfg.get("api_key") or "")
         return RemailClient(str(rcfg.get("base_url") or "https://remail.aishop6.com"), key, float(rcfg.get("request_timeout_seconds") or 20))
 
+    def _remail_order_value(value):
+        try:
+            from .remail_api import remail_order_value
+        except ImportError:
+            from remail_api import remail_order_value  # type: ignore[no-redef]
+        return remail_order_value(value)
+
     def api_remail_profile():
         try:
             return module.jsonify(ok=True, profile=_remail_client().profile())
@@ -905,7 +912,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             storage = getattr(getattr(free_manager, "pool", None), "storage", None) if free_manager is not None else None
             items = result if isinstance(result, list) else [result]
             for item in items:
-                order = item.get("order") if isinstance(item, Mapping) and isinstance(item.get("order"), Mapping) else item
+                order = _remail_order_value(item)
                 if isinstance(order, Mapping) and storage is not None:
                     storage.upsert_remail_order(order)
             return module.jsonify(ok=True, result=result)
@@ -923,25 +930,42 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             imported_arg = str(args.get("imported", "false") or "false").strip().lower()
             imported_filter = None if imported_arg in {"", "all", "null"} else imported_arg in {"1", "true", "yes", "on"}
             search = str(args.get("search", "") or "").strip()
-            remote = client.orders(page=page, limit=page_size)
-            items = remote.get("items", []) if isinstance(remote, Mapping) else remote if isinstance(remote, list) else []
             storage = getattr(getattr(free_manager, "pool", None), "storage", None)
-            for item in items:
-                if isinstance(item, Mapping) and storage is not None:
-                    if not item.get("serviceToken") and item.get("orderNo"):
-                        try:
-                            detail = client.order(str(item.get("orderNo")))
-                            if isinstance(detail, Mapping):
-                                item = detail
-                        except Exception:
-                            pass
-                    storage.upsert_remail_order(item)
+            # The Open API is cursor-based.  Pull only enough pages to fill
+            # the requested local page, using a 100-item remote page and no
+            # per-order detail calls.  Details are fetched lazily during
+            # import, where a service token is actually required.
+            target_count = page * page_size
+            after_id = None
+            remote_total = None
+            remote_count = 0
+            seen_cursors = set()
+            for _ in range(100):
+                remote = client.orders(afterId=after_id, limit=100, search=search or None)
+                items = remote.get("items", []) if isinstance(remote, Mapping) else remote if isinstance(remote, list) else []
+                if not isinstance(items, list):
+                    items = []
+                remote_count += len(items)
+                if isinstance(remote, Mapping):
+                    remote_total = remote.get("total")
+                for item in items:
+                    order = _remail_order_value(item)
+                    if order is not None and storage is not None:
+                        storage.upsert_remail_order(order)
+                if storage is None or storage.count_remail_orders(imported=imported_filter, search=search) >= target_count:
+                    break
+                if not isinstance(remote, Mapping) or not remote.get("hasNext"):
+                    break
+                next_after = remote.get("nextAfterId")
+                if next_after in (None, "", after_id) or next_after in seen_cursors:
+                    break
+                seen_cursors.add(next_after)
+                after_id = next_after
             total = storage.count_remail_orders(imported=imported_filter, search=search) if storage is not None else 0
             rows = storage.list_remail_orders(imported=imported_filter, search=search, public=True, limit=page_size, offset=(page - 1) * page_size) if storage is not None else []
-            remote_total = remote.get("total") if isinstance(remote, Mapping) else None
-            if isinstance(remote_total, int) and not search:
+            if isinstance(remote_total, int) and imported_filter is None and not search:
                 total = remote_total
-            return module.jsonify(ok=True, orders=rows, remote_count=len(items), total=total, page=page, page_size=page_size, has_more=(page * page_size < total))
+            return module.jsonify(ok=True, orders=rows, remote_count=remote_count, total=total, page=page, page_size=page_size, has_more=(page * page_size < total))
         except Exception as exc:
             return free_error_response(exc, default_code="free_remail_orders", default_label="同步 Remail 订单")
 
@@ -956,6 +980,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         if storage is None or pool is None:
             return module.jsonify(ok=False, error="Free 存储尚未初始化"), 503
         try:
+            client = _remail_client()
             for order in storage.list_remail_orders(public=False):
                 if order_nos and order.get("order_no") not in order_nos:
                     continue
@@ -965,8 +990,19 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                 if str(order.get("status") or "").lower() not in {"paid", "active", "completed"}:
                     skipped.append({"order_no": order.get("order_no"), "reason": "订单尚未激活"})
                     continue
-                row = pool.import_remail_order(order)
-                imported.append({"order_no": order.get("order_no"), "row_id": row.get("row_id")})
+                try:
+                    payload = order.get("payload") if isinstance(order.get("payload"), Mapping) else {}
+                    has_token = any(str(payload.get(key) or "").strip() for key in ("serviceToken", "service_token"))
+                    if not has_token:
+                        detail = _remail_order_value(client.order(str(order.get("order_no") or "")))
+                        if detail is not None:
+                            storage.upsert_remail_order(detail)
+                            order = dict(order)
+                            order.update(detail)
+                    row = pool.import_remail_order(order)
+                    imported.append({"order_no": order.get("order_no"), "row_id": row.get("row_id")})
+                except Exception as exc:
+                    skipped.append({"order_no": order.get("order_no"), "reason": _safe_free_message(exc) or "订单凭证不可用"})
             return module.jsonify(ok=True, imported=imported, skipped=skipped, rows=pool.public_rows())
         except Exception as exc:
             return free_error_response(exc, default_code="free_remail_import", default_label="导入 Remail 订单")

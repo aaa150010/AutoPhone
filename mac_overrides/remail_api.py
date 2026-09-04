@@ -22,6 +22,18 @@ _REMAIL_EXPIRY_KEYS = frozenset({
 })
 
 
+def remail_order_value(value: Any) -> dict[str, Any] | None:
+    """Return one order object from the documented or wrapped response shape."""
+    if not isinstance(value, Mapping):
+        return None
+    candidate = value.get("order")
+    if isinstance(candidate, Mapping) and not (
+        value.get("orderNo") or value.get("order_no")
+    ):
+        value = candidate
+    return dict(value)
+
+
 def remail_pickup_url(base_url: str, email: str, service_token: str) -> str:
     """Build the browser-openable, service-token-scoped pickup URL."""
     address = str(email or "").strip()
@@ -160,9 +172,19 @@ class RemailClient:
         return self._request("GET", "/v1/open/wallet")
 
     def orders(self, **query: Any) -> Any:
-        query.setdefault("serviceMode", "purchase")
-        query.setdefault("limit", 50)
-        return self._request("GET", "/v1/open/orders", query=query)
+        # Remail uses cursor pagination.  Accept the old UI aliases only as a
+        # compatibility shim, but never send the undocumented ``page`` key.
+        normalized = dict(query)
+        normalized.pop("page", None)
+        legacy_page_size = normalized.pop("page_size", None)
+        if legacy_page_size is not None and "limit" not in normalized:
+            normalized["limit"] = legacy_page_size
+        legacy_after_id = normalized.pop("after_id", None)
+        if legacy_after_id is not None and "afterId" not in normalized:
+            normalized["afterId"] = legacy_after_id
+        normalized.setdefault("serviceMode", "purchase")
+        normalized.setdefault("limit", 50)
+        return self._request("GET", "/v1/open/orders", query=normalized)
 
     def order(self, order_no: str) -> Any:
         return self._request("GET", f"/v1/open/orders/{str(order_no).strip()}")
@@ -196,6 +218,6 @@ class RemailClient:
 
 
 __all__ = [
-    "RemailApiError", "RemailClient", "remail_pickup_url", "remail_expiry_timestamp",
+    "RemailApiError", "RemailClient", "remail_order_value", "remail_pickup_url", "remail_expiry_timestamp",
     "remail_order_expired",
 ]
