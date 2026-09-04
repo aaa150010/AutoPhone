@@ -6573,6 +6573,47 @@ def shutdown_camoufox_pools(*, force: bool = False) -> dict[str, int]:
         return _shutdown_camoufox_pools_locked(force=force)
 
 
+def _force_close_idle_camoufox_pools() -> dict[str, int]:
+    """Retry shutdown for pools that are provably idle after debug close.
+
+    The regular non-forced shutdown preserves active registrations and open
+    inspection windows.  A pool can still refuse that first shutdown while its
+    event-loop thread is finishing a previous cleanup.  Once the close request
+    has released every debug hold, retry only pools with no active contexts or
+    debug sessions so the browser process cannot be left behind; active work
+    remains protected by the same checks as the normal path.
+    """
+    with _POOL_LIFECYCLE_LOCK:
+        with _POOL_LOCK:
+            pools = list(_POOLS.items())
+        closed = 0
+        retained = 0
+        for key, pool in pools:
+            try:
+                if bool(getattr(pool, "has_debug_sessions", lambda: False)()):
+                    retained += 1
+                    continue
+                if bool(getattr(pool, "has_active_contexts", lambda: False)()):
+                    retained += 1
+                    continue
+                try:
+                    result = pool.shutdown(force=True)
+                except TypeError:
+                    result = pool.shutdown()
+                if result is not False:
+                    closed += 1
+                    with _POOL_LOCK:
+                        if _POOLS.get(key) is pool:
+                            _POOLS.pop(key, None)
+                else:
+                    retained += 1
+            except Exception:
+                retained += 1
+        with _POOL_LOCK:
+            retained = max(retained, len(_POOLS))
+        return {"closed_pools": closed, "retained_pools": retained}
+
+
 def camoufox_debug_state(config: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Return a secret-free aggregate of retained headed debug contexts.
 
@@ -6715,6 +6756,13 @@ def close_camoufox_debug_browsers(
             except Exception:
                 continue
     result = shutdown_camoufox_pools(force=False)
+    # A normal close may race a pool thread that is finishing an earlier
+    # teardown and return without closing its manager. Retry only idle pools;
+    # never force-close a pool with active work or another retained window.
+    idle_retry = _force_close_idle_camoufox_pools()
+    result["forced_idle_pools"] = int(idle_retry.get("closed_pools") or 0)
+    result["closed_pools"] = int(result.get("closed_pools") or 0) + result["forced_idle_pools"]
+    result["retained_pools"] = int(idle_retry.get("retained_pools") or 0)
     result["closed_contexts"] = closed_contexts
     remaining = camoufox_debug_state(config)
     result["retained_contexts"] = int(remaining.get("open_contexts") or 0)

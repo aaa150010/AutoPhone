@@ -3505,6 +3505,64 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         self.assertEqual(result["remaining_contexts"], 0)
         self.assertEqual(result["retained_pools"], 0)
 
+    def test_close_debug_helper_retries_idle_pool_shutdown_without_touching_active_pool(self):
+        class FakePool:
+            def __init__(self, *, active=False):
+                self._debug = True
+                self._active = active
+                self.shutdown_calls = []
+
+            def has_debug_sessions(self):
+                return self._debug
+
+            def has_active_contexts(self):
+                return self._active
+
+            def close_debug_sessions(self, _session_id=""):
+                self._debug = False
+                return 1
+
+            def shutdown(self, *, force=False):
+                self.shutdown_calls.append(bool(force))
+                if not force:
+                    return False
+                self._debug = False
+                return True
+
+            def debug_state(self):
+                return {
+                    "enabled": True,
+                    "headless": False,
+                    "capacity": 1,
+                    "used": 1 if self._active else 0,
+                    "open_contexts": 0,
+                    "sessions": [],
+                }
+
+        config = self._config(debug_mode=True, headless=False, pool_size=1, max_contexts_per_browser=1)
+        idle = FakePool()
+        active = FakePool(active=True)
+        idle_key = runtime._camoufox_pool_key(config)
+        active_config = dict(config, context_start_interval_ms=1)
+        active_key = runtime._camoufox_pool_key(active_config)
+        with runtime._POOL_LOCK:
+            previous = dict(runtime._POOLS)
+            runtime._POOLS.clear()
+            runtime._POOLS[idle_key] = idle
+            runtime._POOLS[active_key] = active
+        try:
+            result = runtime.close_camoufox_debug_browsers(config=config)
+        finally:
+            with runtime._POOL_LOCK:
+                runtime._POOLS.clear()
+                runtime._POOLS.update(previous)
+
+        self.assertEqual(idle.shutdown_calls, [False, True])
+        self.assertEqual(active.shutdown_calls, [])
+        self.assertEqual(result["forced_idle_pools"], 1)
+        self.assertEqual(result["closed_pools"], 1)
+        self.assertEqual(result["retained_pools"], 1)
+
     def test_runner_uses_the_shared_mailbox_provider_and_normalizes_result(self):
         mailbox = Mock()
         pool = Mock()
