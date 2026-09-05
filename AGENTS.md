@@ -6,7 +6,7 @@ GPT 注册中心（gptPhone）是 macOS 本地 Flask + Vue 3/Element Plus 应用
 
 ## 最高优先级：按参考项目实现
 
-Free 只保留 `protocol` 和 `camoufox` 两条新建链路。协议链路必须以同级项目 `/Users/lwh/projects/New_V1.11.18_win` 为第一行为基准；该 Windows 项目的 `browser_flow/runner/src/`、`register_runner.js` 和可观察运行阶段优先于旧的 Python 对照。`/Users/lwh/projects/AutoRegister` 仅作为 Windows 包未覆盖部分的补充协议对照，不得用其推测覆盖 Windows 包已有行为。Camoufox 链路必须以 `/Users/lwh/projects/aBaiFreeGPT` 为行为基准；会话建立、网络预检、匿名预热、OAuth/登录页面状态机、Sentinel、代理池分配、邮箱提交后的分支、OTP 页面、资料页、consent、OAuth 回调、Session 刷新、2FA、结果持久化、失败清理、`connection_info` 对账和结构化诊断都按相应参考实现的调用顺序执行。只允许在 transport adapter 层保留 HTTP 与异步浏览器的实现差异。
+Free 只保留 `protocol` 和 `camoufox` 两条新建链路。协议链路必须以同级项目 `/Users/lwh/projects/New_V1.11.18_win` 为第一行为基准；该 Windows 项目的 `browser_flow/runner/src/`、`register_runner.js` 和可观察运行阶段优先于旧的 Python 对照。`/Users/lwh/projects/AutoRegister` 仅作为 Windows 包未覆盖部分的补充协议对照，`/Users/lwh/projects/any-auto-register` 作为协议细节的最后补充对照，均不得用其推测覆盖 Windows 包已有行为。Camoufox 链路必须以 `/Users/lwh/projects/aBaiFreeGPT` 为行为基准；会话建立、网络预检、匿名预热、OAuth/登录页面状态机、Sentinel、代理池分配、邮箱提交后的分支、OTP 页面、资料页、consent、OAuth 回调、Session 刷新、2FA、结果持久化、失败清理、`connection_info` 对账和结构化诊断都按相应参考实现的调用顺序执行。只允许在 transport adapter 层保留 HTTP 与异步浏览器的实现差异。
 
 Free 代理池是两条链路共用的单一 `healthy_random` 池：不按国家或代理组筛选、分配或展示，允许并发任务共享同一代理和出口 IP。代理预检只验证实际代理请求、HTTP 成功状态和出口 IP 格式；任务期间出口 IP 变化必须更新当前记录并继续健康任务，不得产生新的 `free_proxy_drift` 停止节点。历史国家/分组字段只能迁移为空，不能恢复为分配策略。
 
@@ -19,6 +19,8 @@ Free 账号换绑统一使用纯协议链路：无论账号来自哪条历史注
 - 协议注册第一基准：`/Users/lwh/projects/New_V1.11.18_win`（重点查看 `browser_flow/runner/src/browserService.js`、`browser_flow/runner/register_runner.js`、`browser_flow/runner/src/protocolCapture.js` 和包内测试）。
 - protocol 当前注册入口必须按同一 HTTP session 执行 `providers → csrf → signin/openai(screen_hint=login_or_signup) → auth authorize → email OTP → about_you → create_account → ChatGPT callback → /api/auth/session accessToken`；已返回可识别 OTP/资料页时不得重复提交邮箱，手机号页只停止并不得调用接码平台。
 - 协议注册补充对照：`/Users/lwh/projects/AutoRegister/core/chatgpt_auth.py`、`core/openai_auth.py`、`core/sentinel_runner.py`、`main.py`；仅在 Windows 包没有对应实现时使用。
+- 协议注册第二补充对照：`/Users/lwh/projects/any-auto-register`（重点查看 `platforms/chatgpt/protocol/` 的 `auth_flow.py`、`sentinel.py`/`sentinel_quickjs.py`、`two_factor.py`、`phone_flow.py`、`token_refresh.py` 及 `core/proxy_pool.py`）；仅在 Windows 包和 AutoRegister 都没有对应实现时使用，不得用其推测覆盖前两者已有行为。
+- Remail 外部服务文档（从 Remail 购买邮箱的订单同步与导入字段依据）：`https://remail.aishop6.com/docs`（Open API 1.0.0，`rk-` 开头 Key；订单字段为 `orderNo`/`deliveryEmail`/`serviceToken`/`status`，状态枚举 `pending_payment|paid|active|completed|refunded|failed|closed`，`serviceToken` 为可选字段，失败原因见 `failureCode` 如 `insufficient_inventory`；禁止把 Key、serviceToken 或订单凭证写入日志）。
 - Camoufox 注册：`/Users/lwh/projects/aBaiFreeGPT`（仅作只读行为对照）。
 - 只吸收实现逻辑，不复制任何账号、邮箱密码、Cookie、Token、验证码、代理凭据、运行数据或第三方授权信息。
 - 开源参考副本仅作只读对照；新建的临时副本使用完必须删除。项目保留的长期只读副本除非用户明确要求，不得删除。
@@ -26,7 +28,8 @@ Free 账号换绑统一使用纯协议链路：无论账号来自哪条历史注
 ### Free 双链路参考与共享边界
 
 - Camoufox 参考项目为 `/Users/lwh/projects/aBaiFreeGPT`，当前对照提交为 `0b4b7197863d49b54875a7d0c7ef5bc0ee35aafa`，许可证为 AGPL-3.0；该副本只读，不承载 AutoPhone 运行数据。
-- protocol 首先参考同级 `/Users/lwh/projects/New_V1.11.18_win`，Windows 包未覆盖的协议细节再参考 `/Users/lwh/projects/AutoRegister`；Camoufox 只能参考同级 `/Users/lwh/projects/aBaiFreeGPT`。除这三个本地对照项目外，不再引入其他项目作为行为基准。
+- protocol 首先参考同级 `/Users/lwh/projects/New_V1.11.18_win`，Windows 包未覆盖的协议细节再参考 `/Users/lwh/projects/AutoRegister`，仍未覆盖的部分最后参考 `/Users/lwh/projects/any-auto-register`；Camoufox 只能参考同级 `/Users/lwh/projects/aBaiFreeGPT`。除这四个本地对照项目外，不再引入其他项目作为行为基准。
+- any-auto-register 参考项目为 `/Users/lwh/projects/any-auto-register`，当前对照提交为 `dfc697cb2fd39d14e7489ff306aaed8ad798e3f9`，许可证为 MIT（仅供学习研究）；该副本只读，不承载 AutoPhone 运行数据。
 - `/Users/lwh/projects/New_V1.11.18_win` 是长期只读行为基准；不得修改、删除、覆盖或向其中写入 AutoPhone 运行数据。新建的临时副本使用完必须删除。
 - 对照项目只吸收代码和调用顺序；禁止复制其运行数据、账号、邮箱 provider、凭据、Cookie、Token、验证码、代理信息或第三方授权状态。
 - Free 注册驱动仅包括 `protocol`、`camoufox`，两条链路共用 `${GPTPHONE_DATA_DIR}/free_register/` 下的同一个邮箱池。历史数据中的 `driver=roxybrowser` 只读展示为历史链路，不得再创建、启动、重试或配置该驱动，也不得调用 Roxy API、Profile 或清理逻辑。
