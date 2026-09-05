@@ -21,6 +21,19 @@ _REMAIL_EXPIRY_KEYS = frozenset({
     "expiresat", "expireat", "expiredat", "validuntil", "expiryat", "expirationdate",
 })
 
+# Product entries without a suffixes list expose their type as the fallback
+# option label, but the documented selectable emailSuffix values are email
+# domains (icloud.com 选择苹果邮箱, gmail.com 选择本地 Gmail).  Sending the bare
+# type instead is matched by Remail as a private domain under private_first
+# and fails with insufficient_inventory.
+_REMAIL_TYPE_SUFFIXES = {"icloud": "icloud.com", "gmail": "gmail.com"}
+
+
+def remail_order_suffix(email_suffix: str) -> str:
+    """Map a bare product type to its documented selectable emailSuffix."""
+    value = str(email_suffix or "").strip()
+    return _REMAIL_TYPE_SUFFIXES.get(value.lower(), value)
+
 
 def remail_order_value(value: Any) -> dict[str, Any] | None:
     """Return one order object from the documented or wrapped response shape."""
@@ -190,10 +203,10 @@ class RemailClient:
         return self._request("GET", f"/v1/open/orders/{str(order_no).strip()}")
 
     def create_order(self, project_id: int, email_suffix: str, *, supply: str = "private_first", idempotency_key: str | None = None) -> Any:
-        return self._request("POST", "/v1/open/orders", query={"serviceMode": "purchase", "supply": supply}, body={"projectId": int(project_id), "emailSuffix": str(email_suffix)}, idempotency_key=idempotency_key or str(uuid.uuid4()))
+        return self._request("POST", "/v1/open/orders", query={"serviceMode": "purchase", "supply": supply}, body={"projectId": int(project_id), "emailSuffix": remail_order_suffix(email_suffix)}, idempotency_key=idempotency_key or str(uuid.uuid4()))
 
     def create_order_batch(self, project_id: int, email_suffix: str, quantity: int, *, supply: str = "private_first", idempotency_key: str | None = None) -> Any:
-        return self._request("POST", "/v1/open/orders/batch", query={"serviceMode": "purchase", "supply": supply}, body={"projectId": int(project_id), "emailSuffix": str(email_suffix), "quantity": int(quantity)}, idempotency_key=idempotency_key or str(uuid.uuid4()))
+        return self._request("POST", "/v1/open/orders/batch", query={"serviceMode": "purchase", "supply": supply}, body={"projectId": int(project_id), "emailSuffix": remail_order_suffix(email_suffix), "quantity": int(quantity)}, idempotency_key=idempotency_key or str(uuid.uuid4()))
 
     def pickup(self, email: str, token: str) -> Any:
         # Pickup deliberately has no API-key header; the service token scopes it.
@@ -219,5 +232,5 @@ class RemailClient:
 
 __all__ = [
     "RemailApiError", "RemailClient", "remail_order_value", "remail_pickup_url", "remail_expiry_timestamp",
-    "remail_order_expired",
+    "remail_order_expired", "remail_order_suffix",
 ]

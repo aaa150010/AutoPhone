@@ -4,7 +4,7 @@ import json
 import unittest
 from urllib.parse import parse_qs, urlsplit
 
-from mac_overrides.remail_api import RemailClient, remail_order_value
+from mac_overrides.remail_api import RemailClient, remail_order_suffix, remail_order_value
 
 
 class _Response:
@@ -46,6 +46,29 @@ class RemailApiTests(unittest.TestCase):
         direct = remail_order_value({"orderNo": "R-2", "deliveryEmail": "user@outlook.com"})
         self.assertEqual(wrapped, {"orderNo": "R-1", "productType": "icloud"})
         self.assertEqual(direct, {"orderNo": "R-2", "deliveryEmail": "user@outlook.com"})
+
+    def test_create_order_maps_bare_product_type_to_documented_suffix(self):
+        requests = []
+
+        def opener(request, timeout):
+            requests.append((request, timeout))
+            return _Response({"orderNo": "R-3", "status": "pending_payment"})
+
+        client = RemailClient(api_key="rk-test", opener=opener)
+        client.create_order(2, "icloud")
+        client.create_order_batch(2, "gmail", 3)
+        client.create_order(2, "icloud.com")
+
+        bodies = [json.loads(requests[i][0].data) for i in range(3)]
+        self.assertEqual(bodies[0]["emailSuffix"], "icloud.com")
+        self.assertEqual(bodies[1]["emailSuffix"], "gmail.com")
+        self.assertEqual(bodies[2]["emailSuffix"], "icloud.com")
+
+    def test_order_suffix_passthrough_for_exact_and_special_values(self):
+        self.assertEqual(remail_order_suffix("outlook.com"), "outlook.com")
+        self.assertEqual(remail_order_suffix("gmail_variant"), "gmail_variant")
+        self.assertEqual(remail_order_suffix("domain"), "domain")
+        self.assertEqual(remail_order_suffix(""), "")
 
 
 if __name__ == "__main__":
