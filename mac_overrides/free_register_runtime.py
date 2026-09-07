@@ -3981,6 +3981,73 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             )
             return False
 
+    _MAILBOX_DEGRADE_ERRORS = frozenset({
+        "mailbox_timeout",
+        "mailbox_code_timeout",
+        "mailbox_parse_failed",
+        "mailbox_url_invalid",
+        "mailbox_error",
+    })
+    _MAILBOX_DEGRADE_THRESHOLD = 3
+
+    @classmethod
+    def _is_mailbox_source_failure(cls, failure: Mapping[str, Any]) -> bool:
+        """True when the failure proves the mailbox source itself is broken."""
+        error_code = str(failure.get("error_code") or "").strip().lower()
+        node_code = str(failure.get("node_code") or "").strip().lower()
+        text = f"{error_code} {node_code}"
+        if any(marker in text for marker in ("mailbox_parse", "mailbox_url")):
+            return True
+        return any(
+            marker in text
+            for marker in ("mailbox_timeout", "mailbox_code_timeout")
+        ) or any(
+            marker in text
+            for marker in ("邮箱验证码等待已达到调用方时间预算", "邮箱取件请求已达到本轮时间预算", "邮箱验证码轮询已按任务停止请求中断")
+        ) and "mailbox" in text
+
+    def _maybe_degrade_mailbox_source(self, snapshot: Mapping[str, Any], failure: Mapping[str, Any]) -> None:
+        """After N consecutive mailbox-source failures, park the row as
+        unavailable (manual restore only).  A row whose OTP source keeps
+        timing out must not keep being re-selected by later batches."""
+        row_id = str(snapshot.get("row_id") or "")
+        if not row_id or not self._is_mailbox_source_failure(failure):
+            return
+        try:
+            row_state = self.pool._row_state(row_id)
+        except Exception:
+            return
+        try:
+            consecutive = max(0, int(row_state.get("mailbox_otp_failures") or 0))
+        except (TypeError, ValueError):
+            consecutive = 0
+        consecutive += 1
+        if consecutive < self._MAILBOX_DEGRADE_THRESHOLD:
+            try:
+                self.pool.update(row_id, mailbox_otp_failures=consecutive)
+            except Exception:
+                pass
+            return
+        try:
+            self.pool.update(
+                row_id,
+                status="unavailable",
+                mailbox_otp_failures=0,
+                error="邮箱取件连续失败，已自动降级；请在邮箱中心手动恢复",
+                degraded_reason="free_mailbox_degraded",
+            )
+            self._log(
+                f"[{snapshot.get('task_id') or ''}/邮箱源连续失败降级/free_mailbox_degraded] "
+                f"邮箱连续 {self._MAILBOX_DEGRADE_THRESHOLD} 次取件失败，已降级为不可用；请在邮箱中心手动恢复",
+                "error",
+                task_id=str(snapshot.get("task_id") or ""),
+                node_code="free_mailbox_degraded",
+                node_label="邮箱源连续失败降级",
+                outcome="degraded",
+            )
+        except Exception:
+            pass
+
     def _record_proxy_failure(self, task: Mapping[str, Any], exc: BaseException) -> None:
         proxy_id = str(task.get("proxy_id") or "")
         task_id = str(task.get("task_id") or "")
@@ -4417,6 +4484,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 registration_ip=result.get("registration_ip", ""),
                 error=(result_failure or {}).get("public_message", ""),
                 failure=result_failure,
+                mailbox_otp_failures=0,
             )
             self._stage(task_id, "free_result_save")
             self._finish_progress(task_id, "success" if status == "success" else "partial")
@@ -4512,6 +4580,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 )
             elif self._can_reuse_mailbox_after_failure(exc.node_code, exc):
                 self._restore_mailbox_after_pre_registration_failure(snapshot, failure)
+                self._maybe_degrade_mailbox_source(snapshot, failure)
             else:
                 self.pool.update(
                     snapshot["row_id"], status="pending_rerun", stage=exc.node_code,
@@ -4523,6 +4592,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     "账号已进入注册流程，邮箱未自动恢复为可用；可从任务行重跑或邮箱中心手动恢复",
                     "warn",
                 )
+                self._maybe_degrade_mailbox_source(snapshot, failure)
             # Keep the persisted progress cursor aligned with the first real
             # failure.  The runner may raise before it gets a chance to emit
             # its own stage transition; recording the failed node here makes
