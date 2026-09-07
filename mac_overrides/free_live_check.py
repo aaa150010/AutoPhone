@@ -180,6 +180,51 @@ def _live_request_headers(token: str, device_id: str, path: str) -> dict[str, st
     }
 
 
+def _live_failure_is_transient(exc: BaseException) -> bool:
+    """Pre-response transport failure (TLS handshake, connection reset, proxy connect)."""
+    text = f"{type(exc).__name__} {exc}".lower()
+    if any(marker in text for marker in ("timeout", "timed out", "connection", "proxy", "tls", "ssl", "reset", "curl:", "handshake")):
+        return not _live_response_received(exc)
+    return False
+
+
+def _live_response_received(exc: BaseException) -> bool:
+    if getattr(exc, "response", None) is not None:
+        return True
+    status = getattr(exc, "status_code", None)
+    return isinstance(status, int) and status > 0
+
+
+def _wrap_session_transient_retry(session: Any) -> None:
+    """Retry one-off pre-response transport failures on the same session.
+
+    A session rebuild would drop the oai-did cookie that authenticates the
+    live-check request, so the single retry must reuse this session object.
+    Failures carrying an HTTP response (server answered) are never retried.
+    """
+    for name in ("get", "post"):
+        original = getattr(session, name, None)
+        if not callable(original) or getattr(original, "_gptphone_retry_wrapped", False):
+            continue
+
+        def wrapped(*args: Any, __original: Callable[..., Any] = original, **kwargs: Any) -> Any:
+            try:
+                return __original(*args, **kwargs)
+            except Exception as first:
+                if not _live_failure_is_transient(first):
+                    raise
+                try:
+                    return __original(*args, **kwargs)
+                except Exception as second:
+                    raise second from first
+
+        wrapped._gptphone_retry_wrapped = True
+        try:
+            setattr(session, name, wrapped)
+        except Exception:
+            continue
+
+
 def _prepare_live_session(session: Any, device_id: str) -> Any:
     """Apply task-scoped device cookies and environment isolation to a session."""
     try:
@@ -917,6 +962,7 @@ class FreeLiveCheckService:
         session = curl_requests.Session(impersonate="chrome", verify=True)
         device_id = str(context.get("device_id") or f"free-live-{secrets.token_hex(16)}")
         _prepare_live_session(session, device_id)
+        _wrap_session_transient_retry(session)
         transport_proxy = proxy_transport_value(
             context["proxy"],
             driver="protocol",
@@ -1145,6 +1191,7 @@ class FreeLiveCheckService:
                     response = transport.complete_chatgpt_callback(continue_url)
                 token = str(transport.chatgpt_access_token() or "")
                 if token:
+                    _wrap_session_transient_retry(transport.session)
                     checked = dict(
                         self._query_account(
                             transport.session,

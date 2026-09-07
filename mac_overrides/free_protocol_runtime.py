@@ -877,6 +877,14 @@ class FreeProtocolMixin:
                 setattr(created, "_gptphone_timezone_offset_minutes", fingerprint.get("timezone_offset_minutes"))
             transport_ref["current"] = created
             self._instrument_transport(created, task_id, stage)
+            # Same-session transient retry (TLS handshake / connection reset
+            # before any response).  Rebuilding the session would drop the
+            # oai-did/csrf cookies, so the retry must reuse this session.
+            try:
+                from .free_protocol_bootstrap import wrap_transport_session_retry
+            except ImportError:
+                from free_protocol_bootstrap import wrap_transport_session_retry  # type: ignore[no-redef]
+            wrap_transport_session_retry(created, log=log)
             return created
 
         def prepare_reference_transport(created: Any) -> Any:

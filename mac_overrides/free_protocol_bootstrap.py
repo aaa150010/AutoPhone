@@ -906,11 +906,67 @@ def prepare_reference_bootstrap(
         geo,
         dict(warmup_value) if isinstance(warmup_value, Mapping) else {},
     )
+
+
+def wrap_transport_session_retry(transport: Any, *, log: LogFn = None) -> Any:
+    """Retry transient pre-response transport failures on the same session.
+
+    Proxies produce a small rate of one-off ``curl (35)`` TLS handshake and
+    connection-reset failures on any step.  Rebuilding the session would drop
+    the oai-did/csrf cookies and turn a retry into a 409, so the retry must
+    reuse the exact session object.  Only exceptions raised before a server
+    response exists are retried, exactly once; everything else propagates
+    unchanged.  This wraps ``session.get``/``session.post`` in place (the same
+    setattr technique as ``_instrument_transport``) and never alters request
+    ordering, headers, or bodies.
+    """
+    session = getattr(transport, "session", None)
+    if session is None:
+        return transport
+
+    def _retrying(name: str, original: Callable[..., Any]) -> Callable[..., Any]:
+        def wrapped(*args: Any, **kwargs: Any) -> Any:
+            try:
+                return original(*args, **kwargs)
+            except Exception as first:
+                if not _transient(first) or _response_received(first):
+                    raise
+                try:
+                    return original(*args, **kwargs)
+                except Exception as second:
+                    raise second from first
+
+        wrapped.__name__ = f"retrying_{name}"
+        return wrapped
+
+    for name in ("get", "post"):
+        original = getattr(session, name, None)
+        if callable(original) and not getattr(original, "_gptphone_retry_wrapped", False):
+            wrapped = _retrying(name, original)
+            wrapped._gptphone_retry_wrapped = True
+            try:
+                setattr(session, name, wrapped)
+            except Exception:
+                # Some session implementations reject attribute writes; skip
+                # the retry wrapper rather than break the transport.
+                continue
+    return transport
+
+
+def _response_received(exc: BaseException) -> bool:
+    """True when the failure carries an HTTP response (not a pre-response error)."""
+    if getattr(exc, "response", None) is not None:
+        return True
+    status = getattr(exc, "status_code", None)
+    return isinstance(status, int) and status > 0
+
+
 __all__ = [
     "REFERENCE_SENTINEL_VERSION",
     "SECURITY_CHALLENGE_WAIT_SECONDS",
     "anonymous_warmup",
     "authenticated_warmup",
+    "wrap_transport_session_retry",
     "exit_geo_profile",
     "network_preflight",
     "prepare_reference_session",
