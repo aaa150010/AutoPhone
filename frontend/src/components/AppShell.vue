@@ -175,7 +175,7 @@ onUnmounted(() => {
 .el-menu :deep(.el-sub-menu .el-menu-item) { height: 36px; margin-bottom: 2px; font-size: 12px; }
 .el-menu-item { width: calc(100% - 0px); height: 40px; margin-bottom: 3px; padding: 0 12px !important; justify-content: flex-start; border-radius: 7px; color: #687587; font-size: 13px; }
 .el-menu-item .el-icon { font-size: 18px; }
-.el-menu-item.is-active { background: var(--workspace-accent-soft); color: #dc5b18; font-weight: 700; }
+.el-menu-item.is-active { background: var(--workspace-accent-soft); color: var(--el-color-primary-dark-2); font-weight: 700; }
 .el-menu-item.is-active .el-icon { color: var(--workspace-accent); }
 .app-sidebar.is-collapsed .brand-block { justify-content: center; padding: 0 8px; }
 .app-sidebar.is-collapsed .brand-copy { display: none; }

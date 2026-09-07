@@ -39,6 +39,9 @@ except ImportError:  # pragma: no cover - direct module loading compatibility
 
 
 _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,179}$")
+# Matches the display-safe email shape returned by ``_masked_subject``'s
+# email branch so those values skip the generic ``<邮箱>`` text redaction.
+_PUBLIC_SUBJECT_EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$")
 _INCIDENT_RE = re.compile(r"^LOG-\d{8}-[A-Z0-9]{8}$", re.IGNORECASE)
 _HEX_FINGERPRINT_RE = re.compile(r"^[0-9a-f]{32}$", re.IGNORECASE)
 _ISO_TIME_RE = re.compile(
@@ -261,18 +264,19 @@ class DiagnosticEventWriter:
             except Exception:
                 display = "已脱敏账号"
         if display not in (None, ""):
-            # ``subject_display`` is still untrusted input.  Callers often
-            # pass an address here under the assumption that the field name
-            # makes it safe; normalize it through the same masking routine as
-            # a raw subject before handing the projected mapping to an
-            # injected/fake store.  This keeps the writer itself a hard
-            # redaction boundary, even when the underlying store is not the
-            # built-in DiagnosticStore.
+            # ``subject_display`` is still untrusted input, so it must pass
+            # ``_masked_subject`` first.  Its email-branch output is a
+            # validated display-safe address; ``sanitize_failure_text`` would
+            # re-redact that address back to ``<邮箱>``, so only non-email
+            # shapes go through the generic text redaction here.
             try:
                 masked = _masked_subject(display, kind)
             except Exception:
                 masked = "已脱敏账号"
-            result["subject_display"] = sanitize_failure_text(masked or "已脱敏账号", 160)
+            if masked:
+                result["subject_display"] = sanitize_failure_text(masked, 160) if not _PUBLIC_SUBJECT_EMAIL_RE.fullmatch(masked) else masked
+            else:
+                result["subject_display"] = "已脱敏账号"
         return result
 
     def _project(self, fields: Mapping[str, Any]) -> dict[str, Any]:

@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { CircleCheck, CircleClose, CopyDocument, Delete, Document, Key, Link, Lock, MoreFilled, Refresh, RefreshLeft, RefreshRight, Setting, Tickets, VideoPause, VideoPlay, Warning } from '@element-plus/icons-vue'
+import { ArrowDown, CircleCheck, CircleClose, CopyDocument, Delete, Document, Key, Link, Lock, MoreFilled, Refresh, RefreshLeft, RefreshRight, Setting, Tickets, VideoPause, VideoPlay, Warning } from '@element-plus/icons-vue'
 import { closeFreeCamoufoxDebug, deleteFreeTasks, freeBatchRetry, getFreeConfig, getFreeMailboxUrl, getFreeSecret, getFreeState, getFreeTaskLatestCode, preflightFree, rerunFreeTask, retryFreePassword, retryFreeTwofa, startFree, startFreePlanCheck, stopFree, type FreeConfig, type FreeState } from '../api/client'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import ContentEmptyState from '../components/ContentEmptyState.vue'
 import FreeTaskLogDialog from '../components/FreeTaskLogDialog.vue'
 import TaskVerificationInput from '../components/TaskVerificationInput.vue'
 import TaskProgressCell from '../components/TaskProgressCell.vue'
+import StateDot from '../components/StateDot.vue'
 import {
   ACCOUNT_BANNED_DISPLAY_MESSAGE,
   freeFailureCause,
@@ -17,9 +18,9 @@ import {
   isRetryResolved,
 } from '../utils/freeFailure'
 import { useTaskProgressClock } from '../composables/useTaskProgressClock'
+import { useColumnWidths } from '../composables/useColumnWidths'
 import { freeTaskSecretLookup } from '../utils/freeSecretLookup'
 import { safeMailboxUrl } from '../utils/safeMailboxUrl'
-import { freeStageDetail, freeStageLabel, freeStageType } from '../utils/freeStage'
 
 const defaultConfig: FreeConfig = {
   driver: 'protocol', flow_profile: 'reference_20260823', proxy_allocation_mode: 'healthy_random', target_count: 1, concurrency: 3, email_code_timeout: 90, account_password: 'Aa150010150010', auto_set_password: false, auto_set_2fa: true,
@@ -59,6 +60,7 @@ const quickRunDirty = ref(false)
 const running = computed(() => Boolean(state.value.running))
 const debugWindowsOpen = computed(() => Number(state.value.camoufox_debug?.open_contexts || 0) > 0)
 const nowSeconds = useTaskProgressClock(() => state.value.tasks || [], () => Boolean(state.value.running))
+const { colWidth: taskColWidth, handleHeaderDragend: onTaskHeaderDragend } = useColumnWidths('gptphone.table.widths.free-register')
 let timer = 0
 
 const visibleTasks = computed(() => (state.value.tasks || []).slice().sort((a, b) => {
@@ -80,6 +82,23 @@ const taskCounts = computed(() => {
   const count = (status: string) => visibleTasks.value.filter(task => task.status === status && !isRetryResolved(task.retry_resolved)).length
   return { total: visibleTasks.value.length, running: count('running') + count('queued'), success: count('success') + count('partial_success'), partial: count('partial_success'), failed: count('failed'), pending: count('twofa_pending'), rerun: count('pending_rerun'), stopped: count('stopped') }
 })
+const statusFilters = computed(() => [
+  { value: 'all', label: '全部', count: taskCounts.value.total, tone: 'info' },
+  { value: 'active', label: '排队/运行', count: taskCounts.value.running, tone: 'primary' },
+  { value: 'success', label: '成功', count: taskCounts.value.success - taskCounts.value.partial, tone: 'success' },
+  { value: 'partial_success', label: '部分成功', count: taskCounts.value.partial, tone: 'warning' },
+  { value: 'failed', label: '失败', count: taskCounts.value.failed, tone: 'danger' },
+  { value: 'twofa_pending', label: '2FA', count: taskCounts.value.pending, tone: 'warning' },
+  { value: 'pending_rerun', label: '待重跑', count: taskCounts.value.rerun, tone: 'warning' },
+  { value: 'stopped', label: '已停止', count: taskCounts.value.stopped, tone: 'info' },
+] as { value: string; label: string; count: number; tone: string }[])
+
+function handleCopyCommand(command: string) {
+  if (command === 'filtered-token') return void copyTaskTokens(filteredTasks.value)
+  const kind = command as 'token' | 'password' | 'totp' | 'credential'
+  const labels = { token: 'Token', password: '密码', totp: 'TOTP', credential: '完整凭据' } as const
+  void copyTaskSecret(kind, selectedTasks.value, labels[kind])
+}
 const selectedTask = computed(() => visibleTasks.value.find(task => task.task_id === selectedTaskId.value))
 function mergeConfig(value: any, forceQuickRun = false) {
   if (!value || typeof value !== 'object') return
@@ -117,30 +136,15 @@ function taskDriverLabel(driver: unknown) {
   return value ? '历史链路' : '全协议'
 }
 
-function taskFlowLabel(task: any) {
-  const flow = String(task?.result?.account_flow || '').trim().toLowerCase()
-  if (!flow) return ''
-  return flow === 'existing_login' ? '已有账号登录' : '新账号注册'
+function taskCreatedText(task: any) {
+  if (!task?.created_at) return ''
+  return new Date(typeof task.created_at === 'number' ? task.created_at * 1000 : task.created_at).toLocaleString()
 }
 
-function taskStageLabel(task: any) {
-  return freeStageLabel(task?.stage_label || task?.stage, '-', task?.status)
-}
-
-function taskStageType(task: any): 'primary' | 'success' | 'warning' | 'danger' | 'info' {
-  return freeStageType(task?.stage || task?.stage_label, task?.status)
-}
-
-function taskStageTooltip(task: any) {
-  return freeStageDetail(task?.stage, task?.stage_label, task?.status)
-}
-
-function taskChainTooltip(task: any) {
-  return [
-    taskDriverLabel(task?.driver),
-    isHistoricalDriver(task) ? '仅历史记录' : '',
-    taskFlowLabel(task),
-  ].filter(Boolean).join(' · ')
+function taskRowClass({ row }: { row: any }) {
+  return ['failed', 'partial_success'].includes(String(row?.status || '')) && !isRetryResolved(row?.retry_resolved)
+    ? 'is-danger-row'
+    : ''
 }
 
 function isHistoricalDriver(task: any) {
@@ -430,10 +434,8 @@ function taskPlanLabel(task: any) {
   if (status === 'failed') return '查询失败'
   if (['queued', 'running'].includes(status)) return '查询中'
   if (!plan) return '未查询'
-  if (normalized === 'free') {
-    return task?.result?.plus_trial_eligible ? 'free(可Plus试用)' : 'free'
-  }
-  return plan
+  const hasPerk = Boolean(task?.result?.plus_trial_eligible) || plan.includes('plus') || plan.includes('pro') || plan.includes('team') || plan.includes('go')
+  return hasPerk ? '有优惠' : '无优惠'
 }
 
 function taskPlanType(task: any) {
@@ -441,10 +443,10 @@ function taskPlanType(task: any) {
   const status = String(task?.result?.plan_check_status || '').toLowerCase()
   if (status === 'failed') return 'danger'
   if (['queued', 'running'].includes(status)) return 'warning'
-  if (task?.result?.plus_trial_eligible || plan.includes('plus') || plan.includes('pro') || plan.includes('team') || plan.includes('go')) return 'success'
-  return 'info'
+  if (!plan) return 'info'
+  const hasPerk = Boolean(task?.result?.plus_trial_eligible) || plan.includes('plus') || plan.includes('pro') || plan.includes('team') || plan.includes('go')
+  return hasPerk ? 'success' : 'info'
 }
-
 function taskTwofaLabel(task: any) {
   const status = String(task?.result?.twofa_status || '').toLowerCase()
   if (task?.result?.has_totp || task?.result?.totp_secret) return '已启用'
@@ -453,7 +455,7 @@ function taskTwofaLabel(task: any) {
   return '未启用'
 }
 
-function taskTwofaType(task: any) {
+function taskTwofaType(task: any): 'success' | 'warning' | 'info' {
   const status = String(task?.result?.twofa_status || '').toLowerCase()
   if (task?.result?.has_totp || task?.result?.totp_secret) return 'success'
   if (['queued', 'running'].includes(String(task?.status || '').toLowerCase())) return 'warning'
@@ -469,7 +471,7 @@ function taskPasswordLabel(task: any) {
   return '未设置'
 }
 
-function taskPasswordType(task: any) {
+function taskPasswordType(task: any): 'success' | 'warning' | 'info' {
   const status = String(task?.result?.password_status || '').toLowerCase()
   const flow = String(task?.result?.account_flow || '').toLowerCase()
   if (task?.result?.has_password || status === 'enabled') return 'success'
@@ -693,12 +695,11 @@ onUnmounted(() => window.clearTimeout(timer))
     <div class="task-view">
       <WorkspacePanel fill body-padding="none">
         <div class="task-panel">
-          <div class="run-snapshot task-summary"><div><span>可用 Free 邮箱</span><strong class="is-good">{{ Number(state.pool?.available || 0) }}</strong></div><div><span>任务总数</span><strong>{{ taskCounts.total }}</strong></div><div><span>排队 / 运行</span><strong>{{ taskCounts.running }}</strong></div><div><span>成功</span><strong class="is-good">{{ taskCounts.success - taskCounts.partial }}</strong></div><div><span>部分成功</span><strong class="is-warn">{{ taskCounts.partial }}</strong></div><div><span>失败</span><strong class="is-bad">{{ taskCounts.failed }}</strong></div><div><span>待重跑</span><strong class="is-warn">{{ taskCounts.rerun }}</strong></div><div><span>2FA 待重试</span><strong class="is-warn">{{ taskCounts.pending }}</strong></div></div>
           <div class="task-start-bar">
             <el-tag effect="plain">{{ config.driver === 'camoufox' ? 'Camoufox' : '全协议' }}</el-tag>
             <label class="quick-run-field"><span>注册数量</span><el-input-number v-model="quickTargetCount" class="quick-run-number" :min="1" :max="200" controls-position="right" :disabled="running || Boolean(busy)" @update:model-value="markQuickRunDirty" /></label>
             <label class="quick-run-field"><span>并发</span><el-input-number v-model="quickConcurrency" class="quick-run-number" :min="1" :max="16" controls-position="right" :disabled="running || Boolean(busy)" @update:model-value="markQuickRunDirty" /></label>
-            <span class="muted">配置并发 {{ quickConcurrency }} · 实际 Slot {{ Number(state.scheduler?.active_slots || 0) }}/{{ Number(state.scheduler?.concurrency || quickConcurrency) }} · 可用邮箱 {{ Number(state.pool?.available || 0) }} · 代理 {{ Number(state.pool?.proxies || 0) }}</span>
+            <span class="muted task-start-meta">可用邮箱 {{ Number(state.pool?.available || 0) }} · 代理 {{ Number(state.pool?.proxies || 0) }}</span>
             <el-button size="small" :icon="CircleCheck" :loading="busy === 'preflight'" :disabled="running" @click="preflight">预检</el-button>
             <el-button size="small" type="primary" :icon="VideoPlay" :loading="busy === 'start'" :disabled="running || !Number(state.pool?.available || 0)" @click="start">开始注册</el-button>
             <el-button size="small" type="danger" plain :icon="VideoPause" :loading="busy === 'stop'" :disabled="!running" @click="stop">停止</el-button>
@@ -707,33 +708,50 @@ onUnmounted(() => window.clearTimeout(timer))
             </el-tooltip>
             <el-button size="small" :icon="Setting" @click="emit('navigate', '/settings#free-register')">运行配置</el-button>
           </div>
-          <div class="task-filter-bar">
-            <el-input v-model="taskSearch" size="small" clearable placeholder="搜索邮箱、任务 ID 或失败节点" />
-            <el-radio-group v-model="taskStatusFilter" size="small" class="task-status-filter">
-              <el-radio-button value="all">全部 {{ taskCounts.total }}</el-radio-button>
-              <el-radio-button value="active">排队/运行 {{ taskCounts.running }}</el-radio-button>
-              <el-radio-button value="success">成功 {{ taskCounts.success - taskCounts.partial }}</el-radio-button>
-              <el-radio-button value="partial_success">部分成功 {{ taskCounts.partial }}</el-radio-button>
-              <el-radio-button value="failed">失败 {{ taskCounts.failed }}</el-radio-button>
-              <el-radio-button value="twofa_pending">2FA {{ taskCounts.pending }}</el-radio-button>
-              <el-radio-button value="pending_rerun">待重跑 {{ taskCounts.rerun }}</el-radio-button>
-            <el-radio-button value="stopped">已停止 {{ taskCounts.stopped }}</el-radio-button>
-            </el-radio-group>
+          <div class="task-filter-row">
+            <div class="task-summary-strip" role="group" aria-label="任务状态筛选">
+              <button v-for="item in statusFilters" :key="item.value" type="button" class="summary-cell is-filter" :class="{ 'is-active': taskStatusFilter === item.value, [`tone-${item.tone}`]: true }" :aria-pressed="taskStatusFilter === item.value" @click="taskStatusFilter = item.value">
+                <span>{{ item.label }}</span><strong>{{ item.count }}</strong>
+              </button>
+            </div>
+            <el-input v-model="taskSearch" size="small" clearable class="task-search" placeholder="搜索邮箱、任务 ID 或失败节点" />
             <el-select v-model="taskDriverFilter" size="small" clearable placeholder="链路" class="task-driver-filter"><el-option label="全协议" value="protocol" /><el-option label="Camoufox" value="camoufox" /></el-select>
+            <div class="task-actions">
+              <span class="muted">已选 {{ selectedTasks.length }} 个</span>
+              <el-button v-if="['success', 'partial_success', 'twofa_pending', 'pending_rerun'].includes(taskStatusFilter)" size="small" type="warning" :icon="Refresh" :disabled="!selectedTasks.some(task => !isHistoricalDriver(task) && (['failed', 'stopped', 'pending_rerun', 'twofa_pending'].includes(String(task.status || '')) || canRetryPassword(task)))" @click="batchRetryCurrentNode">按当前失败节点批量重试</el-button>
+              <el-dropdown trigger="click" @command="(command: string) => handleCopyCommand(command)">
+                <el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" aria-label="批量复制账号凭据">复制<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="token"><el-icon><Key /></el-icon>复制 Token</el-dropdown-item>
+                    <el-dropdown-item command="password"><el-icon><Lock /></el-icon>复制密码</el-dropdown-item>
+                    <el-dropdown-item command="totp"><el-icon><Tickets /></el-icon>复制 TOTP</el-dropdown-item>
+                    <el-dropdown-item command="credential"><el-icon><Document /></el-icon>复制完整凭据</el-dropdown-item>
+                    <el-dropdown-item command="filtered-token" divided :disabled="!filteredTasks.some(task => task.result?.has_access_token)"><el-icon><CopyDocument /></el-icon>复制当前筛选 Token</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+              <el-button size="small" type="danger" plain :icon="Delete" :disabled="!selectedTasks.length || loading" @click="deleteSelectedTasks">删除选中</el-button>
+              <el-button size="small" :icon="Refresh" @click="refresh">刷新任务</el-button>
+            </div>
           </div>
-          <div class="task-actions"><span class="muted">已选 {{ selectedTasks.length }} 个</span><el-button v-if="['success', 'partial_success', 'twofa_pending', 'pending_rerun'].includes(taskStatusFilter)" size="small" type="warning" :icon="Refresh" :disabled="!selectedTasks.some(task => !isHistoricalDriver(task) && (['failed', 'stopped', 'pending_rerun', 'twofa_pending'].includes(String(task.status || '')) || canRetryPassword(task)))" @click="batchRetryCurrentNode">按当前失败节点批量重试</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('token', selectedTasks, 'Token')">复制 Token</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('password', selectedTasks, '密码')">复制密码</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('totp', selectedTasks, 'TOTP')">复制 TOTP</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" @click="copyTaskSecret('credential', selectedTasks, '完整凭据')">复制完整凭据</el-button><el-button size="small" :icon="CopyDocument" :disabled="!filteredTasks.some(task => task.result?.has_access_token)" @click="copyTaskTokens(filteredTasks)">复制当前筛选 Token</el-button><el-button size="small" type="danger" plain :icon="Delete" :disabled="!selectedTasks.length || loading" @click="deleteSelectedTasks">删除选中</el-button><el-button size="small" :icon="Refresh" @click="refresh">刷新任务</el-button></div>
-          <el-table ref="taskTable" :data="filteredTasks" row-key="task_id" height="100%" size="small" @selection-change="handleTaskSelection">
+          <el-table ref="taskTable" :data="filteredTasks" row-key="task_id" height="100%" size="small" border :row-class-name="taskRowClass" @header-dragend="(newWidth: number, oldWidth: number, column: any) => onTaskHeaderDragend(newWidth, oldWidth, column)" @selection-change="handleTaskSelection">
             <el-table-column type="selection" width="42" reserve-selection />
-            <el-table-column label="账号" width="160" show-overflow-tooltip><template #default="{ row }"><el-tooltip v-if="row.email" :content="`${String(row.email)}${row.task_id ? ` · 任务 ${row.task_id}` : ''}`" placement="top"><el-button link class="email-copy" :loading="loadingEmailTaskIds.includes(String(row.task_id || ''))" @click.stop="copyTaskEmail(row)"><strong>{{ row.email }}</strong><el-icon v-if="!loadingEmailTaskIds.includes(String(row.task_id || ''))"><CopyDocument /></el-icon></el-button></el-tooltip><span v-else>-</span></template></el-table-column>
-            <el-table-column label="验证码" width="132" align="center"><template #default="{ row }"><TaskVerificationInput v-if="!isHistoricalDriver(row) && row.manual_verification?.can_submit" :task-id="row.task_id" :request="row.manual_verification" :now-seconds="nowSeconds" /><span v-else-if="!isHistoricalDriver(row) && row.mailbox_verification?.phase === 'automatic'" class="automatic-otp-wait">自动取码 <strong>{{ automaticOtpRemaining(row) }}s</strong></span><span v-else class="muted">-</span></template></el-table-column>
-            <el-table-column label="链路" min-width="118" show-overflow-tooltip><template #default="{ row }"><el-tooltip :content="taskChainTooltip(row)" placement="top"><div class="task-chain-cell"><el-tag size="small" effect="plain">{{ taskDriverLabel(row.driver) }}</el-tag></div></el-tooltip></template></el-table-column>
-            <el-table-column label="阶段" min-width="168" show-overflow-tooltip><template #default="{ row }"><el-tooltip :content="taskStageTooltip(row)" placement="top"><span class="task-stage-cell"><el-tag size="small" effect="light" :type="taskStageType(row)">{{ taskStageLabel(row) }}</el-tag></span></el-tooltip></template></el-table-column>
-            <el-table-column label="耗时" min-width="190"><template #default="{ row }"><TaskProgressCell :progress="row.progress" :timing="row.timing" :now-seconds="nowSeconds" :status="row.status" /></template></el-table-column>
-            <el-table-column label="状态" width="180" align="center" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" :type="isRetryResolved(row.retry_resolved) ? 'success' : taskStatusType(row.status)">{{ displayTaskStatus(row) }}</el-tag></template></el-table-column>
-            <el-table-column label="套餐" min-width="155" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" :type="taskPlanType(row)" effect="light">{{ taskPlanLabel(row) }}</el-tag><el-tooltip v-if="!isHistoricalDriver(row) && row.result?.has_access_token && String(row.result?.plan_check_status || '').toLowerCase() === 'failed'" content="重新查询套餐"><el-button link size="small" :icon="Refresh" :loading="planBusy === String(row.task_id || row.row_id)" :disabled="Boolean(planBusy)" aria-label="重新查询套餐" @click.stop="refreshPlan(row)" /></el-tooltip></template></el-table-column>
-            <el-table-column label="2FA" width="92" align="center"><template #default="{ row }"><el-tag size="small" :type="taskTwofaType(row)" effect="plain">{{ taskTwofaLabel(row) }}</el-tag></template></el-table-column>
-            <el-table-column label="密码" width="118" align="center"><template #default="{ row }"><el-tag size="small" :type="taskPasswordType(row)" effect="plain">{{ taskPasswordLabel(row) }}</el-tag></template></el-table-column>
-            <el-table-column label="错误" min-width="280">
+            <el-table-column label="账号" :min-width="taskColWidth('账号', 280)" show-overflow-tooltip>
+              <template #default="{ row }">
+                <div class="account-cell">
+                  <el-tooltip v-if="row.email" :content="`${String(row.email)}${row.task_id ? ` · 任务 ${row.task_id}` : ''}`" placement="top"><el-button link class="email-copy" :loading="loadingEmailTaskIds.includes(String(row.task_id || ''))" @click.stop="copyTaskEmail(row)"><strong>{{ row.email }}</strong><el-icon v-if="!loadingEmailTaskIds.includes(String(row.task_id || ''))"><CopyDocument /></el-icon></el-button></el-tooltip>
+                  <span v-else>-</span>
+                  <span class="account-subline">{{ taskDriverLabel(row.driver) }}<template v-if="taskCreatedText(row)"> · {{ taskCreatedText(row) }}</template></span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="验证码" :width="taskColWidth('验证码', 110)" align="center"><template #default="{ row }"><TaskVerificationInput v-if="!isHistoricalDriver(row) && row.manual_verification?.can_submit" :task-id="row.task_id" :request="row.manual_verification" :now-seconds="nowSeconds" /><span v-else-if="!isHistoricalDriver(row) && row.mailbox_verification?.phase === 'automatic'" class="automatic-otp-wait">自动取码 <strong>{{ automaticOtpRemaining(row) }}s</strong></span><span v-else class="muted">-</span></template></el-table-column>
+            <el-table-column label="阶段 / 耗时" :min-width="taskColWidth('阶段 / 耗时', 230)"><template #default="{ row }"><TaskProgressCell :progress="row.progress" :timing="row.timing" :now-seconds="nowSeconds" :status="row.status" /></template></el-table-column>
+            <el-table-column label="状态" :width="taskColWidth('状态', 122)" align="center" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" :type="isRetryResolved(row.retry_resolved) ? 'success' : taskStatusType(row.status)">{{ displayTaskStatus(row) }}</el-tag></template></el-table-column>
+            <el-table-column label="套餐" :width="taskColWidth('套餐', 90)" align="center" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" :type="taskPlanType(row)" effect="plain">{{ taskPlanLabel(row) }}</el-tag><el-tooltip v-if="!isHistoricalDriver(row) && row.result?.has_access_token && String(row.result?.plan_check_status || '').toLowerCase() === 'failed'" content="重新查询套餐"><el-button link size="small" :icon="Refresh" :loading="planBusy === String(row.task_id || row.row_id)" :disabled="Boolean(planBusy)" aria-label="重新查询套餐" @click.stop="refreshPlan(row)" /></el-tooltip></template></el-table-column>
+            <el-table-column label="凭据" :width="taskColWidth('凭据', 112)"><template #default="{ row }"><div class="credential-cell"><StateDot :tone="taskTwofaType(row)" :label="`2FA ${taskTwofaLabel(row)}`" /><StateDot :tone="taskPasswordType(row)" :label="`密码 ${taskPasswordLabel(row)}`" /></div></template></el-table-column>
+            <el-table-column label="错误" :min-width="taskColWidth('错误', 320)">
               <template #default="{ row }">
                 <el-tooltip placement="top" :disabled="!taskFailureDetails(row).length">
                   <template #content><div class="failure-tooltip"><span v-for="item in taskFailureDetails(row)" :key="item">{{ item }}</span></div></template>
@@ -743,8 +761,7 @@ onUnmounted(() => window.clearTimeout(timer))
                 </el-tooltip>
               </template>
             </el-table-column>
-            <el-table-column label="创建时间" width="156"><template #default="{ row }">{{ row.created_at ? new Date(typeof row.created_at === 'number' ? row.created_at * 1000 : row.created_at).toLocaleString() : '-' }}</template></el-table-column>
-            <el-table-column label="操作" width="82" align="center" fixed="right">
+            <el-table-column label="操作" :width="taskColWidth('操作', 64)" align="center" fixed="right">
               <template #default="{ row }">
                 <el-dropdown trigger="click" @command="(command: string) => handleTaskAction(command, row)">
                   <el-button link class="row-action-button" aria-label="打开任务操作菜单" title="打开任务操作菜单"><el-icon><MoreFilled /></el-icon></el-button>
@@ -777,17 +794,10 @@ onUnmounted(() => window.clearTimeout(timer))
 .muted { color: var(--el-text-color-secondary); font-size: 12px; }
 .task-view { min-width: 0; min-height: 0; height: 100%; }
 .task-view :deep(.workspace-panel) { height: 100%; }
-.task-panel { display: grid; grid-template-rows: auto auto auto auto minmax(0, 1fr); gap: 8px; height: 100%; min-height: 0; padding: 10px; }
-.run-snapshot { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--workspace-border); border-radius: var(--workspace-radius); overflow: hidden; }
-.run-snapshot > div { display: grid; grid-template-rows: 18px 22px; align-items: center; min-height: 48px; padding: 5px 10px; background: #f8fafc; }
-.run-snapshot span { color: var(--el-text-color-secondary); font-size: 13px; }
-.run-snapshot strong { font-size: 17px; font-variant-numeric: tabular-nums; }
-.run-snapshot strong.is-good { color: #168363; }
-.run-snapshot strong.is-bad { color: #c44754; }
-.run-snapshot strong.is-warn { color: #bc761c; }
-.task-start-bar, .task-filter-bar, .task-actions { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.task-panel { display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: var(--workspace-gap); height: 100%; min-height: 0; padding: 10px; }
+.task-start-bar, .task-filter-row { display: flex; align-items: center; gap: var(--workspace-gap); min-width: 0; }
 .task-start-bar { min-height: 32px; }
-.task-start-bar .muted { margin-right: auto; }
+.task-start-bar .task-start-meta { margin-right: auto; }
 .quick-run-field { display: inline-flex; align-items: center; gap: 8px; color: var(--el-text-color-regular); font-size: 14px; white-space: nowrap; }
 /* Keep numeric controls compact while preserving Element Plus' native
    keyboard, validation, and spinner behavior. */
@@ -815,31 +825,34 @@ onUnmounted(() => window.clearTimeout(timer))
   --el-input-number-controls-height: 15px;
   width: 26px;
 }
-@media (max-width: 760px) {
-  .quick-run-field :deep(.quick-run-number) { width: 106px; max-width: 100%; }
-}
-.task-filter-bar { display: grid; grid-template-columns: minmax(220px, 0.8fr) minmax(560px, 2fr) 118px; min-height: 30px; }
-.task-filter-bar > .el-input, .task-filter-bar > .task-driver-filter { width: 100%; }
-.task-status-filter { flex: 1; min-width: 0; }
-.task-status-filter { display: flex; width: 100%; }
-.task-status-filter :deep(.el-radio-button) { flex: 1 1 0; min-width: 0; }
-.task-status-filter :deep(.el-radio-button__inner) { width: 100%; padding: 6px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 16px; }
-.task-driver-filter { width: 180px; }
-.task-actions { justify-content: flex-end; min-height: 30px; }
-.task-actions .muted { margin-right: auto; }
+.task-filter-row { flex-wrap: nowrap; align-items: center; }
+.task-summary-strip { display: flex; align-items: stretch; flex: 0 1 auto; height: 30px; min-width: 0; border: 1px solid var(--workspace-border); border-radius: var(--workspace-radius); overflow: hidden; background: var(--workspace-surface); }
+.summary-cell { display: flex; align-items: center; justify-content: center; gap: 6px; flex: 1 1 0; min-width: 0; padding: 0 10px; border: 0; border-right: 1px solid var(--workspace-border); background: transparent; white-space: nowrap; }
+.summary-cell:last-child { border-right: 0; }
+.summary-cell span { color: var(--el-text-color-secondary); font-size: 12px; line-height: 16px; }
+.summary-cell strong { color: var(--el-text-color-primary); font-size: 14px; line-height: 18px; font-variant-numeric: tabular-nums; }
+.summary-cell.is-filter { cursor: pointer; font: inherit; }
+.summary-cell.is-filter:hover { background: var(--workspace-subtle); }
+.summary-cell.is-filter.is-active { background: var(--workspace-accent-soft); }
+.summary-cell.is-filter.is-active span,
+.summary-cell.is-filter.is-active strong { color: var(--el-color-primary-dark-2); }
+.summary-cell.tone-success strong { color: var(--el-color-success); }
+.summary-cell.tone-warning strong { color: var(--el-color-warning); }
+.summary-cell.tone-danger strong { color: var(--el-color-danger); }
+.summary-cell.is-filter.is-active strong { color: var(--el-color-primary-dark-2); }
+.task-search { width: 220px; flex: 0 0 auto; }
+.task-driver-filter { width: 118px; flex: 0 0 auto; }
+.task-actions { display: flex; align-items: center; gap: var(--workspace-gap); margin-left: auto; min-width: 0; justify-content: flex-end; }
 .task-panel :deep(.el-table) { min-height: 0; }
 .task-panel :deep(.el-table .cell) { line-height: 18px; }
-.task-subline { display: block; overflow: hidden; color: var(--el-text-color-secondary); font-size: 11px; line-height: 15px; text-overflow: ellipsis; white-space: nowrap; }
-.task-chain-cell { display: flex; align-items: center; width: 100%; min-width: 0; gap: 5px; overflow: hidden; white-space: nowrap; }
-.task-chain-cell > .el-tag { flex: 0 0 auto; }
-.task-chain-meta { min-width: 0; overflow: hidden; color: var(--el-text-color-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.task-stage-cell { display: inline-flex; max-width: 100%; min-width: 0; overflow: hidden; vertical-align: middle; }
-.task-stage-cell :deep(.el-tag) { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.task-operation-cell { display: inline-flex; align-items: center; justify-content: center; gap: 0; min-width: 0; white-space: nowrap; }
-.task-operation-cell :deep(.el-button) { width: 26px; height: 26px; margin-left: 0; padding: 4px; }
-.email-copy { display: inline-flex; max-width: 100%; min-width: 0; gap: 5px; color: var(--el-text-color-primary); }
+.account-cell { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.account-subline { display: block; overflow: hidden; color: var(--el-text-color-secondary); font-size: 11px; line-height: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.email-copy { display: inline-flex; max-width: 100%; min-width: 0; gap: 5px; height: auto; padding: 0; color: var(--el-text-color-primary); justify-content: flex-start; }
 .email-copy strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .email-copy .el-icon { flex: 0 0 auto; color: var(--el-color-primary); }
+.credential-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+.automatic-otp-wait { display: inline-flex; align-items: center; justify-content: center; gap: 5px; width: 100%; min-width: 0; color: var(--el-text-color-secondary); font-size: 12px; white-space: nowrap; }
+.automatic-otp-wait strong { color: var(--el-color-warning-dark-2); font-variant-numeric: tabular-nums; }
 .failure-cell { min-width: 0; max-width: 100%; overflow: hidden; line-height: 16px; }
 .failure-summary { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .failure-summary strong, .failure-summary span { white-space: nowrap; }
@@ -847,7 +860,5 @@ onUnmounted(() => window.clearTimeout(timer))
 .failure-cell code { margin-left: 5px; color: var(--el-text-color-secondary); font-size: 10px; font-weight: 500; }
 .failure-cell span { color: var(--el-text-color-regular); font-size: 11px; }
 .failure-cell .failure-action-hint { color: var(--el-color-warning-dark-2); font-size: 11px; }
-.automatic-otp-wait { display: inline-flex; align-items: center; justify-content: center; gap: 5px; width: 100%; min-width: 0; color: var(--el-text-color-secondary); font-size: 12px; white-space: nowrap; }
-.automatic-otp-wait strong { color: var(--el-color-warning-dark-2); font-variant-numeric: tabular-nums; }
 .failure-tooltip { display: grid; max-width: 520px; gap: 4px; line-height: 18px; }
 </style>

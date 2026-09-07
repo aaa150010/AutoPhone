@@ -12,6 +12,7 @@ import {
   type DiagnosticEvent,
   type DiagnosticIncident,
 } from '../api/client'
+import WorkspacePanel from '../components/WorkspacePanel.vue'
 import {
   ACCOUNT_BANNED_DISPLAY_MESSAGE,
   diagnosticEventNodeLabel,
@@ -239,8 +240,8 @@ watch(() => props.locationKey, (value, previous) => {
 
 <template>
   <div class="log-center">
-    <el-card shadow="never" class="search-panel">
-      <el-form :model="query" label-position="top" @submit.prevent="runSearch">
+    <WorkspacePanel title="故障检索" :icon="Search" body-padding="compact">
+      <el-form :model="query" label-position="right" label-width="72px" class="search-form" @submit.prevent="runSearch">
         <div class="search-grid">
           <el-form-item label="日志 ID"><el-input v-model="query.incident_id" clearable placeholder="LOG-20260825-..." /></el-form-item>
           <el-form-item label="任务 ID"><el-input v-model="query.task_id" clearable /></el-form-item>
@@ -255,25 +256,33 @@ watch(() => props.locationKey, (value, previous) => {
         </div>
         <div class="search-actions"><el-button type="primary" :icon="Search" :loading="loading" @click="runSearch">检索</el-button><el-button @click="searchWindow(0.25)">最近 15 分钟</el-button><el-button @click="searchWindow(1)">最近 1 小时</el-button><el-button @click="searchWindow(24)">最近 24 小时</el-button><span class="search-count">找到 {{ filteredCount }} 条</span></div>
       </el-form>
-    </el-card>
-    <div class="health-strip"><span>诊断库：{{ health.incidents ?? '-' }} 条故障 / {{ health.events ?? '-' }} 条事件</span><span :class="health.integrity_failures ? 'health-danger' : 'health-ok'">完整性异常 {{ health.integrity_failures ?? 0 }}</span><span class="health-path">详细事件默认保留 30 天</span></div>
-    <el-card shadow="never" class="result-panel">
-      <div class="result-actions"><span>已选 {{ selected.length }} 条</span><div class="toolbar-actions"><el-button size="small" :icon="Refresh" :loading="loading" @click="runSearch">刷新</el-button><el-button size="small" :icon="Warning" :loading="healthLoading" @click="refreshHealth">健康状态</el-button><el-button size="small" :icon="Delete" type="danger" plain :disabled="!selected.length" @click="deleteSelected">删除选中</el-button><el-button size="small" type="danger" plain :icon="Delete" :disabled="!incidents.length" @click="clearAll">清空全部</el-button></div></div>
+    </WorkspacePanel>
+    <WorkspacePanel class="result-panel" title="诊断结果" :icon="Document" fill body-padding="none">
+      <template #actions>
+        <span class="health-chip" :class="health.integrity_failures ? 'health-danger' : 'health-ok'">诊断库 {{ health.incidents ?? '-' }} · 完整性异常 {{ health.integrity_failures ?? 0 }}</span>
+        <span class="result-selected">已选 {{ selected.length }} 条</span>
+        <el-button size="small" :icon="Refresh" :loading="loading" @click="runSearch">刷新</el-button>
+        <el-button size="small" :icon="Warning" :loading="healthLoading" @click="refreshHealth">健康状态</el-button>
+        <el-button size="small" type="danger" plain :icon="Delete" :disabled="!selected.length" @click="deleteSelected">删除选中</el-button>
+        <el-button size="small" type="danger" plain :icon="Delete" :disabled="!incidents.length" @click="clearAll">清空全部</el-button>
+      </template>
       <el-alert v-if="searchError" class="search-error" type="error" :closable="false" show-icon :title="searchError" />
-      <el-table v-else class="incident-table" :data="incidents" v-loading="loading" height="100%" stripe @selection-change="selectRows">
+      <div v-else class="table-wrap">
+        <el-table class="incident-table" :data="incidents" v-loading="loading" height="100%" stripe border @selection-change="selectRows">
         <el-table-column type="selection" width="46" fixed="left" />
-        <el-table-column label="日志 ID" min-width="188" fixed="left" show-overflow-tooltip><template #default="{ row }"><div class="incident-id"><el-link type="primary" @click="openIncident(row)">{{ row.incident_id }}</el-link><el-button text size="small" :icon="CopyDocument" aria-label="复制日志 ID" @click="copyIncidentId(row)" /></div></template></el-table-column>
-        <el-table-column label="状态" width="170"><template #default="{ row }"><el-tag size="small" :type="incidentStatusType(row)">{{ incidentStatusLabel(row) }}</el-tag></template></el-table-column>
+        <el-table-column label="日志 ID" width="230" fixed="left"><template #default="{ row }"><div class="incident-id"><el-link type="primary" @click="openIncident(row)">{{ row.incident_id }}</el-link><el-tooltip content="复制日志 ID" placement="top"><el-button text size="small" :icon="CopyDocument" aria-label="复制日志 ID" @click="copyIncidentId(row)" /></el-tooltip></div></template></el-table-column>
+        <el-table-column label="状态" width="96" align="center"><template #default="{ row }"><el-tag size="small" :type="incidentStatusType(row)">{{ incidentStatusLabel(row) }}</el-tag></template></el-table-column>
         <el-table-column prop="subject_display" label="账号" min-width="150" show-overflow-tooltip />
         <el-table-column label="链路" min-width="150" show-overflow-tooltip><template #default="{ row }">{{ chainLabel(row.chain) }} / {{ driverLabel(row.driver) }}</template></el-table-column>
         <el-table-column label="匹配依据" min-width="150" show-overflow-tooltip><template #default="{ row }">{{ (row.match_basis || []).join('、') || '最近发生时间' }}</template></el-table-column>
         <el-table-column label="首个失败节点" min-width="210" show-overflow-tooltip><template #default="{ row }"><span class="failure-node">{{ incidentNodeLabel(row) }}</span><code>{{ row.first_node_code || '' }}</code></template></el-table-column>
         <el-table-column prop="task_id" label="任务 ID" min-width="150" show-overflow-tooltip />
         <el-table-column label="发生时间" min-width="170"><template #default="{ row }">{{ formatTime(row.updated_at) }}</template></el-table-column>
-        <el-table-column label="操作" width="170" fixed="right"><template #default="{ row }"><el-button text size="small" @click="copyGpt(row)">复制 GPT 诊断</el-button><el-button text size="small" :icon="Download" aria-label="下载 JSON" @click="downloadJson(row)" /></template></el-table-column>
+        <el-table-column label="操作" width="150" fixed="right"><template #default="{ row }"><div class="row-actions"><el-button text size="small" @click="copyGpt(row)">复制诊断</el-button><el-tooltip content="下载 JSON" placement="top"><el-button text size="small" :icon="Download" aria-label="下载 JSON" @click="downloadJson(row)" /></el-tooltip></div></template></el-table-column>
         <template #empty><el-empty :description="health.incidents ? '已连接诊断库，但当前筛选条件没有匹配记录' : '暂无诊断日志记录'" /></template>
-      </el-table>
-    </el-card>
+        </el-table>
+      </div>
+    </WorkspacePanel>
     <el-drawer v-model="detailOpen" :title="detail ? `日志详情 · ${detail.incident_id}` : '日志详情'" size="720px" destroy-on-close>
       <template v-if="detail">
         <div class="detail-actions"><el-button size="small" :icon="CopyDocument" @click="copyIncidentId(detail)">复制日志 ID</el-button><el-button size="small" @click="copyGpt(detail)">复制 GPT 诊断</el-button><el-button size="small" :icon="Download" @click="downloadJson(detail)">下载 JSON</el-button></div>
@@ -287,24 +296,25 @@ watch(() => props.locationKey, (value, previous) => {
 </template>
 
 <style scoped>
-.log-center { display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 8px; width: 100%; height: 100%; min-height: 0; padding: 8px; }
-.result-actions, .search-actions, .health-strip, .detail-actions, .incident-id, .event-row { display: flex; align-items: center; }
-.health-strip, .fact-note, .unknown-note { color: var(--el-text-color-secondary); font-size: 12px; }
-.toolbar-actions, .search-actions, .detail-actions { gap: 8px; }
-.search-panel { border: 1px solid var(--workspace-border); }
-.search-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 12px; }
+.log-center { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: var(--workspace-gap); width: 100%; height: 100%; min-height: 0; }
+.search-actions, .detail-actions, .incident-id, .event-row { display: flex; align-items: center; }
+.fact-note, .unknown-note { color: var(--el-text-color-secondary); font-size: 12px; }
+.search-actions, .detail-actions { gap: var(--workspace-gap); }
+.result-selected { color: var(--el-text-color-secondary); font-size: 12px; white-space: nowrap; }
+.health-chip { color: var(--el-text-color-secondary); font-size: 12px; white-space: nowrap; padding-left: 8px; border-left: 1px solid var(--workspace-border); }
+.health-ok { color: var(--el-color-success); }.health-danger { color: var(--el-color-danger); }
+.search-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 14px; }
 .search-grid :deep(.el-form-item) { margin-bottom: 8px; }
+.search-form :deep(.el-form-item__label) { color: var(--el-text-color-secondary); font-weight: 600; }
 .full-width { width: 100%; }
 .search-count { margin-left: auto; color: var(--el-text-color-secondary); font-size: 12px; }
-.health-strip { gap: 16px; min-height: 24px; padding: 0 4px; }
-.health-ok { color: var(--el-color-success); }.health-danger { color: var(--el-color-danger); }.health-path { margin-left: auto; }
-.result-panel { display: flex; min-height: 0; height: 100%; flex-direction: column; border: 1px solid var(--workspace-border); }
-.result-panel :deep(.el-card__body) { display: flex; min-width: 0; min-height: 0; flex: 1 1 auto; flex-direction: column; overflow: hidden; padding: 8px; }
-.result-panel :deep(.search-error) { flex: 0 0 auto; margin: 8px; }
-.result-actions { justify-content: space-between; padding: 0 8px; color: var(--el-text-color-secondary); font-size: 12px; }
-.result-actions { flex: 0 0 32px; }
-.incident-table { width: 100%; min-height: 0; flex: 1 1 auto; }
-.incident-id { gap: 4px; }.failure-node { color: var(--el-color-danger); }.failure-node + code { margin-left: 5px; color: var(--el-text-color-secondary); font-size: 10px; }
+.result-panel { min-height: 0; }
+.result-panel :deep(.search-error) { flex: 0 0 auto; margin: 8px 10px 0; }
+.table-wrap { width: 100%; height: 100%; min-height: 0; padding: 10px; }
+.incident-table { width: 100%; min-height: 0; }
+.incident-id { gap: 4px; white-space: nowrap; }.incident-id .el-link { white-space: nowrap; }.failure-node { color: var(--el-color-danger); }.failure-node + code { margin-left: 5px; color: var(--el-text-color-secondary); font-size: 10px; }
 .detail-actions { margin-bottom: 14px; }.detail-summary { margin-bottom: 18px; }.detail-section { margin-top: 18px; }.detail-section h3 { margin: 0 0 7px; font-size: 14px; }.event-row { gap: 8px; flex-wrap: wrap; }.event-row span { color: var(--el-text-color-secondary); font-size: 12px; }.detail-section code { color: var(--el-text-color-secondary); font-size: 11px; }.detail-section p { margin: 5px 0 0; color: var(--el-text-color-regular); font-size: 12px; line-height: 18px; }
+.row-actions { display: inline-flex; align-items: center; gap: 0; white-space: nowrap; }
+.row-actions :deep(.el-button) { padding: 4px 5px; }
 @media (max-width: 1150px) { .search-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>

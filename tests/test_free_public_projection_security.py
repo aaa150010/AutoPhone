@@ -101,10 +101,11 @@ class FreePublicProjectionSecurityTests(unittest.TestCase):
         }
         projected = manager.public_tasks()[0]
         serialized = json.dumps(projected, ensure_ascii=False)
-        self.assertNotIn("private@example.test", serialized)
         self.assertNotIn("refresh-private", serialized)
         self.assertNotIn("mail.test/private", serialized)
-        self.assertNotIn("private", serialized)
+        # 邮箱 local 部分含 "private" 字样且现在完整公开,秘密断言改用精确 token 值。
+        self.assertNotIn("token=private", serialized)
+        self.assertNotIn("refresh_token", serialized)
         self.assertEqual(projected["progress"]["code"], "free_oauth_session")
         self.assertEqual(projected["progress"]["entered_at"], 100)
         self.assertEqual(projected["timing"]["elapsed_ms"], 10)

@@ -118,9 +118,9 @@ class FreeLiveCheckTests(unittest.TestCase):
 
         public = service._public_job(job)
 
-        self.assertEqual(public["email"], "p***e@example.test")
-        self.assertEqual(public["email_masked"], "p***e@example.test")
-        self.assertNotIn("private@example.test", str(public))
+        self.assertEqual(public["email"], "private@example.test")
+        self.assertEqual(public["email_masked"], "private@example.test")
+
         self.assertRegex(public["subject_ref_fingerprint"], r"^[0-9a-f]{16}$")
 
     def test_public_live_job_uses_diagnostic_hmac_when_available(self):

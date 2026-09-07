@@ -8,13 +8,23 @@
   --workspace-control-height: 32px;
   --workspace-accent: #f26a21;
   --workspace-accent-soft: #fff0e7;
-  --el-color-primary: #3b82f6;
-  --el-color-primary-light-3: #70a7f8;
-  --el-color-primary-light-5: #a1c5fb;
-  --el-color-primary-light-7: #c9defd;
-  --el-color-primary-light-8: #dceafe;
-  --el-color-primary-light-9: #eef5ff;
-  --el-color-primary-dark-2: #2868c9;
+  --workspace-subtle: #f8fafc;
+  --workspace-tag-radius: 4px;
+  --workspace-row-danger-bg: #fff5f3;
+  --workspace-gap: 8px;
+  --tone-success-bg: #f0fbf4;
+  --tone-success-border: #b7e1c4;
+  --tone-success-text: #237744;
+  --tone-warning-bg: #fff9ed;
+  --tone-warning-border: #f3d7a2;
+  --tone-warning-text: #8b5a12;
+  --el-color-primary: #f26a21;
+  --el-color-primary-light-3: #f5975f;
+  --el-color-primary-light-5: #f8b48f;
+  --el-color-primary-light-7: #fad2bf;
+  --el-color-primary-light-8: #fce0d4;
+  --el-color-primary-light-9: #fef0e9;
+  --el-color-primary-dark-2: #c85618;
   --el-color-success: #2f9e6d;
   --el-color-warning: #d28b2d;
   --el-color-danger: #d95c67;
@@ -55,10 +65,10 @@ body { overflow: hidden; background: var(--workspace-page); font-size: 13px; }
 .el-form-item__label { color: #5c6878; font-size: 12px; line-height: 20px !important; font-weight: 600; }
 .el-divider { margin: 16px 0; }
 .el-button { border-radius: 6px; font-size: 13px; letter-spacing: 0; font-weight: 550; }
-.el-button--primary { box-shadow: 0 1px 2px rgb(59 130 246 / 0.16); }
+.el-button--primary { box-shadow: 0 1px 2px rgb(242 106 33 / 0.18); }
 .el-button.is-link { padding: 4px 6px; border-radius: 5px; }
-.el-button.is-link:hover { background: #eef5ff; }
-.el-button.is-link.el-button--danger:hover { background: #fff0f1; }
+.el-button.is-link:hover { background: var(--el-color-primary-light-9); }
+.el-button.is-link.el-button--danger:hover { background: var(--el-color-danger-light-9); }
 .el-input__wrapper,
 .el-select__wrapper { min-height: var(--workspace-control-height); border-radius: 6px; box-shadow: 0 0 0 1px var(--workspace-border-strong) inset; }
 .el-input__wrapper { border-radius: 6px; box-shadow: 0 0 0 1px var(--workspace-border-strong) inset; }
@@ -70,9 +80,9 @@ body { overflow: hidden; background: var(--workspace-page); font-size: 13px; }
 .el-input-number--small { min-height: 30px; height: 30px; }
 .el-input__inner,
 .el-textarea__inner { font-size: 13px; letter-spacing: 0; }
-.el-tag { border-radius: 999px; font-size: 12px; font-weight: 600; }
+.el-tag { border-radius: var(--workspace-tag-radius); font-size: 12px; font-weight: 550; }
 .el-table {
-  --el-table-header-bg-color: #f8fafc;
+  --el-table-header-bg-color: var(--workspace-subtle);
   --el-table-row-hover-bg-color: #fff8f2;
   --el-table-border-color: #edf0f4;
   --el-table-text-color: #303a49;
@@ -82,11 +92,14 @@ body { overflow: hidden; background: var(--workspace-page); font-size: 13px; }
 .el-table td.el-table__cell { height: 42px; padding: 7px 0; font-size: 13px; border-bottom-color: #edf0f4; }
 .el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell { background: #fbfcfd; }
 .el-table .cell { min-width: 0; }
+.el-table .el-table__empty-block { height: 100%; }
+.el-table .el-table__empty-block .content-empty { display: flex; align-items: center; justify-content: center; height: 100%; min-height: 0; }
+.el-table .el-table__row.is-danger-row td.el-table__cell { background: var(--workspace-row-danger-bg); }
+.el-table .el-table__row.is-danger-row:hover > td.el-table__cell { background: #ffece6; }
 .el-table .el-table__fixed-right::before,
 .el-table .el-table__fixed::before { display: none; }
 .el-table .el-table__fixed-right { box-shadow: -5px 0 12px rgb(31 44 61 / 0.045); }
-.el-pagination { --el-pagination-button-bg-color: #f7f9fb; --el-pagination-hover-color: var(--el-color-primary); }
-.el-pagination button,
+.el-pagination { --el-pagination-button-bg-color: #f7f9fb; --el-pagination-hover-color: var(--el-color-primary); }.el-pagination button,
 .el-pagination .el-pager li { border-radius: 5px; }
 .el-dialog { border-radius: var(--workspace-radius); box-shadow: 0 16px 48px rgb(31 44 61 / 0.16); }
 .el-popper.is-dark {

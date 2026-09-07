@@ -133,7 +133,7 @@ class FreeNotificationSummaryTests(unittest.TestCase):
         self.assertEqual(summary["twofa_pending"], 0)
         self.assertEqual(summary["average_duration_ms"], 300)
         self.assertEqual(summary["average_duration_seconds"], 0.3)
-        self.assertEqual(summary["emails"], ["a***@example.test"])
+        self.assertEqual(summary["emails"], ["alice@example.test"])
         self.assertEqual(summary["incident_ids"], ["LOG-20260827-DEF456"])
         serialized = repr(summary)
         for secret in ("access-token-private", "password-private", "totp-secret-private", "mail-private"):

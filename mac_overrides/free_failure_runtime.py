@@ -241,20 +241,13 @@ def sanitize_public_http_status(value: Any, *, default: int | None = None) -> in
 
 
 def sanitize_public_email(value: Any) -> str:
-    """Mask a validated email while rejecting URL/path-shaped impostors."""
+    """Return a validated email for public display; reject non-email shapes."""
     if value is None or isinstance(value, (Mapping, list, tuple, set)):
         return ""
     text = str(value).strip()
     if not _PUBLIC_EMAIL_RE.fullmatch(text):
         return ""
-    local, domain = text.split("@", 1)
-    if len(local) <= 1:
-        masked = "*"
-    elif len(local) == 2:
-        masked = local[0] + "*"
-    else:
-        masked = local[0] + "***" + local[-1]
-    return f"{masked}@{domain}"
+    return text
 
 
 def sanitize_public_manual_prompt(value: Any) -> dict[str, Any]:

@@ -55,7 +55,7 @@ def _mask_email(value: Any) -> str:
     local, at, domain = raw.partition("@")
     if not at or not local or not domain:
         return "<邮箱>"
-    return f"{local[:1]}***@{domain[:80]}"
+    return f"{local}@{domain[:80]}"
 
 
 def summarize_free_batch(tasks: Any, *, batch_id: str = "") -> dict[str, Any]:

@@ -17,7 +17,9 @@ import {
 } from '@element-plus/icons-vue'
 import ContentEmptyState from './ContentEmptyState.vue'
 import TaskProgressCell from './TaskProgressCell.vue'
+import StateDot from './StateDot.vue'
 import { useTaskProgressClock } from '../composables/useTaskProgressClock'
+import { useColumnWidths } from '../composables/useColumnWidths'
 import type { MailboxRow, MailboxRowAction } from '../types/api'
 import {
   ACCOUNT_BANNED_DISPLAY_MESSAGE,
@@ -51,6 +53,12 @@ const emit = defineEmits<{
 
 const tableRef = ref<any>()
 const nowSeconds = useTaskProgressClock(() => props.rows)
+const { colWidth: smsColWidth, handleHeaderDragend: onSmsHeaderDragend } = useColumnWidths('gptphone.table.widths.sms-mailbox')
+
+function createdText(row: MailboxRow) {
+  if (!row.created_at) return ''
+  return new Date(typeof row.created_at === 'number' ? row.created_at * 1000 : row.created_at).toLocaleString()
+}
 
 function clearSelection() {
   tableRef.value?.clearSelection()
@@ -252,17 +260,22 @@ defineExpose({ clearSelection })
     row-key="row_id"
     height="100%"
     stripe
+    border
+    @header-dragend="(newWidth: number, oldWidth: number, column: any) => onSmsHeaderDragend(newWidth, oldWidth, column)"
     @selection-change="emit('select', $event)"
   >
     <el-table-column type="selection" width="45" reserve-selection />
-    <el-table-column label="批次" width="132" show-overflow-tooltip>
+    <el-table-column label="批次" :width="smsColWidth('批次', 150)" show-overflow-tooltip>
       <template #default="{ row }">
-        <el-tooltip :content="batchDetail(row)" placement="top">
-          <span class="batch-label">{{ batchLabel(row) }}</span>
-        </el-tooltip>
+        <div class="batch-cell">
+          <el-tooltip :content="batchDetail(row)" placement="top">
+            <span class="batch-label">{{ batchLabel(row) }}</span>
+          </el-tooltip>
+          <span class="batch-subline">{{ createdText(row) || '-' }}</span>
+        </div>
       </template>
     </el-table-column>
-    <el-table-column label="邮箱" min-width="230" show-overflow-tooltip>
+    <el-table-column label="邮箱" :min-width="smsColWidth('邮箱', 230)" show-overflow-tooltip>
       <template #default="{ row }">
         <el-tooltip v-if="row.email" content="点击复制邮箱" placement="top">
           <button
@@ -275,7 +288,7 @@ defineExpose({ clearSelection })
         <span v-else>-</span>
       </template>
     </el-table-column>
-    <el-table-column label="密码" width="94" align="center">
+    <el-table-column label="密码" :width="smsColWidth('密码', 94)" align="center">
       <template #default="{ row }">
         <el-tooltip content="复制明文密码" placement="top">
           <el-button
@@ -287,7 +300,7 @@ defineExpose({ clearSelection })
         </el-tooltip>
       </template>
     </el-table-column>
-    <el-table-column label="2FA" width="86" align="center">
+    <el-table-column label="2FA" :width="smsColWidth('2FA', 86)" align="center">
       <template #default="{ row }">
         <el-tooltip v-if="row.has_totp" content="复制临时 2FA 验证码" placement="top">
           <el-button
@@ -300,7 +313,7 @@ defineExpose({ clearSelection })
         <span v-else class="muted">-</span>
       </template>
     </el-table-column>
-    <el-table-column label="5h剩余" width="92" align="center">
+    <el-table-column label="5h剩余" :width="smsColWidth('5h剩余', 92)" align="center">
       <template #default="{ row }">
         <el-tooltip :content="quotaDetail(row.quota_5h, row.quota_status, row.quota_error)" placement="top">
           <button
@@ -318,7 +331,7 @@ defineExpose({ clearSelection })
         </el-tooltip>
       </template>
     </el-table-column>
-    <el-table-column label="7d剩余" width="92" align="center">
+    <el-table-column label="7d剩余" :width="smsColWidth('7d剩余', 92)" align="center">
       <template #default="{ row }">
         <el-tooltip :content="quotaDetail(row.quota_7d, row.quota_status, row.quota_error)" placement="top">
           <button
@@ -336,14 +349,14 @@ defineExpose({ clearSelection })
         </el-tooltip>
       </template>
     </el-table-column>
-    <el-table-column label="状态" width="170">
+    <el-table-column label="状态" :width="smsColWidth('状态', 150)">
       <template #default="{ row }">
         <el-tag :type="statusTagType(row)">
           {{ statusLabel(row) }}
         </el-tag>
       </template>
     </el-table-column>
-    <el-table-column label="OpenAI 状态" width="205" show-overflow-tooltip>
+    <el-table-column label="OpenAI 状态" :min-width="smsColWidth('OpenAI 状态', 170)" show-overflow-tooltip>
       <template #default="{ row }">
         <el-tooltip :content="`点击重新查询 OpenAI 状态 · ${sub2Detail(row)}`" placement="top">
           <button
@@ -353,16 +366,16 @@ defineExpose({ clearSelection })
             :aria-label="`重新查询 ${row.email || '该邮箱'} 的 OpenAI 状态`"
             @click="emit('openai', row)"
           >
-            <el-tag :type="sub2Tone(row)" effect="light">{{ sub2Label(row) }}</el-tag>
+            <StateDot :tone="sub2Tone(row)" :label="sub2Label(row)" />
             <el-icon :class="{ 'is-loading': openaiRetrying(row) }"><Refresh /></el-icon>
           </button>
         </el-tooltip>
       </template>
     </el-table-column>
-    <el-table-column label="当前阶段" width="220" show-overflow-tooltip>
+    <el-table-column label="当前阶段" :min-width="smsColWidth('当前阶段', 220)" show-overflow-tooltip>
       <template #default="{ row }"><TaskProgressCell :progress="row.progress" :timing="row.timing" :now-seconds="nowSeconds" :status="row.task_status || row.status" /></template>
     </el-table-column>
-    <el-table-column label="接码成本" width="110" align="right">
+    <el-table-column label="接码成本" :width="smsColWidth('接码成本', 110)" align="right">
       <template #default="{ row }">
         <el-tooltip v-if="row.sms_cost_cny != null" :content="costDetail(row)" placement="top">
           <span class="sms-cost">{{ costLabel(row) }}</span>
@@ -370,13 +383,10 @@ defineExpose({ clearSelection })
         <span v-else class="muted">暂无</span>
       </template>
     </el-table-column>
-    <el-table-column label="失败原因/说明" min-width="300" show-overflow-tooltip>
+    <el-table-column label="失败原因/说明" :min-width="smsColWidth('失败原因/说明', 300)" show-overflow-tooltip>
       <template #default="{ row }">{{ explanation(row) }}</template>
     </el-table-column>
-    <el-table-column label="创建时间" width="156">
-      <template #default="{ row }">{{ row.created_at ? new Date(typeof row.created_at === 'number' ? row.created_at * 1000 : row.created_at).toLocaleString() : '-' }}</template>
-    </el-table-column>
-    <el-table-column label="操作" width="82" fixed="right" align="center">
+    <el-table-column label="操作" :width="smsColWidth('操作', 82)" fixed="right" align="center">
       <template #default="{ row }">
         <el-dropdown
           trigger="click"
@@ -473,7 +483,7 @@ defineExpose({ clearSelection })
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--el-color-primary);
+  color: var(--el-text-color-primary);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 13px;
   text-align: left;
@@ -484,6 +494,8 @@ defineExpose({ clearSelection })
 .mailbox-address:focus-visible { outline: 2px solid var(--el-color-primary-light-5); outline-offset: 2px; border-radius: 2px; }
 .password-copy { min-width: 48px; padding: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0; }
 .sms-cost { color: var(--el-color-success); font-variant-numeric: tabular-nums; cursor: help; }
+.batch-cell { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.batch-subline { display: block; overflow: hidden; color: var(--el-text-color-secondary); font-size: 11px; line-height: 15px; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .batch-label { color: var(--el-text-color-regular); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .muted { color: var(--el-text-color-secondary); }
 .quota-value { color: var(--el-text-color-secondary); font-variant-numeric: tabular-nums; }

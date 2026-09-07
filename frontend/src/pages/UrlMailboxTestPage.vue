@@ -128,25 +128,25 @@ function clearTest() {
 
 <style scoped>
 .url-test-page { width: 100%; height: 100%; min-width: 0; min-height: 0; }
-.url-test-grid { display: grid; grid-template-columns: minmax(440px, .9fr) minmax(520px, 1.1fr); gap: 7px; height: 100%; min-height: 0; }
+.url-test-grid { display: grid; grid-template-columns: minmax(440px, .9fr) minmax(520px, 1.1fr); gap: var(--workspace-gap); height: 100%; min-height: 0; }
 .url-test-grid :deep(.workspace-panel) { min-height: 0; }
 .url-test-grid :deep(.workspace-panel.is-fill) { height: 100%; }
-.field-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; color: #7b8798; font-size: 12px; }
-.result-empty { display: grid; place-items: center; align-content: center; gap: 8px; height: 100%; min-height: 180px; color: #9aa6b7; font-size: 13px; }
-.result-empty .el-icon { font-size: 28px; color: #a9c7eb; }
+.field-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; color: var(--el-text-color-secondary); font-size: 12px; }
+.result-empty { display: grid; place-items: center; align-content: center; gap: 8px; height: 100%; min-height: 180px; color: var(--el-text-color-secondary); font-size: 13px; }
+.result-empty .el-icon { font-size: 28px; color: var(--el-color-primary-light-5); }
 .result-content { display: flex; flex-direction: column; gap: 18px; height: 100%; min-height: 0; }
-.result-banner { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid #f3d7a2; border-radius: 5px; background: #fff9ed; color: #8b5a12; }
-.result-banner.success { border-color: #b7e1c4; background: #f0fbf3; color: #237744; }
+.result-banner { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid var(--tone-warning-border); border-radius: 5px; background: var(--tone-warning-bg); color: var(--tone-warning-text); }
+.result-banner.success { border-color: var(--tone-success-border); background: var(--tone-success-bg); color: var(--tone-success-text); }
 .result-banner > .el-icon { flex: 0 0 auto; margin-top: 1px; font-size: 20px; }
 .result-banner div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .result-banner strong { font-size: 14px; }
 .result-banner span { color: inherit; font-size: 12px; word-break: break-word; }
-.verification-code { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 70px; padding: 12px 16px; border: 1px solid #b7e1c4; border-radius: 5px; background: #f0fbf3; }
-.verification-code span { color: #4d6c58; font-size: 12px; }
-.verification-code strong { color: #1f7542; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 30px; line-height: 1; letter-spacing: 0; }
-.result-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.result-metrics div { display: flex; flex-direction: column; gap: 4px; padding: 10px; border: 1px solid var(--workspace-border); border-radius: 4px; background: #fbfdff; }
-.result-metrics span { color: #78859a; font-size: 11px; }
-.result-metrics strong { color: #263448; font-size: 17px; font-weight: 680; }
+.verification-code { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 70px; padding: 12px 16px; border: 1px solid var(--tone-success-border); border-radius: 5px; background: var(--tone-success-bg); }
+.verification-code span { color: var(--el-text-color-secondary); font-size: 12px; }
+.verification-code strong { color: var(--tone-success-text); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 30px; line-height: 1; letter-spacing: 0; }
+.result-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--workspace-gap); }
+.result-metrics div { display: flex; flex-direction: column; gap: 4px; padding: 10px; border: 1px solid var(--workspace-border); border-radius: 4px; background: var(--workspace-subtle); }
+.result-metrics span { color: var(--el-text-color-secondary); font-size: 11px; }
+.result-metrics strong { color: var(--el-text-color-primary); font-size: 17px; font-weight: 680; }
 .result-flags { display: flex; flex-wrap: wrap; gap: 7px; }
 </style>

@@ -91,19 +91,19 @@ async function clearSource() {
 </template>
 
 <style scoped>
-.splitter-page { display: grid; grid-template-rows: minmax(210px, 0.8fr) 54px minmax(260px, 1fr); gap: 6px; width: 100%; height: 100%; min-width: 0; min-height: 0; }
+.splitter-page { display: grid; grid-template-rows: minmax(210px, 0.8fr) 54px minmax(260px, 1fr); gap: var(--workspace-gap); width: 100%; height: 100%; min-width: 0; min-height: 0; }
 .source-panel { min-height: 0; }
 .source-input,
 .result-input { width: 100%; height: 100%; }
 .source-input :deep(.el-textarea__inner),
 .result-input :deep(.el-textarea__inner) { height: 100%; min-height: 100% !important; border: 0; border-radius: 0; box-shadow: none; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.55; }
-.result-input :deep(.el-textarea__inner) { background: #f8fafc; color: #334155; }
-.split-controls { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 7px 12px; border: 1px solid var(--workspace-border); background: #fff; }
-.split-controls > label { color: #475569; font-size: 13px; font-weight: 650; white-space: nowrap; }
+.result-input :deep(.el-textarea__inner) { background: var(--workspace-subtle); color: var(--el-text-color-regular); }
+.split-controls { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 7px 12px; border: 1px solid var(--workspace-border); border-radius: var(--workspace-radius); background: var(--workspace-surface); box-shadow: var(--workspace-shadow); }
+.split-controls > label { color: var(--el-text-color-regular); font-size: 13px; font-weight: 650; white-space: nowrap; }
 .split-controls .el-input-number { width: 130px; }
 .count-item { display: flex; align-items: baseline; gap: 5px; min-width: 76px; padding-left: 10px; border-left: 1px solid var(--workspace-border); }
-.count-item span { color: #8490a3; font-size: 12px; }
-.count-item strong { color: #172033; font-size: 16px; }
+.count-item span { color: var(--el-text-color-secondary); font-size: 12px; }
+.count-item strong { color: var(--el-text-color-primary); font-size: 16px; }
 .split-controls .el-alert { flex: 1; min-width: 0; padding: 5px 10px; }
-.result-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; min-width: 0; min-height: 0; }
+.result-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--workspace-gap); min-width: 0; min-height: 0; }
 </style>

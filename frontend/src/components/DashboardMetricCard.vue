@@ -49,7 +49,7 @@ const numericValue = computed(() => (
 
 <style scoped>
 .metric-card { display: flex; align-items: center; gap: 9px; width: 100%; min-width: 0; min-height: 52px; padding: 6px 9px; border: 0; background: transparent; color: inherit; font: inherit; letter-spacing: 0; text-align: left; }
-.metric-card.framed { height: 52px; border: 1px solid var(--workspace-border); border-radius: 6px; background: #fff; box-shadow: 0 1px 3px rgba(22, 34, 51, .07); }
+.metric-card.framed { height: 52px; border: 1px solid var(--workspace-border); border-radius: 6px; background: var(--workspace-surface); box-shadow: var(--workspace-shadow); }
 .metric-card.is-interactive { cursor: pointer; transition: border-color .16s ease, box-shadow .16s ease, background-color .16s ease, transform .16s ease; }
 .metric-card.is-interactive:hover { transform: translateY(-1px); border-color: var(--el-color-primary-light-5); background: var(--el-color-primary-light-9); box-shadow: 0 4px 10px rgba(22, 34, 51, .13); }
 .metric-card.is-interactive:focus-visible { outline: 2px solid var(--el-color-primary-light-5); outline-offset: 2px; }
@@ -59,7 +59,7 @@ const numericValue = computed(() => (
 .metric-icon { display: grid; place-items: center; flex: 0 0 28px; width: 28px; height: 28px; border-radius: 5px; font-size: 16px; }
 .metric-copy { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); grid-template-rows: 27px 14px; column-gap: 7px; align-items: center; flex: 1 1 auto; min-width: 0; overflow: hidden; }
 .metric-copy > span { grid-column: 1; grid-row: 1; min-width: 0; max-width: 100%; overflow: hidden; color: var(--el-text-color-secondary); font-size: 13px; line-height: 18px; text-overflow: ellipsis; white-space: nowrap; }
-.metric-value { grid-column: 2; grid-row: 1; min-width: 0; max-width: 100%; overflow: hidden; margin-top: 0; color: #18212f; font-size: 21px; line-height: 24px; font-weight: 720; font-variant-numeric: tabular-nums; letter-spacing: 0; text-overflow: ellipsis; white-space: nowrap; }
+.metric-value { grid-column: 2; grid-row: 1; min-width: 0; max-width: 100%; overflow: hidden; margin-top: 0; color: var(--el-text-color-primary); font-size: 21px; line-height: 24px; font-weight: 720; font-variant-numeric: tabular-nums; letter-spacing: 0; text-overflow: ellipsis; white-space: nowrap; }
 .metric-detail { grid-column: 1 / -1; grid-row: 2; min-width: 0; max-width: 100%; overflow: hidden; color: var(--el-text-color-secondary); font-size: 11px; line-height: 14px; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
 .metric-card:not(.has-detail) .metric-copy { display: flex; align-items: center; align-self: stretch; gap: 7px; }
 .metric-card:not(.has-detail) .metric-copy > span,

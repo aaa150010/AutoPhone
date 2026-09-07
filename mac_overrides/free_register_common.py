@@ -361,23 +361,13 @@ def fingerprint(value: Any) -> str:
 
 
 def mask_email(value: Any) -> str:
-    """Return the stable display form used by every Free public projection.
+    """Return the display form used by every Free public projection.
 
-    Email addresses remain private worker data.  Public API callers may still
-    join rows by the masked value, while the dedicated reveal endpoints can
-    fetch the original address after an explicit action.
+    The GUI shows the full mailbox address so rows are directly readable;
+    reveal endpoints and copy actions keep working unchanged.  Callers that
+    need an opaque join key still use ``fingerprint(email)``.
     """
-    text = str(value or "").strip()
-    if "@" not in text:
-        return ""
-    local, domain = text.split("@", 1)
-    if len(local) <= 1:
-        masked = "*"
-    elif len(local) == 2:
-        masked = local[0] + "*"
-    else:
-        masked = local[0] + "***" + local[-1]
-    return f"{masked}@{domain}"
+    return str(value or "").strip()
 
 
 def proxy_error_detail(error: BaseException) -> str:

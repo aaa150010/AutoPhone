@@ -112,7 +112,7 @@ class ContractTests(unittest.TestCase):
         self.assertTrue(request.force_existing_login)
         self.assertNotIn("secret", repr(request))
         public = request.public_dict()
-        self.assertEqual(public["email"], "u***@example.test")
+        self.assertEqual(public["email"], "user@example.test")
         self.assertNotIn("proxy", public)
 
     def test_result_public_projection_masks_email_and_omits_private_fields(self):
@@ -123,7 +123,7 @@ class ContractTests(unittest.TestCase):
             fields={"access_token": "private"},
         )
         public = result.public_dict()
-        self.assertEqual(public["email"], "u***@example.test")
+        self.assertEqual(public["email"], "user@example.test")
         self.assertNotIn("access_token", public)
 
     def test_pool_snapshot_whitelists_and_redacts_session_metadata(self):

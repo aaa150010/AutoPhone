@@ -2,12 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  CircleCheckFilled,
-  CircleCloseFilled,
-  Coin,
   Document,
-  Message,
-  Monitor,
   Setting,
   Tickets,
   Upload,
@@ -23,7 +18,6 @@ import {
   getRuntimeTaskLatestCode,
   retryFreeTwofa,
 } from '../api/client'
-import DashboardMetricCard from '../components/DashboardMetricCard.vue'
 import LogPanel from '../components/LogPanel.vue'
 import MailboxImportDialog from '../components/MailboxImportDialog.vue'
 import OpenAIConnectivityBanner from '../components/OpenAIConnectivityBanner.vue'
@@ -153,32 +147,14 @@ const batchCompleted = computed(() => Math.min(
   ),
 ))
 
-const metrics = computed(() => [
-  {
-    title: '可用邮箱',
-    value: Number(controller.runtime.value.pool?.available || 0),
-    detail: '接码 / OAuth 独立邮箱池',
-    icon: Message,
-    tone: 'primary',
-  },
-  { title: '运行中', value: Number(summary.value.active || 0), detail: undefined, icon: Monitor, tone: 'warning' },
-  { title: '成功', value: Number(summary.value.success || 0), detail: undefined, icon: CircleCheckFilled, tone: 'success' },
-  { title: '未成功', value: Number(summary.value.failed || 0) + Number(summary.value.stopped || 0), detail: undefined, icon: CircleCloseFilled, tone: 'danger' },
-  {
-    title: '运行成本',
-    value: `¥${Number(summary.value.sms_cost_cny || 0).toFixed(2)}`,
-    detail: `$${Number(summary.value.sms_cost_usd || 0).toFixed(4)}`,
-    icon: Coin,
-    tone: 'primary',
-  },
-  {
-    title: '全部接码均成本',
-    value: `¥${Number(summary.value.sms_cost_history?.average_cny || 0).toFixed(2)}/号`,
-    detail: `${Number(summary.value.sms_cost_history?.account_count || 0)} 个账号 / ¥${Number(summary.value.sms_cost_history?.total_cny || 0).toFixed(2)}`,
-    icon: Coin,
-    tone: 'success',
-  },
-] as const)
+const summaryStrip = computed(() => [
+  { key: 'pool', label: '可用邮箱', value: Number(controller.runtime.value.pool?.available || 0), tone: 'info', detail: '接码 / OAuth 独立邮箱池' },
+  { key: 'active', label: '运行中', value: Number(summary.value.active || 0), tone: 'warning', detail: '' },
+  { key: 'success', label: '成功', value: Number(summary.value.success || 0), tone: 'success', detail: '' },
+  { key: 'unsuccess', label: '未成功', value: Number(summary.value.failed || 0) + Number(summary.value.stopped || 0), tone: 'danger', detail: '' },
+  { key: 'cost', label: '运行成本', value: `¥${Number(summary.value.sms_cost_cny || 0).toFixed(2)}`, tone: 'info', detail: `$${Number(summary.value.sms_cost_usd || 0).toFixed(4)}` },
+  { key: 'avg', label: '接码均成本', value: `¥${Number(summary.value.sms_cost_history?.average_cny || 0).toFixed(2)}/号`, tone: 'success', detail: `${Number(summary.value.sms_cost_history?.account_count || 0)} 个账号 / ¥${Number(summary.value.sms_cost_history?.total_cny || 0).toFixed(2)}` },
+] as { key: string; label: string; value: number | string; tone: string; detail: string }[])
 
 async function start() {
   if (controller.dirty.value) {
@@ -446,17 +422,29 @@ async function disableConnectivityGuard() {
     />
 
     <div class="console-grid">
-      <div class="metrics-row" aria-label="运行指标">
-        <DashboardMetricCard
-          v-for="metric in metrics"
-          :key="metric.title"
-          :title="metric.title"
-          :value="metric.value"
-          :detail="metric.detail"
-          :icon="metric.icon"
-          :tone="metric.tone"
-          framed
-        />
+      <div class="run-toolbar">
+        <div class="run-toolbar-main">
+          <el-button size="small" :icon="Setting" @click="emit('navigate', '/settings')">运行配置</el-button>
+          <el-button size="small" :icon="Upload" @click="mailboxImportDialog?.open()">导入邮箱</el-button>
+          <el-tooltip v-if="controller.dirty.value" content="存在未保存配置，请先进入运行配置保存" placement="bottom">
+            <span><el-button size="small" type="primary" :icon="VideoPlay" disabled>开始运行</el-button></span>
+          </el-tooltip>
+          <el-button v-else size="small" type="primary" :icon="VideoPlay" :loading="controller.actions.starting" :disabled="controller.running.value || !controller.hasPool.value" @click="start">开始运行</el-button>
+          <el-button size="small" type="danger" plain :icon="VideoPause" :loading="controller.actions.stopping" :disabled="!controller.running.value" @click="stop">停止</el-button>
+        </div>
+        <div v-if="batchId" class="batch-identity">
+          <span>运行批次</span>
+          <strong>{{ batchId }}</strong>
+          <b>已完成 {{ batchCompleted }}/{{ batchTarget }}</b>
+        </div>
+        <span v-else class="batch-placeholder" />
+      </div>
+      <div class="summary-strip" aria-label="运行指标">
+        <div v-for="item in summaryStrip" :key="item.key" class="summary-cell" :class="[`tone-${item.tone}`, { 'has-detail': item.detail }]" :title="item.detail || item.label">
+          <span>{{ item.label }}</span>
+          <strong>{{ item.value }}</strong>
+          <small v-if="item.detail">{{ item.detail }}</small>
+        </div>
       </div>
 
       <div class="run-workspace" :style="{ gridTemplateColumns: `minmax(660px, 1fr) 7px minmax(360px, ${visibleLogPanelWidth}px)` }">
@@ -468,20 +456,6 @@ async function disableConnectivityGuard() {
               <button type="button" role="tab" :aria-selected="taskView === 'running'" :class="{ active: taskView === 'running' }" @click="taskView = 'running'"><el-icon><VideoPlay /></el-icon><span>运行中</span><b>{{ taskCounts.running }}</b></button>
               <button type="button" role="tab" :aria-selected="taskView === 'all'" :class="{ active: taskView === 'all' }" @click="taskView = 'all'"><el-icon><Tickets /></el-icon><span>全部</span><b>{{ taskCounts.all }}</b></button>
             </div>
-            <div class="run-toolbar-actions">
-              <el-tooltip content="运行配置" placement="top"><el-button size="small" :icon="Setting" aria-label="运行配置" @click="emit('navigate', '/settings')" /></el-tooltip>
-              <el-tooltip content="导入邮箱" placement="top"><el-button size="small" :icon="Upload" aria-label="导入邮箱" @click="mailboxImportDialog?.open()" /></el-tooltip>
-              <el-tooltip v-if="controller.dirty.value" content="存在未保存配置，请先进入运行配置保存" placement="bottom">
-                <span><el-button size="small" type="primary" :icon="VideoPlay" aria-label="开始运行" disabled /></span>
-              </el-tooltip>
-              <el-tooltip v-else content="开始运行" placement="top"><el-button size="small" type="primary" :icon="VideoPlay" :loading="controller.actions.starting" :disabled="controller.running.value || !controller.hasPool.value" aria-label="开始运行" @click="start" /></el-tooltip>
-              <el-tooltip content="停止" placement="top"><el-button size="small" type="danger" plain :icon="VideoPause" :loading="controller.actions.stopping" :disabled="!controller.running.value" aria-label="停止" @click="stop" /></el-tooltip>
-            </div>
-            </div>
-            <div v-if="batchId" class="batch-identity">
-              <span>运行批次</span>
-              <strong>{{ batchId }}</strong>
-              <b>已完成 {{ batchCompleted }}/{{ batchTarget }}</b>
             </div>
           </div>
           <TaskResultsPanel
@@ -520,64 +494,56 @@ async function disableConnectivityGuard() {
 
 <style scoped>
 .run-page {
-  --run-blue: #0f6b5b;
-  --run-blue-soft: #edf7f4;
-  --run-green: #187a5f;
-  --run-green-soft: #edf8f3;
-  --run-orange: #a86513;
-  --run-orange-soft: #fff7ea;
-  --run-red: #b54949;
-  --run-red-soft: #fff3f2;
   display: grid;
   grid-template-rows: minmax(0, 1fr);
-  gap: 6px;
+  gap: var(--workspace-gap);
   width: 100%;
   height: 100%;
   min-width: 0;
   min-height: 0;
 }
 .run-page.has-connectivity-banner { grid-template-rows: 40px minmax(0, 1fr); }
-.console-grid { display: grid; grid-template-rows: 52px minmax(0, 1fr); gap: 6px; min-width: 0; min-height: 0; }
-.metrics-row { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; min-width: 0; min-height: 0; }
-.metrics-row :deep(.metric-card) { min-height: 0; height: 100%; }
-.metrics-row :deep(.tone-primary .metric-icon) { background: var(--run-blue-soft); color: var(--run-blue); }
-.metrics-row :deep(.tone-primary .metric-value) { color: var(--run-blue); }
-.metrics-row :deep(.tone-success .metric-icon) { background: var(--run-green-soft); color: var(--run-green); }
-.metrics-row :deep(.tone-success .metric-value) { color: var(--run-green); }
-.metrics-row :deep(.tone-warning .metric-icon) { background: var(--run-orange-soft); color: var(--run-orange); }
-.metrics-row :deep(.tone-warning .metric-value) { color: var(--run-orange); }
-.metrics-row :deep(.tone-danger .metric-icon) { background: var(--run-red-soft); color: var(--run-red); }
-.metrics-row :deep(.tone-danger .metric-value) { color: var(--run-red); }
+.console-grid { display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: var(--workspace-gap); min-width: 0; min-height: 0; }
+.run-toolbar { display: flex; align-items: center; gap: var(--workspace-gap); min-width: 0; min-height: 32px; }
+.run-toolbar-main { display: flex; align-items: center; gap: var(--workspace-gap); min-width: 0; }
+.batch-identity { display: flex; align-items: center; gap: var(--workspace-gap); min-width: 0; margin-left: auto; }
+.batch-placeholder { flex: 1 1 auto; }
+.summary-strip { display: flex; align-items: stretch; min-width: 0; border: 1px solid var(--workspace-border); border-radius: var(--workspace-radius); overflow-x: auto; overflow-y: hidden; background: var(--workspace-surface); }
+.summary-cell { display: flex; flex-direction: column; justify-content: center; gap: 1px; flex: 1 0 auto; min-width: 0; min-height: 48px; padding: 5px 14px; border-right: 1px solid var(--workspace-border); white-space: nowrap; }
+.summary-cell:last-child { border-right: 0; }
+.summary-cell span { color: var(--el-text-color-secondary); font-size: 12px; line-height: 16px; }
+.summary-cell strong { color: var(--el-text-color-primary); font-size: 16px; line-height: 21px; font-variant-numeric: tabular-nums; }
+.summary-cell small { max-width: 260px; overflow: hidden; color: var(--el-text-color-secondary); font-size: 11px; line-height: 14px; text-overflow: ellipsis; }
+.summary-cell.tone-success strong { color: var(--el-color-success); }
+.summary-cell.tone-warning strong { color: var(--el-color-warning); }
+.summary-cell.tone-danger strong { color: var(--el-color-danger); }
 .task-workspace,
 .log-workspace { min-width: 0; min-height: 0; }
 .run-workspace { display: grid; min-width: 0; min-height: 0; gap: 0; }
 .log-resizer { position: relative; min-width: 0; cursor: col-resize; }
-.log-resizer::after { position: absolute; top: 8px; bottom: 8px; left: 3px; width: 1px; background: #c8d5e5; content: ''; transition: background-color .15s ease, width .15s ease; }
+.log-resizer::after { position: absolute; top: 8px; bottom: 8px; left: 3px; width: 1px; background: var(--workspace-border); content: ''; transition: background-color .15s ease, width .15s ease; }
 .log-resizer:hover::after,
-.log-resizer:focus-visible::after { left: 2px; width: 3px; background: #4c7fb7; }
+.log-resizer:focus-visible::after { left: 2px; width: 3px; background: var(--el-color-primary-light-5); }
 .log-resizer:focus-visible { outline: none; }
-.task-workspace-toolbar { flex: 0 0 auto; min-width: 0; padding: 6px 10px 7px; border-bottom: 1px solid #e1eae7; background: #fff; }
-.task-toolbar-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.batch-identity { display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: 5px; padding-top: 5px; border-top: 1px solid #eef2f1; }
-.run-toolbar-actions { display: flex; align-items: center; gap: 5px; min-width: 0; }
-.run-toolbar-actions :deep(.el-button + .el-button) { margin-left: 0; }
+.task-workspace-toolbar { flex: 0 0 auto; min-width: 0; padding: 6px 10px; border-bottom: 1px solid var(--workspace-border); background: var(--workspace-surface); }
+.task-toolbar-main { display: flex; align-items: center; gap: var(--workspace-gap); min-width: 0; }
 .task-summary-tabs { display: grid; grid-template-columns: repeat(3, minmax(76px, 92px)); align-content: center; justify-content: start; gap: 3px; min-width: 0; flex: 0 1 auto; }
-.task-summary-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 0; height: 26px; border: 1px solid transparent; border-radius: 4px; padding: 0 6px; background: transparent; color: #586a67; font-size: 12px; font-weight: 600; cursor: pointer; }
-.task-summary-tabs button:hover { background: #edf4f2; color: #0f6b5b; }
-.task-summary-tabs button.active { border-color: #83bdae; background: #e8f4f0; color: #0b6757; font-weight: 700; }
-.task-summary-tabs button.active.urgent { border-color: #df9da5; background: #fff1f2; color: #9f2435; }
+.task-summary-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 0; height: 26px; border: 1px solid transparent; border-radius: 4px; padding: 0 6px; background: transparent; color: var(--el-text-color-regular); font-size: 12px; font-weight: 600; cursor: pointer; }
+.task-summary-tabs button:hover { background: var(--workspace-subtle); color: var(--el-color-primary-dark-2); }
+.task-summary-tabs button.active { border-color: var(--el-color-primary-light-5); background: var(--el-color-primary-light-9); color: var(--el-color-primary-dark-2); font-weight: 700; }
+.task-summary-tabs button.active.urgent { border-color: var(--el-color-danger-light-5, #efb9b9); background: var(--el-color-danger-light-9, #fef0f0); color: var(--el-color-danger); }
 .task-summary-tabs button .el-icon { width: 14px; height: 14px; font-size: 14px; }
 .task-summary-tabs button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.task-summary-tabs b { display: inline-grid; place-items: center; min-width: 18px; height: 16px; padding: 0 4px; border-radius: 8px; background: #e1e8e6; color: #52635f; font-size: 9px; }
-.task-summary-tabs button.active b { background: #0f6b5b; color: #fff; }
-.task-summary-tabs button.urgent, .task-summary-tabs button.active.urgent { color: #a52b3b; }
-.task-summary-tabs button.urgent b, .task-summary-tabs button.active.urgent b { background: #c83f4f; color: #fff; }
+.task-summary-tabs b { display: inline-grid; place-items: center; min-width: 18px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--workspace-border); color: var(--el-text-color-regular); font-size: 9px; }
+.task-summary-tabs button.active b { background: var(--el-color-primary); color: #fff; }
+.task-summary-tabs button.urgent, .task-summary-tabs button.active.urgent { color: var(--el-color-danger); }
+.task-summary-tabs button.urgent b, .task-summary-tabs button.active.urgent b { background: var(--el-color-danger); color: #fff; }
 .batch-identity span { color: var(--el-text-color-secondary); font-size: 11px; white-space: nowrap; }
 .batch-identity strong {
   min-width: 0;
   max-width: 320px;
   overflow: hidden;
-  color: var(--run-blue);
+  color: var(--el-color-primary-dark-2);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
   font-weight: 650;
@@ -586,54 +552,20 @@ async function disableConnectivityGuard() {
 }
 .batch-identity b {
   padding-left: 8px;
-  border-left: 1px solid #d5e0ec;
-  color: #344055;
+  border-left: 1px solid var(--workspace-border);
+  color: var(--el-text-color-regular);
   font-size: 12px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.task-toolbar-main .run-toolbar-actions { margin-left: auto; }
 
-.run-page :deep(.workspace-panel) { border-color: #d9e5e1; box-shadow: 0 1px 4px rgba(25, 75, 65, .05); }
-.run-page :deep(.workspace-panel > .el-card__header) { border-bottom-color: #e1eae7; background: #fafcfb; }
-.run-page :deep(.workspace-panel .panel-title .el-icon) { color: var(--run-blue); }
-.task-workspace :deep(.el-table) { --el-table-border-color: #dce6e2; --el-table-header-bg-color: #f5f8f7; --el-table-row-hover-bg-color: #f1f8f5; --el-table-tr-bg-color: #fafcfb; --el-table-current-row-bg-color: #edf7f4; }
-.task-workspace :deep(.el-table__header-wrapper th.el-table__cell) { background: #f5f8f7; color: #435d58; border-bottom-color: #d7e2de; }
-.task-workspace :deep(.el-table__body-wrapper td.el-table__cell) { border-bottom-color: #e5ece9; }
-.task-workspace :deep(.el-table__inner-wrapper::before) { background-color: #d8e3df; }
-.task-workspace :deep(.el-table__empty-block) { background: #fcfdfc; }
-.task-workspace :deep(.copyable-account) { color: var(--run-blue); }
-.task-workspace :deep(.copyable-account:focus-visible) { outline-color: #8fcfc1; }
-.task-workspace :deep(.task-actions .el-button) { color: var(--run-blue); }
-.task-workspace :deep(.task-actions .el-button:hover) { color: #0b574b; background: #e8f4f0; }
-.task-workspace :deep(.el-tag--primary) {
-  --el-tag-bg-color: var(--run-blue-soft);
-  --el-tag-border-color: #b9ddd4;
-  --el-tag-text-color: var(--run-blue);
-}
-.task-workspace :deep(.el-tag--success) {
-  --el-tag-bg-color: var(--run-green-soft);
-  --el-tag-border-color: #b9e5cc;
-  --el-tag-text-color: var(--run-green);
-}
-.task-workspace :deep(.el-tag--warning) {
-  --el-tag-bg-color: var(--run-orange-soft);
-  --el-tag-border-color: #f0cf99;
-  --el-tag-text-color: var(--run-orange);
-}
-.task-workspace :deep(.el-tag--danger) {
-  --el-tag-bg-color: var(--run-red-soft);
-  --el-tag-border-color: #efb9b9;
-  --el-tag-text-color: var(--run-red);
-}
-.task-workspace :deep(.content-empty),
-.log-workspace :deep(.content-empty) { background: #fcfdfc; }
-.log-workspace :deep(.log-line) { border-bottom-color: #e5ece9; }
-.log-workspace :deep(.log-line b) { color: #356c61; }
-.log-workspace :deep(.log-line b.success) { color: var(--run-green); }
-.log-workspace :deep(.log-line b.warning),
-.log-workspace :deep(.log-line b.warn) { color: var(--run-orange); }
-.log-workspace :deep(.log-line b.error) { color: var(--run-red); }
+.run-page :deep(.workspace-panel) { border-color: var(--workspace-border); }
+.run-page :deep(.workspace-panel > .el-card__header) { border-bottom-color: var(--workspace-border); background: var(--workspace-subtle); }
+.run-page :deep(.workspace-panel .panel-title .el-icon) { color: var(--el-color-primary); }
+.task-workspace :deep(.copyable-account) { color: var(--el-color-primary-dark-2); }
+.task-workspace :deep(.task-actions .el-button) { color: var(--el-color-primary-dark-2); }
+.task-workspace :deep(.task-actions .el-button:hover) { color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
+.log-workspace :deep(.log-line b.error) { color: var(--el-color-danger); }
 
 </style>

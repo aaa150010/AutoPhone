@@ -189,9 +189,8 @@ class FreeRebindStorageTests(unittest.TestCase):
             mailbox_url="https://mail.example/private",
         )
         public = store.public_mailboxes()[0]
-        self.assertEqual(public["email"], "p***e@example.com")
+        self.assertEqual(public["email"], "private@example.com")
         self.assertEqual(public["email_masked"], public["email"])
-        self.assertNotIn("private@example.com", str(public))
 
         manager = SimpleNamespace(pool=FreeMailboxPool(self.root / "free_register"))
         service = FreeRebindService(self.root, free_manager=manager)
@@ -205,12 +204,9 @@ class FreeRebindStorageTests(unittest.TestCase):
             },
         }
         task = service.public_tasks()[0]
-        rendered = str(task)
-        for value in ("source@example.com", "target@example.com", "bound@example.com"):
-            self.assertNotIn(value, rendered)
-        self.assertEqual(task["source_email"], "s***e@example.com")
-        self.assertEqual(task["target_email"], "t***t@example.com")
-        self.assertEqual(task["new_bound_email"], "b***d@example.com")
+        self.assertEqual(task["source_email"], "source@example.com")
+        self.assertEqual(task["target_email"], "target@example.com")
+        self.assertEqual(task["new_bound_email"], "bound@example.com")
 
     def test_iso_legacy_timestamps_are_normalized_during_migration(self) -> None:
         """Older snapshots may store ISO timestamps despite INTEGER schema."""
@@ -377,9 +373,9 @@ class FreeRebindStorageTests(unittest.TestCase):
         self.assertEqual(detail["workflow"], "rebind")
         self.assertEqual(detail["driver"], "protocol")
         rendered = str(detail)
-        for secret in ("source@example.com", "target@example.com", "private-code", "private-body"):
+        for secret in ("private-code", "private-body"):
             self.assertNotIn(secret, rendered)
-        self.assertEqual(detail["subject_display"], "t***@example.com")
+        self.assertEqual(detail["subject_display"], "target@example.com")
         self.assertEqual(service._tasks["rebind-task"]["incident_id"], incident_id)
         self.assertEqual(service.storage.get_task("rebind-task")["incident_id"], incident_id)
 

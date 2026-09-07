@@ -19,7 +19,7 @@ function updateProxyScope(key: string, value: boolean | string | number) {
 
 <template>
   <div class="settings-section">
-    <h2 class="section-title">运行参数</h2>
+    <h2 class="section-title">接码机运行配置</h2>
     <el-form-item label="代理地址">
       <el-input
         :model-value="modelValue.proxy"

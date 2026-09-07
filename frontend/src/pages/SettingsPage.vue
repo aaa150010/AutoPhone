@@ -190,9 +190,9 @@ onMounted(async () => {
 
 <style scoped>
 .settings-page { width: 100%; height: 100%; min-width: 0; min-height: 0; }
-.settings-grid { display: grid; grid-template-columns: minmax(720px, 1fr) 380px; gap: 8px; width: 100%; height: 100%; min-width: 0; min-height: 0; }
+.settings-grid { display: grid; grid-template-columns: minmax(720px, 1fr) 380px; gap: var(--workspace-gap); width: 100%; height: 100%; min-width: 0; min-height: 0; }
 .run-snapshot { display: grid; gap: 1px; margin-bottom: 10px; border: 1px solid var(--workspace-border); border-radius: var(--workspace-radius); overflow: hidden; }
-.run-snapshot > div { display: grid; grid-template-columns: 80px minmax(0, 1fr); align-items: center; column-gap: 16px; min-height: 36px; padding: 0 12px; background: #f8fafc; }
+.run-snapshot > div { display: grid; grid-template-columns: 80px minmax(0, 1fr); align-items: center; column-gap: 16px; min-height: 36px; padding: 0 12px; background: var(--workspace-subtle); }
 .run-snapshot span { color: var(--el-text-color-secondary); font-size: 13px; }
 .run-snapshot strong { justify-self: start; font-size: 13px; font-variant-numeric: tabular-nums; }
 .run-snapshot strong.dirty { color: var(--el-color-warning); }

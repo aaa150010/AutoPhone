@@ -65,7 +65,7 @@ class SQLiteStorageAdapterTests(unittest.TestCase):
 
         public = pool.public_rows()[0]
 
-        self.assertEqual(public["email"], "a*@example.com")
+        self.assertEqual(public["email"], "ab@example.com")
         self.assertEqual(public["email_masked"], public["email"])
 
     def test_remail_mailbox_reveals_scoped_pickup_url_and_hides_token_from_public_rows(self) -> None:

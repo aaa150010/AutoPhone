@@ -157,31 +157,31 @@ onMounted(() => { void load() })
         <el-button :icon="Warning" @click="cleanup">清理过期</el-button>
       </template>
       <el-form :model="query" inline @submit.prevent="search">
-        <el-form-item label="链路"><el-select v-model="query.scope" style="width: 130px"><el-option v-for="item in scopeOptions" :key="item.value" v-bind="item" /></el-select></el-form-item>
-        <el-form-item label="状态"><el-select v-model="query.status" style="width: 130px"><el-option v-for="item in statusOptions" :key="item.value" v-bind="item" /></el-select></el-form-item>
-        <el-form-item label="驱动"><el-select v-model="query.driver" style="width: 150px"><el-option v-for="item in driverOptions" :key="item.value" v-bind="item" /></el-select></el-form-item>
-        <el-form-item label="原因"><el-input v-model="query.reason" clearable style="width: 180px" /></el-form-item>
-        <el-form-item label="关键字"><el-input v-model="query.q" clearable style="width: 220px" placeholder="样本 ID、任务或主机" /></el-form-item>
+        <el-form-item label="链路"><el-select v-model="query.scope" class="filter-width-sm"><el-option v-for="item in scopeOptions" :key="item.value" v-bind="item" /></el-select></el-form-item>
+        <el-form-item label="状态"><el-select v-model="query.status" class="filter-width-sm"><el-option v-for="item in statusOptions" :key="item.value" v-bind="item" /></el-select></el-form-item>
+        <el-form-item label="驱动"><el-select v-model="query.driver" class="filter-width-md"><el-option v-for="item in driverOptions" :key="item.value" v-bind="item" /></el-select></el-form-item>
+        <el-form-item label="原因"><el-input v-model="query.reason" clearable class="filter-width-lg" /></el-form-item>
+        <el-form-item label="关键字"><el-input v-model="query.q" clearable class="filter-width-xl" placeholder="样本 ID、任务或主机" /></el-form-item>
         <el-form-item><el-button type="primary" :icon="Search" @click="search">检索</el-button></el-form-item>
       </el-form>
     </WorkspacePanel>
     <WorkspacePanel title="未识别响应" :icon="Warning" fill body-padding="none">
       <div class="table-actions"><span>找到 {{ total }} 条 · 已选 {{ selected.length }} 条</span><div><el-button size="small" :icon="CircleCheck" :disabled="!selected.length" @click="updateStatus('resolved')">标记已解决</el-button><el-button size="small" :icon="Delete" type="danger" plain :disabled="!selected.length" @click="removeSelected">删除</el-button></div></div>
-      <el-table :data="samples" height="100%" stripe v-loading="loading" @selection-change="selectRows">
+      <el-table :data="samples" height="100%" stripe border v-loading="loading" @selection-change="selectRows">
         <el-table-column type="selection" width="44" />
-        <el-table-column label="样本 ID" min-width="170" show-overflow-tooltip><template #default="{ row }"><el-link type="primary" @click="openDetail(row)">{{ row.sample_id }}</el-link></template></el-table-column>
-        <el-table-column label="链路 / 驱动" min-width="140" show-overflow-tooltip><template #default="{ row }">{{ scopeLabel(row.scope) }} / {{ driverLabel(row.driver) }}</template></el-table-column>
-        <el-table-column prop="stage" label="阶段" min-width="170" show-overflow-tooltip />
-        <el-table-column prop="reason" label="未命中原因" min-width="220" show-overflow-tooltip />
+        <el-table-column label="样本 ID" min-width="180" show-overflow-tooltip><template #default="{ row }"><el-link type="primary" @click="openDetail(row)">{{ row.sample_id }}</el-link></template></el-table-column>
+        <el-table-column label="链路 / 驱动" min-width="130" show-overflow-tooltip><template #default="{ row }">{{ scopeLabel(row.scope) }} / {{ driverLabel(row.driver) }}</template></el-table-column>
+        <el-table-column prop="stage" label="阶段" min-width="160" show-overflow-tooltip />
+        <el-table-column prop="reason" label="未命中原因" min-width="200" show-overflow-tooltip />
         <el-table-column label="状态" width="90"><template #default="{ row }"><el-tag size="small" :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag></template></el-table-column>
-        <el-table-column label="出现" width="70" align="center"><template #default="{ row }">{{ row.occurrence_count }}</template></el-table-column>
-        <el-table-column label="响应" width="70" align="center"><template #default="{ row }">{{ row.response_count }}</template></el-table-column>
-        <el-table-column label="大小" width="95"><template #default="{ row }">{{ formatBytes(row.total_bytes) }}</template></el-table-column>
-        <el-table-column label="最近时间" min-width="170"><template #default="{ row }">{{ formatTime(row.last_seen_at) }}</template></el-table-column>
-        <el-table-column label="操作" width="100" fixed="right"><template #default="{ row }"><el-button text size="small" :icon="View" @click="openDetail(row)">查看</el-button></template></el-table-column>
+        <el-table-column label="出现" width="64" align="center"><template #default="{ row }">{{ row.occurrence_count }}</template></el-table-column>
+        <el-table-column label="响应" width="64" align="center"><template #default="{ row }">{{ row.response_count }}</template></el-table-column>
+        <el-table-column label="大小" width="90"><template #default="{ row }">{{ formatBytes(row.total_bytes) }}</template></el-table-column>
+        <el-table-column label="最近时间" min-width="165"><template #default="{ row }">{{ formatTime(row.last_seen_at) }}</template></el-table-column>
+        <el-table-column label="操作" width="90" fixed="right"><template #default="{ row }"><el-button text size="small" :icon="View" @click="openDetail(row)">查看</el-button></template></el-table-column>
         <template #empty><el-empty description="暂无未识别邮箱响应" /></template>
       </el-table>
-      <div class="pagination"><el-pagination v-model:current-page="page" :page-size="pageSize" :total="total" layout="prev, pager, next" @current-change="load" /></div>
+      <div class="pagination"><el-pagination v-model:current-page="page" background :total="total" layout="total, prev, pager, next" @current-change="load" /></div>
     </WorkspacePanel>
     <el-drawer v-model="detailOpen" :title="detail ? `解析样本 · ${detail.sample_id}` : '解析样本'" size="720px" destroy-on-close>
       <template v-if="detail">
@@ -198,16 +198,20 @@ onMounted(() => { void load() })
 </template>
 
 <style scoped>
-.sample-page { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 7px; width: 100%; height: 100%; min-height: 0; }
+.sample-page { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: var(--workspace-gap); width: 100%; height: 100%; min-height: 0; }
 .sample-page :deep(.workspace-panel.is-fill) { min-height: 0; height: 100%; }
 .sample-page :deep(.workspace-panel.is-fill .workspace-panel__body) { min-height: 0; }
-.table-actions, .drawer-actions, .status-actions, .reparse-metrics { display: flex; align-items: center; gap: 8px; }
-.table-actions { justify-content: space-between; min-height: 38px; padding: 0 10px; color: #718096; font-size: 12px; }
-.pagination { display: flex; justify-content: flex-end; padding: 5px 8px; }
+.filter-width-sm { width: 130px; }
+.filter-width-md { width: 150px; }
+.filter-width-lg { width: 180px; }
+.filter-width-xl { width: 220px; }
+.table-actions, .drawer-actions, .status-actions, .reparse-metrics { display: flex; align-items: center; gap: var(--workspace-gap); }
+.table-actions { justify-content: space-between; min-height: 38px; padding: 0 10px; color: var(--el-text-color-secondary); font-size: 12px; }
+.pagination { display: flex; justify-content: flex-end; border-top: 1px solid var(--workspace-border); padding: 5px 10px; }
 .drawer-actions { flex-wrap: wrap; margin-bottom: 14px; }
 .detail-section { margin-top: 18px; }.detail-section h3 { margin: 0 0 8px; font-size: 14px; }
-.json-block, .raw-response pre { max-height: 260px; overflow: auto; padding: 10px; border: 1px solid var(--workspace-border); border-radius: 4px; background: #f8fafc; color: #334155; font: 11px/17px ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; }
-.reparse-metrics { flex-wrap: wrap; margin-bottom: 8px; color: #64748b; font-size: 12px; }.reparse-metrics span { padding: 5px 8px; border: 1px solid var(--workspace-border); border-radius: 4px; background: #fbfdff; }
-.raw-response { margin-top: 10px; }.raw-response strong { display: block; margin-bottom: 5px; color: #8b5a12; font-size: 11px; word-break: break-all; }.raw-response pre { max-height: 420px; background: #fff9ed; }
+.json-block, .raw-response pre { max-height: 260px; overflow: auto; padding: 10px; border: 1px solid var(--workspace-border); border-radius: 4px; background: var(--workspace-subtle); color: var(--el-text-color-regular); font: 11px/17px ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; }
+.reparse-metrics { flex-wrap: wrap; margin-bottom: 8px; color: var(--el-text-color-secondary); font-size: 12px; }.reparse-metrics span { padding: 5px 8px; border: 1px solid var(--workspace-border); border-radius: 4px; background: var(--workspace-subtle); }
+.raw-response { margin-top: 10px; }.raw-response strong { display: block; margin-bottom: 5px; color: var(--tone-warning-text); font-size: 11px; word-break: break-all; }.raw-response pre { max-height: 420px; background: var(--tone-warning-bg); }
 .status-actions { justify-content: flex-end; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--workspace-border); }
 </style>

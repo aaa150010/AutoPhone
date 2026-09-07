@@ -106,16 +106,16 @@ onMounted(scrollToBottom)
 .warning,
 .warn { color: var(--el-color-warning); }
 .log-line.is-sub2-upload-success {
-  background: #dcfce7;
-  border-bottom-color: #86d3a3;
-  box-shadow: inset 4px 0 0 #16a34a, inset 0 0 0 1px #86d3a3;
+  background: var(--tone-success-bg);
+  border-bottom-color: var(--tone-success-border);
+  box-shadow: inset 4px 0 0 var(--el-color-success), inset 0 0 0 1px var(--tone-success-border);
 }
-.log-line.is-sub2-upload-success .log-time { color: #166534; font-weight: 600; }
+.log-line.is-sub2-upload-success .log-time { color: var(--tone-success-text); font-weight: 600; }
 .log-line.is-sub2-upload-success b.log-message.sub2-upload-success-message {
   display: inline-flex;
   align-items: flex-start;
   gap: 7px;
-  color: #05602a;
+  color: var(--tone-success-text);
   font-size: 14px;
   font-weight: 800;
   letter-spacing: 0;
@@ -124,7 +124,7 @@ onMounted(scrollToBottom)
   flex: 0 0 16px;
   width: 16px;
   height: 20px;
-  color: #16a34a;
+  color: var(--el-color-success);
   font-size: 16px;
 }
 </style>

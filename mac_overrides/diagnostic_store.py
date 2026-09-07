@@ -174,10 +174,10 @@ def _masked_subject(value: Any, kind: str = "") -> str:
         r"[^@\s]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?",
         text,
     ):
-        local, domain = text.split("@", 1)
-        if "." not in domain or ".." in domain:
-            return "已脱敏账号"
-        return f"{local[:1]}***@{domain[:80]}"
+        # The local GUI renders full mailbox addresses; validated email
+        # shapes are display-safe here.  Non-email shapes still fall through
+        # to the redaction fallbacks below.
+        return text
     if normalized_kind in {"phone", "phone_number"} or re.fullmatch(r"\d{8,15}", text):
         if not re.fullmatch(r"\+?\d{8,15}", text):
             return "已脱敏账号"

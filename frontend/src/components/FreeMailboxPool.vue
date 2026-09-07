@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { CircleCheck, Collection, CopyDocument, Delete, Document, DocumentCopy, Download, Key, Link, Lock, MoreFilled, Plus, PriceTag, Refresh, RefreshLeft, RefreshRight, Tickets, Upload, View, VideoPlay, Warning } from '@element-plus/icons-vue'
+import { ArrowDown, CircleCheck, Collection, CopyDocument, Delete, Document, DocumentCopy, Download, Key, Link, Lock, MoreFilled, Plus, PriceTag, Refresh, RefreshLeft, RefreshRight, Tickets, Upload, View, VideoPlay, Warning } from '@element-plus/icons-vue'
 import { deleteFreeMailboxes, exportFreeResults, formatFreeMailboxes, getFreeLiveCheckState, getFreeMailboxLatestCode, getFreeMailboxUrl, getFreeMailboxes, getFreeSecret, getFreeTotp, importFreeMailboxes, retryFreeTwofa, setFreeMailboxStatus, startFree, startFreeLiveCheck, startFreePlanCheck, transferFreeMailboxes } from '../api/client'
 import type { FreeLiveCheckState, FreeMailboxRow, FreeState } from '../api/client'
 import ContentEmptyState from './ContentEmptyState.vue'
 import FreeTaskLogDialog from './FreeTaskLogDialog.vue'
 import WorkspacePanel from './WorkspacePanel.vue'
+import StateDot from './StateDot.vue'
 import {
   ACCOUNT_BANNED_DISPLAY_MESSAGE,
   freeFailureCause,
@@ -20,6 +21,7 @@ import {
 import { freeRowSecretLookup } from '../utils/freeSecretLookup'
 import { safeMailboxUrl } from '../utils/safeMailboxUrl'
 import { freeStageDetail, freeStageLabel, freeStageType } from '../utils/freeStage'
+import { useColumnWidths } from '../composables/useColumnWidths'
 
 const FAST_LIVE_CHECK_TIP = '用注册时保存的 Token，通过原绑定代理查询一次账号状态：正常 / Token 失效 / 已停用 / 被出口或安全策略拒绝。不重新登录、不收取邮件。'
 const DEEP_LIVE_CHECK_TIP = '通过原绑定代理完整重新登录确认账号状态：可能收取一封邮箱 OTP 验证码，并按需校验密码 / 2FA。成功后刷新 Token 并同步套餐与 Plus 资格。'
@@ -48,6 +50,7 @@ const liveState = ref<FreeLiveCheckState>({ running: false, workers: 3, queue_li
 const logDialogOpen = ref(false)
 const logRow = ref<FreeMailboxRow | null>(null)
 const logDialog = ref<{ refresh: (options?: { forceLatest?: boolean; silent?: boolean }) => Promise<void> }>()
+const { colWidth: poolColWidth, handleHeaderDragend: onPoolHeaderDragend } = useColumnWidths('gptphone.table.widths.free-mailbox-pool')
 let refreshTimer = 0
 
 const filteredRows = computed(() => rows.value.filter(row => {
@@ -79,6 +82,25 @@ function mailboxDriverLabel(row: FreeMailboxRow) {
   if (driver === 'protocol') return '全协议'
   if (!driver) return '未运行'
   return '历史链路'
+}
+function mailboxCreatedText(row: FreeMailboxRow) {
+  if (!row.created_at) return ''
+  return new Date(typeof row.created_at === 'number' ? row.created_at * 1000 : row.created_at).toLocaleString()
+}
+function mailboxRowClass({ row }: { row: FreeMailboxRow }) {
+  return ['failed', 'partial_success'].includes(String(row?.status || '')) && !isRetryResolved(row?.retry_resolved)
+    ? 'is-danger-row'
+    : ''
+}
+
+function handleBulkCommand(command: string) {
+  if (command === 'copy-mailbox') return void copyMailboxFormat('mailbox')
+  if (command === 'copy-full') return void copyMailboxFormat('full')
+  if (command === 'copy-token') return void copySecret('token')
+  if (command === 'copy-credential') return void copySecret('credential')
+  if (command === 'copy-page-token') return void copySecret('token', pageRows.value)
+  if (command === 'mark-available') return void setStatus('available')
+  if (command === 'mark-unavailable') return void setStatus('unavailable')
 }
 function openImport() {
   mailboxText.value = ''
@@ -229,7 +251,8 @@ function planLabel(row: FreeMailboxRow) {
   if (status === 'failed') return '查询失败'
   if (['queued', 'running'].includes(status)) return '查询中'
   if (!plan) return '未查询'
-  return row.plus_trial_eligible && normalized === 'free' ? 'free(可Plus试用)' : normalized === 'free' ? 'free' : plan
+  const hasPerk = Boolean(row.plus_trial_eligible) || normalized.includes('plus') || normalized.includes('pro') || normalized.includes('team')
+  return hasPerk ? '有优惠' : '无优惠'
 }
 
 function planTagType(row: FreeMailboxRow) {
@@ -237,8 +260,9 @@ function planTagType(row: FreeMailboxRow) {
   const status = String(row.plan_check_status || '').toLowerCase()
   if (status === 'failed') return 'danger'
   if (['queued', 'running'].includes(status)) return 'warning'
-  if (row.plus_trial_eligible || plan.includes('plus') || plan.includes('pro') || plan.includes('team')) return 'success'
-  return 'info'
+  if (!plan) return 'info'
+  const hasPerk = Boolean(row.plus_trial_eligible) || plan.includes('plus') || plan.includes('pro') || plan.includes('team')
+  return hasPerk ? 'success' : 'info'
 }
 
 function mailboxStageLabel(row: FreeMailboxRow) {
@@ -623,29 +647,59 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
       <div class="table-region">
         <div class="metrics"><span>总数 <b>{{ metrics.total }}</b></span><span class="is-good">注册成功 <b>{{ metrics.success }}</b></span><span>测活中 <b>{{ metrics.checking }}</b></span><span class="is-good">账号正常 <b>{{ metrics.live }}</b></span><span class="is-bad">已停用 <b>{{ metrics.deactivated }}</b></span><span class="is-warn">待重跑 <b>{{ metrics.rerun }}</b></span><span class="is-warn">2FA 待重试 <b>{{ metrics.pending }}</b></span></div>
         <div class="filters"><el-input v-model="search" size="small" clearable placeholder="搜索邮箱或错误节点" /><el-select v-model="statusFilter" size="small" clearable placeholder="注册状态"><el-option label="可用" value="available" /><el-option label="运行中" value="running" /><el-option label="成功" value="success" /><el-option label="失败" value="failed" /><el-option label="待重跑" value="pending_rerun" /><el-option label="2FA 待重试" value="twofa_pending" /></el-select><el-select v-model="driverFilter" size="small" clearable placeholder="注册链路"><el-option label="全协议" value="protocol" /><el-option label="Camoufox" value="camoufox" /></el-select><el-select v-model="liveStatusFilter" size="small" clearable placeholder="测活状态"><el-option label="排队 / 测活中" value="active" /><el-option label="正常" value="live" /><el-option label="已停用" value="deactivated" /><el-option label="Token 失效" value="token_expired" /><el-option label="出口/反爬拒绝" value="free_live_proxy_blocked" /><el-option label="Session 被拒绝" value="free_live_session_rejected" /><el-option label="触发限流" value="free_live_rate_limited" /><el-option label="上游异常" value="free_live_upstream_error" /><el-option label="网络异常" value="free_live_network_error" /><el-option label="需要真实密码" value="free_live_password_required" /><el-option label="测活失败" value="failed" /></el-select></div>
-        <div class="bulk-actions"><span>已选 {{ selected.length }} 条</span><el-tooltip placement="top" :show-after="250"><template #content><div class="live-check-tip">{{ FAST_LIVE_CHECK_TIP }}</div></template><el-button size="small" type="success" plain :icon="CircleCheck" :loading="liveBusy === 'fast'" :disabled="!selected.some(canLiveCheck) || Boolean(liveBusy)" @click="startLiveCheck('fast')">快速测活</el-button></el-tooltip><el-tooltip placement="top" :show-after="250"><template #content><div class="live-check-tip">{{ DEEP_LIVE_CHECK_TIP }}</div></template><el-button size="small" type="warning" plain :icon="RefreshRight" :loading="liveBusy === 'deep'" :disabled="!selected.some(canLiveCheck) || Boolean(liveBusy)" @click="startLiveCheck('deep')">深度测活</el-button></el-tooltip><el-button size="small" :icon="Upload" :disabled="!selected.length || loading" @click="transferSelected">传输至接码邮箱</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selected.length" @click="copyMailboxFormat('mailbox')">复制接码格式</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selected.length" @click="copyMailboxFormat('full')">复制完整格式</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selected.length" @click="copySecret('token')">复制 Token</el-button><el-button size="small" :icon="CopyDocument" :disabled="!selected.some(row => row.has_credential)" @click="copySecret('credential')">复制凭据</el-button><el-button size="small" :icon="CopyDocument" :disabled="!pageRows.some(row => row.has_access_token)" @click="copySecret('token', pageRows)">当前页 Token</el-button><el-button size="small" :icon="Download" :disabled="loading" @click="exportResults">导出</el-button><el-button size="small" :icon="CircleCheck" :disabled="!selected.length || loading" @click="setStatus('available')">恢复</el-button><el-button size="small" :icon="Warning" :disabled="!selected.length || loading" @click="setStatus('unavailable')">不可用</el-button><el-button size="small" type="danger" plain :icon="Delete" :disabled="!selected.length || loading" @click="deleteSelected">删除选中</el-button></div>
+        <div class="bulk-actions">
+          <span>已选 {{ selected.length }} 条</span>
+          <el-tooltip placement="top" :show-after="250"><template #content><div class="live-check-tip">{{ FAST_LIVE_CHECK_TIP }}</div></template><el-button size="small" type="success" plain :icon="CircleCheck" :loading="liveBusy === 'fast'" :disabled="!selected.some(canLiveCheck) || Boolean(liveBusy)" @click="startLiveCheck('fast')">快速测活</el-button></el-tooltip>
+          <el-tooltip placement="top" :show-after="250"><template #content><div class="live-check-tip">{{ DEEP_LIVE_CHECK_TIP }}</div></template><el-button size="small" type="warning" plain :icon="RefreshRight" :loading="liveBusy === 'deep'" :disabled="!selected.some(canLiveCheck) || Boolean(liveBusy)" @click="startLiveCheck('deep')">深度测活</el-button></el-tooltip>
+          <el-button size="small" :icon="Upload" :disabled="!selected.length || loading" @click="transferSelected">传输至接码邮箱</el-button>
+          <el-button size="small" :icon="Download" :disabled="loading" @click="exportResults">导出</el-button>
+          <el-button size="small" type="danger" plain :icon="Delete" :disabled="!selected.length || loading" @click="deleteSelected">删除选中</el-button>
+          <el-dropdown trigger="click" @command="(command: string) => handleBulkCommand(command)">
+            <el-button size="small" :icon="CopyDocument" aria-label="更多批量操作">更多操作<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="copy-mailbox"><el-icon><CopyDocument /></el-icon>复制接码格式</el-dropdown-item>
+                <el-dropdown-item command="copy-full"><el-icon><CopyDocument /></el-icon>复制完整格式</el-dropdown-item>
+                <el-dropdown-item command="copy-token"><el-icon><Key /></el-icon>复制 Token</el-dropdown-item>
+                <el-dropdown-item command="copy-credential"><el-icon><DocumentCopy /></el-icon>复制凭据</el-dropdown-item>
+                <el-dropdown-item command="copy-page-token"><el-icon><CopyDocument /></el-icon>当前页 Token</el-dropdown-item>
+                <el-dropdown-item command="mark-available" divided><el-icon><CircleCheck /></el-icon>恢复为可用</el-dropdown-item>
+                <el-dropdown-item command="mark-unavailable"><el-icon><Warning /></el-icon>标记不可用</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
         <el-table
           ref="tableRef"
           :data="pageRows"
           row-key="row_id"
           stripe
           height="100%"
+          border
+          :row-class-name="mailboxRowClass"
+          @header-dragend="(newWidth: number, oldWidth: number, column: any) => onPoolHeaderDragend(newWidth, oldWidth, column)"
           @selection-change="selected = $event"
         >
           <el-table-column type="selection" width="42" reserve-selection />
-          <el-table-column label="邮箱" width="184" show-overflow-tooltip><template #default="{ row }"><el-tooltip :content="`点击复制邮箱${row.email ? `：${row.email}` : ''}`" placement="top"><el-button link class="email-copy" :loading="loadingEmail.includes(row.row_id)" @click.stop="copyEmail(row)"><span>{{ row.email }}</span><el-icon v-if="!loadingEmail.includes(row.row_id)"><CopyDocument /></el-icon></el-button></el-tooltip></template></el-table-column>
-          <el-table-column label="链路" min-width="145" show-overflow-tooltip><template #default="{ row }"><el-tooltip :content="mailboxDriverLabel(row)" placement="top"><div class="mailbox-chain-cell"><el-tag size="small" effect="plain">{{ mailboxDriverLabel(row) }}</el-tag></div></el-tooltip></template></el-table-column>
-          <el-table-column label="阶段" min-width="145" show-overflow-tooltip><template #default="{ row }"><el-tooltip :content="mailboxStageTooltip(row)" placement="top"><span class="mailbox-stage-cell"><el-tag size="small" effect="light" :type="mailboxStageType(row)">{{ mailboxStageLabel(row) }}</el-tag></span></el-tooltip></template></el-table-column>
-          <el-table-column label="套餐 / Plus 试用" width="156" show-overflow-tooltip>
-            <template #default="{ row }"><div class="mailbox-plan-cell"><el-tag size="small" :type="planTagType(row)" effect="light">{{ planLabel(row) }}</el-tag><el-tag v-if="row.plus_trial_eligible && String(row.subscription_plan || row.plan_type || '').toLowerCase() !== 'free'" size="small" type="success" effect="plain" class="trial-tag">Plus 试用</el-tag></div></template>
+          <el-table-column label="邮箱" :min-width="poolColWidth('邮箱', 280)" show-overflow-tooltip>
+            <template #default="{ row }">
+              <div class="mailbox-account-cell">
+                <el-tooltip :content="`点击复制邮箱${row.email ? `：${row.email}` : ''}`" placement="top"><el-button link class="email-copy" :loading="loadingEmail.includes(row.row_id)" @click.stop="copyEmail(row)"><span>{{ row.email }}</span><el-icon v-if="!loadingEmail.includes(row.row_id)"><CopyDocument /></el-icon></el-button></el-tooltip>
+                <span class="mailbox-subline">{{ mailboxDriverLabel(row) }}<template v-if="mailboxCreatedText(row)"> · {{ mailboxCreatedText(row) }}</template></span>
+              </div>
+            </template>
           </el-table-column>
-          <el-table-column label="账号测活" min-width="165" show-overflow-tooltip>
+          <el-table-column label="阶段" :min-width="poolColWidth('阶段', 150)" show-overflow-tooltip><template #default="{ row }"><el-tooltip :content="mailboxStageTooltip(row)" placement="top"><span class="mailbox-stage-cell"><el-tag size="small" effect="light" :type="mailboxStageType(row)">{{ mailboxStageLabel(row) }}</el-tag></span></el-tooltip></template></el-table-column>
+          <el-table-column label="套餐" :width="poolColWidth('套餐', 96)" align="center" show-overflow-tooltip>
+            <template #default="{ row }"><div class="mailbox-plan-cell"><el-tag size="small" :type="planTagType(row)" effect="plain">{{ planLabel(row) }}</el-tag><el-tag v-if="row.plus_trial_eligible && String(row.subscription_plan || row.plan_type || '').toLowerCase() !== 'free'" size="small" type="success" effect="plain" class="trial-tag">Plus 试用</el-tag></div></template>
+          </el-table-column>
+          <el-table-column label="账号测活" :min-width="poolColWidth('账号测活', 150)" show-overflow-tooltip>
             <template #default="{ row }"><div class="mailbox-live-cell"><el-tag size="small" :type="liveStatusType(row.live_check_status)">{{ liveStatusLabel(row.live_check_status) }}</el-tag><small v-if="row.live_check_mode">{{ row.live_check_mode === 'deep' ? '深度' : '快速' }}</small></div></template>
           </el-table-column>
-          <el-table-column label="2FA" width="92" align="center">
-            <template #default="{ row }"><el-tag v-if="row.has_totp" size="small" type="success" effect="plain">已启用</el-tag><el-tag v-else-if="row.twofa_status === 'pending'" size="small" type="warning" effect="plain">待重试</el-tag><el-tag v-else size="small" type="info" effect="plain">未启用</el-tag></template>
+          <el-table-column label="2FA" :width="poolColWidth('2FA', 110)">
+            <template #default="{ row }"><StateDot v-if="row.has_totp" tone="success" label="已启用" /><StateDot v-else-if="row.twofa_status === 'pending'" tone="warning" label="待重试" /><StateDot v-else tone="info" label="未启用" /></template>
           </el-table-column>
-          <el-table-column label="错误" min-width="280">
+          <el-table-column label="错误" :min-width="poolColWidth('错误', 320)">
             <template #default="{ row }">
               <el-tooltip placement="top" :disabled="!mailboxFailureDetails(row).length">
                 <template #content><div class="failure-tooltip"><span v-for="item in mailboxFailureDetails(row)" :key="item">{{ item }}</span></div></template>
@@ -653,8 +707,7 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
               </el-tooltip>
             </template>
           </el-table-column>
-          <el-table-column label="创建时间" width="170"><template #default="{ row }">{{ row.created_at ? new Date(typeof row.created_at === 'number' ? row.created_at * 1000 : row.created_at).toLocaleString() : '-' }}</template></el-table-column>
-          <el-table-column label="操作" width="82" fixed="right" align="center">
+          <el-table-column label="操作" :width="poolColWidth('操作', 64)" fixed="right" align="center">
             <template #default="{ row }">
               <el-dropdown trigger="click" @command="(command: string) => handleMailboxAction(command, row)">
                 <el-button link class="row-action-button" aria-label="打开邮箱操作菜单" title="打开邮箱操作菜单"><el-icon><MoreFilled /></el-icon></el-button>
@@ -696,31 +749,30 @@ onUnmounted(() => window.clearTimeout(refreshTimer))
 <style scoped>
 .free-pool { width: 100%; height: 100%; min-height: 0; }
 .pool-summary { color: var(--el-text-color-secondary); font-size: 12px; }
-.table-region { display: grid; grid-template-rows: 28px 38px 36px minmax(0, 1fr) 46px; width: 100%; height: 100%; min-height: 0; padding: 8px 10px 0; }
-.metrics { display: flex; align-items: center; gap: 14px; color: var(--el-text-color-secondary); font-size: 12px; }
+.table-region { display: grid; grid-template-rows: auto auto auto minmax(0, 1fr) 46px; gap: var(--workspace-gap); width: 100%; height: 100%; min-height: 0; padding: 10px; }
+.metrics { display: flex; align-items: center; gap: 14px; min-height: 28px; color: var(--el-text-color-secondary); font-size: 12px; }
 .metrics b { color: var(--el-text-color-primary); font-variant-numeric: tabular-nums; }
-.metrics .is-good b { color: #168363; }
-.metrics .is-bad b { color: #c44754; }
-.metrics .is-warn b { color: #bc761c; }
-.filters { display: grid; grid-template-columns: repeat(4, minmax(180px, 1fr)); gap: 6px; }
+.metrics .is-good b { color: var(--el-color-success); }
+.metrics .is-bad b { color: var(--el-color-danger); }
+.metrics .is-warn b { color: var(--el-color-warning); }
+.filters { display: grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap: var(--workspace-gap); }
 .filters > .el-input, .filters > .el-select { width: 100%; }
-.bulk-actions { display: flex; align-items: center; gap: 6px; min-width: 0; overflow-x: auto; color: var(--el-text-color-secondary); font-size: 12px; scrollbar-width: thin; }
+.bulk-actions { display: flex; align-items: center; gap: var(--workspace-gap); min-width: 0; color: var(--el-text-color-secondary); font-size: 12px; flex-wrap: wrap; }
 .bulk-actions > span { margin-right: auto; white-space: nowrap; }
 .bulk-actions :deep(.el-button + .el-button) { margin-left: 0; }
 .trial-tag { margin-left: 5px; }
-.email-copy { max-width: 100%; gap: 5px; color: var(--el-text-color-primary); }
+.mailbox-account-cell { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.mailbox-subline { display: block; overflow: hidden; color: var(--el-text-color-secondary); font-size: 11px; line-height: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.email-copy { display: inline-flex; max-width: 100%; min-width: 0; gap: 5px; height: auto; padding: 0; color: var(--el-text-color-primary); justify-content: flex-start; }
 .email-copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .email-copy .el-icon { flex: 0 0 auto; color: var(--el-color-primary); }
-.mailbox-chain-cell, .mailbox-plan-cell, .mailbox-live-cell { display: flex; align-items: center; min-width: 0; gap: 5px; overflow: hidden; white-space: nowrap; }
-.mailbox-chain-cell > .el-tag, .mailbox-plan-cell > .el-tag, .mailbox-live-cell > .el-tag { flex: 0 0 auto; }
+.mailbox-plan-cell, .mailbox-live-cell { display: flex; align-items: center; min-width: 0; gap: 5px; overflow: hidden; white-space: nowrap; }
+.mailbox-plan-cell > .el-tag, .mailbox-live-cell > .el-tag { flex: 0 0 auto; }
 .mailbox-stage-cell { display: inline-flex; max-width: 100%; min-width: 0; overflow: hidden; vertical-align: middle; }
 .mailbox-stage-cell :deep(.el-tag) { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mailbox-live-cell small { display: inline; flex: 0 0 auto; margin-top: 0; color: var(--el-text-color-secondary); white-space: nowrap; }
-.mailbox-operation-cell { display: inline-flex; align-items: center; justify-content: center; gap: 0; min-width: 0; white-space: nowrap; }
-.mailbox-operation-cell :deep(.el-button) { width: 25px; height: 25px; margin-left: 0; padding: 4px; }
 .table-region :deep(.el-pagination) { justify-content: flex-end; border-top: 1px solid var(--workspace-border); }
-.table-region small { color: var(--el-text-color-secondary); }
-.table-region small { display: block; overflow: hidden; margin-top: 2px; text-overflow: ellipsis; white-space: nowrap; }
+.table-region small { color: var(--el-text-color-secondary); display: block; overflow: hidden; margin-top: 2px; text-overflow: ellipsis; white-space: nowrap; }
 .failure-cell { min-width: 0; max-width: 100%; overflow: hidden; line-height: 16px; }
 .failure-summary { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .failure-summary strong, .failure-summary span { white-space: nowrap; }

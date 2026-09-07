@@ -600,11 +600,11 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.mailbox-page { display: grid; grid-template-rows: 52px minmax(0, 1fr); gap: 6px; width: 100%; height: 100%; min-width: 0; min-height: 0; }
+.mailbox-page { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: var(--workspace-gap); width: 100%; height: 100%; min-width: 0; min-height: 0; }
 .mailbox-page :deep(.workspace-panel > .el-card__body) { display: flex; flex-direction: column; min-height: 0; }
 .selected-count { color: var(--el-color-primary); font-size: 13px; white-space: nowrap; }
-.mailbox-toolbar { display: grid; grid-template-rows: auto auto; gap: 6px; flex: 0 0 auto; padding: 8px 10px; border-bottom: 1px solid var(--workspace-border); background: #fbfcfd; }
-.toolbar-section { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.mailbox-toolbar { display: grid; grid-template-rows: auto auto; gap: var(--workspace-gap); flex: 0 0 auto; padding: 8px 10px; border-bottom: 1px solid var(--workspace-border); background: var(--workspace-subtle); }
+.toolbar-section { display: flex; align-items: center; flex-wrap: wrap; gap: var(--workspace-gap); min-width: 0; }
 .toolbar-label { flex: 0 0 52px; color: var(--el-text-color-secondary); font-size: 12px; font-weight: 650; }
 .search-input { width: 220px; }
 .filter-select { width: 140px; }
@@ -612,7 +612,7 @@ onUnmounted(() => {
 .sub2-filter-select { width: 180px; }
 .quota-filter-select { width: 145px; }
 .mailbox-toolbar :deep(.el-input__wrapper), .mailbox-toolbar :deep(.el-select__wrapper), .mailbox-toolbar :deep(.el-button) { min-height: 30px; height: 30px; }
-.action-row :deep(.mailbox-action-menus) { gap: 6px; }
+.action-row :deep(.mailbox-action-menus) { gap: var(--workspace-gap); }
 .action-row :deep(.mailbox-action-menus .el-button) { min-height: 30px; height: 30px; }
 .table-region { display: grid; grid-template-rows: minmax(0, 1fr) 46px; flex: 1 1 auto; width: 100%; height: 100%; min-height: 0; padding: 8px 10px 0; }
 .pager { justify-content: flex-end; border-top: 1px solid var(--workspace-border); }

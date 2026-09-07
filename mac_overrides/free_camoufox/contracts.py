@@ -163,10 +163,9 @@ class CamoufoxRegistrationRequest:
         runner in memory only.
         """
 
+        # The GUI renders the full mailbox address; masking here only
+        # discarded readability without removing the value from local views.
         email = self.email
-        if "@" in email:
-            local, _, domain = email.partition("@")
-            email = (local[:1] + "***" if local else "***") + "@" + domain
         return {
             "task_id": self.task_id,
             "batch_id": self.batch_id,
@@ -287,11 +286,12 @@ class CamoufoxRegistrationResult:
 
 
 def _mask_email(value: Any) -> str:
+    """Display projection keeps the full mailbox address for the local GUI."""
     text = str(value or "")
     local, separator, domain = text.partition("@")
     if not separator:
         return ""
-    return (local[:1] + "***" if local else "***") + "@" + domain
+    return f"{local}@{domain}"
 
 
 _POOL_SESSION_FIELDS = (

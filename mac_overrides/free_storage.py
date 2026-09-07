@@ -279,17 +279,7 @@ def _stored_bool(value: Any, default: bool = False) -> bool:
 
 
 def _mask_email(value: Any) -> str:
-    text = str(value or "").strip()
-    if "@" not in text:
-        return ""
-    local, domain = text.split("@", 1)
-    if len(local) <= 1:
-        masked = "*"
-    elif len(local) == 2:
-        masked = local[0] + "*"
-    else:
-        masked = local[0] + "***" + local[-1]
-    return f"{masked}@{domain}"
+    return str(value or "").strip()
 
 
 def _mask_proxy(value: Any) -> str:

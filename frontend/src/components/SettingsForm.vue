@@ -185,7 +185,7 @@ watch(() => props.initialAnchor, (anchor) => {
   min-height: 0;
   padding: 12px 8px 12px 10px;
   border-right: 1px solid var(--workspace-border);
-  background: #f7f9fc;
+  background: var(--workspace-subtle);
   overflow: auto;
 }
 .nav-title {
@@ -197,17 +197,17 @@ watch(() => props.initialAnchor, (anchor) => {
 .settings-nav :deep(.el-tree) { background: transparent; color: var(--el-text-color-regular); }
 .settings-nav :deep(.el-tree-node__content) { height: 32px; border-radius: 4px; }
 .settings-nav :deep(.el-tree-node__label) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
-.settings-nav :deep(.el-tree-node.is-current > .el-tree-node__content) { color: var(--el-color-primary); background: #eaf3ff; }
+.settings-nav :deep(.el-tree-node.is-current > .el-tree-node__content) { color: var(--el-color-primary-dark-2); background: var(--el-color-primary-light-9); }
 .settings-scroll {
   min-width: 0;
   min-height: 0;
   overflow: auto;
   scrollbar-width: thin;
-  scrollbar-color: #75a9d8 #edf3f8;
+  scrollbar-color: #bcc7d5 #edf1f5;
 }
 .settings-scroll::-webkit-scrollbar { width: 7px; }
-.settings-scroll::-webkit-scrollbar-thumb { border-radius: 4px; background: #75a9d8; }
-.settings-scroll::-webkit-scrollbar-track { background: #edf3f8; }
+.settings-scroll::-webkit-scrollbar-thumb { border-radius: 4px; background: #bcc7d5; }
+.settings-scroll::-webkit-scrollbar-track { background: #edf1f5; }
 .settings-fields { box-sizing: border-box; width: 100%; padding: 12px 16px 20px; }
 .settings-anchor + .settings-anchor { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--workspace-border); }
 </style>

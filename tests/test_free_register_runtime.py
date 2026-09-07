@@ -306,12 +306,11 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertEqual(pool.results_dir.name, "free_register_results")
         self.assertFalse((self.data_dir / "mailbox_pool.txt").exists())
         rows = pool.public_rows()
-        self.assertEqual(rows[0]["email"], "f***t@example.test")
+        # 邮箱按产品要求在 GUI 完整显示;公开边界继续隐藏 URL 与 token。
+        self.assertEqual(rows[0]["email"], "first@example.test")
         self.assertEqual(rows[0]["email_masked"], rows[0]["email"])
-        self.assertNotIn("first@example.test", str(rows))
-        self.assertNotIn("private", str(rows))
         self.assertNotIn("https://", str(rows))
-        self.assertNotIn("private", str(rows))
+        self.assertNotIn("token=private", str(rows))
 
     def test_free_pool_accepts_three_dash_mailbox_delimiter(self):
         pool = FreeMailboxPool(self.data_dir)
@@ -322,8 +321,8 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
 
         self.assertEqual(imported, 2)
         self.assertEqual([row["email"] for row in pool.public_rows()], [
-            "f***t@example.test",
-            "s***d@example.test",
+            "first@example.test",
+            "second@example.test",
         ])
 
     def test_free_logs_keep_account_and_stage_identity_under_concurrency(self):
@@ -1697,10 +1696,9 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             },
         }
         public = manager.public_tasks()[0]
-        self.assertEqual(public["email"], "p***e@example.test")
+        self.assertEqual(public["email"], "private@example.test")
         self.assertEqual(public["email_masked"], public["email"])
         self.assertRegex(public["subject_ref_fingerprint"], r"^[0-9a-f]{16}$")
-        self.assertNotIn("private@example.test", str(public))
 
     def test_public_task_uses_diagnostic_hmac_subject_fingerprint_when_available(self):
         diagnostics = DiagnosticStore(self.data_dir / "diagnostics")
@@ -1726,8 +1724,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         prepared = pool.build_transfer_content([row_id])
         self.assertEqual(prepared["skipped"], 1)
         item = prepared["skipped_items"][0]
-        self.assertEqual(item["email"], "p***e@example.test")
-        self.assertNotIn("private@example.test", str(item))
+        self.assertEqual(item["email"], "private@example.test")
 
     def test_public_tasks_normalize_legacy_progress_fields(self):
         """Legacy Free progress snapshots remain consumable by the shared UI."""
@@ -1773,7 +1770,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertEqual(deleted, 1)
         self.assertNotIn("free-terminal", manager.task_store.load())
         self.assertEqual(manager.public_logs("free-terminal"), [])
-        self.assertEqual(manager.pool.public_rows()[0]["email"], "*@example.test")
+        self.assertEqual(manager.pool.public_rows()[0]["email"], "a@example.test")
 
     def test_delete_tasks_rejects_queued_or_running_history_atomically(self):
         manager = FreeRegisterManager(self.data_dir)

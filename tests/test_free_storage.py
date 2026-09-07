@@ -941,7 +941,7 @@ class FreeSQLiteStoreTests(unittest.TestCase):
         self.assertNotIn("at-secret", serialized)
         self.assertNotIn("totp-secret", serialized)
         self.assertIn(SECRET_MASK, serialized)
-        self.assertEqual(public_mailbox["email"], "p***c@example.com")
+        self.assertEqual(public_mailbox["email"], "public@example.com")
         self.assertEqual(public_proxy["proxy"], "socks5://proxy.example:1080")
         self.assertEqual(mailbox["email"], "public@example.com")
 
@@ -977,11 +977,10 @@ class FreeSQLiteStoreTests(unittest.TestCase):
             },
         )
         public = store.public_tasks()[0]
-        rendered = str(public)
-        for value in ("private@example.test", "source@example.test", "target@example.test"):
-            self.assertNotIn(value, rendered)
-        self.assertEqual(public["payload"]["email"], "p***e@example.test")
-        self.assertEqual(public["payload"]["source_email"], "s***e@example.test")
+        # 邮箱别名按产品要求完整显示,公开边界继续隐藏凭据与 URL。
+        self.assertEqual(public["payload"]["email"], "private@example.test")
+        self.assertEqual(public["payload"]["source_email"], "source@example.test")
+        self.assertEqual(public["payload"]["target_email"], "target@example.test")
 
     def test_sensitive_values_are_kept_out_of_generic_payload_column(self) -> None:
         store = FreeSQLiteStore(self.root)

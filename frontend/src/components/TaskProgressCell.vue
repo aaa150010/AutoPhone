@@ -30,9 +30,9 @@ const elapsedSeconds = computed(() => {
 
 const totalElapsedSeconds = computed(() => {
   const timing = resolvedTiming.value
-  if (!timing?.started_at) return Number(timing?.elapsed_seconds || 0)
+  if (!timing?.started_at) return Math.floor(Number(timing?.elapsed_seconds || 0))
   const end = timing.finished_at ?? props.nowSeconds
-  return Math.max(Number(timing.elapsed_seconds || 0), Math.floor(end - timing.started_at))
+  return Math.max(Math.floor(Number(timing.elapsed_seconds || 0)), Math.floor(end - timing.started_at))
 })
 
 const queueElapsedSeconds = computed(() => {
@@ -103,9 +103,7 @@ const tooltip = computed(() => {
   <el-tooltip v-if="progress || resolvedTiming" :content="tooltip" placement="top">
     <div class="progress-cell">
       <el-tag v-if="progress" :type="tagType" effect="light">{{ progress.label }}</el-tag>
-      <span v-if="progress && terminal">{{ successful ? '末次节点' : '停在' }} {{ elapsedSeconds }} 秒 / 总 {{ totalElapsedSeconds }} 秒</span>
-      <span v-else-if="progress">当前 {{ elapsedSeconds }} 秒 / 总 {{ totalElapsedSeconds }} 秒</span>
-      <span v-else>总 {{ totalElapsedSeconds }} 秒</span>
+      <span class="progress-seconds">{{ totalElapsedSeconds }}s</span>
     </div>
   </el-tooltip>
   <span v-else class="muted">暂无</span>
@@ -113,6 +111,7 @@ const tooltip = computed(() => {
 
 <style scoped>
 .progress-cell { display: flex; align-items: center; gap: 8px; min-width: 0; white-space: nowrap; }
-.progress-cell span { color: var(--el-text-color-secondary); font-size: 13px; font-variant-numeric: tabular-nums; }
+.progress-cell :deep(.el-tag) { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.progress-seconds { color: var(--el-text-color-secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
 .muted { color: var(--el-text-color-secondary); }
 </style>

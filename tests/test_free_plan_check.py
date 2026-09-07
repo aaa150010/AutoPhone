@@ -34,9 +34,9 @@ class FreePlanCheckTests(unittest.TestCase):
                 "created_at": 1,
                 "updated_at": 1,
             })
-            self.assertEqual(public["email"], "p***e@example.test")
-            self.assertEqual(public["email_masked"], "p***e@example.test")
-            self.assertNotIn("private@example.test", str(public))
+            self.assertEqual(public["email"], "private@example.test")
+            self.assertEqual(public["email_masked"], "private@example.test")
+
             self.assertRegex(public["subject_ref_fingerprint"], r"^[0-9a-f]{16}$")
         finally:
             service.shutdown()
