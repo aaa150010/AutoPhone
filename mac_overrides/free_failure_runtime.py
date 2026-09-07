@@ -1100,10 +1100,42 @@ def completed_result_state(
         status, failure = "partial_success", plan_failure
     else:
         status, failure = "success", None
+    # Salvage (any-auto-register registration_engine): when the account and
+    # access token are already durable, a tail-only plan/post-registration
+    # failure must not downgrade an otherwise complete registration to
+    # partial_success.  The failure envelope is preserved under
+    # salvage_failure so the gap stays visible.
+    if (
+        status == "partial_success"
+        and failure is not None
+        and failure in (post_failure, plan_failure)
+        and str(payload.get("access_token") or "").strip()
+        and _salvage_tail_failure(failure)
+    ):
+        payload["salvage_failure"] = copy.deepcopy(failure)
+        failure = None
+        status = "success"
     payload["status"] = status
     if failure is not None:
         payload["failure"] = copy.deepcopy(failure)
     return status, payload, failure
+
+
+_SALVAGE_TAIL_NODES = frozenset({
+    # Plan failures keep the historical partial_success semantics: they are
+    # independently retryable (plan re-check / live check refresh them) and
+    # their failure identity must stay visible across task, mailbox and
+    # restart stores.  Salvage only covers tail refresh steps that have no
+    # dedicated retry path.
+    "free_codex_refresh",
+    "free_session_refresh",
+})
+
+
+def _salvage_tail_failure(failure: Mapping[str, Any]) -> bool:
+    node_code = str(failure.get("node_code") or "").strip().lower()
+    error_code = str(failure.get("error_code") or "").strip().lower()
+    return node_code in _SALVAGE_TAIL_NODES or error_code in _SALVAGE_TAIL_NODES
 
 
 def failure_result_payload(
