@@ -20,6 +20,21 @@ const products = computed(() => {
   return (project?.products || []).flatMap((product: any) => (product.purchaseEnabled && Number(product.purchaseAvailable ?? product.totalAvailable ?? 0) > 0)
     ? (product.suffixes?.length ? product.suffixes.map((item: any) => ({ ...product, suffix: item.suffix, available: item.purchaseAvailable ?? item.totalAvailable })) : [{ ...product, suffix: typeSuffixes[product.type] || product.type, available: product.purchaseAvailable ?? product.totalAvailable }]) : [])
 })
+// 购买单价 = purchasePrice × priceMultiplier（服务端按倍率扣积分；缺省倍率按 1 计）。
+function productPrice(item: any): string {
+  const base = Number(item.purchasePrice)
+  if (!Number.isFinite(base) || base <= 0) return ''
+  const multiplier = Number(item.priceMultiplier)
+  const value = Number.isFinite(multiplier) && multiplier > 0 ? base * multiplier : base
+  return value % 1 === 0 ? String(value) : value.toFixed(2)
+}
+const totalPrice = computed(() => {
+  const selected = products.value.find((item: any) => item.suffix === suffix.value)
+  const unit = productPrice(selected)
+  if (!unit) return ''
+  const value = Number(unit) * Math.max(1, Number(quantity.value) || 1)
+  return value % 1 === 0 ? String(value) : value.toFixed(2)
+})
 async function load() {
   loading.value = true
   try {
@@ -42,10 +57,10 @@ onMounted(load)
   <div class="remail-page">
     <WorkspacePanel title="购买参数" fill body-padding="compact"><template #actions><el-button size="small" :loading="loading" @click="load">刷新目录</el-button></template><el-form label-position="right" label-width="110px" class="form-grid">
       <el-form-item label="ChatGPT 项目"><el-select v-model="projectId" size="small" filterable autocomplete="nope"><el-option v-for="item in projects" :key="item.id" :label="item.name || item.id" :value="Number(item.id)" /></el-select></el-form-item>
-      <el-form-item label="邮箱类型 / 后缀"><el-select v-model="suffix" size="small" filterable autocomplete="nope" placeholder="选择有库存商品"><el-option v-for="item in products" :key="`${item.type}-${item.suffix}`" :label="`${item.type} · ${item.suffix} · 库存 ${item.available ?? '-'}`" :value="item.suffix" /></el-select></el-form-item>
+      <el-form-item label="邮箱类型 / 后缀"><el-select v-model="suffix" size="small" filterable autocomplete="nope" placeholder="选择有库存商品"><el-option v-for="item in products" :key="`${item.type}-${item.suffix}`" :label="`${item.type} · ${item.suffix} · 库存 ${item.available ?? '-'}${productPrice(item) ? ` · ${productPrice(item)} 积分/个` : ''}`" :value="item.suffix" /></el-select></el-form-item>
       <el-form-item label="数量"><el-input-number v-model="quantity" size="small" :min="1" :max="100" /></el-form-item>
       <el-form-item label="库存策略"><el-radio-group v-model="supply" size="small"><el-radio value="private_first">私有优先</el-radio><el-radio value="public_only">仅公共库存</el-radio></el-radio-group></el-form-item>
-    </el-form><div class="actions"><span>钱包余额：{{ walletBalance }} 积分</span><el-button size="small" type="primary" :loading="loading" @click="purchase">创建购买订单</el-button></div></WorkspacePanel>
+    </el-form><div class="actions"><span>钱包余额：{{ walletBalance }} 积分<template v-if="totalPrice">　·　预计消耗：{{ totalPrice }} 积分</template></span><el-button size="small" type="primary" :loading="loading" @click="purchase">创建购买订单</el-button></div></WorkspacePanel>
   </div>
 </template>
 <style scoped>
