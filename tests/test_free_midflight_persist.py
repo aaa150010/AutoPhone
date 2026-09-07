@@ -95,6 +95,29 @@ class ManagerPersistPartialTest(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(pool_save, [])
 
+    def test_twofa_persist_carries_session_id(self):
+        # The fast path activates with the persisted enrollment session id;
+        # persisting only the secret would make every fast-path activation
+        # fail server-side.
+        pool_save = []
+
+        class _Pool:
+            def result(self, row_id):
+                return {}
+
+            def save_result(self, row_id, values):
+                pool_save.append((row_id, values))
+
+        host = _Host()
+        host.pool = _Pool()
+        host._log = lambda *a, **k: None
+        host._persist_partial_result(
+            {"row_id": "r1", "task_id": "t1"},
+            {"twofa_status": "pending", "totp_secret": "SECRET", "twofa_session_id": "sess-1"},
+            stage_code="free_twofa_enroll",
+        )
+        self.assertEqual(pool_save[0][1]["twofa_session_id"], "sess-1")
+
     def test_missing_row_is_noop(self):
         pool_save = []
 

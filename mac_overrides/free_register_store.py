@@ -458,6 +458,11 @@ class FreeMailboxPool:
                 row["status"] = status
                 if status == "available":
                     row.pop("cooldown_until", None)
+                    # A manual restore must clear the auto-degrade marker and
+                    # its failure counter so the row starts counting afresh
+                    # instead of degrading again on its first timeout.
+                    row.pop("degraded_reason", None)
+                    row.pop("mailbox_otp_failures", None)
             atomic_write(self.state_path, state)
             return len(targets)
 

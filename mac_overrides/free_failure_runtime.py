@@ -1113,6 +1113,12 @@ def completed_result_state(
         and _salvage_tail_failure(failure)
     ):
         payload["salvage_failure"] = copy.deepcopy(failure)
+        # Clear the superseded carrier fields so a salvaged result cannot
+        # present status=success alongside a live failure envelope.
+        payload.pop("post_registration_failure", None)
+        payload.pop("plan_failure", None)
+        for key in ("plan_error_code", "plan_http_status", "plan_provider_code"):
+            payload.pop(key, None)
         failure = None
         status = "success"
     payload["status"] = status

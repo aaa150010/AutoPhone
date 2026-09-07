@@ -883,14 +883,19 @@ class FreeProtocolMixin:
             _identifier_original = getattr(created, "submit_email_identifier", None)
             _timing_cb = chain_config.get("_timing_substep") if isinstance(chain_config, Mapping) else None
             if callable(_identifier_original) and callable(_timing_cb) and not getattr(_identifier_original, "_gptphone_timed", False):
+                import time as _time
+
                 def _timed_identifier(*args: Any, __original: Callable[..., Any] = _identifier_original, __timing: Callable[..., Any] = _timing_cb, **kwargs: Any) -> Any:
-                    import time as _time
                     _started = _time.monotonic()
+                    _outcome = "success"
                     try:
                         return __original(*args, **kwargs)
+                    except BaseException:
+                        _outcome = "failed"
+                        raise
                     finally:
                         try:
-                            __timing("free_email_identifier", "email_identifier_submit", int((_time.monotonic() - _started) * 1000), "success")
+                            __timing("free_email_identifier", "email_identifier_submit", int((_time.monotonic() - _started) * 1000), _outcome)
                         except Exception:
                             pass
 
@@ -2150,6 +2155,7 @@ class FreeProtocolMixin:
             # the stored enrollment directly satisfies the recent-auth check
             # without another PoW or mailbox OTP.
             stored_secret = str((task.get("result") or {}).get("totp_secret") or "") if isinstance(task.get("result"), Mapping) else ""
+            stored_session_id = str((task.get("result") or {}).get("twofa_session_id") or "") if isinstance(task.get("result"), Mapping) else ""
             if stored_secret and not mfa_already_enabled():
                 stage(task_id, "free_twofa_activate")
                 phase = (
@@ -2158,7 +2164,7 @@ class FreeProtocolMixin:
                 )
                 activated = session.post(
                     "https://chatgpt.com/backend-api/accounts/mfa/user/activate_enrollment",
-                    headers=headers, json={"code": self._totp_code(stored_secret), "factor_type": "totp", "session_id": str((task.get("result") or {}).get("twofa_session_id") or "")}, timeout=20,
+                    headers=headers, json={"code": self._totp_code(stored_secret), "factor_type": "totp", "session_id": stored_session_id}, timeout=20,
                 )
                 activated_data = activated.json() if hasattr(activated, "json") else {}
                 activated_status = _response_status(activated)
@@ -2523,14 +2529,14 @@ class FreeProtocolMixin:
             if not secret or not session_id:
                 fail("2FA enroll 响应缺少 TOTP 材料", enrolled, data)
             # The server issues the secret exactly once and never stores it in
-            # plaintext.  Persist it before activation (any-auto-register
+            # plaintext.  Persist it (with the enrollment session id the
+            # activation call requires) before activation (any-auto-register
             # two_factor.py: bind the result before activate runs) so a failed
             # or interrupted activation leaves the retry on the fast path.
-            setattr(transport, "_gptphone_pending_totp_session_id", session_id)
             self._persist_partial(
                 config,
                 task,
-                {"twofa_status": "pending", "totp_secret": secret},
+                {"twofa_status": "pending", "totp_secret": secret, "twofa_session_id": session_id},
                 stage_code="free_twofa_enroll",
             )
             stage(task_id, "free_twofa_activate")

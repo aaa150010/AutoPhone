@@ -3995,16 +3995,15 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
         """True when the failure proves the mailbox source itself is broken."""
         error_code = str(failure.get("error_code") or "").strip().lower()
         node_code = str(failure.get("node_code") or "").strip().lower()
-        text = f"{error_code} {node_code}"
-        if any(marker in text for marker in ("mailbox_parse", "mailbox_url")):
+        if error_code in cls._MAILBOX_DEGRADE_ERRORS:
             return True
-        return any(
-            marker in text
-            for marker in ("mailbox_timeout", "mailbox_code_timeout")
-        ) or any(
-            marker in text
-            for marker in ("邮箱验证码等待已达到调用方时间预算", "邮箱取件请求已达到本轮时间预算", "邮箱验证码轮询已按任务停止请求中断")
-        ) and "mailbox" in text
+        text = f"{error_code} {node_code}"
+        if any(marker in text for marker in ("mailbox_parse", "mailbox_url", "mailbox_timeout", "mailbox_code_timeout")):
+            return True
+        return (
+            any(marker in text for marker in ("邮箱验证码等待已达到调用方时间预算", "邮箱取件请求已达到本轮时间预算"))
+            and "mailbox" in f"{failure.get('public_message') or ''}".lower()
+        )
 
     def _maybe_degrade_mailbox_source(self, snapshot: Mapping[str, Any], failure: Mapping[str, Any]) -> None:
         """After N consecutive mailbox-source failures, park the row as

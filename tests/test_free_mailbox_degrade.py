@@ -134,5 +134,34 @@ class MaybeDegradeMailboxTest(unittest.TestCase):
         self.assertEqual(updates, [])
 
 
+class ManualRestoreClearsDegradeMarkerTest(unittest.TestCase):
+    def test_set_status_available_clears_degrade_state(self):
+        import tempfile
+        from pathlib import Path
+
+        try:
+            from mac_overrides.free_register_store import FreeMailboxPool
+        except ImportError:  # pragma: no cover
+            from free_register_store import FreeMailboxPool  # type: ignore[no-redef]
+
+        with tempfile.TemporaryDirectory(prefix="gptphone-degrade-") as temp:
+            pool = FreeMailboxPool(Path(temp))
+            pool.import_text("a@example.test----https://mail.example.test/pickup\n")
+            row_id = pool.entries()[0].row_id
+            pool.update(
+                row_id,
+                status="unavailable",
+                mailbox_otp_failures=0,
+                degraded_reason="free_mailbox_degraded",
+                error="邮箱取件连续失败，已自动降级；请在邮箱中心手动恢复",
+            )
+            self.assertEqual(pool._row_state(row_id).get("degraded_reason"), "free_mailbox_degraded")
+            pool.set_status([row_id], "available")
+            state = pool._row_state(row_id)
+            self.assertEqual(state.get("status"), "available")
+            self.assertNotIn("degraded_reason", state)
+            self.assertNotIn("mailbox_otp_failures", state)
+
+
 if __name__ == "__main__":
     unittest.main()
