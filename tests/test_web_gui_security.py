@@ -4505,47 +4505,6 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(summary["active"], 1)
         self.assertEqual(summary["sms_cost_cny"], 0)
 
-    @unittest.skip("Pixel 上传功能已按需求移除")
-    def test_success_result_persistence_does_not_enqueue_pixel_before_batch_terminal(self):
-        module = self.module
-        original_persist = module._ORIGINAL_PERSIST_RESULT
-        original_queue = module._PIXEL_UPLOAD_QUEUE
-        result_dir = Path(self.tempdir.name) / "results"
-        calls = []
-
-        def persist(fake_self, settings, task_id, entry, result, *, error="", status="failed"):
-            target = Path(settings["results_dir"]) / f"{task_id}_{entry.email.replace('@', '_at_')}.json"
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text('{"status":"success"}', encoding="utf-8")
-            return "persisted"
-
-        class Queue:
-            def enqueue(self, *_args, **_kwargs):
-                raise AssertionError("Pixel must wait until the batch is terminal")
-
-        fake_self = SimpleNamespace(
-            data_dir=self.tempdir.name,
-            _log=lambda message, level="info": calls.append((message, level)),
-        )
-        entry = SimpleNamespace(email="success@example.test")
-        try:
-            module._ORIGINAL_PERSIST_RESULT = persist
-            module._PIXEL_UPLOAD_QUEUE = Queue()
-            returned = module._patched_persist_result(
-                fake_self,
-                {"results_dir": str(result_dir)},
-                "task-1",
-                entry,
-                {"access_token": "not-used"},
-                status="success",
-            )
-            self.assertEqual(returned, "persisted")
-            self.assertEqual(calls, [])
-            self.assertTrue((result_dir / "task-1_success_at_example.test.json").is_file())
-        finally:
-            module._ORIGINAL_PERSIST_RESULT = original_persist
-            module._PIXEL_UPLOAD_QUEUE = original_queue
-
     def test_explicit_password_rejection_damages_mailbox_and_skips_generic_retirement(self):
         module = self.module
         original_retire = module._ORIGINAL_RETIRE_AFTER_FAILURE
@@ -4596,19 +4555,16 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(task_states[0][1]["error"], message)
         self.assertEqual(logs, [(f"task-password [验证邮箱密码/email_password] {message}", "error")])
 
-    @unittest.skip("Pixel 上传功能已按需求移除")
-    def test_account_banned_failure_is_terminal_removes_pool_row_and_never_enqueues_pixel(self):
+    def test_account_banned_failure_is_terminal_removes_pool_row(self):
         module = self.module
         original_persist = module._ORIGINAL_PERSIST_RESULT
         original_retire = module._ORIGINAL_RETIRE_AFTER_FAILURE
         original_remove = module._ORIGINAL_POOL_REMOVE_ENTRY
-        original_queue = module._PIXEL_UPLOAD_QUEUE
         original_sms_web = module._SMS_WEB
         result_dir = Path(self.tempdir.name) / "banned-results"
         persisted = []
         task_states = []
         logs = []
-        enqueued = []
 
         def persist(fake_self, settings, task_id, entry, result, *, error="", status="failed"):
             target = Path(settings["results_dir"]) / f"{task_id}_{entry.email.replace('@', '_at_')}.json"
@@ -4629,10 +4585,6 @@ class WebGuiSecurityTests(unittest.TestCase):
 
             def _update(self, callback):
                 return callback({"items": {}}, [])
-
-        class Queue:
-            def enqueue(self, *args):
-                enqueued.append(args)
 
         fake_self = SimpleNamespace(
             data_dir=self.tempdir.name,
@@ -4660,7 +4612,6 @@ class WebGuiSecurityTests(unittest.TestCase):
             module._ORIGINAL_POOL_REMOVE_ENTRY = lambda target, removed, **_kwargs: (
                 target.removed.append(removed.key) or True
             )
-            module._PIXEL_UPLOAD_QUEUE = Queue()
             module._SMS_WEB = SimpleNamespace(
                 pop_account_banned_detail=lambda _task_id: "status=403 code=account_banned"
             )
@@ -4678,7 +4629,6 @@ class WebGuiSecurityTests(unittest.TestCase):
             module._ORIGINAL_PERSIST_RESULT = original_persist
             module._ORIGINAL_RETIRE_AFTER_FAILURE = original_retire
             module._ORIGINAL_POOL_REMOVE_ENTRY = original_remove
-            module._PIXEL_UPLOAD_QUEUE = original_queue
             module._SMS_WEB = original_sms_web
 
         target = result_dir / "task-ban_banned_at_example.test.json"
@@ -4696,7 +4646,6 @@ class WebGuiSecurityTests(unittest.TestCase):
         self.assertEqual(task_states[0][1]["error"], message)
         self.assertNotIn("private-token", json.dumps(task_states[0][1]))
         self.assertEqual(logs, [(f"{message}；已从邮箱池移除", "error")])
-        self.assertEqual(enqueued, [])
 
 
 if __name__ == "__main__":

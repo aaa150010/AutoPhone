@@ -12,7 +12,7 @@ import json
 import re
 from datetime import datetime, timezone
 from typing import Any, Mapping
-from urllib.parse import quote, unquote, urlsplit, urlunsplit
+from urllib.parse import quote, urlsplit, urlunsplit
 
 
 SCHEMA_VERSION = 1

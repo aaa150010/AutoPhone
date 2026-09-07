@@ -9,7 +9,7 @@ from __future__ import annotations
 import inspect
 import re
 from typing import Any, Mapping
-from urllib.parse import parse_qsl, quote, unquote, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
 DEFAULT_AUTH_IMPERSONATES = (
     "chrome",
@@ -25,10 +25,10 @@ CHATGPT_ADD_PASSWORD_ELIGIBILITY_URL = (
 
 try:
     from .free_failure_runtime import sanitize_safe_page as _sanitize_safe_page
-    from .free_register_common import FreeRegisterError, clean, safe_log_message as _safe_log_message
+    from .free_register_common import FreeRegisterError, safe_log_message as _safe_log_message
 except ImportError:  # macOS launcher imports overrides as top-level modules.
     from free_failure_runtime import sanitize_safe_page as _sanitize_safe_page  # type: ignore[no-redef]
-    from free_register_common import FreeRegisterError, clean, safe_log_message as _safe_log_message  # type: ignore[no-redef]
+    from free_register_common import FreeRegisterError, safe_log_message as _safe_log_message  # type: ignore[no-redef]
 
 
 def _response_status(response: Any) -> int | None:

@@ -18,15 +18,13 @@ import copy
 import hashlib
 import json
 import os
-import re
 import sqlite3
 import threading
 import time
 from contextlib import contextmanager
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator, Mapping, Sequence
-from urllib.parse import quote, unquote, urlsplit, urlunsplit
+from urllib.parse import urlsplit
 
 
 try:

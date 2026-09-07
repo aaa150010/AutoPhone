@@ -14,7 +14,6 @@ import time
 from typing import Any, Callable
 
 try:
-    from .performance_runtime import PERFORMANCE_DEFAULTS
     from .sms_order_runtime import (
         HeroSmsCancellationDeferred,
         _herosms_min_cancel_seconds,
@@ -36,7 +35,6 @@ try:
         build_sms_wait_plan,
     )
 except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
-    from performance_runtime import PERFORMANCE_DEFAULTS  # type: ignore[no-redef]
     from sms_order_runtime import (  # type: ignore[no-redef]
         HeroSmsCancellationDeferred,
         _herosms_min_cancel_seconds,
@@ -72,7 +70,7 @@ try:
         key_fingerprint,
         redact_sms_secrets,
     )
-    from .sms_key_pool import SmsKeyHealth, SmsKeyPool, PooledSmsBowerProvider
+    from .sms_key_pool import SmsKeyHealth, SmsKeyPool
 except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
     from sms_balance_runtime import query_registry_balances  # type: ignore[no-redef]
     from sms_network import (  # type: ignore[no-redef]
@@ -87,7 +85,7 @@ except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
         key_fingerprint,
         redact_sms_secrets,
     )
-    from sms_key_pool import SmsKeyHealth, SmsKeyPool, PooledSmsBowerProvider  # type: ignore[no-redef]
+    from sms_key_pool import SmsKeyHealth, SmsKeyPool  # type: ignore[no-redef]
 
 
 def _sms_timeout_error(value: Any) -> bool:
