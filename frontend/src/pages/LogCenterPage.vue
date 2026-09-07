@@ -50,14 +50,12 @@ const driverOptions = [
   { label: '短信 / OAuth', value: 'sms_oauth' },
   { label: '协议', value: 'protocol' },
   { label: 'Camoufox', value: 'camoufox' },
-  { label: '支付适配器', value: 'payment' },
   { label: '网络工具', value: 'network' },
 ]
 const chainOptions = [
   { label: '全部链路', value: '' },
   { label: '普通流程', value: 'ordinary' },
   { label: 'Free 注册', value: 'free' },
-  { label: '支付', value: 'payment' },
   { label: '网络', value: 'network' },
 ]
 const filteredCount = computed(() => incidents.value.length)
@@ -76,7 +74,7 @@ function outcomeType(value: any, status?: any) {
   return 'info'
 }
 function chainLabel(value: any) {
-  return ({ ordinary: '普通流程', free: 'Free', payment: '支付', network: '网络' } as Record<string, string>)[String(value || '')] || String(value || '未知链路')
+  return ({ ordinary: '普通流程', free: 'Free', network: '网络' } as Record<string, string>)[String(value || '')] || String(value || '未知链路')
 }
 function driverLabel(value: any) {
   const driver = String(value || '').trim().toLowerCase()

@@ -196,7 +196,6 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             "/free-rebind",
             "/remail/purchase",
             "/remail/orders",
-            "/payment-tools",
             "/network-tools",
             "/logs",
             "/mailbox-parser-samples",

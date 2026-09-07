@@ -89,7 +89,6 @@ import sub2_upload_override as _sub2_upload_override_ext
 import task_progress as _task_progress_ext
 import transport_lifecycle as _transport_lifecycle_ext
 import web_routes as _web_routes_ext
-import payment_tools_routes as _payment_tools_routes_ext
 import network_tools_routes as _network_tools_routes_ext
 import free_protocol_diagnostics as _free_protocol_diagnostics_ext
 
@@ -4299,12 +4298,9 @@ def _patch_flask_app(app):
     original_start = app.view_functions.get("start")
     route_values = _closure_values(original_start) if callable(original_start) else {}
     patched = _web_routes_ext.patch_flask_app(app, _WEB_ROUTE_CONTEXT)
-    # Payment and network tools own their stores and routes; they do not use
-    # the ordinary SMS or Free task stores beyond explicit Free Token lookup.
+    # Network tools own their store and routes; they do not use the ordinary
+    # SMS or Free task stores beyond explicit Free Token lookup.
     tools_root = _FREE_DATA_DIR.parent
-    _payment_tools_routes_ext.install_payment_routes(
-        patched, module=_module, data_root=tools_root, free_manager=_FREE_REGISTER, diagnostic_store=_DIAGNOSTIC_STORE,
-    )
     _network_tools_routes_ext.install_network_routes(
         patched, module=_module, data_root=tools_root, diagnostic_store=_DIAGNOSTIC_STORE,
     )
