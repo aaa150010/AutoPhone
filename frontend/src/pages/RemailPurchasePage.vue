@@ -22,6 +22,7 @@ const products = computed(() => {
 })
 // 购买单价 = purchasePrice × priceMultiplier（服务端按倍率扣积分；缺省倍率按 1 计）。
 function productPrice(item: any): string {
+  if (!item || typeof item !== 'object') return ''
   const base = Number(item.purchasePrice)
   if (!Number.isFinite(base) || base <= 0) return ''
   const multiplier = Number(item.priceMultiplier)
