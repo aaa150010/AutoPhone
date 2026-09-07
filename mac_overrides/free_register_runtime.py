@@ -65,6 +65,7 @@ try:
     from .free_storage_adapters import build_free_storage_adapters
     from .free_storage import ManagerOwnerConflict
     from .free_register.mailbox_lease import MailboxLeaseCoordinator
+    from .free_register.retry_policy import consecutive_same_failures
     from .free_register_scheduler import FreeRegisterSchedulerMixin
     from .free_log_runtime import FreeLogStore
     from .free_live_check import build_free_live_check_service
@@ -121,6 +122,7 @@ except ImportError:
     from free_storage_adapters import build_free_storage_adapters  # type: ignore[no-redef]
     from free_storage import ManagerOwnerConflict  # type: ignore[no-redef]
     from free_register.mailbox_lease import MailboxLeaseCoordinator  # type: ignore[no-redef]
+    from free_register.retry_policy import consecutive_same_failures  # type: ignore[no-redef]
     from free_register_scheduler import FreeRegisterSchedulerMixin  # type: ignore[no-redef]
     from free_log_runtime import FreeLogStore  # type: ignore[no-redef]
     from free_live_check import build_free_live_check_service  # type: ignore[no-redef]
@@ -4271,6 +4273,27 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                             or camoufox_pre_email
                         )
                     )
+                    # Same-error short circuit: an unchanged node+error_code
+                    # failing three times in a row (two recorded attempts plus
+                    # this one) is evidence the failure is not proxy-bound, so
+                    # further proxy switching would only burn the mailbox.
+                    with self._lock:
+                        prior_attempts = list(self._tasks.get(task_id, {}).get("proxy_attempts") or [])
+                    same_failures = consecutive_same_failures(
+                        prior_attempts,
+                        {"node_code": exc.node_code, "error_code": str(getattr(exc, "error_code", "") or "")},
+                    )
+                    if same_failures >= 2 and attempt < retry_limit and can_retry_pre_email and not self._stop.is_set():
+                        raise FreeRegisterError(
+                            exc.node_code,
+                            exc.node_label,
+                            f"同一错误已连续 {same_failures + 1} 次失败，停止自动重试",
+                            retryable=bool(exc.retryable),
+                            provider_status=getattr(exc, "provider_status", None),
+                            provider_code=str(getattr(exc, "provider_code", "") or ""),
+                            error_code="free_retry_short_circuit",
+                            action_hint="同一错误连续失败通常与代理无关；请检查邮箱来源、账号状态或稍后重跑",
+                        ) from exc
                     if not can_retry_pre_email or attempt >= retry_limit or self._stop.is_set():
                         raise
                     if network_failure or camoufox_pre_email:
@@ -4281,7 +4304,7 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                     with self._lock:
                         current = self._tasks.get(task_id)
                         if current is not None:
-                            current.setdefault("proxy_attempts", []).append({"proxy_id": failed_proxy_id, "stage": exc.node_code, "retryable": True, "message": _safe_log_message(exc), "http_status": getattr(exc, "provider_status", None), "attempt": attempt, "switched": switched, "at": int(time.time())})
+                            current.setdefault("proxy_attempts", []).append({"proxy_id": failed_proxy_id, "stage": exc.node_code, "error_code": str(getattr(exc, "error_code", "") or ""), "retryable": True, "message": _safe_log_message(exc), "http_status": getattr(exc, "provider_status", None), "attempt": attempt, "switched": switched, "at": int(time.time())})
                             self._save_tasks_safely("记录代理切换")
                     if bool(getattr(exc, "proxy_retryable", False)) and not switched:
                         # A route-level access denial must not replay against

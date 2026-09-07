@@ -38,6 +38,33 @@ _PRE_SUBMISSION_NODES = frozenset({
 })
 
 
+def consecutive_same_failures(history: Any, failure: Mapping[str, Any]) -> int:
+    """Count how many trailing history entries match ``failure``'s identity.
+
+    History entries are most-recent-last (the shape of ``proxy_attempts``).
+    Identity is ``node_code`` + ``error_code``; entries missing both are
+    never counted as a match.
+    """
+    node = str(failure.get("node_code") or "").strip().lower()
+    error_code = str(failure.get("error_code") or "").strip().lower()
+    if not node and not error_code:
+        return 0
+    count = 0
+    for item in reversed(list(history) if isinstance(history, (list, tuple)) else []):
+        if not isinstance(item, Mapping):
+            break
+        item_node = str(item.get("node_code") or item.get("stage") or "").strip().lower()
+        item_error = str(item.get("error_code") or "").strip().lower()
+        if node and item_node != node:
+            break
+        if error_code and item_error != error_code:
+            break
+        if not item_node and not item_error:
+            break
+        count += 1
+    return count
+
+
 @dataclass(frozen=True, slots=True)
 class RetryDecision:
     retry: bool
@@ -57,7 +84,7 @@ class FreeRetryPolicy:
             return value["failure"]
         return value if isinstance(value, Mapping) else {}
 
-    def decide(self, value: Any, *, attempt: int = 0) -> RetryDecision:
+    def decide(self, value: Any, *, attempt: int = 0, recent_same_failures: int = 0) -> RetryDecision:
         failure = self._failure(value)
         node = str(failure.get("node_code") or "").strip().lower()
         retryable = failure.get("retryable") is not False
@@ -71,7 +98,15 @@ class FreeRetryPolicy:
         )
         blocked = status in _BLOCKED_HTTP_STATUSES or any(marker in text for marker in _BLOCKED_MARKERS)
         within_limit = max(0, int(attempt)) + 1 < self.max_attempts
-        retry = retryable and within_limit and not blocked
+        # A same-error short circuit only stops failures that the generic
+        # rules would otherwise retry.  Business/security blocks already stop.
+        same_error_stop = (
+            recent_same_failures >= 2
+            and not blocked
+            and within_limit
+            and retryable
+        )
+        retry = retryable and within_limit and not blocked and not same_error_stop
         reusable = node in _PRE_SUBMISSION_NODES
         delay = self.base_delay_seconds * (2 ** max(0, int(attempt))) if retry else 0.0
         reason = "retryable_transient" if retry else "retry_blocked"
@@ -81,7 +116,9 @@ class FreeRetryPolicy:
             reason = "business_or_security_stop"
         elif not retryable:
             reason = "explicit_non_retryable"
+        elif same_error_stop:
+            reason = "same_error_short_circuit"
         return RetryDecision(retry, reusable, min(delay, 30.0), reason)
 
 
-__all__ = ["FreeRetryPolicy", "RetryDecision"]
+__all__ = ["FreeRetryPolicy", "RetryDecision", "consecutive_same_failures"]

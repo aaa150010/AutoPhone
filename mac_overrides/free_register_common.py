@@ -74,6 +74,7 @@ INVALID_PERCENT_ESCAPE_RE = re.compile(r"%(?![0-9A-Fa-f]{2})")
 
 FREE_STAGE_LABELS = {
     "oauth_create_node": "初始化 Node/Sentinel",
+    "free_retry_short_circuit": "同错误连续重试短路",
     "free_protocol_preflight": "协议网络预检",
     "free_protocol_warmup": "匿名态 ChatGPT 预热",
     "free_authenticated_warmup": "认证态 ChatGPT 预热",
