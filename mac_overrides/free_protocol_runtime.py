@@ -1382,6 +1382,63 @@ class FreeProtocolMixin:
                 action_hint="账号已保存；检查认证网络后重新测活",
             ) from exc
 
+    @staticmethod
+    def _persist_partial(config: Mapping[str, Any], task: Mapping[str, Any], values: Mapping[str, Any], *, stage_code: str) -> bool:
+        """Persist mid-flight milestone fields via the manager-injected hook.
+
+        Failures are logged and swallowed: the final result save remains the
+        authoritative writer, and a persistence outage must never abort the
+        registration flow.
+        """
+        hook = config.get("_persist_partial_result")
+        if not callable(hook):
+            return False
+        try:
+            return bool(hook(dict(values), stage_code=stage_code))
+        except Exception:
+            # The manager-side hook already logs its own failures; a raising
+            # hook must not abort the registration flow either.
+            return False
+
+    @staticmethod
+    def _confirm_mfa_enabled(transport: Any, session: Any, headers: Mapping[str, str], task_id: str) -> None:
+        """Post-activation review (any-auto-register _confirm): re-read
+        mfa_info after a successful enroll+activate pair.  Diagnostic only —
+        a double-200 activation stands even when the review cannot confirm
+        it, so failures are logged and never raised."""
+        if not callable(getattr(session, "get", None)):
+            return
+        logger = getattr(transport, "log_fn", None)
+
+        def _note(message: str) -> None:
+            if not callable(logger):
+                return
+            try:
+                logger(message, "warn")
+            except TypeError:
+                try:
+                    logger(message)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+        time.sleep(2.0)
+        try:
+            response = session.get(
+                "https://chatgpt.com/backend-api/accounts/mfa_info",
+                headers=dict(headers),
+                timeout=15,
+            )
+            status = _response_status(response)
+            if status is not None and 200 <= status < 300:
+                data = response.json() if hasattr(response, "json") else {}
+                if mfa_enabled_from_payload(data):
+                    return
+            _note(f"[{task_id}/free_twofa_activate] 2FA 激活复核未确认 mfa_enabled（HTTP {status if status is not None else '-'}），激活响应已按成功处理")
+        except Exception as exc:
+            _note(f"[{task_id}/free_twofa_activate] 2FA 激活复核异常（{type(exc).__name__}），激活响应已按成功处理")
+
     def _set_password(
         self,
         transport: Any,
@@ -1934,6 +1991,22 @@ class FreeProtocolMixin:
                 added,
                 added,
             )
+        # The password is now server-side authoritative.  Persist it before
+        # the callback/2FA tail: any later failure must not lose the only
+        # password this account will accept (any-auto-register registers the
+        # same lesson at its register_password callback).
+        self._persist_partial(
+            config,
+            task,
+            {
+                "password_status": "enabled",
+                "password_set_after_registration": True,
+                "password": password_value,
+                "access_token": active_token,
+                "has_access_token": bool(active_token),
+            },
+            stage_code="free_password_add",
+        )
         callback_url = _response_continue_url(added)
         if not callback_url:
             fail("密码添加响应缺少 ChatGPT OAuth callback 地址", added, added)
@@ -2043,6 +2116,41 @@ class FreeProtocolMixin:
                 return False
 
         try:
+            # Fast path (any-auto-register bind_totp_inline): a prior attempt
+            # already persisted this account's single-issue TOTP secret.  The
+            # registration session authenticated moments ago, so activating
+            # the stored enrollment directly satisfies the recent-auth check
+            # without another PoW or mailbox OTP.
+            stored_secret = str((task.get("result") or {}).get("totp_secret") or "") if isinstance(task.get("result"), Mapping) else ""
+            if stored_secret and not mfa_already_enabled():
+                stage(task_id, "free_twofa_activate")
+                phase = (
+                    "free_twofa_activate", "激活 Free 账号 2FA", "free_twofa_activate_failed",
+                    "保留账号和 Token，稍后重试 2FA 激活",
+                )
+                activated = session.post(
+                    "https://chatgpt.com/backend-api/accounts/mfa/user/activate_enrollment",
+                    headers=headers, json={"code": self._totp_code(stored_secret), "factor_type": "totp", "session_id": str((task.get("result") or {}).get("twofa_session_id") or "")}, timeout=20,
+                )
+                activated_data = activated.json() if hasattr(activated, "json") else {}
+                activated_status = _response_status(activated)
+                success = activated_data.get("success") if isinstance(activated_data, Mapping) else None
+                if (activated_status is not None and not 200 <= activated_status < 300) or success is not True:
+                    if mfa_already_enabled():
+                        return {"twofa_status": "enabled", "totp_secret": stored_secret}
+                    hint = ""
+                    if activated_status == 429:
+                        hint = "（429 多为同码重复提交，等一个 30 秒 TOTP 窗口换新码再试）"
+                    raise FreeTwoFaPending(
+                        f"2FA 快路径激活失败（HTTP {activated_status if activated_status is not None else '-'}）{hint}",
+                        token=active_token, plan_type="free", plus_trial_eligible=False,
+                        node_code="free_twofa_activate", node_label="激活 Free 账号 2FA",
+                        error_code="free_twofa_activate_failed",
+                        retryable=True,
+                        action_hint="secret 已保存在账号结果中，重试 2FA 会直接走快路径激活",
+                    )
+                self._confirm_mfa_enabled(transport, session, headers, task_id)
+                return {"twofa_status": "enabled", "totp_secret": stored_secret}
             post_auth_json = getattr(transport, "_post_auth_json", None)
             if callable(post_auth_json):
                 # AutoRegister's setup_2fa starts a fresh NextAuth password
@@ -2386,6 +2494,17 @@ class FreeProtocolMixin:
             session_id = str(data.get("session_id") or "")
             if not secret or not session_id:
                 fail("2FA enroll 响应缺少 TOTP 材料", enrolled, data)
+            # The server issues the secret exactly once and never stores it in
+            # plaintext.  Persist it before activation (any-auto-register
+            # two_factor.py: bind the result before activate runs) so a failed
+            # or interrupted activation leaves the retry on the fast path.
+            setattr(transport, "_gptphone_pending_totp_session_id", session_id)
+            self._persist_partial(
+                config,
+                task,
+                {"twofa_status": "pending", "totp_secret": secret},
+                stage_code="free_twofa_enroll",
+            )
             stage(task_id, "free_twofa_activate")
             phase = (
                 "free_twofa_activate", "激活 Free 账号 2FA", "free_twofa_activate_failed",
@@ -2403,10 +2522,14 @@ class FreeProtocolMixin:
                     # The server may have committed activation while the
                     # response was dropped or reported an idempotent conflict.
                     return {"twofa_status": "enabled", "totp_secret": secret}
+                hint = ""
+                if activated_status == 429:
+                    hint = "（429 多为同码重复提交，等一个 30 秒 TOTP 窗口换新码再试）"
                 fail(
-                    f"2FA 激活失败（HTTP {activated_status if activated_status is not None else '-'}）",
+                    f"2FA 激活失败（HTTP {activated_status if activated_status is not None else '-'}）{hint}",
                     activated, activated_data,
                 )
+            self._confirm_mfa_enabled(transport, session, headers, task_id)
             return {"twofa_status": "enabled", "totp_secret": secret}
         except Exception as exc:
             if isinstance(exc, FreeRegisterError):

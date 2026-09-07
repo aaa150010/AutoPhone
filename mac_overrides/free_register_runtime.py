@@ -3934,6 +3934,53 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
                 workflow="cleanup",
             )
 
+    def _persist_partial_result(
+        self,
+        task: Mapping[str, Any],
+        values: Mapping[str, Any],
+        *,
+        stage_code: str = "",
+    ) -> bool:
+        """Merge protocol-side milestone fields into the durable account result.
+
+        Called by the protocol mixin at the exact moment a value becomes
+        server-side authoritative (a TOTP secret right after enroll, a
+        password right after a successful add) so a later failure or process
+        exit cannot lose single-issue material.  A persistence failure never
+        propagates into the registration flow; the final result save remains
+        the authoritative writer.
+        """
+        row_id = str(task.get("row_id") or "")
+        if not row_id or not isinstance(values, Mapping) or not values:
+            return False
+        try:
+            current = self.pool.result(row_id)
+            merged = dict(current) if isinstance(current, Mapping) else {}
+            merged.update(copy.deepcopy(dict(values)))
+            self.pool.save_result(row_id, merged)
+            stage_label = FREE_STAGE_LABELS.get(str(stage_code or ""), str(stage_code or "free_result_save"))
+            self._log(
+                f"[{task.get('task_id') or ''}/{stage_label}/{stage_code or 'free_result_save'}] "
+                "关键材料已即时写入账号结果",
+                "info",
+                task_id=str(task.get("task_id") or ""),
+                node_code=str(stage_code or "free_result_save"),
+                node_label=stage_label,
+                outcome="persisted",
+            )
+            return True
+        except Exception as exc:
+            self._log(
+                f"[{task.get('task_id') or ''}/关键材料即时落库/{stage_code or 'free_result_save'}] "
+                f"写入失败（{type(exc).__name__}），最终结果保存仍会重试",
+                "warn",
+                task_id=str(task.get("task_id") or ""),
+                node_code=str(stage_code or "free_result_save"),
+                node_label="即时保存关键材料",
+                outcome="persist_failed",
+            )
+            return False
+
     def _record_proxy_failure(self, task: Mapping[str, Any], exc: BaseException) -> None:
         proxy_id = str(task.get("proxy_id") or "")
         task_id = str(task.get("task_id") or "")
@@ -4200,6 +4247,15 @@ class FreeRegisterManager(FreeFailureRuntimeMixin, FreeRegisterSchedulerMixin, F
             task_config["_manual_verification_broker"] = self.manual_broker
             task_config["_manual_generation_getter"] = self._manual_generation
         task_config["_mailbox_verification_state_fn"] = self._mailbox_verification_state
+        # Mid-flight durable persistence for protocol-side milestones (2FA
+        # secret before activation, password after a successful add).  Uses
+        # the same config-carried callback pattern as the mailbox lease hooks
+        # so the protocol mixin stays decoupled from the pool.
+        task_config["_persist_partial_result"] = (
+            lambda values, *, stage_code="": self._persist_partial_result(
+                snapshot, values, stage_code=stage_code,
+            )
+        )
         if not twofa_retry and not password_retry:
             confirm_mailbox, abort_mailbox = self._mailbox_lease_callbacks(snapshot)
             if confirm_mailbox is not None:
