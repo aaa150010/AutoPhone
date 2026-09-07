@@ -20,6 +20,7 @@ import {
   isAccountBannedDiagnostic,
   isSuccessfulDiagnosticOutcome,
 } from '../utils/freeFailure'
+import { copyText as copyTextToClipboard } from '../utils/clipboard'
 
 const props = defineProps<{ locationKey?: string }>()
 
@@ -151,14 +152,8 @@ async function openIncident(row: DiagnosticIncident) {
     detailOpen.value = true
   } catch (error: any) { ElMessage.error(error?.message || '日志详情读取失败') }
 }
-async function copyText(value: string, success = '已复制') {
-  if (!navigator.clipboard?.writeText) return ElMessage.warning('当前环境不支持复制')
-  try {
-    await navigator.clipboard.writeText(value)
-    ElMessage.success(success)
-  } catch (error: any) {
-    ElMessage.error(error?.message || '复制失败')
-  }
+function copyText(value: string, success = '已复制') {
+  void copyTextToClipboard(value, success)
 }
 async function copyIncidentId(row: DiagnosticIncident) { await copyText(row.incident_id, '日志 ID 已复制') }
 async function copyGpt(row: DiagnosticIncident) {

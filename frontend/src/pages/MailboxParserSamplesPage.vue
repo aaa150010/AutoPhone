@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { copyText as copyTextToClipboard } from '../utils/clipboard'
 import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleCheck, CopyDocument, Delete, Download, Refresh, Search, View, Warning } from '@element-plus/icons-vue'
@@ -93,9 +94,8 @@ async function runReparse() {
     ElMessage.success('已使用当前解析器离线重跑')
   } catch (error: any) { ElMessage.error(error?.message || '离线重解析失败') }
 }
-async function copyText(value: string, message: string) {
-  if (!navigator.clipboard?.writeText) return ElMessage.warning('当前环境不支持复制')
-  try { await navigator.clipboard.writeText(value); ElMessage.success(message) } catch (error: any) { ElMessage.error(error?.message || '复制失败') }
+function copyText(value: string, message: string) {
+  void copyTextToClipboard(value, message)
 }
 async function exportSample(format: 'sanitized' | 'fixture') {
   if (!detail.value) return

@@ -4,20 +4,12 @@ import { CopyDocument, Delete, Download, Scissor } from '@element-plus/icons-vue
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import { useMailboxSplitter } from '../composables/useMailboxSplitter'
 import { mailboxSplitFilename } from '../utils/mailboxSplitter'
+import { copyText as copyTextToClipboard } from '../utils/clipboard'
 
 const { state, result, clear } = useMailboxSplitter()
 
-async function copyText(value: string) {
-  if (!value || !navigator.clipboard?.writeText) {
-    ElMessage.error('当前环境不支持安全剪贴板写入')
-    return
-  }
-  try {
-    await navigator.clipboard.writeText(value)
-    ElMessage.success('已复制')
-  } catch {
-    ElMessage.error('复制失败')
-  }
+function copyText(value: string) {
+  void copyTextToClipboard(value)
 }
 
 function downloadText(value: string, filename: string) {

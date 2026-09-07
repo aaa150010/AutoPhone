@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, CircleCheck, CircleClose, CopyDocument, Delete, Document, Key, Link, Lock, MoreFilled, Refresh, RefreshLeft, RefreshRight, Setting, Tickets, VideoPause, VideoPlay, Warning } from '@element-plus/icons-vue'
-import { closeFreeCamoufoxDebug, deleteFreeTasks, freeBatchRetry, getFreeConfig, getFreeMailboxUrl, getFreeSecret, getFreeState, getFreeTaskLatestCode, preflightFree, rerunFreeTask, retryFreePassword, retryFreeTwofa, startFree, startFreePlanCheck, stopFree, type FreeConfig, type FreeState } from '../api/client'
+import { closeFreeCamoufoxDebug, deleteFreeTasks, freeBatchRetry, getFreeConfig, getFreeState, preflightFree, rerunFreeTask, retryFreePassword, retryFreeTwofa, startFree, startFreePlanCheck, stopFree, type FreeConfig, type FreeState } from '../api/client'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import ContentEmptyState from '../components/ContentEmptyState.vue'
 import FreeTaskLogDialog from '../components/FreeTaskLogDialog.vue'
@@ -19,8 +19,25 @@ import {
 } from '../utils/freeFailure'
 import { useTaskProgressClock } from '../composables/useTaskProgressClock'
 import { useColumnWidths } from '../composables/useColumnWidths'
-import { freeTaskSecretLookup } from '../utils/freeSecretLookup'
-import { safeMailboxUrl } from '../utils/safeMailboxUrl'
+import { useFreeTaskRowActions } from '../composables/useFreeTaskRowActions'
+import {
+  automaticOtpRemaining as automaticOtpRemainingPure,
+  canRetryPassword,
+  displayTaskStatus,
+  isHistoricalDriver,
+  taskCreatedText,
+  taskDriverLabel,
+  taskIncidentId,
+  taskNeedsExistingPassword,
+  taskPasswordLabel,
+  taskPasswordType,
+  taskPlanLabel,
+  taskPlanType,
+  taskRowClass,
+  taskStatusType,
+  taskTwofaLabel,
+  taskTwofaType,
+} from '../utils/freeTaskDisplay'
 
 const defaultConfig: FreeConfig = {
   driver: 'protocol', flow_profile: 'reference_20260823', proxy_allocation_mode: 'healthy_random', target_count: 1, concurrency: 3, email_code_timeout: 90, account_password: 'Aa150010150010', auto_set_password: false, auto_set_2fa: true,
@@ -51,9 +68,6 @@ const logDialog = ref<{ refresh: (options?: { forceLatest?: boolean; silent?: bo
 const loading = ref(false)
 const busy = ref<'preflight' | 'start' | 'stop' | 'close-debug' | ''>('')
 const planBusy = ref('')
-const openingMailboxUrlTaskIds = ref<string[]>([])
-const loadingLatestCodeTaskIds = ref<string[]>([])
-const loadingEmailTaskIds = ref<string[]>([])
 const quickTargetCount = ref(defaultConfig.target_count)
 const quickConcurrency = ref(defaultConfig.concurrency)
 const quickRunDirty = ref(false)
@@ -61,6 +75,21 @@ const running = computed(() => Boolean(state.value.running))
 const debugWindowsOpen = computed(() => Number(state.value.camoufox_debug?.open_contexts || 0) > 0)
 const nowSeconds = useTaskProgressClock(() => state.value.tasks || [], () => Boolean(state.value.running))
 const { colWidth: taskColWidth, handleHeaderDragend: onTaskHeaderDragend } = useColumnWidths('gptphone.table.widths.free-register')
+function automaticOtpRemaining(task: any) {
+  return automaticOtpRemainingPure(task, nowSeconds.value)
+}
+
+const {
+  loadingEmailTaskIds,
+  loadingLatestCodeTaskIds,
+  openingMailboxUrlTaskIds,
+  copyTaskSecret,
+  copyTaskTokens,
+  copyTaskToken,
+  copyTaskEmail,
+  openTaskMailboxUrl,
+  copyTaskLatestCode,
+} = useFreeTaskRowActions()
 let timer = 0
 
 const visibleTasks = computed(() => (state.value.tasks || []).slice().sort((a, b) => {
@@ -128,30 +157,6 @@ function mergeConfig(value: any, forceQuickRun = false) {
     quickConcurrency.value = config.concurrency
   }
 }
-
-function taskDriverLabel(driver: unknown) {
-  const value = String(driver || '').trim().toLowerCase()
-  if (value === 'camoufox') return 'Camoufox'
-  if (value === 'protocol') return '全协议'
-  return value ? '历史链路' : '全协议'
-}
-
-function taskCreatedText(task: any) {
-  if (!task?.created_at) return ''
-  return new Date(typeof task.created_at === 'number' ? task.created_at * 1000 : task.created_at).toLocaleString()
-}
-
-function taskRowClass({ row }: { row: any }) {
-  return ['failed', 'partial_success'].includes(String(row?.status || '')) && !isRetryResolved(row?.retry_resolved)
-    ? 'is-danger-row'
-    : ''
-}
-
-function isHistoricalDriver(task: any) {
-  const value = String(task?.driver || '').trim().toLowerCase()
-  return Boolean(value) && value !== 'protocol' && value !== 'camoufox'
-}
-
 function quickRunConfig(): FreeConfig {
   const draft = {
     ...config,
@@ -263,101 +268,6 @@ function openTaskLog(task: any) {
   logDialogOpen.value = true
 }
 
-async function copyTaskTokens(tasks: any[]) {
-  await copyTaskSecret('token', tasks, 'Token')
-}
-
-async function copyTaskEmail(task: any) {
-  const taskId = String(task?.task_id || '').trim()
-  if (!taskId || loadingEmailTaskIds.value.includes(taskId)) return
-  if (!navigator.clipboard?.writeText) {
-    ElMessage.error('当前浏览器不支持安全剪贴板写入')
-    return
-  }
-  loadingEmailTaskIds.value = [...loadingEmailTaskIds.value, taskId]
-  try {
-    const rowId = String(task?.row_id || '').trim()
-    const email = String((await getFreeSecret('email', freeTaskSecretLookup(taskId, rowId))).value || '').trim()
-    if (!email) throw new Error('服务端未返回可复制邮箱')
-    await navigator.clipboard.writeText(email)
-    ElMessage.success('已复制真实邮箱')
-  } catch (error: any) {
-    ElMessage.error(error?.message || '邮箱复制失败')
-  } finally {
-    loadingEmailTaskIds.value = loadingEmailTaskIds.value.filter(id => id !== taskId)
-  }
-}
-
-async function openTaskMailboxUrl(task: any) {
-  const taskId = String(task?.task_id || '').trim()
-  const rowId = String(task?.row_id || '').trim()
-  if (!taskId || !rowId) {
-    ElMessage.info('该任务尚未生成可用的任务标识')
-    return
-  }
-  if (!task?.has_mailbox_url) {
-    ElMessage.info('该任务暂无取件 URL')
-    return
-  }
-  if (openingMailboxUrlTaskIds.value.includes(taskId)) return
-  const target = window.open('', '_blank')
-  if (!target) {
-    ElMessage.error('浏览器阻止了新窗口，请允许弹出窗口后重试')
-    return
-  }
-  target.opener = null
-  openingMailboxUrlTaskIds.value = [...openingMailboxUrlTaskIds.value, taskId]
-  try {
-    const result = await getFreeMailboxUrl(rowId)
-    const destination = safeMailboxUrl(result.mailbox_url)
-    if (!destination) throw new Error('取件 URL 无效或协议不安全')
-    target.location.replace(destination)
-  } catch (error: any) {
-    target.close()
-    ElMessage.error(error?.message || '打开取件 URL 失败')
-  } finally {
-    openingMailboxUrlTaskIds.value = openingMailboxUrlTaskIds.value.filter(id => id !== taskId)
-  }
-}
-
-async function copyTaskLatestCode(task: any) {
-  const taskId = String(task?.task_id || '').trim()
-  if (!taskId) {
-    ElMessage.info('该任务尚未生成任务 ID')
-    return
-  }
-  if (!task?.has_mailbox_url) {
-    ElMessage.info('该任务暂无取件 URL，无法提取验证码')
-    return
-  }
-  if (loadingLatestCodeTaskIds.value.includes(taskId)) return
-  if (!navigator.clipboard?.writeText) {
-    ElMessage.error('当前浏览器不支持安全剪贴板写入')
-    return
-  }
-  loadingLatestCodeTaskIds.value = [...loadingLatestCodeTaskIds.value, taskId]
-  try {
-    const result = await getFreeTaskLatestCode(taskId)
-    const code = String(result.code || '').trim()
-    if (!code) {
-      ElMessage.info('未找到新的 OpenAI 邮箱验证码')
-      return
-    }
-    await navigator.clipboard.writeText(code)
-    ElMessage.success('验证码已复制')
-  } catch (error: any) {
-    ElMessage.error(error?.message || '提取邮箱验证码失败')
-  } finally {
-    loadingLatestCodeTaskIds.value = loadingLatestCodeTaskIds.value.filter(id => id !== taskId)
-  }
-}
-
-function automaticOtpRemaining(task: any) {
-  const verification = task?.mailbox_verification
-  if (verification?.phase !== 'automatic') return 0
-  return Math.max(0, Math.floor(Number(verification.deadline_at || 0) - nowSeconds.value))
-}
-
 function openIncidentCenter(value: string) {
   const incidentId = String(value || '').trim()
   if (incidentId) emit('navigate', `/logs?incident_id=${encodeURIComponent(incidentId)}`)
@@ -370,14 +280,6 @@ function openTaskIncident(task: any) {
     return
   }
   openIncidentCenter(incidentId)
-}
-
-async function copyTaskToken(task: any) {
-  if (!task?.result?.has_access_token) {
-    ElMessage.info('该任务暂无可复制的账号 Token')
-    return
-  }
-  await copyTaskTokens([task])
 }
 
 async function rerunTaskAction(task: any) {
@@ -421,85 +323,6 @@ async function handleTaskAction(command: string, task: any) {
   if (command === 'rerun') return rerunTaskAction(task)
   if (command === 'twofa') return retryTwofaTaskAction(task)
   if (command === 'password') return retryPasswordTaskAction(task)
-}
-
-function taskIncidentId(task: any) {
-  return String(task?.incident_id || task?.failure?.incident_id || '').trim()
-}
-
-function taskPlanLabel(task: any) {
-  const plan = String(task?.result?.subscription_plan || task?.result?.plan_type || '').trim()
-  const normalized = plan.toLowerCase()
-  const status = String(task?.result?.plan_check_status || '').toLowerCase()
-  if (status === 'failed') return '查询失败'
-  if (['queued', 'running'].includes(status)) return '查询中'
-  if (!plan) return '未查询'
-  const hasPerk = Boolean(task?.result?.plus_trial_eligible) || plan.includes('plus') || plan.includes('pro') || plan.includes('team') || plan.includes('go')
-  return hasPerk ? '有优惠' : '无优惠'
-}
-
-function taskPlanType(task: any) {
-  const plan = String(task?.result?.subscription_plan || task?.result?.plan_type || '').toLowerCase()
-  const status = String(task?.result?.plan_check_status || '').toLowerCase()
-  if (status === 'failed') return 'danger'
-  if (['queued', 'running'].includes(status)) return 'warning'
-  if (!plan) return 'info'
-  const hasPerk = Boolean(task?.result?.plus_trial_eligible) || plan.includes('plus') || plan.includes('pro') || plan.includes('team') || plan.includes('go')
-  return hasPerk ? 'success' : 'info'
-}
-function taskTwofaLabel(task: any) {
-  const status = String(task?.result?.twofa_status || '').toLowerCase()
-  if (task?.result?.has_totp || task?.result?.totp_secret) return '已启用'
-  if (['queued', 'running'].includes(String(task?.status || '').toLowerCase())) return '处理中'
-  if (['pending', 'failed'].includes(status)) return '待重试'
-  return '未启用'
-}
-
-function taskTwofaType(task: any): 'success' | 'warning' | 'info' {
-  const status = String(task?.result?.twofa_status || '').toLowerCase()
-  if (task?.result?.has_totp || task?.result?.totp_secret) return 'success'
-  if (['queued', 'running'].includes(String(task?.status || '').toLowerCase())) return 'warning'
-  return ['pending', 'failed'].includes(status) ? 'warning' : 'info'
-}
-
-function taskPasswordLabel(task: any) {
-  const status = String(task?.result?.password_status || '').toLowerCase()
-  const flow = String(task?.result?.account_flow || '').toLowerCase()
-  if (task?.result?.has_password || status === 'enabled') return '已设置'
-  if (status === 'pending') return '待重试'
-  if (status === 'disabled' && flow === 'signup') return '未设置（可补设）'
-  return '未设置'
-}
-
-function taskPasswordType(task: any): 'success' | 'warning' | 'info' {
-  const status = String(task?.result?.password_status || '').toLowerCase()
-  const flow = String(task?.result?.account_flow || '').toLowerCase()
-  if (task?.result?.has_password || status === 'enabled') return 'success'
-  if (status === 'pending' || (status === 'disabled' && flow === 'signup')) return 'warning'
-  return 'info'
-}
-
-async function copyTaskSecret(kind: 'token' | 'password' | 'totp' | 'credential', tasks: any[], label: string) {
-  const ids = tasks.map(task => String(task?.task_id || '')).filter(Boolean)
-  if (!ids.length) {
-    ElMessage.warning('请先勾选账号')
-    return
-  }
-  const eligible = kind === 'token'
-    ? tasks.filter(task => task?.result?.has_access_token)
-    : tasks.filter(task => kind === 'password' ? task?.result?.has_password : kind === 'totp' ? task?.result?.has_totp : task?.result?.has_credential)
-  if (!eligible.length) {
-    ElMessage.warning(`选中的账号没有可复制 ${label}`)
-    return
-  }
-  try {
-    const value = (await getFreeSecret(kind, { task_ids: eligible.map(task => String(task.task_id)) })).value
-    if (!value || !navigator.clipboard?.writeText) throw new Error('当前环境不支持复制')
-    await navigator.clipboard.writeText(value)
-    ElMessage.success(`已复制 ${eligible.length} 个 Free ${label}`)
-  } catch (error: any) {
-    ElMessage.error(error?.message || `Free ${label} 复制失败`)
-  }
 }
 
 function handleTaskSelection(rows: any[]) {
@@ -580,16 +403,6 @@ async function retryTwofaTask(task: any) {
   }
 }
 
-function canRetryPassword(task: any) {
-  if (isHistoricalDriver(task)) return false
-  const status = String(task?.result?.password_status || '').toLowerCase()
-  const accountFlow = String(task?.result?.account_flow || '').toLowerCase()
-  if (accountFlow === 'existing_login') return false
-  const taskStatus = String(task?.status || '')
-  return ['success', 'partial_success', 'twofa_pending', 'failed', 'pending_rerun'].includes(taskStatus)
-    && (status === 'pending' || (status === 'disabled' && accountFlow === 'signup'))
-}
-
 async function retryPasswordTask(task: any) {
   const taskId = String(task?.task_id || task?.row_id || '')
   if (!canRetryPassword(task) || !taskId || loading.value) return
@@ -641,21 +454,6 @@ async function refreshPlan(task: any) {
   }
 }
 
-function taskStatusLabel(status: string) {
-  return ({ queued: '排队', running: '运行中', success: '成功', partial_success: '部分成功', failed: '失败', pending_rerun: '待重跑', stopped: '已停止', twofa_pending: '2FA 待重试', account_banned: ACCOUNT_BANNED_DISPLAY_MESSAGE } as Record<string, string>)[status] || status || '-'
-}
-
-function displayTaskStatus(task: any) {
-  if (isCurrentAccountBanned(task?.status, task?.failure, task?.retry_resolved)) {
-    return ACCOUNT_BANNED_DISPLAY_MESSAGE
-  }
-  return isRetryResolved(task?.retry_resolved) ? '已由重试解决' : taskStatusLabel(String(task?.status || ''))
-}
-
-function taskStatusType(status: string) {
-  return ['success'].includes(status) ? 'success' : ['partial_success', 'pending_rerun', 'twofa_pending'].includes(status) ? 'warning' : ['failed', 'account_banned'].includes(status) ? 'danger' : status === 'stopped' ? 'info' : 'warning'
-}
-
 function taskFailureCause(task: any) {
   return freeFailureCause(task?.failure, { retryResolved: task?.retry_resolved })
 }
@@ -670,10 +468,6 @@ function taskFailureDetails(task: any) {
 
 function taskFailureNode(task: any) {
   return freeFailureNodeIdentity(task?.failure)
-}
-
-function taskNeedsExistingPassword(task: any) {
-  return String(task?.failure?.error_code || '').trim().toLowerCase() === 'free_existing_login_password_missing'
 }
 
 function scheduleRefresh() {
