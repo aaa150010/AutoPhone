@@ -6,7 +6,7 @@ GPT 注册中心（gptPhone）是 macOS 本地 Flask + Vue 3/Element Plus 应用
 
 ## 最高优先级：按参考项目实现
 
-Free 只保留 `protocol` 和 `camoufox` 两条新建链路。协议链路必须以同级项目 `/Users/lwh/projects/New_V1.11.18_win` 为第一行为基准；该 Windows 项目的 `browser_flow/runner/src/`、`register_runner.js` 和可观察运行阶段优先于旧的 Python 对照。`/Users/lwh/projects/AutoRegister` 仅作为 Windows 包未覆盖部分的补充协议对照，`/Users/lwh/projects/any-auto-register` 作为协议细节的最后补充对照，均不得用其推测覆盖 Windows 包已有行为。Camoufox 链路必须以 `/Users/lwh/projects/aBaiFreeGPT` 为行为基准；会话建立、网络预检、匿名预热、OAuth/登录页面状态机、Sentinel、代理池分配、邮箱提交后的分支、OTP 页面、资料页、consent、OAuth 回调、Session 刷新、2FA、结果持久化、失败清理、`connection_info` 对账和结构化诊断都按相应参考实现的调用顺序执行。只允许在 transport adapter 层保留 HTTP 与异步浏览器的实现差异。
+Free 只保留 `protocol` 和 `camoufox` 两条新建链路。协议链路必须以同级项目 `/Users/lwh/projects/New_V1.11.18_win` 为第一行为基准；该 Windows 项目的 `browser_flow/runner/src/`、`register_runner.js` 和可观察运行阶段优先于旧的 Python 对照。`/Users/lwh/projects/AutoRegister` 与 `/Users/lwh/projects/any-auto-register` 作为 Windows 包未覆盖部分的同级补充协议对照，均不得用其推测覆盖 Windows 包已有行为。Camoufox 链路必须以 `/Users/lwh/projects/aBaiFreeGPT` 为行为基准；会话建立、网络预检、匿名预热、OAuth/登录页面状态机、Sentinel、代理池分配、邮箱提交后的分支、OTP 页面、资料页、consent、OAuth 回调、Session 刷新、2FA、结果持久化、失败清理、`connection_info` 对账和结构化诊断都按相应参考实现的调用顺序执行。只允许在 transport adapter 层保留 HTTP 与异步浏览器的实现差异。
 
 Free 代理池是两条链路共用的单一 `healthy_random` 池：不按国家或代理组筛选、分配或展示，允许并发任务共享同一代理和出口 IP。代理预检只验证实际代理请求、HTTP 成功状态和出口 IP 格式；任务期间出口 IP 变化必须更新当前记录并继续健康任务，不得产生新的 `free_proxy_drift` 停止节点。历史国家/分组字段只能迁移为空，不能恢复为分配策略。
 
@@ -18,8 +18,8 @@ Free 账号换绑统一使用纯协议链路：无论账号来自哪条历史注
 
 - 协议注册第一基准：`/Users/lwh/projects/New_V1.11.18_win`（重点查看 `browser_flow/runner/src/browserService.js`、`browser_flow/runner/register_runner.js`、`browser_flow/runner/src/protocolCapture.js` 和包内测试）。
 - protocol 当前注册入口必须按同一 HTTP session 执行 `providers → csrf → signin/openai(screen_hint=login_or_signup) → auth authorize → email OTP → about_you → create_account → ChatGPT callback → /api/auth/session accessToken`；已返回可识别 OTP/资料页时不得重复提交邮箱，手机号页只停止并不得调用接码平台。
-- 协议注册补充对照：`/Users/lwh/projects/AutoRegister/core/chatgpt_auth.py`、`core/openai_auth.py`、`core/sentinel_runner.py`、`main.py`；仅在 Windows 包没有对应实现时使用。
-- 协议注册第二补充对照：`/Users/lwh/projects/any-auto-register`（重点查看 `platforms/chatgpt/protocol/` 的 `auth_flow.py`、`sentinel.py`/`sentinel_quickjs.py`、`two_factor.py`、`phone_flow.py`、`token_refresh.py` 及 `core/proxy_pool.py`）；仅在 Windows 包和 AutoRegister 都没有对应实现时使用，不得用其推测覆盖前两者已有行为。
+- 协议注册补充对照一：`/Users/lwh/projects/AutoRegister/core/chatgpt_auth.py`、`core/openai_auth.py`、`core/sentinel_runner.py`、`main.py`；仅在 Windows 包没有对应实现时使用。
+- 协议注册补充对照二：`/Users/lwh/projects/any-auto-register`（重点查看 `platforms/chatgpt/protocol/` 的 `auth_flow.py`、`sentinel.py`/`sentinel_quickjs.py`、`two_factor.py`、`phone_flow.py`、`token_refresh.py` 及 `core/proxy_pool.py`）；与 AutoRegister 同级，仅在 Windows 包没有对应实现时使用，不得用其推测覆盖 Windows 包已有行为。
 - Remail 外部服务文档（从 Remail 购买邮箱的订单同步与导入字段依据）：`https://remail.aishop6.com/docs`（Open API 1.0.0，`rk-` 开头 Key；订单字段为 `orderNo`/`deliveryEmail`/`serviceToken`/`status`，状态枚举 `pending_payment|paid|active|completed|refunded|failed|closed`，`serviceToken` 为可选字段，失败原因见 `failureCode` 如 `insufficient_inventory`；禁止把 Key、serviceToken 或订单凭证写入日志）。
 - Camoufox 注册：`/Users/lwh/projects/aBaiFreeGPT`（仅作只读行为对照）。
 - 只吸收实现逻辑，不复制任何账号、邮箱密码、Cookie、Token、验证码、代理凭据、运行数据或第三方授权信息。
@@ -28,7 +28,7 @@ Free 账号换绑统一使用纯协议链路：无论账号来自哪条历史注
 ### Free 双链路参考与共享边界
 
 - Camoufox 参考项目为 `/Users/lwh/projects/aBaiFreeGPT`，当前对照提交为 `0b4b7197863d49b54875a7d0c7ef5bc0ee35aafa`，许可证为 AGPL-3.0；该副本只读，不承载 AutoPhone 运行数据。
-- protocol 首先参考同级 `/Users/lwh/projects/New_V1.11.18_win`，Windows 包未覆盖的协议细节再参考 `/Users/lwh/projects/AutoRegister`，仍未覆盖的部分最后参考 `/Users/lwh/projects/any-auto-register`；Camoufox 只能参考同级 `/Users/lwh/projects/aBaiFreeGPT`。除这四个本地对照项目外，不再引入其他项目作为行为基准。
+- protocol 首先参考同级 `/Users/lwh/projects/New_V1.11.18_win`，Windows 包未覆盖的协议细节由 `/Users/lwh/projects/AutoRegister` 和 `/Users/lwh/projects/any-auto-register` 作为同级补充对照；Camoufox 只能参考同级 `/Users/lwh/projects/aBaiFreeGPT`。除这四个本地对照项目外，不再引入其他项目作为行为基准。
 - any-auto-register 参考项目为 `/Users/lwh/projects/any-auto-register`，当前对照提交为 `dfc697cb2fd39d14e7489ff306aaed8ad798e3f9`，许可证为 MIT（仅供学习研究）；该副本只读，不承载 AutoPhone 运行数据。
 - `/Users/lwh/projects/New_V1.11.18_win` 是长期只读行为基准；不得修改、删除、覆盖或向其中写入 AutoPhone 运行数据。新建的临时副本使用完必须删除。
 - 对照项目只吸收代码和调用顺序；禁止复制其运行数据、账号、邮箱 provider、凭据、Cookie、Token、验证码、代理信息或第三方授权状态。
@@ -58,7 +58,7 @@ Free 账号换绑统一使用纯协议链路：无论账号来自哪条历史注
 - 旧 `logs.json` 与 `task_logs/*.json` 只允许由 `free_log_migration` 在 Free 目录内幂等清理；不删除诊断库、任务结果、邮箱池、代理池或账号数据。
 - 新增节点必须同步登记稳定代码、中文名称、重试规则、处理建议和 focused contract test。任何跨模块改动先定位首个真实失败节点，再做定向测试、完整测试和 `git diff --check`。
 - 真实邮箱、代理、Camoufox 浏览器和安全挑战只允许在用户明确授权的单次验收中执行；静态测试或环境错误不得伪装为链路成功。任务创建的临时副本、临时目录和验证清单在本次任务结束前删除。
-- 前端源代码变化后必须运行类型检查、构建并更新版本控制中的 `frontend/dist/`。
+- 前端源代码变化后必须运行类型检查（`cd frontend && npx vue-tsc --noEmit`）；前端页面默认通过 Vite 热更新访问（`frontend/vite.config.ts`：5173 代理 `/api` 到 18777），日常前端改动不构建、不更新 `frontend/dist/`。
 - 运营台页面的筛选器、输入框、下拉框、分页和标签页统一使用紧凑的小尺寸控件（默认高度约 30–32px）；同一工具栏内不得出现明显失衡的大输入框与小标签页。表格操作按钮优先使用语义不同的图标，避免同一操作列重复使用相同图标；图标按钮必须提供 tooltip 和 aria-label。
 
 ## 日志中心与故障审计
@@ -71,13 +71,13 @@ Free 账号换绑统一使用纯协议链路：无论账号来自哪条历史注
 - 删除日志中心指定故障或清空全部诊断日志，只能删除 `${GPTPHONE_DATA_DIR}/diagnostics/` 下的诊断索引、事件和别名，不能删除邮箱池、代理池、账号结果、任务结果或 Free 数据。
 - 每个日志 ID必须可复制给 GPT；GPT 导出必须区分已确认事实、证据时间线、推导归因和未确认信息，不得把推测写成事实。
 - 诊断索引必须报告自身的写入失败、丢弃、哈希完整性异常和存储健康状态；事件哈希断链时必须在日志详情中明确显示。
-- 新增节点时同步登记稳定代码、中文名称、可重试规则、处理建议和测试；修改诊断契约时同步更新迁移、后端测试、前端类型和 `frontend/dist/`。
+- 新增节点时同步登记稳定代码、中文名称、可重试规则、处理建议和测试；修改诊断契约时同步更新迁移、后端测试和前端类型。
 - 日志中心不自动执行真实注册、真实代理测试、浏览器操作或安全挑战绕过。
 
 - 后端行为改动放在 `mac_overrides/`，`mac_overrides/web_gui.py` 负责加载恢复模块和应用定向覆盖。
 - 普通短信/OAuth 与 Free 注册的数据必须隔离。Free 配置、邮箱/代理池、任务、日志、锁和结果放在 `${GPTPHONE_DATA_DIR}/free_register/`，普通流程不得读取、聚合、修改或消耗这些状态。
 - 支付链接工具只使用 `${GPTPHONE_DATA_DIR}/payment_tools/`，网络诊断只使用 `${GPTPHONE_DATA_DIR}/network_tools/`，不得复用注册任务状态。
-- 前端源代码放在 `frontend/src/`；`frontend/dist/` 已纳入版本控制，前端源代码有变化时必须重新构建并更新产物。
+- 前端源代码放在 `frontend/src/`；页面通过 Vite 热更新访问（`frontend/vite.config.ts`：5173 代理 `/api` 到 18777），`frontend/dist/` 仅用于发布产物，日常前端改动不构建、不更新它。
 - 不要提交 `data/`、`mac_runtime/`、`engine/`、`node_chain.dat`、`frontend/node_modules/`、缓存、导出文件或秘密。
 
 ## 安全和诊断
@@ -99,8 +99,8 @@ Free 账号换绑统一使用纯协议链路：无论账号来自哪条历史注
 
 ## 发布和验证
 
-- 用户可见的版本说明统一写在 `frontend/src/releaseNotes.ts`；涉及用户可见改动时同步更新版本号和说明，并重建 `frontend/dist/`。
-- Free 运行时版本必须与 `frontend/src/releaseNotes.ts` 的 `freeRuntimeVersion` 同步，并在 `mac_overrides/free_runtime_info.py` 与对应版本测试中一起更新；用户可见改动还必须重建并提交 `frontend/dist/`。
+- 用户可见的版本说明统一写在 `frontend/src/releaseNotes.ts`；涉及用户可见改动时同步更新版本号和说明。日常开发通过 Vite 热更新访问，不构建 `frontend/dist/`；仅在你明确要求发布构建时执行 `npm run build` 用新产物覆盖 `frontend/dist/`。
+- Free 运行时版本必须与 `frontend/src/releaseNotes.ts` 的 `freeRuntimeVersion` 同步，并在 `mac_overrides/free_runtime_info.py` 与对应版本测试中一起更新。
 - 后端验证：
 
   ```sh
@@ -113,7 +113,8 @@ Free 账号换绑统一使用纯协议链路：无论账号来自哪条历史注
   ```sh
   cd frontend
   npx vue-tsc --noEmit
-  npm run build
   ```
+
+  前端页面默认通过 Vite 热更新访问（`frontend/vite.config.ts`：5173 代理 `/api` 到 18777），日常前端改动不执行 `npm run build`、不更新 `frontend/dist/`；仅在你明确要求发布构建时 `npm run build`，用新产物覆盖已纳入版本控制的 `frontend/dist/`。
 
 - 最后运行 `git diff --check`。除非用户明确要求，不要启动或重启 Flask 服务，也不要点击真实注册、短信、SUB2、Pixel、支付提取或代理测试动作。
