@@ -1,10 +1,11 @@
 """Credential-safe debug artifact boundary for Camoufox pages.
 
-The production implementation historically lived in the large runtime module.
-This adapter exposes a narrow service API and delegates to that implementation
-when available, while retaining a conservative local fallback for callers that
-only need text sanitization or an event ring buffer.  No browser dependency is
-imported at module import time.
+Text sanitization is owned by ``debug_redaction`` (single implementation
+source); this module exposes a narrow service API for capture/retention and
+delegates the live implementation to ``free_camoufox_runtime`` when available,
+keeping a conservative local fallback for callers that only need text
+sanitization or an event ring buffer.  No browser dependency is imported at
+module import time.
 """
 
 from __future__ import annotations
@@ -21,6 +22,8 @@ import time
 from typing import Any, Mapping
 from urllib.parse import urlsplit
 
+from .debug_redaction import sanitize_debug_text as _sanitize_debug_text_impl
+
 
 def _legacy_runtime() -> Any | None:
     try:
@@ -35,23 +38,20 @@ def _legacy_runtime() -> Any | None:
 
 
 def sanitize_debug_text(value: Any, limit: int = 800, *, mask_bare_numeric: bool = True) -> str:
-    """Use the hardened legacy sanitizer, with a fail-closed fallback."""
+    """Use the hardened shared sanitizer, with a fail-closed fallback."""
 
-    runtime = _legacy_runtime()
-    sanitizer = getattr(runtime, "_sanitize_debug_text", None) if runtime else None
-    if callable(sanitizer):
+    try:
+        return _redact_fallback(
+            str(_sanitize_debug_text_impl(value, limit, mask_bare_numeric=mask_bare_numeric) or ""),
+            limit,
+        )
+    except TypeError:
         try:
-            return _redact_fallback(
-                str(sanitizer(value, limit, mask_bare_numeric=mask_bare_numeric) or ""),
-                limit,
-            )
-        except TypeError:
-            try:
-                return _redact_fallback(str(sanitizer(value, limit) or ""), limit)
-            except Exception:
-                pass
+            return _redact_fallback(str(_sanitize_debug_text_impl(value, limit) or ""), limit)
         except Exception:
             pass
+    except Exception:
+        pass
     return _redact_fallback(str(value or ""), limit)
 
 

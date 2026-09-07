@@ -79,88 +79,125 @@ except ImportError:  # pragma: no cover - top-level recovery import
     from free_timing import TimingCallback, emit_timing  # type: ignore[no-redef]
 
 
-CHATGPT_LOGIN_URL = "https://chatgpt.com/auth/login"
-EMAIL_SELECTORS = (
-    "input#login-email", "input[type='email']", "input[name='email']",
-    "input[name='username']", "input[autocomplete='username']",
-    "input[autocomplete*='username']", "input[autocomplete*='email']",
-    "input[inputmode='email']", "input[id*='email' i]",
-)
-OTP_SELECTORS = (
-    "input[autocomplete='one-time-code']", "input[inputmode='numeric']",
-    "input[type='tel']", "input[name*='code' i]", "input[id*='code' i]",
-)
-PASSWORD_SELECTORS = (
-    "input[type='password']", "input[name='password']", "input[name*='password' i]",
-    "input[autocomplete='new-password']",
-)
-LOGIN_PASSWORD_SELECTORS = (
-    "input[autocomplete='current-password']", "input[type='password']",
-    "input[name='password']", "input[name*='password' i]",
-)
-NAME_SELECTORS = (
-    "input[name='name']", "input[name='full_name']", "input[autocomplete='name']",
-    "input[id*='name' i]", "input[placeholder*='name' i]",
-)
-BIRTHDAY_SELECTORS = (
-    "input[name='birthday']", "input[type='date']", "input[name='birthdate']",
-    "input[name='birth_date']", "input[autocomplete='bday']",
-    "input[id*='birth' i]", "input[placeholder*='birth' i]",
-)
-AGE_SELECTORS = (
-    "input[name='age']", "input[type='number'][name*='age' i]",
-    "input[placeholder*='age' i]", "input[id*='age' i]",
-)
-EMAIL_SUBMIT_SELECTORS = (
-    "button[type='submit']", "input[type='submit']", "button[data-testid='continue-button']",
-    "button:has-text('Continue')", "button:has-text('continue')", "button:has-text('Next')",
-    "button:has-text('Sign up')", "button:has-text('sign up')",
-    "button:has-text('创建账号')", "button:has-text('注册')",
-)
-PASSWORD_SUBMIT_SELECTORS = (
-    "button[type='submit']", "input[type='submit']", "button[data-testid='continue-button']",
-    "button:has-text('Continue')", "button:has-text('continue')",
-    "button:has-text('Create account')", "button:has-text('create account')",
-    "button:has-text('Sign up')", "button:has-text('创建账号')", "button:has-text('注册')",
-)
-PASSWORDLESS_SELECTORS = (
-    "a[href*='passwordless']", "button:has-text('email code')",
-    "button:has-text('Email code')", "button:has-text('Use email')",
-    "a:has-text('Use email')", "button:has-text('邮箱验证码')",
-)
-LOGIN_PASSWORD_SUBMIT_SELECTORS = (
-    "button[type='submit']", "input[type='submit']",
-    "button[data-testid='continue-button']",
-    "button:has-text('Continue')", "button:has-text('continue')",
-    "button:has-text('Sign in')", "button:has-text('sign in')",
-    "button:has-text('Log in')", "button:has-text('log in')",
-    "button:has-text('登录')", "button:has-text('登入')",
-)
-RESEND_SELECTORS = (
-    "button:has-text('Resend')", "button:has-text('resend')",
-    "button:has-text('重新发送')", "button:has-text('重发')",
-    "a[href*='resend' i]", "[role='button']:has-text('Resend')",
-)
-PROFILE_SUBMIT_SELECTORS = (
-    "button[type='submit']", "button[data-testid='continue-button']",
-    "button:has-text('Continue')", "button:has-text('Sign up')",
-    "button:has-text('Create account')", "button:has-text('完成')",
-)
-_POST_ENTRY_AUTH_STATES = frozenset({
-    "otp", "otp_wait", "email_verification", "signup_password",
-    "login_password", "profile", "oauth_callback", "home",
-})
+# ---------------------------------------------------------------------------
+# Pure support tables and helpers live in the free_camoufox package now:
+#   selectors.py       page selector tuples / auth-state sets
+#   deadline.py        RegistrationDeadline + manual-OTP budget constants
+#   errors.py          browser-loss / transient-navigation classification
+#   debug_redaction.py credential-safe debug text sanitization
+#   url_safety.py      bounded URL / incident-id / task-id / fingerprint views
+# The names below keep their historical module-level bindings so tests and
+# compatibility adapters can keep patching ``free_camoufox_runtime.<name>``.
+try:
+    from .free_camoufox.selectors import (  # noqa: E402
+        CHATGPT_LOGIN_URL,
+        EMAIL_SELECTORS,
+        OTP_SELECTORS,
+        PASSWORD_SELECTORS,
+        LOGIN_PASSWORD_SELECTORS,
+        NAME_SELECTORS,
+        BIRTHDAY_SELECTORS,
+        AGE_SELECTORS,
+        EMAIL_SUBMIT_SELECTORS,
+        PASSWORD_SUBMIT_SELECTORS,
+        PASSWORDLESS_SELECTORS,
+        LOGIN_PASSWORD_SUBMIT_SELECTORS,
+        RESEND_SELECTORS,
+        PROFILE_SUBMIT_SELECTORS,
+        _POST_ENTRY_AUTH_STATES,
+    )
+    from .free_camoufox.deadline import (  # noqa: E402
+        MANUAL_OTP_HANDOFF_GRACE_SECONDS,
+        MANUAL_OTP_POST_SUBMIT_GRACE_SECONDS,
+        MANUAL_OTP_WINDOW_SECONDS,
+        MAX_MANUAL_OTP_WINDOWS,
+        RegistrationDeadline,
+        deadline_controller_bool as _deadline_controller_bool_impl,
+        deadline_controller_call as _deadline_controller_call_impl,
+    )
+    from .free_camoufox.errors import (  # noqa: E402
+        PROXY_BLOCK_PAGE_MARKERS as _PROXY_BLOCK_PAGE_MARKERS,
+        browser_process_lost as _browser_process_lost_impl,
+        is_transient_navigation_error as _is_transient_navigation_error_impl,
+        mark_recycle_required as _mark_recycle_required_impl,
+        navigation_diagnostic as _navigation_diagnostic_impl,
+        navigation_failure_category as _navigation_failure_category_impl,
+        navigation_failure_reason as _navigation_failure_reason_impl,
+    )
+    from .free_camoufox.debug_redaction import (  # noqa: E402
+        debug_alnum_is_safe_identifier as _debug_alnum_is_safe_identifier,
+        debug_body_has_sensitive_token as _debug_body_has_sensitive_token,
+        debug_grouped_is_candidate as _debug_grouped_is_candidate,
+        debug_grouped_secret_start as _debug_grouped_secret_start,
+        debug_otp_context as _debug_otp_context,
+        safe_body_markers as _safe_body_markers_impl,
+        sanitize_debug_text as _sanitize_debug_text_impl,
+        _SCREENSHOT_SCAN_LIMIT,
+    )
+    from .free_camoufox.url_safety import (  # noqa: E402
+        safe_debug_task_id as _safe_debug_task_id_impl,
+        safe_event_url as _safe_event_url_impl,
+        safe_incident_id as _safe_incident_id_impl,
+        safe_proxy_fingerprint as _safe_proxy_fingerprint_impl,
+        safe_url as _safe_url_impl,
+    )
+except ImportError:  # pragma: no cover - top-level recovery import
+    from free_camoufox.selectors import (  # type: ignore[no-redef]
+        CHATGPT_LOGIN_URL,
+        EMAIL_SELECTORS,
+        OTP_SELECTORS,
+        PASSWORD_SELECTORS,
+        LOGIN_PASSWORD_SELECTORS,
+        NAME_SELECTORS,
+        BIRTHDAY_SELECTORS,
+        AGE_SELECTORS,
+        EMAIL_SUBMIT_SELECTORS,
+        PASSWORD_SUBMIT_SELECTORS,
+        PASSWORDLESS_SELECTORS,
+        LOGIN_PASSWORD_SUBMIT_SELECTORS,
+        RESEND_SELECTORS,
+        PROFILE_SUBMIT_SELECTORS,
+        _POST_ENTRY_AUTH_STATES,
+    )
+    from free_camoufox.deadline import (  # type: ignore[no-redef]
+        MANUAL_OTP_HANDOFF_GRACE_SECONDS,
+        MANUAL_OTP_POST_SUBMIT_GRACE_SECONDS,
+        MANUAL_OTP_WINDOW_SECONDS,
+        MAX_MANUAL_OTP_WINDOWS,
+        RegistrationDeadline,
+        deadline_controller_bool as _deadline_controller_bool_impl,
+        deadline_controller_call as _deadline_controller_call_impl,
+    )
+    from free_camoufox.errors import (  # type: ignore[no-redef]
+        PROXY_BLOCK_PAGE_MARKERS as _PROXY_BLOCK_PAGE_MARKERS,
+        browser_process_lost as _browser_process_lost_impl,
+        is_transient_navigation_error as _is_transient_navigation_error_impl,
+        mark_recycle_required as _mark_recycle_required_impl,
+        navigation_diagnostic as _navigation_diagnostic_impl,
+        navigation_failure_category as _navigation_failure_category_impl,
+        navigation_failure_reason as _navigation_failure_reason_impl,
+    )
+    from free_camoufox.debug_redaction import (  # type: ignore[no-redef]
+        debug_alnum_is_safe_identifier as _debug_alnum_is_safe_identifier,
+        debug_body_has_sensitive_token as _debug_body_has_sensitive_token,
+        debug_grouped_is_candidate as _debug_grouped_is_candidate,
+        debug_grouped_secret_start as _debug_grouped_secret_start,
+        debug_otp_context as _debug_otp_context,
+        safe_body_markers as _safe_body_markers_impl,
+        sanitize_debug_text as _sanitize_debug_text_impl,
+        _SCREENSHOT_SCAN_LIMIT,
+    )
+    from free_camoufox.url_safety import (  # type: ignore[no-redef]
+        safe_debug_task_id as _safe_debug_task_id_impl,
+        safe_event_url as _safe_event_url_impl,
+        safe_incident_id as _safe_incident_id_impl,
+        safe_proxy_fingerprint as _safe_proxy_fingerprint_impl,
+        safe_url as _safe_url_impl,
+    )
 
 
-class CamoufoxDependencyError(FreeRegisterError):
-    def __init__(self, detail: str = "") -> None:
-        super().__init__(
-            "free_camoufox_dependency", "检查 Camoufox 依赖",
-            "Camoufox 未安装或运行时不可用" + (f"（{clean(detail, 180)}）" if detail else ""),
-            retryable=False,
-            error_code="camoufox_dependency_missing",
-            action_hint="安装 camoufox 及其浏览器运行时后重新执行 Free 预检",
-        )
+class CamoufoxBrowserError(FreeRegisterError):
+    pass
 
 
 def _profile_transition_timing_outcome(state: str) -> str:
@@ -178,18 +215,6 @@ def _profile_transition_timing_outcome(state: str) -> str:
     return "unexpected_state"
 
 
-class CamoufoxBrowserError(FreeRegisterError):
-    pass
-
-
-# Manual verification is deliberately bounded.  A registration can encounter
-# one entry OTP plus independent password and 2FA OTPs, so pool watchdogs
-# reserve room for all three windows and a short post-submit handoff.
-MANUAL_OTP_WINDOW_SECONDS = 300
-MANUAL_OTP_HANDOFF_GRACE_SECONDS = 2.0
-MANUAL_OTP_POST_SUBMIT_GRACE_SECONDS = 30.0
-MAX_MANUAL_OTP_WINDOWS = 3
-
 _DEADLINE_CONTROLLER_MISSING = object()
 
 
@@ -200,267 +225,31 @@ def _deadline_controller_call(
     default: Any = _DEADLINE_CONTROLLER_MISSING,
 ) -> Any:
     """Invoke an optional controller hook without making it a failure node."""
-    if controller is None:
-        return default
-    try:
-        method = getattr(controller, name, None)
-        if not callable(method):
-            return default
-        return method(*args)
-    except Exception:
-        # Older recovered adapters can expose only a partial controller. The
-        # absolute monotonic deadline remains the compatibility fallback.
-        return default
+    return _deadline_controller_call_impl(controller, name, *args, default=default)
 
 
 def _deadline_controller_bool(controller: Any, name: str) -> bool:
-    value = _deadline_controller_call(controller, name, default=False)
-    try:
-        return bool(value)
-    except Exception:
-        return False
-
-
-class RegistrationDeadline:
-    """A monotonic registration budget that can pause for manual OTP input.
-
-    The controller is intentionally in-memory and owned by one registration
-    invocation.  While paused, ``remaining`` is frozen and ``is_expired`` is
-    false; resuming shifts the absolute deadline by the time spent in the
-    manual window.  This lets the browser flow, its worker watchdog and the
-    mailbox provider observe one budget without extending ordinary waits.
-    """
-
-    def __init__(
-        self,
-        timeout_seconds: float,
-        *,
-        monotonic_fn: Callable[[], float] = time.monotonic,
-    ) -> None:
-        self._monotonic = monotonic_fn
-        now = float(monotonic_fn())
-        try:
-            timeout = max(0.0, float(timeout_seconds))
-        except (TypeError, ValueError):
-            timeout = 0.0
-        self._deadline = now + timeout
-        self._paused_at: float | None = None
-        self._paused_remaining = 0.0
-        self._last_outcome = ""
-        self._manual_prompt_active = False
-        self._manual_handoff_until = 0.0
-        self._post_submit_grace_until = 0.0
-        self._otp_wait_depth = 0
-        self._lock = threading.RLock()
-
-    def is_paused(self) -> bool:
-        with self._lock:
-            return self._paused_at is not None
-
-    def remaining(self) -> float:
-        with self._lock:
-            if self._paused_at is not None:
-                return max(0.0, self._paused_remaining)
-            return max(0.0, self._deadline - float(self._monotonic()))
-
-    def deadline(self) -> float:
-        with self._lock:
-            return float(self._deadline)
-
-    def is_expired(self) -> bool:
-        with self._lock:
-            return self._paused_at is None and self._deadline <= float(self._monotonic())
-
-    def begin_otp_wait(self) -> None:
-        """Mark a task-scoped OTP callback as active for watchdog handoff."""
-        with self._lock:
-            self._otp_wait_depth += 1
-
-    def end_otp_wait(self) -> None:
-        with self._lock:
-            self._otp_wait_depth = max(0, self._otp_wait_depth - 1)
-
-    def otp_wait_active(self) -> bool:
-        with self._lock:
-            return self._otp_wait_depth > 0
-
-    def request_manual_handoff(self) -> None:
-        """Pause briefly so an OTP worker can open its manual prompt."""
-        with self._lock:
-            self._pause_manual_locked()
-            self._manual_handoff_until = max(
-                self._manual_handoff_until,
-                float(self._monotonic()) + MANUAL_OTP_HANDOFF_GRACE_SECONDS,
-            )
-
-    def manual_handoff_active(self) -> bool:
-        with self._lock:
-            return self._manual_handoff_until > float(self._monotonic())
-
-    def manual_handoff_remaining(self) -> float:
-        """Return the remaining short scheduling handoff allowance."""
-        with self._lock:
-            return max(0.0, self._manual_handoff_until - float(self._monotonic()))
-
-    def manual_prompt_opened(self) -> None:
-        """Record that the broker prompt is visible to the operator."""
-        with self._lock:
-            self._pause_manual_locked()
-            self._manual_prompt_active = True
-            self._manual_handoff_until = 0.0
-
-    def manual_prompt_active(self) -> bool:
-        with self._lock:
-            return bool(self._manual_prompt_active)
-
-    def manual_submission_grace_active(self) -> bool:
-        with self._lock:
-            return self._post_submit_grace_until > float(self._monotonic())
-
-    def manual_submission_grace_remaining(self) -> float:
-        """Return the finite post-submit handoff allowance, if any."""
-        with self._lock:
-            return max(0.0, self._post_submit_grace_until - float(self._monotonic()))
-
-    def _pause_manual_locked(self) -> None:
-        if self._paused_at is not None:
-            return
-        now = float(self._monotonic())
-        self._paused_at = now
-        self._paused_remaining = max(0.0, self._deadline - now)
-
-    def pause_manual(self) -> None:
-        with self._lock:
-            self._pause_manual_locked()
-
-    def resume_manual(self, outcome: str = "") -> None:
-        with self._lock:
-            paused_at = self._paused_at
-            if paused_at is None:
-                return
-            now = float(self._monotonic())
-            # Preserve the exact budget left at prompt open and add back the
-            # elapsed manual interval, including an interval that crossed the
-            # original deadline.
-            self._deadline = now + max(0.0, self._paused_remaining)
-            self._paused_at = None
-            self._paused_remaining = 0.0
-            self._manual_prompt_active = False
-            self._manual_handoff_until = 0.0
-            normalized_outcome = str(outcome or "")[:32]
-            self._last_outcome = normalized_outcome
-            # If the prompt opened after the active budget had already
-            # reached zero, let the submitted code traverse the page/API
-            # handoff before the watchdog reports a real timeout. This grace
-            # is finite and applies only to an actually consumed submission.
-            self._post_submit_grace_until = (
-                now + MANUAL_OTP_POST_SUBMIT_GRACE_SECONDS
-                if normalized_outcome == "submitted" and self._deadline <= now
-                else 0.0
-            )
-
-    def sync_manual_prompt(self, prompt: Mapping[str, Any] | None = None) -> None:
-        """Synchronize an optional broker prompt without requiring a broker.
-
-        The provider invokes ``pause_manual``/``resume_manual`` directly. This
-        helper exists for watchdogs and compatibility adapters that can expose
-        a public prompt snapshot; it is deliberately conservative and never
-        opens or closes a prompt itself.
-        """
-        if isinstance(prompt, Mapping) and str(prompt.get("input_kind") or "") == "email_otp":
-            phase = str(prompt.get("phase") or "manual").casefold()
-            if phase == "manual":
-                self.manual_prompt_opened()
+    return _deadline_controller_bool_impl(controller, name)
 
 
 # Name used by a few recovered integrations and focused tests.
 _RegistrationDeadlineController = RegistrationDeadline
 
 
-_BROWSER_PROCESS_LOST_MARKERS = (
-    "target page, context or browser has been closed",
-    "browser has been closed",
-    "browser closed",
-    "browser disconnected",
-    "target closed",
-    "connection closed while reading from the driver",
-    "playwright connection closed",
-)
-
-_PROXY_BLOCK_PAGE_MARKERS = (
-    "unable to load site",
-    "if you are using a vpn",
-    "try turning it off",
-    "this website is using a security service",
-    "access denied",
-    "sorry, you have been blocked",
-    "web proxy blocked",
-    "proxy blocked",
-    "代理被阻断",
-    "代理阻断",
-)
-
-_TRANSIENT_NAV_MARKERS = (
-    "err_connection_closed",
-    "err_connection_reset",
-    "err_connection_refused",
-    "err_connection_aborted",
-    "err_connection_failed",
-    "err_timed_out",
-    "err_network_changed",
-    "err_empty_response",
-    "err_socks_connection_failed",
-    "err_proxy_connection_failed",
-    # Firefox/Camoufox reports the same transport failures with NS_ERROR
-    # names instead of Chromium's ERR_* names.
-    "ns_error_connection_closed",
-    "ns_error_connection_reset",
-    "ns_error_connection_refused",
-    "ns_error_net_timeout",
-    "ns_error_unknown_host",
-    "ns_error_proxy_connection_refused",
-    "connection refused",
-    "connection reset",
-    "navigation timeout",
-    "page.goto: timeout",
-    "timed out",
-)
-
-
 def _browser_process_lost(exc: BaseException) -> bool:
-    message = str(exc or "").casefold()
-    return any(marker in message for marker in _BROWSER_PROCESS_LOST_MARKERS)
+    return _browser_process_lost_impl(exc)
 
 
 def _is_transient_navigation_error(exc: BaseException) -> bool:
-    """Match the reference flow's transport-only navigation retry boundary."""
-    message = str(exc or "").casefold()
-    return any(marker in message for marker in _TRANSIENT_NAV_MARKERS)
+    return _is_transient_navigation_error_impl(exc)
 
 
 def _navigation_failure_category(exc: BaseException) -> str:
-    if _browser_process_lost(exc):
-        return "browser_process_lost"
-    if "timeout" in str(exc or "").casefold() or "timed out" in str(exc or "").casefold():
-        return "navigation_timeout"
-    if _is_transient_navigation_error(exc):
-        return "navigation_transient"
-    return "navigation_error"
+    return _navigation_failure_category_impl(exc)
 
 
 def _navigation_failure_reason(exc: BaseException) -> str:
-    message = str(exc or "").casefold()
-    if any(marker in message for marker in ("ns_error_connection_refused", "err_connection_refused", "connection refused")):
-        return "connection_refused"
-    if any(marker in message for marker in ("ns_error_connection_reset", "err_connection_reset", "connection reset")):
-        return "connection_reset"
-    if any(marker in message for marker in ("ns_error_net_timeout", "err_timed_out", "timed out", "navigation timeout")):
-        return "timeout"
-    if any(marker in message for marker in ("ns_error_unknown_host", "err_name_not_resolved")):
-        return "name_resolution"
-    if any(marker in message for marker in ("err_proxy_connection_failed", "ns_error_proxy_connection_refused")):
-        return "proxy_connection_failed"
-    return ""
+    return _navigation_failure_reason_impl(exc)
 
 
 def _navigation_diagnostic(exc: BaseException, page: Any) -> str:
@@ -474,14 +263,18 @@ def _navigation_diagnostic(exc: BaseException, page: Any) -> str:
 
 
 def _mark_recycle_required(error: BaseException, reason: str = "") -> BaseException:
-    """Attach browser-pool recovery intent without widening the public schema."""
-    try:
-        setattr(error, "recycle_required", True)
-        if reason:
-            setattr(error, "recycle_reason", clean(reason, 240))
-    except Exception:
-        pass
-    return error
+    return _mark_recycle_required_impl(error, reason)
+
+
+class CamoufoxDependencyError(FreeRegisterError):
+    def __init__(self, detail: str = "") -> None:
+        super().__init__(
+            "free_camoufox_dependency", "检查 Camoufox 依赖",
+            "Camoufox 未安装或运行时不可用" + (f"（{clean(detail, 180)}）" if detail else ""),
+            retryable=False,
+            error_code="camoufox_dependency_missing",
+            action_hint="安装 camoufox 及其浏览器运行时后重新执行 Free 预检",
+        )
 
 
 def _load_camoufox_api() -> tuple[Any, Any]:
@@ -551,323 +344,27 @@ def _context_failure_diagnostic(exc: BaseException) -> str:
 
 
 def _safe_url(page: Any) -> str:
-    try:
-        parsed = urlsplit(str(getattr(page, "url", "") or ""))
-        if parsed.scheme and parsed.hostname:
-            return _safe_event_url(parsed.geturl()) or "页面地址未知"
-    except Exception:
-        pass
-    return "页面地址未知"
-
-
-async def _body_text(page: Any) -> str:
-    try:
-        return clean(await page.locator("body").inner_text(timeout=1500), 1800)
-    except Exception:
-        return ""
-
-
-# Debug artifacts have a stricter redaction boundary than ordinary business
-# diagnostics.  The latter intentionally keeps short numeric identifiers and
-# route labels useful; a retained browser page, however, can contain an OTP in
-# visible text or a console error.  Keep this policy local to the Camoufox
-# scene dump so changing it cannot alter normal task/log semantics.
-_DEBUG_OTP_CONTEXT_RE = re.compile(
-    r"(?ix)"
-    r"(?:\b(?:one[\s_-]?time(?:[\s_-]?password)?|otp|"
-    r"verification(?:[\s_-]?code)?|verify(?:[\s_-]?code)?|"
-    r"authentication(?:[\s_-]?code)?|auth(?:[\s_-]?code)?|"
-    r"security[\s_-]?(?:code|pin|passcode|token)|pass[\s_-]?code|"
-    r"pin|code|(?:access|login|email|sms)[\s_-]?code"
-    r")\b|验证码|校验码|动态码|一次性密码|認証(?:コード)?|確認コード|検証コード)"
- )
-_DEBUG_NUMERIC_OTP_RE = re.compile(r"(?<![A-Za-z0-9])\d{4,7}(?![A-Za-z0-9])")
-# Require both letters and digits so ordinary words ("security", "Cloudflare")
-# are never treated as an OTP.  A context label is still required before this
-# candidate is masked; this avoids destroying browser/version identifiers such
-# as ``HTTP403`` in otherwise useful diagnostics.
-_DEBUG_ALNUM_OTP_RE = re.compile(
-    r"(?<![A-Za-z0-9])(?=[A-Za-z0-9]{4,12}(?![A-Za-z0-9]))"
-    r"(?=[A-Za-z0-9]*[A-Za-z])(?=[A-Za-z0-9]*\d)[A-Za-z0-9]{4,12}(?![A-Za-z0-9])"
-)
-# Verification codes are also commonly rendered as short groups, for example
-# ``A1-B2-C3`` or ``12 34 56``.  A contiguous-token pass cannot see those
-# values, so inspect bounded groups separately and apply the same conservative
-# status/version allow-list below.
-_DEBUG_GROUPED_ALNUM_RE = re.compile(
-    r"(?<![A-Za-z0-9])[A-Za-z0-9]{1,8}(?:[\s-][A-Za-z0-9]{1,8}){1,7}(?![A-Za-z0-9])"
-)
-# Grouped-code matching can include the label immediately before the value
-# (for example, ``code A1-B2-C3``).  Keep those labels in the scene dump while
-# masking only the value itself.
-_DEBUG_GROUP_LABELS = {
-    "one", "time", "password", "otp", "verification", "verify",
-    "authentication", "auth", "security", "code", "pin", "passcode",
-    "token", "access", "login", "email", "sms",
-}
-# A few unambiguous protocol/status spellings are useful diagnostics rather
-# than OTPs.  Version-like values need an explicit version/build/release
-# label; a bare ``v2024`` is still treated as a possible code.
-_DEBUG_ALNUM_STATUS_RE = re.compile(r"(?i)^(?:https?|http|err|ns|tls|ssl)\d{3}$")
-_DEBUG_VERSION_CONTEXT_RE = re.compile(r"(?i)\b(?:version|build|release)\b")
-_DEBUG_EMAIL_RE = re.compile(r"(?i)(?<![\w.+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}(?![\w.-])")
-_DEBUG_PHONE_RE = re.compile(r"(?<![\w])\+?\d{8,15}(?![\w])")
-_SENSITIVE_BODY_RE = re.compile(
-    r"(?i)[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|"
-    r"(?<![A-Za-z0-9])\+?\d{8,15}(?![A-Za-z0-9])|"
-    r"(?<![A-Za-z0-9])\d{4,7}(?![A-Za-z0-9])"
-)
-_SCREENSHOT_SCAN_LIMIT = 100_000
-
-
-def _debug_otp_context(text: str, start: int, end: int, *, radius: int = 72) -> bool:
-    """Return whether a candidate is near an OTP/verification label."""
-    window = text[max(0, start - radius):min(len(text), end + radius)]
-    return bool(_DEBUG_OTP_CONTEXT_RE.search(window))
-
-
-def _debug_alnum_is_safe_identifier(text: str, start: int, end: int, candidate: str) -> bool:
-    """Keep protocol/version labels while rejecting code-shaped tokens."""
-    if _DEBUG_ALNUM_STATUS_RE.fullmatch(candidate):
-        # HTTP/NS/TLS status tokens are diagnostics, never credentials. Keep
-        # them readable even when the surrounding message also mentions a
-        # verification code.
-        return True
-    if re.fullmatch(r"(?i)v\d{1,4}", candidate):
-        window = text[max(0, start - 32):min(len(text), end + 32)]
-        return bool(_DEBUG_VERSION_CONTEXT_RE.search(window))
-    return False
-
-
-def _debug_grouped_is_candidate(text: str, start: int, end: int, candidate: str) -> bool:
-    """Recognize grouped code-shaped values without masking normal prose."""
-    chunks = [item for item in re.split(r"[\s-]+", candidate) if item]
-    compact = "".join(chunks)
-    if len(compact) < 4 or not any(char.isdigit() for char in compact):
-        return False
-    # ``Version v2024`` (and the equivalent build/release labels) is a
-    # diagnostic identifier, not an OTP.  The broad context window may also
-    # contain a real ``code`` label elsewhere in the same message, so check
-    # the version token before applying that context.
-    if len(chunks) == 2 and re.fullmatch(r"(?i)v\d{1,4}", chunks[1]):
-        window = text[max(0, start - 32):min(len(text), end + 32)]
-        if _DEBUG_VERSION_CONTEXT_RE.search(window):
-            return False
-    if _debug_alnum_is_safe_identifier(text, start, end, compact):
-        return False
-    # An OTP label makes even uneven groups (``AB-1234``) unambiguous.  In an
-    # unlabeled string require several short code-like groups so phrases such
-    # as ``Version v2024`` are not swallowed as a single secret.
-    if _debug_otp_context(text, start, end):
-        return True
-    return (
-        len(chunks) >= 2
-        and all(len(chunk) <= 4 for chunk in chunks)
-        and sum(any(char.isdigit() for char in chunk) for chunk in chunks) >= 2
-    )
-
-
-def _debug_grouped_secret_start(text: str, start: int, end: int) -> int:
-    """Return the first character of a grouped secret, after its label."""
-    candidate = text[start:end]
-    tokens = list(re.finditer(r"[A-Za-z0-9]+", candidate))
-    secret_start = start
-    for token in tokens:
-        word = token.group(0).casefold()
-        if word not in _DEBUG_GROUP_LABELS:
-            break
-        secret_start = start + token.end()
-    while secret_start < end and text[secret_start] in " \\t-":
-        secret_start += 1
-    return secret_start
-
-
-def _sanitize_debug_text(value: Any, limit: int = 800, *, mask_bare_numeric: bool = True) -> str:
-    """Redact credentials and likely OTPs before writing a debug artifact.
-
-    Numeric 4--7 digit values are masked even without a nearby label.  This
-    is deliberately fail-closed for retained browser scenes because a page
-    may render a code by itself (for example, a single ``<p>1234</p>``).  Mixed
-    alphanumeric candidates are masked when they have an OTP context or match
-    a code-like standalone token.  A small protocol/status allowlist keeps
-    values such as ``HTTP403`` readable; version values are retained only
-    beside an explicit ``version``/``build``/``release`` label.
-    """
-    text = sanitize_failure_text(value, max(0, int(limit)))
-    if not text:
-        return ""
-    replacements: list[tuple[int, int, str]] = []
-    occupied_until = -1
-    for match in _DEBUG_GROUPED_ALNUM_RE.finditer(text):
-        if match.start() < occupied_until:
-            continue
-        if _debug_grouped_is_candidate(text, match.start(), match.end(), match.group(0)):
-            secret_start = _debug_grouped_secret_start(text, match.start(), match.end())
-            if secret_start < match.end():
-                replacements.append((secret_start, match.end(), "<验证码>"))
-            occupied_until = match.end()
-    for matcher, is_numeric in ((_DEBUG_NUMERIC_OTP_RE, True), (_DEBUG_ALNUM_OTP_RE, False)):
-        for match in matcher.finditer(text):
-            if match.start() < occupied_until:
-                continue
-            if is_numeric:
-                should_mask = mask_bare_numeric or _debug_otp_context(text, match.start(), match.end())
-            else:
-                candidate = match.group(0)
-                should_mask = _debug_otp_context(text, match.start(), match.end())
-                if _debug_alnum_is_safe_identifier(text, match.start(), match.end(), candidate):
-                    # Keep unambiguous protocol/version forms readable when
-                    # they are not part of an OTP-labelled message.
-                    should_mask = False
-                elif not should_mask:
-                    # Mixed alpha/numeric values are a common OTP format even
-                    # when a page renders the value without its label. Keep
-                    # ordinary protocol/status identifiers above readable.
-                    should_mask = True
-            if should_mask:
-                replacements.append((match.start(), match.end(), "<验证码>"))
-                occupied_until = match.end()
-    for start, end, replacement in reversed(replacements):
-        text = text[:start] + replacement + text[end:]
-    return text[: max(0, int(limit))]
-
-
-def _debug_body_has_sensitive_token(value: Any) -> bool:
-    """Check raw page text before screenshot capture, without returning it."""
-    text = str(value or "")
-    if _SENSITIVE_BODY_RE.search(text) or _DEBUG_EMAIL_RE.search(text) or _DEBUG_PHONE_RE.search(text):
-        return True
-    for match in _DEBUG_NUMERIC_OTP_RE.finditer(text):
-        # A bare code is unsafe to capture; labels are not required here.
-        if _debug_otp_context(text, match.start(), match.end()) or len(match.group(0)) in {4, 5, 6, 7}:
-            return True
-    for match in _DEBUG_ALNUM_OTP_RE.finditer(text):
-        if not _debug_alnum_is_safe_identifier(text, match.start(), match.end(), match.group(0)):
-            return True
-    for match in _DEBUG_GROUPED_ALNUM_RE.finditer(text):
-        if _debug_grouped_is_candidate(text, match.start(), match.end(), match.group(0)):
-            return True
-    return False
-
-
-async def _screenshot_safety_check(page: Any) -> tuple[bool, str]:
-    """Verify the complete readable body before allowing a screenshot.
-
-    A short diagnostic snapshot is useful for state classification, but it is
-    not sufficient to prove that a later part of the page is safe to capture.
-    If the body cannot be read in full (or exceeds the bounded scan size), we
-    skip the screenshot instead of guessing that masking was complete.
-    """
-    try:
-        value = await page.locator("body").inner_text(timeout=1500)
-        body = str(value or "")
-    except Exception as exc:
-        return False, f"无法读取页面正文（{type(exc).__name__}）"
-    if len(body) > _SCREENSHOT_SCAN_LIMIT:
-        return False, "页面正文过长，无法可靠脱敏"
-    if _debug_body_has_sensitive_token(body):
-        return False, "页面正文疑似含敏感值，未保存截图"
-    return True, ""
-
-
-async def _snapshot(page: Any) -> dict[str, Any]:
-    body = await _body_text(page)
-    try:
-        title = clean(await page.title(), 160)
-    except Exception:
-        title = ""
-    return {"url": _safe_url(page), "title": title, "body": body}
+    return _safe_url_impl(page)
 
 
 def _safe_event_url(value: Any) -> str:
-    """Keep only a request host/path for the bounded debug event trace."""
-    try:
-        parsed = urlsplit(str(value or ""))
-        if not parsed.hostname:
-            return ""
-        host = parsed.hostname
-        if ":" in host and not host.startswith("["):
-            host = f"[{host}]"
-        path = parsed.path or "/"
-        # Decode nested percent-encoding before applying the redaction rules.
-        # A bounded loop handles values encoded by browser/router layers while
-        # avoiding unbounded work on malformed input.
-        for _ in range(8):
-            decoded = unquote(path)
-            if decoded == path:
-                break
-            path = decoded
-        trusted_host = (
-            host.casefold() == "chatgpt.com"
-            or host.casefold().endswith(".chatgpt.com")
-            or host.casefold() == "openai.com"
-            or host.casefold().endswith(".openai.com")
-        )
-        if not trusted_host:
-            path = "/[路径已隐藏]"
-        # Opaque authorization/callback routes and encoded values are not
-        # useful for diagnosis. Keep known ChatGPT routes readable, but hide
-        # tokens, mailbox addresses, phone numbers and long opaque segments.
-        path = re.sub(r"(?i)[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", "<邮箱>", path)
-        path = re.sub(r"(?<!\d)\+?\d{8,15}(?!\d)", "<手机号>", path)
-        # URL query strings are discarded below, but short OTPs can also be
-        # embedded in a verification route path.  Apply the debug-only text
-        # policy here after decoding nested percent escapes.
-        path = _sanitize_debug_text(path, 500)
-        path = re.sub(r"(?i)((?:token|code|state|nonce|session|key|secret|credential|assertion))(?:/|=)[^/?#&]+", r"\1/<已隐藏>", path)
-        path = re.sub(
-            r"(?i)(/(?:authorize|callback|oauth|continue|session))(?:/[^/?#]*)?",
-            r"\1/<已隐藏>",
-            path,
-        )
-        # Encoded query strings can become a literal ``?`` only after the
-        # repeated decode above.  Drop that suffix even when it does not use a
-        # recognized key, because it may contain an opaque authorization value.
-        if "?" in path or "#" in path:
-            path = re.split(r"[?#]", path, maxsplit=1)[0].rstrip("/") or "/"
-            path = f"{path}/<已隐藏>" if path != "/" else "/<已隐藏>"
-        elif re.search(r"[&=]", path):
-            path = path.split("&", 1)[0].split("=", 1)[0].rstrip("/") or "/"
-            path = f"{path}/<已隐藏>" if path != "/" else "/<已隐藏>"
-        # Leave no partially encoded token-looking value in the public trace.
-        if "%" in path:
-            path = "/[路径已隐藏]"
-        path = "/".join(
-            "<已隐藏>" if len(segment) > 96 and re.fullmatch(r"[A-Za-z0-9._~-]+", segment) else segment
-            for segment in path.split("/")
-        )
-        return f"{parsed.scheme.lower()}://{host}{path}"[:500]
-    except Exception:
-        return ""
+    return _safe_event_url_impl(value)
 
 
 def _safe_incident_id(value: Any) -> str:
-    candidate = str(value or "").strip().upper()
-    if re.fullmatch(r"LOG-\d{8}-[A-Z0-9]{8}", candidate):
-        return candidate
-    return ""
+    return _safe_incident_id_impl(value)
 
 
 def _safe_debug_task_id(value: Any) -> str:
-    """Project a task identifier without allowing email/phone-like input.
+    return _safe_debug_task_id_impl(value)
 
-    Production Free IDs use a stable ``free-*``/``task-*`` namespace.  Keep
-    those identifiers useful for correlation, while hashing arbitrary direct
-    caller values (which may accidentally be an email, phone, or URL).
-    """
-    candidate = str(value or "").strip()
-    if not candidate:
-        return ""
-    candidate = candidate[:160]
-    internal = re.fullmatch(
-        r"(?i)(?:free|task|batch|camoufox)(?:[-_.:][A-Za-z0-9][A-Za-z0-9_.:-]{0,150})?",
-        candidate,
-    )
-    if internal and not re.search(
-        r"(?i)(?:@|https?://|socks5?h?://|\+?\d{8,15})", candidate,
-    ):
-        return candidate
-    return f"task-{fingerprint(candidate)}"
+
+def _safe_proxy_fingerprint(provided: Any, proxy: Any = "") -> str:
+    return _safe_proxy_fingerprint_impl(provided, proxy)
+
+
+def _sanitize_debug_text(value: Any, limit: int = 800, *, mask_bare_numeric: bool = True) -> str:
+    return _sanitize_debug_text_impl(value, limit, mask_bare_numeric=mask_bare_numeric)
 
 
 def _runtime_bool(value: Any, default: bool = False) -> bool:
@@ -905,32 +402,43 @@ def _effective_camoufox_headless(config: Mapping[str, Any] | None) -> tuple[bool
 
 
 def _safe_body_markers(value: Any) -> list[str]:
-    """Report only sensitivity classes, never page/response text."""
-    text = str(value or "")
-    markers: list[str] = []
-    if re.search(r"(?i)[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", text):
-        markers.append("<邮箱>")
-    if re.search(r"(?<!\d)\+?\d{8,15}(?!\d)", text):
-        markers.append("<手机号>")
-    if _DEBUG_NUMERIC_OTP_RE.search(text) or any(
-        _debug_otp_context(text, match.start(), match.end())
-        or not _DEBUG_ALNUM_STATUS_RE.fullmatch(match.group(0))
-        for match in _DEBUG_ALNUM_OTP_RE.finditer(text)
-    ) or any(
-        _debug_grouped_is_candidate(text, match.start(), match.end(), match.group(0))
-        for match in _DEBUG_GROUPED_ALNUM_RE.finditer(text)
-    ):
-        markers.append("<验证码>")
-    return markers
+    return _safe_body_markers_impl(value)
 
 
-def _safe_proxy_fingerprint(provided: Any, proxy: Any = "") -> str:
-    """Accept only the runtime's fixed-size hexadecimal proxy fingerprint."""
-    candidate = str(provided or "").strip().lower()
-    if re.fullmatch(r"[0-9a-f]{16}", candidate):
-        return candidate
-    raw_proxy = str(proxy or "").strip()
-    return fingerprint(raw_proxy) if raw_proxy else ""
+async def _body_text(page: Any) -> str:
+    try:
+        return clean(await page.locator("body").inner_text(timeout=1500), 1800)
+    except Exception:
+        return ""
+
+
+async def _snapshot(page: Any) -> dict[str, Any]:
+    body = await _body_text(page)
+    try:
+        title = clean(await page.title(), 160)
+    except Exception:
+        title = ""
+    return {"url": _safe_url(page), "title": title, "body": body}
+
+
+async def _screenshot_safety_check(page: Any) -> tuple[bool, str]:
+    """Verify the complete readable body before allowing a screenshot.
+
+    A short diagnostic snapshot is useful for state classification, but it is
+    not sufficient to prove that a later part of the page is safe to capture.
+    If the body cannot be read in full (or exceeds the bounded scan size), we
+    skip the screenshot instead of guessing that masking was complete.
+    """
+    try:
+        value = await page.locator("body").inner_text(timeout=1500)
+        body = str(value or "")
+    except Exception as exc:
+        return False, f"无法读取页面正文（{type(exc).__name__}）"
+    if len(body) > _SCREENSHOT_SCAN_LIMIT:
+        return False, "页面正文过长，无法可靠脱敏"
+    if _debug_body_has_sensitive_token(body):
+        return False, "页面正文疑似含敏感值，未保存截图"
+    return True, ""
 
 
 class _DebugTrace:
@@ -955,8 +463,6 @@ class _DebugTrace:
                     value = max(0, min(599, int(value)))
                 except (TypeError, ValueError):
                     continue
-            elif key in {"method", "type", "name", "failure", "message", "text", "error"}:
-                value = _sanitize_debug_text(value, 300)
             else:
                 value = _sanitize_debug_text(value, 300)
             if value not in (None, ""):
@@ -2506,22 +2012,6 @@ def _reference_age_and_birthdate() -> tuple[int, str]:
     today = date.today()
     return age, f"{today.year - age:04d}-{today.month:02d}-{today.day:02d}"
 
-
-async def _complete_profile(page: Any, log: Callable[[str, str], None]) -> None:
-    name = await _visible(page, NAME_SELECTORS)
-    if name:
-        await _fill(name, random_display_name())
-    age = await _visible(page, AGE_SELECTORS)
-    if age:
-        await _fill(age, "25")
-    birthday = await _visible(page, BIRTHDAY_SELECTORS)
-    if birthday:
-        await _fill(birthday, random_birthdate())
-    await _accept_consents(page)
-    if not await _click(page, PROFILE_SUBMIT_SELECTORS, timeout=5000):
-        if name:
-            await _submit(name)
-    log("Camoufox 资料页已提交", "info")
 
 
 async def _submit_existing_login_password(page: Any, password: str) -> bool:

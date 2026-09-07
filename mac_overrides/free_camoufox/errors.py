@@ -34,6 +34,8 @@ _TRANSIENT_NAVIGATION_MARKERS = (
     "err_empty_response",
     "err_socks_connection_failed",
     "err_proxy_connection_failed",
+    # Firefox/Camoufox reports the same transport failures with NS_ERROR
+    # names instead of Chromium's ERR_* names.
     "ns_error_connection_closed",
     "ns_error_connection_reset",
     "ns_error_connection_refused",
@@ -45,6 +47,21 @@ _TRANSIENT_NAVIGATION_MARKERS = (
     "navigation timeout",
     "page.goto: timeout",
     "timed out",
+)
+
+# ChatGPT rejection pages that prove the current proxy exit is blocked.
+# Used by the Camoufox flow to report a hard proxy-block stop reason.
+PROXY_BLOCK_PAGE_MARKERS = (
+    "unable to load site",
+    "if you are using a vpn",
+    "try turning it off",
+    "this website is using a security service",
+    "access denied",
+    "sorry, you have been blocked",
+    "web proxy blocked",
+    "proxy blocked",
+    "代理被阻断",
+    "代理阻断",
 )
 
 
@@ -167,6 +184,7 @@ def __getattr__(name: str) -> Any:
 __all__ = [
     "CamoufoxBrowserError",
     "CamoufoxDependencyError",
+    "PROXY_BLOCK_PAGE_MARKERS",
     "browser_process_lost",
     "is_transient_navigation_error",
     "navigation_diagnostic",

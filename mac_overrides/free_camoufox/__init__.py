@@ -14,6 +14,13 @@ from .contracts import (
     CamoufoxRegistrationResult,
     normalize_flow_state,
 )
+from .deadline import (
+    MANUAL_OTP_HANDOFF_GRACE_SECONDS,
+    MANUAL_OTP_POST_SUBMIT_GRACE_SECONDS,
+    MANUAL_OTP_WINDOW_SECONDS,
+    MAX_MANUAL_OTP_WINDOWS,
+    RegistrationDeadline,
+)
 from .errors import (
     browser_process_lost,
     is_transient_navigation_error,
@@ -72,6 +79,11 @@ __all__ = [
     "InvalidTransitionError",
     "PageTransportContract",
     "StateTransition",
+    "MANUAL_OTP_HANDOFF_GRACE_SECONDS",
+    "MANUAL_OTP_POST_SUBMIT_GRACE_SECONDS",
+    "MANUAL_OTP_WINDOW_SECONDS",
+    "MAX_MANUAL_OTP_WINDOWS",
+    "RegistrationDeadline",
     "browser_process_lost",
     "is_transient_navigation_error",
     "mark_recycle_required",

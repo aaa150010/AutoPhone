@@ -72,10 +72,8 @@ def _safe_page_url(page: Any) -> str:
 
     raw = str(getattr(page, "url", "") or "")
     try:
-        from .. import free_camoufox_runtime
-        reducer = getattr(free_camoufox_runtime, "_safe_url", None)
-        if callable(reducer):
-            return str(reducer(page) or "")[:500]
+        from .url_safety import safe_url
+        return str(safe_url(page) or "")[:500]
     except Exception:
         pass
     try:
