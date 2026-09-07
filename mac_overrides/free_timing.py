@@ -59,6 +59,18 @@ FREE_TIMING_SUBSTEPS: dict[str, str] = {
     "profile_birthday_modal": "确认生日弹窗",
     "profile_async_submit_wait": "等待资料异步提交",
     "profile_home_state_wait": "等待 home/认证状态",
+    # Protocol preflight / warmup / prelude step timings (per-request).
+    "preflight_login_fetch": "预检 chatgpt 登录页",
+    "preflight_auth_fetch": "预检 auth 登录页",
+    "preflight_sentinel_frame": "预检 sentinel frame",
+    "warmup_anon_check": "预热匿名账号检查",
+    "warmup_anon_me": "预热匿名 me",
+    "warmup_anon_models": "预热匿名 models",
+    "prelude_providers_fetch": "前置 providers 请求",
+    "prelude_csrf_fetch": "前置 csrf 请求",
+    "prelude_signin_fetch": "前置 signin 请求",
+    "prelude_authorize_navigate": "前置 authorize 导航",
+    "email_identifier_submit": "注册邮箱提交请求",
 }
 
 

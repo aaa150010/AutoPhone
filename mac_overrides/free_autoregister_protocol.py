@@ -10,6 +10,7 @@ Mailbox parsing and OTP retrieval deliberately remain outside this module.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Mapping
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -162,10 +163,29 @@ def _annotate_page_response(transport: Any, response: Any) -> dict[str, Any]:
     return result
 
 
-def _run_reference_chatgpt_prelude(transport: Any, email: str) -> Mapping[str, Any]:
+def _prelude_timing(config: Mapping[str, Any] | None):
+    """Return the task timing callback carried by the task config, if any."""
+    if isinstance(config, Mapping):
+        candidate = config.get("_timing_substep")
+        if callable(candidate):
+            return candidate
+    return None
+
+
+def _timed(monotonic_fn, callback, stage_code: str, code: str, outcome: str = "success") -> None:
+    if not callable(callback):
+        return
+    try:
+        callback(stage_code, code, int((time.monotonic() - monotonic_fn) * 1000), outcome)
+    except Exception:
+        pass
+
+
+def _run_reference_chatgpt_prelude(transport: Any, email: str, *, config: Mapping[str, Any] | None = None) -> Mapping[str, Any]:
     """Run AutoRegister's exact NextAuth prelude for the recovered transport."""
     session = getattr(transport, "session", None)
     json_get = getattr(transport, "_chatgpt_json_get", None)
+    timing = _prelude_timing(config)
     if session is None or not callable(getattr(session, "get", None)) or not callable(getattr(session, "post", None)) or not callable(json_get):
         raise RuntimeError("reference transport helpers unavailable")
 
@@ -176,7 +196,9 @@ def _run_reference_chatgpt_prelude(transport: Any, email: str) -> Mapping[str, A
     chatgpt = str(getattr(chain, "CHATGPT", "https://chatgpt.com"))
     page_headers = dict(getattr(chain, "PAGE_HEADERS", {}) or {})
     page_headers.setdefault("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+    csrf_started = time.monotonic()
     csrf_data = json_get("/api/auth/csrf", referer=f"{chatgpt}/", timeout=30)
+    _timed(csrf_started, timing, "free_oauth_session", "prelude_csrf_fetch")
     csrf_status = response_status(csrf_data)
     if csrf_status is not None and not 200 <= csrf_status < 400:
         raise _failed(csrf_data)
@@ -207,6 +229,7 @@ def _run_reference_chatgpt_prelude(transport: Any, email: str) -> Mapping[str, A
         "sec-fetch-mode": "cors",
         "sec-fetch-dest": "empty",
     }
+    signin_started = time.monotonic()
     response = session.post(
         signin_url,
         headers=signin_headers,
@@ -214,6 +237,7 @@ def _run_reference_chatgpt_prelude(transport: Any, email: str) -> Mapping[str, A
         allow_redirects=False,
         timeout=30,
     )
+    _timed(signin_started, timing, "free_oauth_session", "prelude_signin_fetch")
     data = _json_response(transport, response)
     authorize_url = str(data.get("url") or "")
     if not authorize_url:
@@ -231,12 +255,14 @@ def _run_reference_chatgpt_prelude(transport: Any, email: str) -> Mapping[str, A
         "sec-fetch-mode": "navigate",
         "sec-fetch-dest": "document",
     }
+    authorize_started = time.monotonic()
     final_response = session.get(
         authorize_url,
         headers=navigate_headers,
         allow_redirects=True,
         timeout=45,
     )
+    _timed(authorize_started, timing, "free_oauth_session", "prelude_authorize_navigate")
     result = _annotate_page_response(transport, _json_response(transport, final_response))
     result["url"] = str(getattr(final_response, "url", "") or authorize_url)
     result.setdefault("_url", result["url"])
@@ -253,6 +279,7 @@ def run_autoregister_prelude(
     stage: Callable[[str, str], None] | None = None,
     log: Callable[..., Any] | None = None,
     stop_requested: Callable[[], bool] | None = None,
+    config: Mapping[str, Any] | None = None,
 ) -> Mapping[str, Any] | None:
     """Run AutoRegister's login/csrf/providers/signin/authorize prelude.
 
@@ -274,13 +301,15 @@ def run_autoregister_prelude(
         # response body out of diagnostics.
         providers_get = getattr(transport, "_chatgpt_json_get", None)
         if callable(providers_get):
+            providers_started = time.monotonic()
             providers = providers_get("/api/auth/providers", referer="https://chatgpt.com/", timeout=30)
+            _timed(providers_started, _prelude_timing(config), "free_oauth_session", "prelude_providers_fetch")
             provider_status = response_status(providers)
             if provider_status is not None and not 200 <= provider_status < 400:
                 raise _failed(providers)
             _log(log, "AutoRegister providers 节点完成", "info")
         if callable(getattr(transport, "_chatgpt_json_get", None)) and getattr(transport, "session", None) is not None:
-            response = _run_reference_chatgpt_prelude(transport, str(email or ""))
+            response = _run_reference_chatgpt_prelude(transport, str(email or ""), config=config)
         else:
             response = function(str(email or ""))
     except FreeRegisterError:

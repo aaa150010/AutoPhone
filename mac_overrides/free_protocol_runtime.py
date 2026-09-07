@@ -877,6 +877,25 @@ class FreeProtocolMixin:
                 setattr(created, "_gptphone_timezone_offset_minutes", fingerprint.get("timezone_offset_minutes"))
             transport_ref["current"] = created
             self._instrument_transport(created, task_id, stage)
+            # Per-request timing for the mailbox-identifier submit (the step
+            # operators perceive as slow).  Diagnostic only; the wrapper is
+            # pure pass-through apart from the elapsed measurement.
+            _identifier_original = getattr(created, "submit_email_identifier", None)
+            _timing_cb = chain_config.get("_timing_substep") if isinstance(chain_config, Mapping) else None
+            if callable(_identifier_original) and callable(_timing_cb) and not getattr(_identifier_original, "_gptphone_timed", False):
+                def _timed_identifier(*args: Any, __original: Callable[..., Any] = _identifier_original, __timing: Callable[..., Any] = _timing_cb, **kwargs: Any) -> Any:
+                    import time as _time
+                    _started = _time.monotonic()
+                    try:
+                        return __original(*args, **kwargs)
+                    finally:
+                        try:
+                            __timing("free_email_identifier", "email_identifier_submit", int((_time.monotonic() - _started) * 1000), "success")
+                        except Exception:
+                            pass
+
+                _timed_identifier._gptphone_timed = True
+                setattr(created, "submit_email_identifier", _timed_identifier)
             # Same-session transient retry (TLS handshake / connection reset
             # before any response).  Rebuilding the session would drop the
             # oai-did/csrf cookies, so the retry must reuse this session.
@@ -937,6 +956,7 @@ class FreeProtocolMixin:
                 stage=stage,
                 log=log,
                 stop_requested=stop_event.is_set,
+                config=chain_config,
             )
 
         def make_rebuilt_transport() -> Any:

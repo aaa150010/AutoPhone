@@ -278,6 +278,22 @@ def _emit(log: LogFn, message: str, level: str = "info", **fields: Any) -> None:
         pass
 
 
+def _emit_timing_sample(
+    timing: Callable[..., Any] | None,
+    stage_code: str,
+    code: str,
+    elapsed_ms: int,
+    outcome: str,
+) -> None:
+    """Best-effort per-step timing emission; never affects the flow."""
+    if not callable(timing) or not code:
+        return
+    try:
+        timing(stage_code, code, elapsed_ms, outcome)
+    except Exception:
+        pass
+
+
 def _headers(transport: Any, url: str, referer: str = "") -> dict[str, str]:
     maker = getattr(transport, "_headers_for_url", None)
     base: Mapping[str, Any] = {}
@@ -547,6 +563,8 @@ def _request(
     node_label: str = "协议网络预检",
     challenge_wait_seconds: float = 0.0,
     stop_requested: Callable[[], bool] | None = None,
+    timing_code: str = "",
+    timing: Callable[..., Any] | None = None,
 ) -> Any:
     started = time.monotonic()
     try:
@@ -592,6 +610,7 @@ def _request(
         elapsed = int((time.monotonic() - started) * 1000)
         result_label = "安全挑战" if challenge else "完成" if success else "HTTP 失败"
         transport_context = _transport_context(transport, url)
+        _emit_timing_sample(timing, node_code, timing_code, elapsed, "success" if success else "failed")
         _emit(
             log,
             f"[协议预热/{label}] {result_label}",
@@ -670,6 +689,7 @@ def _request(
     except Exception as exc:
         elapsed = int((time.monotonic() - started) * 1000)
         transport_context = _transport_context(transport, url, exc)
+        _emit_timing_sample(timing, node_code, timing_code, elapsed, "failed")
         _emit(
             log,
             f"[协议预热/{label}] 请求失败：{type(exc).__name__}",
@@ -720,6 +740,12 @@ def network_preflight(transport: Any, config: Mapping[str, Any], log: LogFn = No
     checks = list(_PREFLIGHT)
     sentinel_version = str(protocol.get("sentinel_version") or REFERENCE_SENTINEL_VERSION).strip()
     checks[-1] = (checks[-1][0], _sentinel_frame_url(sentinel_version), checks[-1][2])
+    timing = config.get("_timing_substep") if isinstance(config, Mapping) else None
+    timing_by_label = {
+        "chatgpt-login": "preflight_login_fetch",
+        "auth-login": "preflight_auth_fetch",
+        "sentinel-frame": "preflight_sentinel_frame",
+    }
     for label, url, referer in checks:
         if stop_requested and stop_requested():
             raise FreeRegisterError("free_run_stop", "停止 Free 注册", "任务在协议网络预检期间停止", retryable=False)
@@ -738,6 +764,8 @@ def network_preflight(transport: Any, config: Mapping[str, Any], log: LogFn = No
                     attempt=attempt,
                     challenge_wait_seconds=challenge_wait_seconds,
                     stop_requested=stop_requested,
+                    timing_code=timing_by_label.get(label, ""),
+                    timing=timing,
                 )
                 if response is not None:
                     break
@@ -771,6 +799,12 @@ def anonymous_warmup(transport: Any, config: Mapping[str, Any], log: LogFn = Non
     session = _session(transport, node_code="free_protocol_warmup", node_label="匿名态 ChatGPT 预热")
     _emit(log, "[匿名预热/free_protocol_warmup] 开始", "info", node_code="free_protocol_warmup", node_label="匿名态 ChatGPT 预热", outcome="started")
     checks: list[dict[str, Any]] = []
+    timing = config.get("_timing_substep") if isinstance(config, Mapping) else None
+    timing_by_label = {
+        "anon-check": "warmup_anon_check",
+        "anon-me": "warmup_anon_me",
+        "anon-models": "warmup_anon_models",
+    }
     for label, url in _anonymous_warmup_gets(transport):
         response = _request(
             session,
@@ -783,6 +817,8 @@ def anonymous_warmup(transport: Any, config: Mapping[str, Any], log: LogFn = Non
             strict=False,
             node_code="free_protocol_warmup",
             node_label="匿名态 ChatGPT 预热",
+            timing_code=timing_by_label.get(label, ""),
+            timing=timing,
         )
         status = int(getattr(response, "status_code", 0) or 0) if response is not None else 0
         checks.append({"name": label, "status": status, "ok": _http_success(status)})
