@@ -418,8 +418,9 @@ class FreeProxyRobustnessTests(unittest.TestCase):
         public = pool.public()
         self.assertEqual(public["count"], 2)
         self.assertEqual(public["rows"][0]["active_lease_count"], 1)
+        self.assertIn("valid-user:valid-password-private", public["content"])
         for secret in secret_values:
-            self.assertNotIn(secret, str(public))
+            self.assertNotIn(secret, str(public["rows"]))
 
 
 if __name__ == "__main__":

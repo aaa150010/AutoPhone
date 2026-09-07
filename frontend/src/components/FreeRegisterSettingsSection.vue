@@ -142,7 +142,6 @@ async function save() {
     mergeConfig(result.config)
     state.value = result.state || state.value
     const refreshed = applyPublicProxies(result.proxies)
-    if (proxyText.value.trim()) proxyText.value = ''
     if (!refreshed) await loadProxies()
     markSaved()
     return result
@@ -212,6 +211,7 @@ function openProxyCheckIncident() {
 function applyPublicProxies(value: any) {
   if (!value || typeof value !== 'object') return false
   proxyRows.value = Array.isArray(value.rows) ? value.rows : []
+  if (typeof value.content === 'string') proxyText.value = value.content
   if (Number.isFinite(Number(value.count))) {
     state.value = {
       ...state.value,

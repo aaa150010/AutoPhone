@@ -957,6 +957,29 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             ],
         )
 
+    def test_proxy_pool_replace_text_replaces_and_clears_atomically(self):
+        proxies = FreeProxyPool(self.data_dir)
+        proxies.import_text("proxy-a.test:3000:u:p\nproxy-b.test:3001:u:p\n")
+
+        replaced = proxies.replace_text("proxy-b.test:3001:u:p\nproxy-c.test:3002:u:p\n")
+        self.assertEqual(replaced, 2)
+        self.assertEqual(
+            proxies.values(),
+            [
+                "socks5://u:p@proxy-b.test:3001",
+                "socks5://u:p@proxy-c.test:3002",
+            ],
+        )
+        self.assertEqual(proxies.replace_text(""), 0)
+        self.assertEqual(proxies.values(), [])
+
+    def test_proxy_pool_replace_text_rejects_invalid_non_empty_content(self):
+        proxies = FreeProxyPool(self.data_dir)
+        proxies.import_text("proxy-a.test:3000:u:p\n")
+        with self.assertRaises(FreeRegisterError):
+            proxies.replace_text("not-a-proxy\n")
+        self.assertEqual(proxies.values(), ["socks5://u:p@proxy-a.test:3000"])
+
     def test_proxy_transport_maps_socks5_for_protocol_and_probe(self):
         from mac_overrides.free_register_common import proxy_transport_value
 
@@ -1255,7 +1278,8 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertEqual(public["count"], 1)
         self.assertEqual(public["rows"][0]["scheme"], "socks5")
         self.assertEqual(public["rows"][0]["group"], "")
-        self.assertNotIn("pass", str(public))
+        self.assertIn("socks5://user:pass@proxy-region-us.example:3000", public["content"])
+        self.assertNotIn("user:pass", public["rows"][0]["masked"])
 
     def test_structured_proxy_pool_shares_all_schemes_and_quarantines_failures(self):
         pool = StructuredFreeProxyPool(self.data_dir, failure_threshold=2, quarantine_seconds=600)

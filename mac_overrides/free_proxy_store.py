@@ -688,6 +688,35 @@ class FreeProxyPool:
             self._save(by_identity.values())
             return added
 
+    def replace_text(
+        self,
+        content: str,
+        *,
+        country: str | None = None,
+        group: str | None = None,
+        scheme: str | None = None,
+        source_label: str | None = None,
+        provider: str | None = None,
+    ) -> int:
+        """Replace the complete saved proxy snapshot atomically.
+
+        Empty content intentionally clears the pool.  Non-empty content must
+        contain at least one valid row; parsing happens before touching the
+        persisted file so a bad replacement cannot destroy the current pool.
+        """
+        incoming = self._parse_lines(
+            content,
+            country=SINGLE_POOL_COUNTRY,
+            group=SINGLE_POOL_GROUP,
+            scheme=scheme or self.default_scheme,
+            source_label=source_label or provider or "",
+        )
+        if str(content or "").strip() and not incoming:
+            raise FreeRegisterError("free_proxy_pool", "Free 代理池", "Free 代理池没有有效代理")
+        with self._lock:
+            self._save(incoming)
+            return len(incoming)
+
     def configure_policy(
         self,
         *,
@@ -840,6 +869,10 @@ class FreeProxyPool:
             return {
                 "count": len(rows),
                 "allocation_mode": self.allocation_mode,
+                # This is the editable snapshot used by the local settings
+                # page.  It is intentionally canonicalized from persisted
+                # rows so loading and saving use the same parser semantics.
+                "content": "\n".join(_proxy_url(row) for row in rows),
                 "rows": [self._public_row(row, index) for index, row in enumerate(rows, 1)],
                 # Keep one unclassified aggregate for response compatibility.
                 # Its empty labels are intentional: historical country/group

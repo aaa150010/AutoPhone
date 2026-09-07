@@ -15,12 +15,16 @@ def save_free_config_bundle(
     manager: Any,
     data: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Validate first, then persist the Free config and optional proxy draft."""
+    """Validate first, then persist the Free config and proxy snapshot."""
     normalized = config_store.normalize(data, previous=config_store.load())
+    has_proxy_content = "proxy_content" in data
     proxy_content = str(data.get("proxy_content") or "")
     proxy_imported = 0
-    if proxy_content.strip():
+    if has_proxy_content:
         importer = getattr(getattr(manager, "proxies", None), "import_text", None)
+        replacer = getattr(getattr(manager, "proxies", None), "replace_text", None)
+        if callable(replacer):
+            importer = replacer
         if not callable(importer):
             raise ValueError("Free 代理池尚未初始化")
         proxy_imported = int(import_free_proxies(

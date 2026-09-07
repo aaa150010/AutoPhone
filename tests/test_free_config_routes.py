@@ -386,6 +386,50 @@ class FreeConfigRouteTests(unittest.TestCase):
             self.assertEqual(proxies.calls[0][1]["source_label"], "cliproxy")
             self.assertEqual(store.load()["proxy_allocation_mode"], "healthy_random")
 
+    def test_proxy_snapshot_save_replaces_and_can_clear_pool(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = FreeConfigStore(Path(directory))
+
+            class Proxies:
+                def __init__(self):
+                    self.rows = []
+
+                def replace_text(self, content, **kwargs):
+                    self.rows = [line for line in str(content).splitlines() if line.strip()]
+                    return len(self.rows)
+
+                def public(self):
+                    return {"count": len(self.rows), "content": "\n".join(self.rows), "rows": []}
+
+            proxies = Proxies()
+            save_free_config_bundle(store, SimpleNamespace(proxies=proxies), {"proxy_content": "proxy-a.test:8000\nproxy-b.test:8000"})
+            save_free_config_bundle(store, SimpleNamespace(proxies=proxies), {"proxy_content": "proxy-b.test:8000\nproxy-c.test:8000"})
+            self.assertEqual(proxies.rows, ["proxy-b.test:8000", "proxy-c.test:8000"])
+            save_free_config_bundle(store, SimpleNamespace(proxies=proxies), {"proxy_content": ""})
+            self.assertEqual(proxies.rows, [])
+
+    def test_invalid_proxy_snapshot_does_not_replace_existing_pool(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = FreeConfigStore(Path(directory))
+
+            class Proxies:
+                def __init__(self):
+                    self.rows = ["proxy-a.test:8000"]
+
+                def replace_text(self, content, **kwargs):
+                    if str(content).strip() and str(content).strip() != "valid-proxy.test:8000":
+                        raise ValueError("Free 代理池没有有效代理")
+                    self.rows = [line for line in str(content).splitlines() if line.strip()]
+                    return len(self.rows)
+
+                def public(self):
+                    return {"count": len(self.rows), "content": "\n".join(self.rows), "rows": []}
+
+            proxies = Proxies()
+            with self.assertRaises(ValueError):
+                save_free_config_bundle(store, SimpleNamespace(proxies=proxies), {"proxy_content": "not-a-proxy"})
+            self.assertEqual(proxies.rows, ["proxy-a.test:8000"])
+
 
 if __name__ == "__main__":
     unittest.main()
