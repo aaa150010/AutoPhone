@@ -122,12 +122,8 @@ class WebRouteContext:
     sms_phone_gate: Any
     mailbox_admin_factory: Callable[[Any, Any, Any], Any]
     mailbox_manager_html: str
-    pixel_client: Any | None = None
-    pixel_upload_queue: Any | None = None
-    nv_upload_queue: Any | None = None
-    batch_upload_coordinator: Any | None = None
     run_batch_manifest: Any | None = None
-    pixel_payload_builder: Callable[[Mapping[str, Any]], dict[str, Any]] | None = None
+    sub2_payload_builder: Callable[[Mapping[str, Any]], dict[str, Any]] | None = None
     mailbox_url_test_factory: Callable[[], Any] | None = None
     query_sms_balances: Callable[[dict[str, Any]], list[dict[str, Any]]] | None = None
     online_mailbox_client_factory: Callable[[str, str], Any] | None = None
@@ -1283,7 +1279,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         return dict(value) if isinstance(value, Mapping) else {}
 
     def api_mailboxes_sub2_export():
-        if context.pixel_payload_builder is None:
+        if context.sub2_payload_builder is None:
             return module.jsonify(ok=False, error="SUB2API 导出尚未配置"), 503
         try:
             selected = mailbox_admin.selected_success_results(request_json_object())
@@ -1292,7 +1288,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
             accounts = []
             now = int(time.time())
             for item in selected.get("items") or []:
-                payload = context.pixel_payload_builder(item["document"])
+                payload = context.sub2_payload_builder(item["document"])
                 source_account = payload["accounts"][0]
                 source_credentials = dict(source_account.get("credentials") or {})
                 account_id = str(

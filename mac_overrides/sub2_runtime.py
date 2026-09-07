@@ -943,6 +943,145 @@ class Sub2Runtime:
         return Sub2BatchService(client).test_rows(rows)
 
 
+def _export_clean(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _export_safe_int(value: Any, default: int = 0) -> int:
+    if isinstance(value, bool):
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _export_value_sources(value: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    sources: list[Mapping[str, Any]] = [value]
+    for key in ("credentials", "tokens"):
+        nested = value.get(key)
+        if isinstance(nested, Mapping):
+            sources.append(nested)
+    local_oauth = value.get("local_oauth")
+    if isinstance(local_oauth, Mapping):
+        nested = local_oauth.get("tokens")
+        if isinstance(nested, Mapping):
+            sources.append(nested)
+        sources.append(local_oauth)
+    return sources
+
+
+def _export_first_value(sources: Iterable[Mapping[str, Any]], key: str) -> Any:
+    for source in sources:
+        if key in source and source.get(key) not in (None, ""):
+            return source.get(key)
+    return None
+
+
+_EXPORT_EMAIL_RE = re.compile(
+    r"(?i)^[a-z0-9][a-z0-9._%+-]*@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}$"
+)
+_EXPORT_CREDENTIAL_FIELDS = (
+    "id_token",
+    "access_token",
+    "refresh_token",
+    "expires_at",
+    "token_type",
+    "scope",
+    "email",
+    "account_id",
+    "chatgpt_account_id",
+    "chatgpt_account_user_id",
+    "chatgpt_user_id",
+    "chatgpt_auth_user_id",
+    "chatgpt_plan_type",
+    "cpa_ready",
+    "cpa_missing_reason",
+)
+_EXPORT_IDENTITY_FIELDS = (
+    "account_id",
+    "chatgpt_account_id",
+    "chatgpt_account_user_id",
+    "chatgpt_user_id",
+    "chatgpt_auth_user_id",
+    "chatgpt_plan_type",
+)
+
+
+class Sub2ExportPayloadError(ValueError):
+    """Raised when a success result cannot become a SUB2 export payload."""
+
+    def __init__(self, public_message: str) -> None:
+        super().__init__(public_message)
+        self.public_message = public_message
+
+
+def build_sub2_export_payload(success_result: Mapping[str, Any]) -> dict[str, Any]:
+    """Build the one-account OAuth JSON used by the SUB2API export endpoint."""
+    if not isinstance(success_result, Mapping):
+        raise Sub2ExportPayloadError("成功结果格式无效")
+
+    wrapped = success_result.get("result")
+    if isinstance(wrapped, Mapping):
+        wrapper_status = _export_clean(success_result.get("status")).lower()
+        if wrapper_status and wrapper_status not in {"success", "ok", "uploaded"}:
+            raise Sub2ExportPayloadError("结果不是成功状态")
+        result = wrapped
+        sources = _export_value_sources(result) + [success_result]
+    else:
+        result = success_result
+        sources = _export_value_sources(result)
+
+    email = _export_clean(_export_first_value(sources, "email")).lower()
+    if not _EXPORT_EMAIL_RE.fullmatch(email):
+        raise Sub2ExportPayloadError("成功结果缺少有效邮箱")
+
+    credentials: dict[str, Any] = {}
+    for key in _EXPORT_CREDENTIAL_FIELDS:
+        value = _export_first_value(sources, key)
+        if value not in (None, ""):
+            credentials[key] = value
+    missing = [key for key in ("access_token", "refresh_token", "id_token") if not _export_clean(credentials.get(key))]
+    if missing:
+        raise Sub2ExportPayloadError("成功结果中的 OAuth 凭据不完整")
+
+    credentials["email"] = email
+    credentials["plan_type"] = "plus"
+    credentials.setdefault("token_type", "Bearer")
+    extra = {"email": email}
+    for key in _EXPORT_IDENTITY_FIELDS:
+        if credentials.get(key) not in (None, ""):
+            extra[key] = credentials[key]
+
+    return {
+        "proxies": [],
+        "accounts": [
+            {
+                "name": email,
+                "platform": "openai",
+                "type": "oauth",
+                "account_level": "plus",
+                "credentials": credentials,
+                "extra": extra,
+            }
+        ],
+    }
+
+
+def sub2_export_credentials(
+    success_result: Mapping[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Return the export payload plus its account/credentials mapping.
+
+    The SUB2 export endpoint needs the same normalized one-account shape that
+    the historical Pixel upload used; credentials stay in memory and never
+    enter logs or diagnostics.
+    """
+    payload = build_sub2_export_payload(success_result)
+    account = payload["accounts"][0]
+    return payload, {"account": account, "credentials": account.get("credentials") or {}}
+
+
 __all__ = [
     "AdminTokenCache",
     "MAX_BATCH_ROWS",
@@ -952,13 +1091,16 @@ __all__ = [
     "Sub2BatchService",
     "Sub2Client",
     "Sub2ConfigurationError",
+    "Sub2ExportPayloadError",
     "Sub2RequestNetworkError",
     "Sub2RequestTimeout",
     "Sub2Runtime",
     "Sub2SnapshotStore",
     "Sub2TestStatus",
+    "build_sub2_export_payload",
     "normalize_sub2_base_url",
     "service_fingerprint",
+    "sub2_export_credentials",
     "unlinked_status",
     "untested_status",
 ]

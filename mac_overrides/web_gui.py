@@ -45,7 +45,6 @@ import manual_verification_routes as _manual_verification_routes_ext
 import phase1_checkpoint_runtime as _phase1_checkpoint_runtime_ext
 import phase1_checkpoint_hooks as _phase1_checkpoint_hooks_ext
 import adaptive_concurrency as _adaptive_concurrency_ext
-import pixel_runtime as _pixel_runtime_ext
 import importer_watch_runtime as _importer_watch_runtime_ext
 import importer_scheduler as _importer_scheduler_ext
 import inflight_pipeline_runtime as _inflight_pipeline_runtime_ext
@@ -96,7 +95,7 @@ import free_protocol_diagnostics as _free_protocol_diagnostics_ext
 
 
 # Do not allow the host shell's proxy settings to silently affect OpenAI,
-# mailbox, SMS, SUB2, or Pixel requests. Each caller below supplies its own
+# mailbox, SMS, or SUB2 requests. Each caller below supplies its own
 # explicit proxy when that scope is enabled.
 _network_runtime_ext.clear_inherited_proxy_environment()
 
@@ -619,7 +618,7 @@ def _diagnostic_friendly_log_message(value):
     )
     if _error_observability_ext.is_success_diagnostic_trace(safe):
         return safe
-    if re.search(r"\[[^\]]+/[a-z0-9_]+\]", safe, re.IGNORECASE) or safe.startswith("Pixel "):
+    if re.search(r"\[[^\]]+/[a-z0-9_]+\]", safe, re.IGNORECASE):
         return safe
     lower = safe.lower()
     if not any(marker in lower for marker in _FAILURE_LOG_MARKERS):
@@ -775,7 +774,6 @@ def _patched_config_load(self):
         "performance_policy_version",
         "auto_email_login_concurrency",
         "phone_submission_concurrency",
-        "pixel_upload_concurrency",
         "phone_max_attempts",
         "phone_attempts_per_provider",
         "phone_session_cycle_seconds",
@@ -839,7 +837,6 @@ def _patched_config_save(self, values):
         "performance_policy_version",
         "auto_email_login_concurrency",
         "phone_submission_concurrency",
-        "pixel_upload_concurrency",
         "phone_max_attempts",
         "phone_attempts_per_provider",
         "phone_session_cycle_seconds",
@@ -4284,7 +4281,7 @@ _WEB_ROUTE_CONTEXT = _web_routes_ext.WebRouteContext(
     mailbox_admin_factory=_mailbox_admin_factory,
     mailbox_manager_html=_legacy_ui_ext.MAILBOX_MANAGER_HTML,
     mailbox_url_test_factory=_mailbox_url_test_runtime_ext.MailboxUrlTester,
-    pixel_payload_builder=_pixel_runtime_ext.build_pixel_import_payload,
+    sub2_payload_builder=_sub2_runtime_ext.build_sub2_export_payload,
     run_batch_manifest=_RUN_BATCH_MANIFEST,
     free_register_manager=_FREE_REGISTER,
     query_sms_balances=_SMS_WEB.query_balances,

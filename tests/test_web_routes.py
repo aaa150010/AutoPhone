@@ -162,13 +162,6 @@ class FakeMailboxAdmin:
         return dict(self.relogin_result)
 
 
-class FakePixelError(RuntimeError):
-    def __init__(self, public_message="公开错误", status_code=502):
-        self.public_message = public_message
-        self.status_code = status_code
-        super().__init__("private-token-must-not-leak")
-
-
 class FakeOnlineMailboxClient:
     def __init__(self):
         self.calls = []
@@ -197,159 +190,6 @@ class FakeOnlineMailboxError(RuntimeError):
         self.status_code = status_code
         self.provider_status = provider_status
         super().__init__("private-provider-detail-must-not-leak")
-
-
-class FakePixelClient:
-    def __init__(self):
-        self.calls = []
-        self.error = None
-
-    def _result(self, name, *values):
-        self.calls.append((name, *values))
-        if self.error is not None:
-            raise self.error
-        return {"operation": name}
-
-    def targets(self):
-        self.calls.append(("targets",))
-        if self.error is not None:
-            raise self.error
-        return {
-            "targets": [
-                {"id": "pixel-1", "email": "excluded@example.com"},
-                {"id": "pixel-2", "email": "automatic@example.com", "accountCount": 12},
-                {"id": "pixel-3", "email": "automatic-3@example.com", "accountCount": 13},
-                {"id": "pixel-4", "email": "automatic-4@example.com", "accountCount": 14},
-                {"id": "pixel-5", "email": "automatic-5@example.com", "accountCount": 15},
-                {"id": "pixel-6", "email": "automatic-6@example.com", "accountCount": 16},
-                {"targetId": "pixel-7", "email": "automatic-7@example.com", "accountCount": 17},
-            ]
-        }
-
-    def accounts(self, target_id, **query):
-        self.calls.append(("accounts", target_id, query))
-        if self.error is not None:
-            raise self.error
-        return {"items": [], "page": int(query["page"]), "pageSize": int(query["page_size"])}
-
-    def bulk_test(self, target_id, account_ids):
-        return self._result("bulk_test", target_id, list(account_ids))
-
-    def share_accounts(self, target_id, account_ids):
-        return self._result("share_accounts", target_id, list(account_ids))
-
-    def relogin(self, target_id):
-        return self._result("relogin", target_id)
-
-    def share_all(self, target_ids):
-        return self._result("share_all", list(target_ids))
-
-
-class FakePixelQueue:
-    def __init__(self):
-        self.calls = []
-        self.error = None
-
-    def records(self):
-        if self.error is not None:
-            raise self.error
-        return [{"record_id": "record-a", "targets": []}]
-
-    def overview(self):
-        return {
-            "revision": 7,
-            "queue": {"configured_workers": 2, "active_workers": 1, "pending_records": 3},
-            "current_batch": {
-                "batch_id": "batch-a",
-                "status": "processing",
-                "source": {"total": 4, "completed": 1, "success": 1},
-                "deliveries": {"total": 24, "success": 6},
-            },
-        }
-
-    def batches(self, *, page, page_size):
-        self.calls.append(("batches", page, page_size))
-        return {"items": [self.overview()["current_batch"]], "total": 1, "page": 1, "page_size": 20}
-
-    def batch_records(self, batch_id, *, page, page_size, status):
-        self.calls.append(("batch_records", batch_id, page, page_size, status))
-        return {
-            "batch": self.overview()["current_batch"],
-            "items": [{"record_id": "record-a", "targets": []}],
-            "total": 1,
-            "page": 1,
-            "page_size": 50,
-        }
-
-    def retry(self, record_id, target_ids):
-        self.calls.append((record_id, target_ids))
-        if self.error is not None:
-            raise self.error
-        return {"record_id": record_id}
-
-    def requeue(self, task_id, result_file):
-        self.calls.append(("requeue", task_id, Path(result_file)))
-        if self.error is not None:
-            raise self.error
-        return {"record_id": f"record-{task_id}", "targets": []}
-
-
-class FakeNvClient:
-    def __init__(self, configured=True):
-        self.is_configured = configured
-
-    def configured(self):
-        return self.is_configured
-
-
-class FakeNvQueue:
-    def __init__(self, configured=True):
-        self.client = FakeNvClient(configured)
-        self.calls = []
-
-    def overview(self):
-        return {"revision": 1, "configured": self.client.configured(), "queue": {"active": 0, "pending": 0}, "current_batch": None, "batch_count": 1}
-
-    def records(self):
-        return [{"record_id": "nv-record", "status": "failed", "error": "safe"}]
-
-    def batches(self):
-        return [{"batch_id": "nv-batch", "status": "failed"}]
-
-    def retry(self, record_id):
-        self.calls.append(record_id)
-        return {"record_id": record_id, "status": "queued"}
-
-
-class FakeBatchUploadCoordinator:
-    def __init__(self):
-        self.calls = []
-        self.retry_calls = []
-
-    def begin(self, importer, settings):
-        self.calls.append((importer, dict(settings)))
-        return {"batch_id": settings["batch_id"]}
-
-    def records(self):
-        return [{
-            "batch_id": "batch-a",
-            "targets": {"pixel": True, "nv": True},
-            "platforms": {
-                "pixel": {"status": "queued", "error": ""},
-                "nv": {"status": "queue_failed", "error": "safe failure"},
-            },
-        }]
-
-    def retry(self, batch_id, platform):
-        self.retry_calls.append((batch_id, platform))
-        if batch_id == "missing":
-            raise KeyError(batch_id)
-        if platform == "pixel":
-            raise ValueError("该平台当前不可重试")
-        return {
-            "batch_id": batch_id,
-            "platforms": {platform: {"status": "queued", "error": ""}},
-        }
 
 
 class FakeRunComponent:
@@ -576,118 +416,6 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(self.store.current["target_count"], 1)
         self.assertNotIn("_gptphone_run_mailbox_rows", self.importer.started_with)
 
-    @unittest.skip("NV/Pixel 上传入口已按需求移除")
-    def test_start_upload_targets_are_transient_and_coordinator_receives_selection(self):
-        pixel = FakePixelQueue()
-        nv = FakeNvQueue()
-        coordinator = FakeBatchUploadCoordinator()
-        app = self._app(replace(
-            self.context,
-            pixel_upload_queue=pixel,
-            nv_upload_queue=nv,
-            batch_upload_coordinator=coordinator,
-        ))
-
-        response = app.test_client().post(
-            "/api/start-existing",
-            json={"target_count": 1, "upload_targets": {"pixel": True, "nv": True}},
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json()["upload_targets"], {"pixel": True, "nv": True})
-        self.assertNotIn("upload_targets", self.store.current)
-        self.assertNotIn("_gptphone_upload_targets", self.store.current)
-        self.assertEqual(
-            self.importer.started_with["_gptphone_upload_targets"],
-            {"pixel": True, "nv": True},
-        )
-        self.assertEqual(
-            coordinator.calls[0][1]["_gptphone_upload_targets"],
-            {"pixel": True, "nv": True},
-        )
-
-    @unittest.skip("NV/Pixel 上传入口已按需求移除")
-    def test_start_defaults_both_upload_targets_off_and_rejects_unconfigured_nv(self):
-        coordinator = FakeBatchUploadCoordinator()
-        app = self._app(replace(
-            self.context,
-            pixel_upload_queue=FakePixelQueue(),
-            nv_upload_queue=FakeNvQueue(configured=False),
-            batch_upload_coordinator=coordinator,
-        ))
-
-        missing = app.test_client().post(
-            "/api/start-existing",
-            json={"upload_targets": {"nv": True}},
-        )
-        self.assertEqual(missing.status_code, 400)
-        self.assertEqual(missing.get_json()["code"], "nv_configuration_invalid")
-        self.assertIsNone(self.importer.started_with)
-
-        defaulted = app.test_client().post("/api/start-existing", json={})
-        self.assertEqual(defaulted.status_code, 200)
-        self.assertEqual(
-            self.importer.started_with["_gptphone_upload_targets"],
-            {"pixel": False, "nv": False},
-        )
-        self.assertEqual(coordinator.calls, [])
-
-    @unittest.skip("NV 配置已按需求移除")
-    def test_start_accepts_valid_nv_configuration_from_settings_draft(self):
-        coordinator = FakeBatchUploadCoordinator()
-        app = self._app(replace(
-            self.context,
-            nv_upload_queue=FakeNvQueue(configured=False),
-            batch_upload_coordinator=coordinator,
-        ))
-
-        response = app.test_client().post(
-            "/api/start-existing",
-            json={
-                "target_count": 1,
-                "nv_import": {
-                    "endpoint": "https://nv.example.test/api/import",
-                    "api_key": "draft-nv-secret",
-                },
-                "upload_targets": {"nv": True},
-            },
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json()["upload_targets"], {"pixel": False, "nv": True})
-        self.assertEqual(self.local_config["nv_import"]["api_key"], "draft-nv-secret")
-        self.assertEqual(
-            self.importer.started_with["_gptphone_upload_targets"],
-            {"pixel": False, "nv": True},
-        )
-
-    @unittest.skip("NV 配置已按需求移除")
-    def test_start_rejects_remote_http_nv_draft_before_saving_or_starting(self):
-        app = self._app(replace(
-            self.context,
-            nv_upload_queue=FakeNvQueue(configured=False),
-            batch_upload_coordinator=FakeBatchUploadCoordinator(),
-        ))
-        local_config_before = dict(self.local_config)
-
-        response = app.test_client().post(
-            "/api/start-existing",
-            json={
-                "nv_import": {
-                    "endpoint": "http://nv.example.test/api/import",
-                    "schema_url": "https://nv.example.test/api/schema",
-                    "api_key": "draft-nv-secret",
-                },
-                "upload_targets": {"nv": True},
-            },
-        )
-
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.get_json()["code"], "nv_configuration_invalid")
-        self.assertIn("HTTPS", response.get_json()["error"])
-        self.assertIsNone(self.importer.started_with)
-        self.assertEqual(self.local_config, local_config_before)
-
     def test_relogin_starts_from_server_bound_rows_without_sms_preflight_or_config_save(self):
         app = self._app()
         payload = {
@@ -809,11 +537,14 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(response.get_json()["config"]["sms_api_keys"], ["draft-key"])
         self.assertEqual(self.local_config, before)
 
-    def test_local_config_export_never_contains_nv_api_key(self):
+    def test_local_config_export_drops_removed_nv_import_section(self):
         secret = "nv-export-secret"
         app = self._app(replace(
             self.context,
             local_config_secret=lambda name: secret if name == "nv_import_api_key" else "",
+            # 真实链路的 local_config_from_runtime 是白名单式构建，
+            # nv_import 早已不在白名单内；fake 直接透传以驱动该语义。
+            local_config_from_runtime=lambda data, _existing=None: dict(data),
         ))
 
         with app.test_client() as client:
@@ -827,15 +558,10 @@ class WebRouteTests(unittest.TestCase):
                     },
                 },
             )
-            revealed = client.post(
-                "/api/local-config/secret",
-                json={"id": "nv_import_api_key"},
-            )
 
         self.assertEqual(exported.status_code, 200)
-        self.assertNotIn("api_key", exported.get_json()["config"]["nv_import"])
+        self.assertNotIn("nv_import", exported.get_json()["config"])
         self.assertNotIn(secret, exported.get_data(as_text=True))
-        self.assertEqual(revealed.get_json()["value"], secret)
 
     def test_free_pool_routes_are_isolated_and_read_secrets_on_demand(self):
         class Pool:
@@ -938,8 +664,6 @@ class WebRouteTests(unittest.TestCase):
                 "/api/free/password/retry", json={"task_id": "row-free"}
             )
             old_roxy = client.get("/api/free/roxy/workspaces")
-            old_nv = client.get("/api/nv/overview")
-            old_pixel = client.get("/api/pixel/targets")
 
         self.assertEqual(listed.status_code, 200)
         self.assertEqual(listed.get_json()["pool"], "free")
@@ -968,8 +692,6 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(password_retried.get_json()["task"]["status"], "queued")
         self.assertEqual(free.password_retry_calls, ["row-free"])
         self.assertEqual(old_roxy.status_code, 404)
-        self.assertEqual(old_nv.status_code, 404)
-        self.assertEqual(old_pixel.status_code, 404)
 
     def test_camoufox_debug_close_route_merges_manager_state_without_duplicate_keyword(self):
         class FreeManager:
@@ -1880,7 +1602,6 @@ class WebRouteTests(unittest.TestCase):
                     self.assertEqual(response.get_json()["failure"]["node_code"], node_code)
                     self.assertNotIn(secret, response.get_data(as_text=True))
 
-    @unittest.skip("批次上传清单接口已按需求移除")
     def test_manifest_and_runtime_task_read_exceptions_are_structured(self):
         class FailingRunManifest:
             log_fn = None
@@ -1891,21 +1612,15 @@ class WebRouteTests(unittest.TestCase):
             def get(self, *_args, **_kwargs):
                 raise RuntimeError("run-detail-private-detail")
 
-        class FailingUploadCoordinator:
-            def records(self):
-                raise RuntimeError("upload-manifest-private-detail")
-
         context = replace(
             self.context,
             run_batch_manifest=FailingRunManifest(),
-            batch_upload_coordinator=FailingUploadCoordinator(),
         )
         app = self._app(context)
         with app.test_client() as client:
             responses = (
                 (client.get("/api/run-batches"), "run_batch_manifest"),
                 (client.get("/api/run-batches/batch-1"), "run_batch_manifest"),
-                (client.get("/api/upload-manifests"), "batch_upload_manifest"),
             )
         for response, node_code in responses:
             self.assertEqual(response.status_code, 500)
@@ -2493,304 +2208,6 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(completed["status"], "completed")
         self.assertEqual(completed["succeeded"], 11)
         self.assertEqual([len(call["rows"]) for call in calls], [5, 5, 1])
-
-    @unittest.skip("Pixel 重试入口已按需求移除；SUB2 导出由独立测试覆盖")
-    def test_mailbox_pixel_requeue_and_sub2_export_use_server_side_success_result(self):
-        queue = FakePixelQueue()
-        result_file = Path(self.tempdir.name) / "result.json"
-        document = {"status": "success", "result": {"private": "server-only"}}
-        self.mailbox_admin.selected_result = {
-            "ok": True,
-            "skipped": 1,
-            "items": [{
-                "task_id": "task-a",
-                "result_file": result_file,
-                "document": document,
-                "email": "account@example.test",
-            }],
-        }
-
-        def payload_builder(received):
-            self.assertIs(received, document)
-            return {
-                "accounts": [{
-                    "credentials": {
-                        "email": "account@example.test",
-                        "access_token": "access-secret",
-                        "refresh_token": "refresh-secret",
-                        "chatgpt_account_id": "account-id",
-                        "client_id": "client-id",
-                        "expires_at": "not-a-number",
-                        "expires_in": "also-not-a-number",
-                    },
-                }],
-            }
-
-        app = self._app(replace(
-            self.context,
-            pixel_upload_queue=queue,
-            pixel_payload_builder=payload_builder,
-        ))
-        with app.test_client() as client:
-            pixel = client.post("/api/mailboxes/pixel-retry", json={"rows": [{"row_id": "a", "line_no": 1}]})
-            exported = client.post("/api/mailboxes/sub2-export", json={"rows": [{"row_id": "a", "line_no": 1}]})
-
-        self.assertEqual(pixel.status_code, 200)
-        self.assertEqual(pixel.get_json()["queued"], 1)
-        self.assertEqual(queue.calls, [("requeue", "task-a", result_file)])
-        self.assertEqual(exported.status_code, 200)
-        bundle = exported.get_json()["export"]
-        self.assertEqual(bundle["proxies"], [])
-        self.assertEqual(bundle["accounts"][0]["credentials"]["access_token"], "access-secret")
-        self.assertEqual(bundle["accounts"][0]["credentials"]["refresh_token"], "refresh-secret")
-        self.assertIsInstance(bundle["accounts"][0]["credentials"]["expires_at"], int)
-        self.assertIsInstance(bundle["accounts"][0]["credentials"]["expires_in"], int)
-        self.assertTrue(bundle["exported_at"].endswith("Z"))
-        self.assertNotIn("access-secret", str(self.logs.rows))
-
-    @unittest.skip("Pixel 管理接口已按需求移除")
-    def test_pixel_targets_accounts_and_random_share_routes(self):
-        pixel = FakePixelClient()
-        app = self._app(replace(self.context, pixel_client=pixel))
-
-        with app.test_client() as client:
-            targets = client.get("/api/pixel/targets")
-            accounts = client.get(
-                "/api/pixel/targets/pixel-2/accounts?page=3&page_size=20&search=name&status=active"
-            )
-            tested = client.post(
-                "/api/pixel/targets/pixel-2/accounts/bulk-test",
-                json={"account_ids": [11, 12]},
-            )
-            shared = client.post(
-                "/api/pixel/targets/pixel-2/accounts/bulk-update",
-                json={"accountIds": [11, 12], "shareMode": "public"},
-            )
-            relogin = client.post("/api/pixel/targets/pixel-2/relogin", json={})
-            hidden_requests = (
-                client.get("/api/pixel/targets/pixel-1/accounts"),
-                client.post(
-                    "/api/pixel/targets/pixel-1/accounts/bulk-test",
-                    json={"account_ids": [11]},
-                ),
-                client.post(
-                    "/api/pixel/targets/pixel-1/accounts/bulk-update",
-                    json={"account_ids": [11]},
-                ),
-                client.post("/api/pixel/targets/pixel-1/relogin", json={}),
-            )
-
-        values = {item.get("id") or item.get("targetId"): item for item in targets.get_json()["targets"]}
-        self.assertNotIn("pixel-1", values)
-        self.assertEqual(set(values), {f"pixel-{index}" for index in range(2, 8)})
-        self.assertTrue(values["pixel-2"]["autoUpload"])
-        self.assertTrue(values["pixel-7"]["autoUpload"])
-        self.assertEqual(accounts.get_json()["page"], 3)
-        self.assertEqual(accounts.get_json()["pageSize"], 20)
-        self.assertEqual(tested.status_code, 200)
-        self.assertEqual(shared.status_code, 200)
-        self.assertEqual(relogin.status_code, 200)
-        self.assertTrue(all(response.status_code == 404 for response in hidden_requests))
-        self.assertIn(("bulk_test", "pixel-2", [11, 12]), pixel.calls)
-        self.assertIn(("share_accounts", "pixel-2", [11, 12]), pixel.calls)
-        self.assertIn(("relogin", "pixel-2"), pixel.calls)
-        self.assertFalse(any("pixel-1" in call for call in pixel.calls))
-        self.assertNotIn("bulk_update", [call[0] for call in pixel.calls])
-
-    @unittest.skip("Pixel 管理接口已按需求移除")
-    def test_pixel_share_all_rejects_excluded_and_unknown_targets(self):
-        pixel = FakePixelClient()
-        app = self._app(replace(self.context, pixel_client=pixel))
-
-        with app.test_client() as client:
-            shared = client.post(
-                "/api/pixel/share-all",
-                json={"targetIds": ["pixel-2", "pixel-7"]},
-            )
-            hidden_mixed = client.post(
-                "/api/pixel/share-all",
-                json={"targetIds": ["pixel-1", "pixel-2", "pixel-7"]},
-            )
-            excluded_only = client.post(
-                "/api/pixel/share-all",
-                json={"target_id": "pixel-1"},
-            )
-            invalid = client.post(
-                "/api/pixel/share-all",
-                json={"target_ids": ["pixel-2", "pixel-8"]},
-            )
-
-        self.assertEqual(shared.status_code, 200)
-        self.assertIn(("share_all", ["pixel-2", "pixel-7"]), pixel.calls)
-        self.assertEqual(hidden_mixed.status_code, 400)
-        self.assertEqual(excluded_only.status_code, 400)
-        self.assertEqual(invalid.status_code, 400)
-
-    @unittest.skip("Pixel 上传记录接口已按需求移除")
-    def test_pixel_upload_records_retry_selectors_and_public_errors(self):
-        pixel = FakePixelClient()
-        queue = FakePixelQueue()
-        app = self._app(
-            replace(self.context, pixel_client=pixel, pixel_upload_queue=queue)
-        )
-
-        with app.test_client() as client:
-            records = client.get("/api/pixel/upload-records")
-            camel = client.post(
-                "/api/pixel/upload-records/record-a/retry",
-                json={"targetIds": ["pixel-2", "pixel-3"]},
-            )
-            snake = client.post(
-                "/api/pixel/upload-records/record-a/retry",
-                json={"target_id": "pixel-4"},
-            )
-            hidden = client.post(
-                "/api/pixel/upload-records/record-a/retry",
-                json={"target_id": "pixel-1"},
-            )
-            queue.error = FakePixelError("可以公开", 409)
-            failed = client.post(
-                "/api/pixel/upload-records/record-a/retry",
-                json={},
-            )
-
-        self.assertEqual(records.get_json()["records"][0]["record_id"], "record-a")
-        self.assertEqual(camel.status_code, 200)
-        self.assertEqual(snake.status_code, 200)
-        self.assertEqual(hidden.status_code, 400)
-        self.assertEqual(queue.calls[:2], [
-            ("record-a", ["pixel-2", "pixel-3"]),
-            ("record-a", ["pixel-4"]),
-        ])
-        self.assertEqual(failed.status_code, 409)
-        self.assertEqual(failed.get_json()["error"], "Pixel 管理操作失败：可以公开")
-        self.assertEqual(failed.get_json()["failure"]["node_code"], "pixel_management")
-        self.assertNotIn("private-token", failed.get_data(as_text=True))
-
-    @unittest.skip("NV 上传接口已按需求移除")
-    def test_nv_upload_records_batches_overview_and_retry_routes(self):
-        nv = FakeNvQueue()
-        coordinator = FakeBatchUploadCoordinator()
-        app = self._app(replace(
-            self.context,
-            nv_upload_queue=nv,
-            batch_upload_coordinator=coordinator,
-        ))
-
-        with app.test_client() as client:
-            overview = client.get("/api/nv/overview")
-            records = client.get("/api/nv/upload-records")
-            batches = client.get("/api/nv/upload-batches")
-            retried = client.post("/api/nv/upload-records/nv-record/retry", json={})
-            manifests = client.get("/api/upload-manifests")
-
-        self.assertEqual(overview.status_code, 200)
-        self.assertEqual(overview.get_json()["batch_count"], 1)
-        self.assertEqual(records.get_json()["records"][0]["record_id"], "nv-record")
-        self.assertEqual(batches.get_json()["items"][0]["batch_id"], "nv-batch")
-        self.assertEqual(retried.status_code, 200)
-        self.assertEqual(nv.calls, ["nv-record"])
-        self.assertEqual(manifests.get_json()["records"][0]["batch_id"], "batch-a")
-
-    @unittest.skip("NV 上传接口已按需求移除")
-    def test_nv_upload_records_and_batches_are_paginated(self):
-        nv = FakeNvQueue()
-        nv.records = lambda: [
-            {"record_id": f"record-{index}", "status": "success"}
-            for index in range(7)
-        ]
-        nv.batches = lambda: [
-            {"batch_id": f"batch-{index}", "status": "success"}
-            for index in range(5)
-        ]
-        app = self._app(replace(self.context, nv_upload_queue=nv))
-
-        with app.test_client() as client:
-            records = client.get("/api/nv/upload-records?page=2&page_size=3")
-            batches = client.get("/api/nv/upload-batches?page=2&page_size=2")
-
-        self.assertEqual(records.status_code, 200)
-        self.assertEqual([item["record_id"] for item in records.get_json()["records"]], [
-            "record-3", "record-4", "record-5",
-        ])
-        self.assertEqual(records.get_json()["total"], 7)
-        self.assertEqual(records.get_json()["pages"], 3)
-        self.assertEqual([item["batch_id"] for item in batches.get_json()["items"]], [
-            "batch-2", "batch-3",
-        ])
-        self.assertEqual(batches.get_json()["total"], 5)
-
-    @unittest.skip("批次上传清单接口已按需求移除")
-    def test_batch_upload_manifest_retry_validates_platform_and_maps_errors(self):
-        coordinator = FakeBatchUploadCoordinator()
-        app = self._app(replace(self.context, batch_upload_coordinator=coordinator))
-
-        with app.test_client() as client:
-            invalid = client.post(
-                "/api/upload-manifests/batch-a/retry",
-                json={"platform": "other"},
-            )
-            extra = client.post(
-                "/api/upload-manifests/batch-a/retry",
-                json={"platform": "nv", "token": "must-not-be-accepted"},
-            )
-            missing = client.post(
-                "/api/upload-manifests/missing/retry",
-                json={"platform": "nv"},
-            )
-            unavailable = client.post(
-                "/api/upload-manifests/batch-a/retry",
-                json={"platform": "pixel"},
-            )
-            retried = client.post(
-                "/api/upload-manifests/batch-a/retry",
-                json={"platform": "nv"},
-            )
-
-        self.assertEqual(invalid.status_code, 400)
-        self.assertEqual(extra.status_code, 400)
-        self.assertEqual(missing.status_code, 404)
-        self.assertEqual(unavailable.status_code, 409)
-        self.assertNotIn("secret", unavailable.get_data(as_text=True))
-        self.assertEqual(retried.status_code, 200)
-        self.assertEqual(retried.get_json()["manifest"]["platforms"]["nv"]["status"], "queued")
-        self.assertEqual(coordinator.retry_calls, [
-            ("missing", "nv"),
-            ("batch-a", "pixel"),
-            ("batch-a", "nv"),
-        ])
-
-    @unittest.skip("Pixel 批次接口已按需求移除")
-    def test_pixel_overview_and_paginated_batch_routes_are_lightweight(self):
-        pixel = FakePixelClient()
-        queue = FakePixelQueue()
-        app = self._app(replace(
-            self.context,
-            pixel_client=pixel,
-            pixel_upload_queue=queue,
-        ))
-
-        with app.test_client() as client:
-            overview = client.get("/api/pixel/overview")
-            cached_overview = client.get("/api/pixel/overview")
-            batches = client.get("/api/pixel/upload-batches?page=2&page_size=10")
-            records = client.get(
-                "/api/pixel/upload-batches/batch-a/records?page=3&page_size=25&status=failed"
-            )
-
-        self.assertEqual(overview.status_code, 200)
-        self.assertEqual(overview.get_json()["current_batch"]["source"]["total"], 4)
-        self.assertEqual(overview.get_json()["current_batch"]["deliveries"]["total"], 24)
-        self.assertEqual(
-            [item["account_count"] for item in overview.get_json()["targets"]],
-            [12, 13, 14, 15, 16, 17],
-        )
-        self.assertEqual(cached_overview.status_code, 200)
-        self.assertEqual(pixel.calls.count(("targets",)), 1)
-        self.assertEqual(batches.status_code, 200)
-        self.assertEqual(records.status_code, 200)
-        self.assertIn(("batches", "2", "10"), queue.calls)
-        self.assertIn(("batch_records", "batch-a", "3", "25", "failed"), queue.calls)
 
 
 if __name__ == "__main__":

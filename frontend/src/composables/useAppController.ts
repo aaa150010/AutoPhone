@@ -261,10 +261,6 @@ function normalizeImportedConfig(value: any) {
   delete config.free_register_password
   delete config.free_pool_content
   syncLegacySmsFields(config)
-  delete config.nvtoken
-  delete config.nvtoken_upload
-  delete config.pixel_upload_enabled
-  delete config.nv_import
   normalizeOperationalSettings(config)
   config.email_notification = normalizeEmailNotificationDraft(config.email_notification)
   return config
@@ -346,11 +342,7 @@ export function createAppController() {
   function requestPayload() {
     const value = syncLegacySmsFields(mergeConfig(form))
     value.email_notification = normalizeEmailNotificationDraft(value.email_notification)
-    delete value.nvtoken
-    delete value.nvtoken_upload
-    delete value.pixel_upload_enabled
-    delete value.nv_import
-    return value
+            return value
   }
 
   function smsBalanceDraftSignature() {
@@ -404,11 +396,7 @@ export function createAppController() {
     const [stateResult, localResult] = await Promise.all([getState(), getLocalConfig()])
     syncState(stateResult)
     const merged = mergeConfig(defaultForm(), state.value.settings || {}, localResult.config || {})
-    delete merged.nvtoken
-    delete merged.nvtoken_upload
-    delete merged.pixel_upload_enabled
-    delete merged.nv_import
-    delete merged.free_target_count
+            delete merged.free_target_count
     delete merged.free_concurrency
     delete merged.free_proxy_probe_url
     delete merged.free_proxy_pool_content

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from typing import Any
 
 try:
@@ -40,10 +40,8 @@ class LocalConfigRouteController:
             data = self.module.request.get_json(silent=True) or {}
             download = bool(data.pop("download", False)) if isinstance(data, dict) else False
             config = dict(self.context.local_config_from_runtime(data, self.context.read_local_config()))
-            if isinstance(config.get("nv_import"), Mapping):
-                nv_import = dict(config["nv_import"])
-                nv_import.pop("api_key", None)
-                config["nv_import"] = nv_import
+            # NV 导入已随功能移除；即使上游透传旧键也绝不出站。
+            config.pop("nv_import", None)
             visible = config if download else self.context.masked_local_config(config)
             return self.module.jsonify(ok=True, config=visible)
         except Exception as exc:

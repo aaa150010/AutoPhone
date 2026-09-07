@@ -40,7 +40,6 @@ TASK_INFLIGHT_LIMIT = 20
 PERFORMANCE_DEFAULTS = {
     "auto_email_login_concurrency": 5,
     "phone_submission_concurrency": 2,
-    "pixel_upload_concurrency": 2,
     "phone_max_attempts": PHONE_MAX_ATTEMPTS_LIMIT,
     "phone_attempts_per_provider": 15,
     "phone_session_cycle_seconds": 1800,
@@ -153,7 +152,7 @@ def migrate_performance_config(value: Any) -> tuple[dict[str, Any], bool]:
         1,
         min(task_concurrency, email_concurrency),
     )
-    for key in ("phone_submission_concurrency", "pixel_upload_concurrency"):
+    for key in ("phone_submission_concurrency",):
         try:
             parsed = int(config.get(key) or PERFORMANCE_DEFAULTS[key])
         except (TypeError, ValueError):

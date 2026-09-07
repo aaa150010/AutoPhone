@@ -224,8 +224,8 @@ class PublicStateRuntime:
         value.pop("nvtoken", None)
         value.pop("nvtoken_upload", None)
         value.pop("pixel_upload_enabled", None)
+        value.pop("nv_import", None)
         sub2api = dict(value.get("sub2api") or {})
-        nv_import = dict(value.get("nv_import") or {})
         email_notification = dict(value.get("email_notification") or {})
         online_mailbox = dict(value.get("online_mailbox") or {})
         sms_pools = self.sms_provider_pools_from_config(value)
@@ -250,9 +250,6 @@ class PublicStateRuntime:
         if sub2api:
             sub2api["password"] = self._mask_secret(sub2api.get("password"))
             value["sub2api"] = sub2api
-        if nv_import:
-            nv_import["api_key"] = self._mask_secret(nv_import.get("api_key"))
-            value["nv_import"] = nv_import
         if email_notification:
             email_notification["password"] = self._mask_secret(
                 email_notification.get("password")
@@ -491,13 +488,11 @@ class PublicStateRuntime:
             return logs
         local = self.read_local_config()
         sub2api = dict(local.get("sub2api") or {})
-        nv_import = dict(local.get("nv_import") or {})
         notification = dict(local.get("email_notification") or {})
         online_mailbox = dict(local.get("online_mailbox") or {})
         secrets = [
             *self.sms_keys_from_config(local),
             sub2api.get("password"),
-            nv_import.get("api_key"),
             notification.get("password"),
             online_mailbox.get("api_token"),
             *self.mailbox_admin.url_credential_secrets(local.get("proxy")),
