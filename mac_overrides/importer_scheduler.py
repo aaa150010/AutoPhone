@@ -145,6 +145,120 @@ def _relogin_entries(
     return selected
 
 
+def _startup_cleanup(
+    importer: Any,
+    pool: Any,
+    reserved: Sequence[tuple[str, int, Any, bool]],
+    futures: Sequence[Any],
+    executor: Any,
+    task_admission: Any,
+    admission_tracks_pending: bool,
+    startup_gate: threading.Event,
+    batch_manifest: Any,
+    batch_id: str,
+    batch_prepared: bool,
+    batch_committed: bool,
+    reserve_handles_rollback: bool,
+    reservation_returned: bool,
+    rollback_batch: Callable[[], None],
+) -> None:
+    """Undo partial scheduler startup; cleanup must not mask the original error."""
+    importer.stop_event.set()
+    startup_gate.set()
+    cleanup_failures = 0
+    for future in futures:
+        try:
+            was_cancelled = future.cancel()
+        except Exception:
+            cleanup_failures += 1
+        else:
+            if was_cancelled and admission_tracks_pending:
+                try:
+                    task_admission.discard_pending()
+                except Exception:
+                    cleanup_failures += 1
+    if executor is not None:
+        try:
+            executor.shutdown(wait=True, cancel_futures=True)
+        except Exception:
+            cleanup_failures += 1
+    if admission_tracks_pending:
+        try:
+            task_admission.clear_pending()
+        except Exception:
+            cleanup_failures += 1
+    cleanup_diagnostics: list[str] = []
+    for task_id, _ordinal, entry, restore_on_cancel in reserved:
+        if not restore_on_cancel:
+            continue
+        try:
+            restored = bool(pool.restore_entry(entry, reason="batch_start_failed"))
+            if not restored:
+                cleanup_failures += 1
+                cleanup_diagnostics.append(
+                    f"{task_id} {_QUEUE_NODE} 启动失败清理失败：邮箱池未确认归还"
+                )
+        except Exception as exc:
+            cleanup_failures += 1
+            cleanup_diagnostics.append(
+                f"{task_id} {_QUEUE_NODE} 启动失败清理失败："
+                f"邮箱归还失败（{type(exc).__name__}）"
+            )
+    for diagnostic in cleanup_diagnostics:
+        try:
+            importer._log(diagnostic, "error")
+        except Exception:
+            pass
+    try:
+        if cleanup_failures:
+            importer._log(f"启动失败清理有 {cleanup_failures} 项未完成", "error")
+    except Exception:
+        pass
+    finally:
+        importer.executor = None
+        importer.futures = []
+        importer.future_assignments = {}
+        importer._gptphone_append_accepting = False
+        importer._gptphone_append_entries = None
+        importer._gptphone_run_settings = None
+        importer._gptphone_preselected_task_ids = set()
+        importer.tasks = {}
+        importer.running = False
+    if batch_manifest is not None and batch_id and batch_committed:
+        try:
+            batch_manifest.finalize(
+                batch_id,
+                tasks={},
+                reason="batch_start_failed",
+            )
+        except Exception as exc:
+            try:
+                importer._log(
+                    "[运行批次对账/run_batch_manifest] 启动失败批次对账失败"
+                    f"（{type(exc).__name__}）",
+                    "error",
+                )
+            except Exception:
+                pass
+    elif (
+        batch_manifest is not None
+        and batch_id
+        and batch_prepared
+        and (not reserve_handles_rollback or reservation_returned)
+    ):
+        try:
+            rollback_batch()
+        except Exception as exc:
+            try:
+                importer._log(
+                    "[运行批次对账/run_batch_manifest] 启动失败预备清单回滚失败"
+                    f"（{type(exc).__name__}）",
+                    "error",
+                )
+            except Exception:
+                pass
+
+
 def start_bounded_importer(
     importer: Any,
     settings: dict[str, Any],
@@ -742,102 +856,49 @@ def start_bounded_importer(
             startup_ready.set()
             startup_gate.set()
         except Exception:
-            importer.stop_event.set()
-            startup_gate.set()
-            cleanup_failures = 0
-            for future in futures:
-                try:
-                    was_cancelled = future.cancel()
-                except Exception:
-                    cleanup_failures += 1
-                else:
-                    if was_cancelled and admission_tracks_pending:
-                        try:
-                            task_admission.discard_pending()
-                        except Exception:
-                            cleanup_failures += 1
-            if executor is not None:
-                try:
-                    executor.shutdown(wait=True, cancel_futures=True)
-                except Exception:
-                    cleanup_failures += 1
-            if admission_tracks_pending:
-                try:
-                    task_admission.clear_pending()
-                except Exception:
-                    cleanup_failures += 1
-            cleanup_diagnostics: list[str] = []
-            for task_id, _ordinal, entry, restore_on_cancel in reserved:
-                if not restore_on_cancel:
-                    continue
-                try:
-                    restored = bool(pool.restore_entry(entry, reason="batch_start_failed"))
-                    if not restored:
-                        cleanup_failures += 1
-                        cleanup_diagnostics.append(
-                            f"{task_id} {_QUEUE_NODE} 启动失败清理失败：邮箱池未确认归还"
-                        )
-                except Exception as exc:
-                    cleanup_failures += 1
-                    cleanup_diagnostics.append(
-                        f"{task_id} {_QUEUE_NODE} 启动失败清理失败："
-                        f"邮箱归还失败（{type(exc).__name__}）"
-                    )
-            for diagnostic in cleanup_diagnostics:
-                try:
-                    importer._log(diagnostic, "error")
-                except Exception:
-                    pass
-            try:
-                if cleanup_failures:
-                    importer._log(f"启动失败清理有 {cleanup_failures} 项未完成", "error")
-            except Exception:
-                pass
-            finally:
-                importer.executor = None
-                importer.futures = []
-                importer.future_assignments = {}
-                importer._gptphone_append_accepting = False
-                importer._gptphone_append_entries = None
-                importer._gptphone_run_settings = None
-                importer._gptphone_preselected_task_ids = set()
-                importer.tasks = {}
-                importer.running = False
-            if batch_manifest is not None and batch_id and batch_committed:
-                try:
-                    batch_manifest.finalize(
-                        batch_id,
-                        tasks={},
-                        reason="batch_start_failed",
-                    )
-                except Exception as exc:
-                    try:
-                        importer._log(
-                            "[运行批次对账/run_batch_manifest] 启动失败批次对账失败"
-                            f"（{type(exc).__name__}）",
-                            "error",
-                        )
-                    except Exception:
-                        pass
-            elif (
-                batch_manifest is not None
-                and batch_id
-                and batch_prepared
-                and (not reserve_handles_rollback or reservation_returned)
-            ):
-                try:
-                    rollback_batch()
-                except Exception as exc:
-                    try:
-                        importer._log(
-                            "[运行批次对账/run_batch_manifest] 启动失败预备清单回滚失败"
-                            f"（{type(exc).__name__}）",
-                            "error",
-                        )
-                    except Exception:
-                        pass
+            _startup_cleanup(
+                importer,
+                pool,
+                reserved,
+                futures,
+                executor,
+                task_admission,
+                admission_tracks_pending,
+                startup_gate,
+                batch_manifest,
+                batch_id,
+                batch_prepared,
+                batch_committed,
+                reserve_handles_rollback,
+                reservation_returned,
+                rollback_batch,
+            )
             raise
 
+    _log_startup_summary(
+        importer,
+        relogin=relogin,
+        target=target,
+        available=available,
+        worker_count=worker_count,
+        worker_capacity=worker_capacity,
+        node_concurrency=node_concurrency,
+        email_login_concurrency=email_login_concurrency,
+    )
+
+
+def _log_startup_summary(
+    importer: Any,
+    *,
+    relogin: bool,
+    target: int,
+    available: int,
+    worker_count: int,
+    worker_capacity: int,
+    node_concurrency: int,
+    email_login_concurrency: int,
+) -> None:
+    """Emit the startup banner; telemetry failures never affect scheduling."""
     try:
         if relogin:
             message = (
