@@ -8,6 +8,11 @@ import re
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
+try:
+    from .task_progress import CHAIN_STATE_STAGES
+except ImportError:  # pragma: no cover
+    from task_progress import CHAIN_STATE_STAGES  # type: ignore[no-redef]
+
 
 FAILURE_FIELDS = (
     "node_code",
@@ -59,7 +64,6 @@ NODE_LABELS = {
     "free_protocol_result": "读取 Free 协议注册结果",
     "free_existing_login": "已有 Free 账号登录",
     "free_existing_login_password": "验证已有 Free 账号密码",
-    "free_existing_login_otp": "已有 Free 账号邮箱验证",
     "free_proxy_binding": "绑定 Free 注册代理",
     "free_proxy_lease": "读取 Free 代理租约",
     "free_proxy_drift": "校验 Free 代理出口",
@@ -74,6 +78,8 @@ NODE_LABELS = {
     "free_email_identifier": "识别 Free 注册邮箱",
     "free_email_password": "验证 Free 注册密码",
     "free_email_otp_wait": "等待 Free 邮箱验证码",
+    # Single definition for ``free_existing_login_otp``; keep the live label
+    # aligned with task_progress.STAGES and frontend freeStage.ts fallbacks.
     "free_existing_login_otp": "等待已有 Free 账号登录验证码",
     "free_email_otp_validate": "验证 Free 邮箱验证码",
     "free_account_create": "创建 Free 账号",
@@ -151,28 +157,7 @@ _OPENAI_DIAGNOSTIC_CODES = frozenset(
     }
 )
 
-_CHAIN_NEXT_NODE = {
-    "START": "oauth_create_node",
-    "CHAT_REQUIREMENTS_READY": "oauth_authorize_node",
-    "OAUTH_STARTED": "oauth_authorize_node",
-    "SENTINEL_READY": "email_login",
-    "PASSWORD_REQUIRED": "email_password",
-    "PASSWORD_VERIFIED": "email_login",
-    "MFA_OTP_REQUIRED": "email_code_waiting",
-    "MFA_OTP_VERIFIED": "email_code_verifying",
-    "EMAIL_OTP_REQUIRED": "email_code_waiting",
-    "EMAIL_OTP_VERIFIED": "phone_acquiring",
-    "PHONE_REQUIRED": "phone_acquiring",
-    "PHONE_SEND_REJECTED": "phone_submitting",
-    "PHONE_OTP_SENT": "sms_waiting",
-    "PHONE_OTP_VERIFIED": "finalizing_profile",
-    "CONSENT_REQUIRED": "finalizing_callback",
-    "CALLBACK_RECEIVED": "finalizing_token",
-    "TOKEN_EXCHANGED": "finalizing_upload",
-    "UPLOADED": "finalizing_save",
-    "UPLOAD_SKIPPED": "finalizing_save",
-    "DONE": "finalizing_save",
-}
+_CHAIN_NEXT_NODE = CHAIN_STATE_STAGES
 
 _SENSITIVE_KEY_RE = re.compile(
     r"(?i)(?P<prefix>[\"']?)(?P<key>"
@@ -186,6 +171,12 @@ _SENSITIVE_KEY_RE = re.compile(
 _URL_RE = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
 _EMAIL_RE = re.compile(r"(?<![\w.+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}(?![\w.-])", re.IGNORECASE)
 _PHONE_RE = re.compile(r"(?<![\w])\+?\d{8,15}(?![\w])")
+# Generated incident IDs (``LOG-YYYYMMDD-XXXXXXXX``) and batch minute keys
+# (``YYYYMMDD-HHMM``) are the only digit-bearing diagnostic identifiers that
+# may stay visible.  Both shapes require the internal dash, so a bare phone
+# number can never satisfy them and still reaches the phone redaction below.
+_INCIDENT_ID_RE = re.compile(r"(?<![\w-])LOG-\d{8}-[A-Za-z0-9]{8}(?![\w-])", re.IGNORECASE)
+_BATCH_MINUTE_KEY_RE = re.compile(r"(?<![\w-])\d{8}-\d{4,6}(?![\w-])")
 _SIX_DIGIT_CODE_RE = re.compile(r"(?<!\d)\d{6}(?!\d)")
 _JWT_RE = re.compile(r"(?<![\w-])eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}(?:\.[A-Za-z0-9_-]{8,})?(?![\w-])")
 _BEARER_RE = re.compile(r"(?i)\bBearer\s+[^\s,;]+")
@@ -412,6 +403,20 @@ def _diagnostic_text(value: Any, *, depth: int = 0) -> str:
     return text
 
 
+def _protect_generated_identifiers(text: str) -> tuple[str, list[str]]:
+    """Hold generated identifier shapes out of later digit-based redaction."""
+
+    protected: list[str] = []
+
+    def keep(match: re.Match[str]) -> str:
+        protected.append(match.group(0))
+        return f"__GPTPHONE_ID_{len(protected) - 1}__"
+
+    text = _INCIDENT_ID_RE.sub(keep, text)
+    text = _BATCH_MINUTE_KEY_RE.sub(keep, text)
+    return text, protected
+
+
 def sanitize_failure_detail(value: Any, *, secrets: Sequence[Any] = (), limit: int = 500) -> str:
     """Return a short diagnostic summary with credential-shaped values removed."""
 
@@ -422,6 +427,7 @@ def sanitize_failure_detail(value: Any, *, secrets: Sequence[Any] = (), limit: i
         item = str(secret or "")
         if len(item) >= 3 and not set(item).issubset({"*"}):
             text = text.replace(item, "********")
+    text, protected_ids = _protect_generated_identifiers(text)
     text = _URL_RE.sub(_strip_url_secrets, text)
     text = _BEARER_RE.sub("Bearer ********", text)
     text = _JWT_RE.sub("********", text)
@@ -430,6 +436,8 @@ def sanitize_failure_detail(value: Any, *, secrets: Sequence[Any] = (), limit: i
     text = _PHONE_RE.sub("<phone>", text)
     text = _SIX_DIGIT_CODE_RE.sub("<code>", text)
     text = _LONG_HEX_RE.sub("********", text)
+    for index, identifier in enumerate(protected_ids):
+        text = text.replace(f"__GPTPHONE_ID_{index}__", identifier)
     text = re.sub(r"[\x00-\x1f\x7f]+", " ", text)
     text = re.sub(r"\s+", " ", text).strip(" ;")
     return text[: max(1, int(limit))]
@@ -907,6 +915,7 @@ __all__ = [
     "FAILURE_FIELDS",
     "NODE_LABELS",
     "ACCOUNT_BANNED_MESSAGE",
+    "CHAIN_STATE_STAGES",
     "sanitize_failure_detail",
     "is_retryable_node_failure",
     "is_node_retry_log",

@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 from mac_overrides.result_persistence_runtime import (
+    _safe_result_filename,
     apply_result_json_metadata,
     resolve_results_dir,
     result_json_path,
@@ -42,6 +43,17 @@ class ResultPersistenceRuntimeTests(unittest.TestCase):
                 result_json_path({}, data_dir, "T001", "person@example.test"),
                 (data_dir / "results" / "T001_person_at_example.test.json").resolve(),
             )
+
+    def test_result_filename_never_contains_path_escapes(self):
+        for email in ("../../etc/passwd@example.test", "..\\..\\win@example.test", "a/b@c.test"):
+            with self.subTest(email=email):
+                filename = _safe_result_filename(email)
+                self.assertNotIn("/", filename)
+                self.assertNotIn("\\", filename)
+                self.assertNotIn("..", filename)
+        # Regular emails keep the recovered ``_at_`` display form.
+        self.assertEqual(_safe_result_filename("person@example.test"), "person_at_example.test")
+        self.assertEqual(_safe_result_filename(""), "")
 
     def test_relative_data_dir_is_not_joined_twice(self):
         expected = (Path.cwd() / "relative-data" / "results").resolve()

@@ -103,6 +103,13 @@ def _safe_message(value: Any, limit: int = 500) -> str:
 
 
 def _safe_id(value: Any, limit: int = 180) -> str:
+    # Store-side contract: character-level projection. Unlike the writer's
+    # ``_safe_id`` (whole-string fullmatch, invalid input becomes ""), this
+    # fallback also sanitizes legacy/untrusted field values read back from
+    # the store, so a partially valid identifier keeps its readable part
+    # instead of disappearing from denormalized summaries. Generated event
+    # IDs (uuid4 hex) and incident IDs (``LOG-`` format) pass both sides
+    # unchanged.
     text = _safe_text(value, limit)
     return "".join(char for char in text if char in _SAFE_ID)[:limit]
 
@@ -511,22 +518,46 @@ class DiagnosticStore:
         self._audit_write_failures = 0
         self._last_write_failure = ""
         self._last_write_failure_at = ""
+        self._key_load_failure = ""
+        self._key_load_attempts = 0
         self._key = self._load_key()
         self._initialize()
 
     def _load_key(self) -> bytes:
+        """Load the HMAC key, never overwriting an unreadable existing file.
+
+        Regenerating a key over an existing one would invalidate every stored
+        fingerprint and break all historical hash chains. A fresh key is only
+        written when no file exists at all; read/load failures keep the file
+        untouched and fall back to a process-local key surfaced via ``health()``.
+        """
         try:
             value = self.key_path.read_bytes()
-            if len(value) >= 32:
-                try:
-                    os.chmod(self.key_path, 0o600)
-                except OSError:
-                    pass
-                return value
-        except OSError:
-            pass
-        value = secrets.token_bytes(32)
-        self.key_path.write_bytes(value)
+        except FileNotFoundError:
+            value = secrets.token_bytes(32)
+            try:
+                self.key_path.write_bytes(value)
+                os.chmod(self.key_path, 0o600)
+            except OSError as exc:
+                # A missing key file that cannot be created must still tolerate
+                # startup; fingerprints remain valid for this process only.
+                self._key_load_failure = _safe_id(type(exc).__name__, 64) or "key_create_failed"
+                self._key_load_attempts += 1
+            return value
+        except OSError as exc:
+            # Never overwrite the existing key file when reading failed; use a
+            # process-local key so the on-disk chain stays intact.
+            self._key_load_failure = _safe_id(type(exc).__name__, 64) or "key_read_failed"
+            self._key_load_attempts += 1
+            self.note_write_failure("key_load", exc)
+            return secrets.token_bytes(32)
+        if len(value) < 32:
+            # Keep the short key file as-is; replacing it would orphan both
+            # prior fingerprints and event hashes. Expose the condition via
+            # ``health()`` and run with a process-local key this session.
+            self._key_load_failure = "key_too_short"
+            self._key_load_attempts += 1
+            return secrets.token_bytes(32)
         try:
             os.chmod(self.key_path, 0o600)
         except OSError:
@@ -1434,6 +1465,8 @@ class DiagnosticStore:
             audit_write_failures = int(self._audit_write_failures)
             last_write_failure = self._last_write_failure
             last_write_failure_at = self._last_write_failure_at
+            key_load_failure = self._key_load_failure
+            key_load_attempts = int(self._key_load_attempts)
         return {
             "ok": not bool(read_error),
             "schema_version": SCHEMA_VERSION,
@@ -1447,9 +1480,12 @@ class DiagnosticStore:
             "audit_write_failures": audit_write_failures,
             "last_write_failure": last_write_failure,
             "last_write_failure_at": last_write_failure_at,
+            "key_status": "degraded" if key_load_failure else "ok",
+            "key_load_failures": key_load_attempts,
+            "key_load_error": key_load_failure,
             "index_status": "unavailable" if read_error else "degraded" if audit_write_failures else "ok",
             "hash_status": "failed" if failed else "verified",
-            "storage_status": "unavailable" if read_error else "degraded" if write_failures else "ok",
+            "storage_status": "unavailable" if read_error else "degraded" if write_failures or key_load_failure else "ok",
             "read_error": read_error,
             "path": "diagnostics/diagnostics.sqlite3",
         }

@@ -5,6 +5,7 @@ import unittest
 
 from mac_overrides.error_observability import (
     ACCOUNT_BANNED_MESSAGE,
+    CHAIN_STATE_STAGES,
     NODE_LABELS,
     classify_failure,
     format_failure_log,
@@ -15,11 +16,41 @@ from mac_overrides.error_observability import (
     public_failure,
     sanitize_failure_detail,
 )
+from mac_overrides.task_progress import CHAIN_STATE_STAGES as TASK_PROGRESS_CHAIN_STATE_STAGES
 
 
 class ErrorObservabilityTests(unittest.TestCase):
     def test_existing_free_login_password_has_a_public_diagnostic_label(self):
         self.assertEqual(NODE_LABELS["free_existing_login_password"], "验证已有 Free 账号密码")
+
+    def test_node_labels_define_free_existing_login_otp_once(self):
+        self.assertEqual(NODE_LABELS["free_existing_login_otp"], "等待已有 Free 账号登录验证码")
+
+    def test_chain_next_node_table_is_task_progress_single_source(self):
+        # The former private duplicate drifted on MFA_OTP_VERIFIED; the
+        # observability layer must follow the task_progress stages table.
+        self.assertIs(CHAIN_STATE_STAGES, TASK_PROGRESS_CHAIN_STATE_STAGES)
+        self.assertEqual(CHAIN_STATE_STAGES["MFA_OTP_VERIFIED"], "mfa_otp_verifying")
+
+    def test_sanitizer_keeps_incident_id_and_batch_minute_key_readable(self):
+        self.assertEqual(
+            sanitize_failure_detail("日志 ID LOG-20250908-AB12CD34"),
+            "日志 ID LOG-20250908-AB12CD34",
+        )
+        self.assertEqual(
+            sanitize_failure_detail("批次 20250908-1122"),
+            "批次 20250908-1122",
+        )
+
+    def test_sanitizer_still_redacts_real_phone_numbers(self):
+        safe = sanitize_failure_detail("phone 13812345678 end")
+        self.assertEqual(safe, "phone <phone> end")
+        # A spoofed LOG- prefix followed by a bare phone number is not an
+        # incident ID and must never survive digit-based redaction.
+        self.assertEqual(
+            sanitize_failure_detail("spoof LOG-15551234567"),
+            "spoof LOG-<phone>",
+        )
 
     def test_sentinel_lifecycle_traces_are_not_failures_or_retries(self):
         traces = (

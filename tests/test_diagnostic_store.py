@@ -122,6 +122,56 @@ class DiagnosticStoreTests(unittest.TestCase):
         self.assertEqual(health["storage_status"], "degraded")
         self.assertEqual(health["last_write_failure"], "operation=record;error=OperationalError")
 
+    def test_unreadable_existing_key_file_is_never_overwritten(self) -> None:
+        root = Path(self.temp_dir.name) / "key-read-failure"
+        root.mkdir()
+        # The store resolves its root (macOS /var -> /private/var), so the
+        # read-failure check must compare against the same resolved path.
+        key_path = root.resolve() / "diagnostic.key"
+        original_key = b"existing-key-material-0123456789abcdef"
+        key_path.write_bytes(original_key)
+        real_read_bytes = Path.read_bytes
+
+        def failing_read_bytes(self_path, *args, **kwargs):
+            if self_path == key_path:
+                raise OSError("simulated key read failure")
+            return real_read_bytes(self_path, *args, **kwargs)
+
+        with patch.object(Path, "read_bytes", failing_read_bytes):
+            restarted = DiagnosticStore(root)
+
+        # The existing key file must be preserved byte-for-byte so historical
+        # fingerprints and hash chains stay verifiable.
+        self.assertEqual(key_path.read_bytes(), original_key)
+        self.assertEqual(restarted.key_path, key_path)
+        health = restarted.health()
+        self.assertEqual(health["key_status"], "degraded")
+        self.assertEqual(health["key_load_failures"], 1)
+        self.assertEqual(health["key_load_error"], "OSError")
+        self.assertEqual(health["storage_status"], "degraded")
+
+    def test_short_existing_key_file_is_kept_and_reported(self) -> None:
+        root = Path(self.temp_dir.name) / "key-short"
+        root.mkdir()
+        key_path = root.resolve() / "diagnostic.key"
+        original_key = b"too-short"
+        key_path.write_bytes(original_key)
+
+        restarted = DiagnosticStore(root)
+
+        self.assertEqual(key_path.read_bytes(), original_key)
+        health = restarted.health()
+        self.assertEqual(health["key_status"], "degraded")
+        self.assertEqual(health["key_load_error"], "key_too_short")
+
+    def test_missing_key_file_still_generates_a_new_key(self) -> None:
+        root = Path(self.temp_dir.name) / "key-missing"
+        root.mkdir()
+
+        restarted = DiagnosticStore(root)
+
+        self.assertGreaterEqual((root.resolve() / "diagnostic.key").stat().st_size, 32)
+        self.assertEqual(restarted.health()["key_status"], "ok")
 
     def test_first_business_failure_survives_success_and_later_bare_failure(self) -> None:
         incident_id = self.store.record({

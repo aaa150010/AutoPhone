@@ -93,7 +93,7 @@ class DiagnosticEventWriterTests(unittest.TestCase):
         rendered = str(captured[0])
         self.assertNotIn("secret-value", rendered)
 
-    def test_writer_masks_supplied_subject_display_before_injected_store(self) -> None:
+    def test_writer_preserves_display_safe_email_subject(self) -> None:
         captured: list[dict[str, object]] = []
 
         class CaptureStore:
@@ -111,6 +111,18 @@ class DiagnosticEventWriterTests(unittest.TestCase):
             }
         )
         self.assertEqual(captured[0]["subject_display"], "private@example.com")
+        # A non-email display shape keeps the product's redaction fallback
+        # instead of being preserved verbatim.
+        captured.clear()
+        writer.record(
+            {
+                "task_id": "free-display-nonemail",
+                "outcome": "error",
+                "subject_kind": "email",
+                "subject_display": "not a valid email shape",
+            }
+        )
+        self.assertEqual(captured[0]["subject_display"], "已脱敏账号")
 
     def test_free_log_facade_uses_sqlite_as_source_when_projection_disabled(self) -> None:
         data_dir = self.root / "free_register"

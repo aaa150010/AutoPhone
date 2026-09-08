@@ -107,6 +107,11 @@ _INTEGER_FIELDS = frozenset({"sequence", "attempt", "elapsed_ms", "duration_ms"}
 
 
 def _safe_id(value: Any, *, limit: int = 180) -> str:
+    # Writer-side contract: whole-string fullmatch, so an untrusted value is
+    # either an identifier or nothing. This intentionally differs from the
+    # store's character-level projection, which only applies to already
+    # persisted/legacy field values; generated event IDs (uuid4 hex) and
+    # incident IDs (``LOG-`` format) pass both sides unchanged.
     text = str(value or "").replace("\x00", " ").strip()[:limit]
     return text if _SAFE_ID_RE.fullmatch(text) else ""
 

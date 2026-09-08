@@ -5,12 +5,16 @@ from __future__ import annotations
 import copy
 import json
 from pathlib import Path
+import re
 from typing import Any, Callable, Mapping, Sequence
 
 
 AtomicWriteJson = Callable[[Path, Mapping[str, Any]], Any]
 FailureSanitizer = Callable[..., str]
 LogFn = Callable[[str, str], Any]
+
+_RESULT_FILENAME_SAFE_RE = re.compile(r"[^A-Za-z0-9._-]")
+_RESULT_FILENAME_DOTS_RE = re.compile(r"\.{2,}")
 
 
 def resolve_results_dir(
@@ -38,6 +42,15 @@ def settings_with_absolute_results_dir(
     return copied
 
 
+def _safe_result_filename(email: Any) -> str:
+    """Reduce an email/subject to a filename-safe fragment without path escapes."""
+
+    text = str(email or "").replace("@", "_at_")
+    # The whitelist keeps dots for readable addresses, so collapse any dot
+    # run (``..``) that could form a traversal sequence before joining.
+    return _RESULT_FILENAME_DOTS_RE.sub("_", _RESULT_FILENAME_SAFE_RE.sub("_", text))
+
+
 def result_json_path(
     settings: Mapping[str, Any] | None,
     data_dir: str | Path,
@@ -46,7 +59,7 @@ def result_json_path(
 ) -> Path:
     """Return the result path used by the recovered importer."""
 
-    filename = f"{task_id}_{str(email or '').replace('@', '_at_')}.json"
+    filename = f"{task_id}_{_safe_result_filename(email)}.json"
     return resolve_results_dir(settings, data_dir) / filename
 
 

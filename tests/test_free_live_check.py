@@ -104,7 +104,7 @@ class FreeLiveCheckTests(unittest.TestCase):
             time.sleep(0.01)
         self.fail("Free 测活任务未在测试时限内结束")
 
-    def test_public_live_job_masks_email_and_exposes_only_fingerprint(self):
+    def test_public_live_job_uses_display_email_and_fingerprint(self):
         pool, proxies, logs = self._resources()
         service = self._service(pool, proxies, logs)
         job = {
