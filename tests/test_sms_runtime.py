@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import os
+from unittest import mock
 import tempfile
 import threading
 import time
@@ -11,6 +13,7 @@ import urllib.parse
 
 from mac_overrides.sms_runtime import (
     _candidate_route,
+    _sms_tls_verify_enabled,
     ExchangeRateCache,
     HeroSmsCancellationDeferred,
     PhoneSubmissionGate,
@@ -2543,6 +2546,60 @@ class SmsRuntimeTests(unittest.TestCase):
             sessions[1].calls[0][1]["proxy"],
             "http://127.0.0.1:7897",
         )
+
+    def test_isolated_sms_get_verifies_tls_by_default_and_honors_config(self):
+        calls: list[dict] = []
+
+        class Session:
+            def __init__(self):
+                self.trust_env = True
+
+            def get(self, url, **kwargs):
+                calls.append(kwargs)
+                return type("Response", (), {"text": "ACCESS_BALANCE:1"})()
+
+        self.assertTrue(_sms_tls_verify_enabled())
+        isolated_sms_get("https://sms.example.test", session_factory=Session)
+        self.assertTrue(calls[0]["verify"])
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config_file = Path(tmp_dir) / "local_config.json"
+            config_file.write_text(json.dumps({"sms_tls_verify": False}), encoding="utf-8")
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "GPTPHONE_DATA_DIR": tmp_dir,
+                    "GPTPHONE_LOCAL_CONFIG_FILE": str(config_file),
+                },
+            ):
+                self.assertFalse(_sms_tls_verify_enabled())
+                calls.clear()
+                isolated_sms_get(
+                    "https://sms.example.test",
+                    proxy="http://127.0.0.1:7897",
+                    session_factory=Session,
+                )
+                self.assertFalse(calls[0]["verify"])
+
+            with mock.patch.dict(os.environ, {"GPTPHONE_DATA_DIR": tmp_dir}):
+                missing = Path(tmp_dir) / "missing.json"
+                missing.write_text("{not json", encoding="utf-8")
+                with mock.patch.dict(
+                    os.environ,
+                    {"GPTPHONE_LOCAL_CONFIG_FILE": str(missing)},
+                ):
+                    self.assertTrue(_sms_tls_verify_enabled())
+
+            with mock.patch.dict(os.environ, {"GPTPHONE_DATA_DIR": tmp_dir}):
+                with mock.patch.dict(
+                    os.environ,
+                    {
+                        "GPTPHONE_LOCAL_CONFIG_FILE": str(
+                            Path(tmp_dir) / "absent.json"
+                        )
+                    },
+                ):
+                    self.assertTrue(_sms_tls_verify_enabled())
 
     def test_proxy_protocol_gate_limits_each_proxy_and_adapts(self):
         gate = ProxyProtocolGate(

@@ -45,6 +45,7 @@ try:
         proxy_error_detail,
     )
     from .free_proxy_store import FreeProxyPool as StructuredFreeProxyPool
+    from .free_proxy_store import _PROBE_TLS_VERIFY
     from .remail_api import remail_order_expired, remail_pickup_url
 except ImportError:
     from free_failure_runtime import (  # type: ignore[no-redef]
@@ -78,6 +79,7 @@ except ImportError:
         proxy_error_detail,
     )
     from free_proxy_store import FreeProxyPool as StructuredFreeProxyPool  # type: ignore[no-redef]
+    from free_proxy_store import _PROBE_TLS_VERIFY  # type: ignore[no-redef]
     from remail_api import remail_order_expired, remail_pickup_url  # type: ignore[no-redef]
 
 
@@ -736,7 +738,10 @@ class FreeProxyPool:
     def _probe(proxy: str, target: str) -> str:
         from curl_cffi import requests as curl_requests
 
-        session = curl_requests.Session(impersonate="chrome", verify=False)
+        # TLS toggle is centralized in free_proxy_store._PROBE_TLS_VERIFY
+        # (fixed probe targets, fingerprint-validated responses; False keeps
+        # the curl_cffi impersonation fingerprint consistent).
+        session = curl_requests.Session(impersonate="chrome", verify=_PROBE_TLS_VERIFY)
         session.proxies = {"http": proxy, "https": proxy}
         try:
             response = session.get(target, headers={"Accept": "text/plain", "Cache-Control": "no-cache"}, timeout=12)

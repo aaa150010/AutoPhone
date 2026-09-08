@@ -7,7 +7,7 @@ former closure variables.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import threading
@@ -67,6 +67,41 @@ except ImportError:
     )
 
 _SHA256_HEX_CHARACTERS = frozenset("0123456789abcdef")
+
+
+def _remail_public_text(value: Any, limit: int) -> str | None:
+    """Return a bounded plain-text scalar, or None when not forwardable."""
+    if value is None or isinstance(value, (dict, list, tuple, set, bool)):
+        return None
+    text = str(value).strip()
+    if not text or len(text) > max(1, int(limit)):
+        return None
+    return text
+
+
+def _remail_public_number(value: Any, *, integer: bool = False) -> int | float | None:
+    """Return a finite bounded number, or None when not forwardable."""
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if parsed != parsed or parsed in {float("inf"), float("-inf")} or parsed < 0.0:
+        return None
+    return int(parsed) if integer else parsed
+
+
+# Whitelist of models written into SUB2API export credentials.  Upstream
+# consumers expect an explicit mapping; extend this constant when new ChatGPT
+# model slugs must be exported.  Maintenance point for SUB2 model_mapping.
+SUB2_EXPORT_MODEL_MAPPING = {
+    "gpt-5.4": "gpt-5.4",
+    "gpt-5.4-mini": "gpt-5.4-mini",
+    "gpt-5.5": "gpt-5.5",
+    "gpt-5.6-luna": "gpt-5.6-luna",
+    "gpt-5.6-terra": "gpt-5.6-terra",
+}
 
 
 def _safe_int(value: Any, default: int) -> int:
@@ -839,6 +874,39 @@ def build_free_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]:
 
 def build_remail_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]:
     """Build the mailbox management, Remail, diagnostics, and local-config views."""
+    # Remail Open API upstream responses are forwarded only through explicit
+    # field whitelists below.  Unknown keys (and any key/token/credential
+    # field) must never reach the browser: the profile endpoint only exposes
+    # order/plan metadata and the wallet endpoint only balance fields, each
+    # value additionally passed through the public sanitizers.
+    _REMAIL_PROFILE_FIELDS: dict[str, Callable[[Any], Any]] = {
+        "name": lambda value: _remail_public_text(value, 80),
+        "email": lambda value: _remail_public_text(value, 160),
+        "plan": lambda value: _remail_public_text(value, 40),
+        "status": lambda value: _remail_public_text(value, 40),
+        "order_no": lambda value: _remail_public_text(value, 64),
+        "orderNo": lambda value: _remail_public_text(value, 64),
+        "order_count": lambda value: _remail_public_number(value, integer=True),
+        "quota": lambda value: _remail_public_number(value, integer=True),
+        "created_at": lambda value: _remail_public_number(value),
+        "created_at_text": lambda value: _remail_public_text(value, 40),
+    }
+    _REMAIL_WALLET_FIELDS: dict[str, Callable[[Any], Any]] = {
+        "consumerBalance": lambda value: _remail_public_number(value),
+        "balance": lambda value: _remail_public_number(value),
+        "amount": lambda value: _remail_public_number(value),
+        "currency": lambda value: _remail_public_text(value, 16),
+    }
+    def _remail_whitelisted(payload: Any, fields: dict[str, Callable[[Any], Any]]) -> dict[str, Any]:
+        if not isinstance(payload, Mapping):
+            return {}
+        result: dict[str, Any] = {}
+        for key, clean in fields.items():
+            value = clean(payload.get(key))
+            if value is not None:
+                result[key] = value
+        return result
+
     def _remail_client():
         try:
             from .remail_api import RemailClient
@@ -858,7 +926,8 @@ def build_remail_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]
 
     def api_remail_profile():
         try:
-            return scope.module.jsonify(ok=True, profile=_remail_client().profile())
+            profile = _remail_whitelisted(_remail_client().profile(), _REMAIL_PROFILE_FIELDS)
+            return scope.module.jsonify(ok=True, profile=profile)
         except Exception as exc:
             return ns["free_error_response"](exc, default_code="free_remail_profile", default_label="读取 Remail API Key")
 
@@ -891,7 +960,8 @@ def build_remail_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]
 
     def api_remail_wallet():
         try:
-            return scope.module.jsonify(ok=True, wallet=_remail_client().wallet())
+            wallet = _remail_whitelisted(_remail_client().wallet(), _REMAIL_WALLET_FIELDS)
+            return scope.module.jsonify(ok=True, wallet=wallet)
         except Exception as exc:
             return ns["free_error_response"](exc, default_code="free_remail_wallet", default_label="读取 Remail 钱包")
 
@@ -1305,13 +1375,7 @@ def build_remail_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]
                     "client_id": source_credentials.get("client_id") or "",
                     "expires_at": _safe_int(source_credentials.get("expires_at"), now + 864_000),
                     "expires_in": _safe_int(source_credentials.get("expires_in"), 863_999),
-                    "model_mapping": {
-                        "gpt-5.4": "gpt-5.4",
-                        "gpt-5.4-mini": "gpt-5.4-mini",
-                        "gpt-5.5": "gpt-5.5",
-                        "gpt-5.6-luna": "gpt-5.6-luna",
-                        "gpt-5.6-terra": "gpt-5.6-terra",
-                    },
+                    "model_mapping": dict(SUB2_EXPORT_MODEL_MAPPING),
                     "organization_id": source_credentials.get("workspace_id") or "",
                     "refresh_token": source_credentials.get("refresh_token") or "",
                 }

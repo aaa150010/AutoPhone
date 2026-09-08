@@ -2209,6 +2209,82 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(completed["succeeded"], 11)
         self.assertEqual([len(call["rows"]) for call in calls], [5, 5, 1])
 
+    def test_remail_profile_and_wallet_responses_use_field_whitelist(self):
+        class FakeRemailClient:
+            def profile(self):
+                return {
+                    "name": "tester",
+                    "email": "tester@example.test",
+                    "plan": "pro",
+                    "status": "active",
+                    "api_key": "rk-leaked-key",
+                    "serviceToken": "leaked-service-token",
+                    "token": "leaked-token",
+                    "orders": [{"orderNo": "inner"}],
+                    "unknown_field": {"deep": "value"},
+                }
+
+            def wallet(self):
+                return {
+                    "consumerBalance": 123.5,
+                    "balance": 100,
+                    "amount": 1,
+                    "currency": "CNY",
+                    "wallet_password": "leaked-password",
+                    "internal_key": "leaked-internal",
+                    "nested": {"a": 1},
+                }
+
+        import mac_overrides.remail_api as remail_api
+
+        original_client = remail_api.RemailClient
+        remail_api.RemailClient = lambda *args, **kwargs: FakeRemailClient()
+        try:
+            app = self._app()
+            profile_response = app.test_client().get("/api/remail/profile")
+            wallet_response = app.test_client().get("/api/remail/wallet")
+        finally:
+            remail_api.RemailClient = original_client
+
+        self.assertEqual(profile_response.status_code, 200)
+        profile = profile_response.get_json()
+        self.assertTrue(profile["ok"])
+        self.assertEqual(
+            profile["profile"],
+            {
+                "name": "tester",
+                "email": "tester@example.test",
+                "plan": "pro",
+                "status": "active",
+            },
+        )
+
+        self.assertEqual(wallet_response.status_code, 200)
+        wallet = wallet_response.get_json()
+        self.assertTrue(wallet["ok"])
+        self.assertEqual(
+            wallet["wallet"],
+            {
+                "consumerBalance": 123.5,
+                "balance": 100.0,
+                "amount": 1.0,
+                "currency": "CNY",
+            },
+        )
+
+        forwarded = json.dumps(profile) + json.dumps(wallet)
+        for secret in (
+            "rk-leaked-key",
+            "leaked-service-token",
+            "leaked-token",
+            "leaked-password",
+            "leaked-internal",
+            "serviceToken",
+            "unknown_field",
+            "wallet_password",
+        ):
+            self.assertNotIn(secret, forwarded)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -83,6 +83,15 @@ CHATGPT_LOGIN_PROBE_URL = "https://chatgpt.com/login"
 # the proxy, DNS and TLS path have already succeeded.  These statuses are
 # transport evidence for the default ChatGPT target, not proxy failures.
 _CHATGPT_CONNECTIVITY_STATUSES = frozenset({401, 403})
+# Single switch for every proxy-probe TLS toggle.  Probes always hit fixed,
+# non-secret targets (chatgpt.com / ip echo endpoints) and their responses are
+# validated by shape/fingerprint checks, so interception alone cannot inject
+# usable data.  TLS verification stays off only to keep the curl_cffi
+# chrome-impersonation fingerprint consistent across the whole probe path;
+# enabling it would change handshake behaviour and break providers with
+# broken cert chains.  Do not add new ``verify=`` literals at call sites;
+# reference this constant instead.
+_PROBE_TLS_VERIFY = False
 
 
 class _ProxyProbeHTTPError(RuntimeError):
@@ -848,7 +857,7 @@ class FreeProxyPool:
     def _probe_with_policy(self, proxy: str, target: str) -> tuple[str, str]:
         """Probe securely first and retry only TLS/CONNECT compatibility failures."""
         if not self.proxy_tls_verify:
-            return self._probe(proxy, target, verify=False, socks5_dns_mode=self.socks5_dns_mode), "compat"
+            return self._probe(proxy, target, verify=_PROBE_TLS_VERIFY, socks5_dns_mode=self.socks5_dns_mode), "compat"
         try:
             return self._probe(proxy, target, verify=True, socks5_dns_mode=self.socks5_dns_mode), "strict"
         except Exception as first_error:
@@ -857,7 +866,7 @@ class FreeProxyPool:
             # Keep the exact proxy, protocol and target. This is not a node or
             # protocol fallback; it only supports providers with broken certs.
             try:
-                return self._probe(proxy, target, verify=False, socks5_dns_mode=self.socks5_dns_mode), "compat"
+                return self._probe(proxy, target, verify=_PROBE_TLS_VERIFY, socks5_dns_mode=self.socks5_dns_mode), "compat"
             except Exception as second_error:
                 # Preserve both attempts for the structured diagnostic while
                 # keeping the original exception type and redaction rules.
@@ -881,7 +890,7 @@ class FreeProxyPool:
         if not self.proxy_tls_verify:
             return self._chatgpt_login_probe(
                 proxy,
-                verify=False,
+                verify=_PROBE_TLS_VERIFY,
                 socks5_dns_mode=self.socks5_dns_mode,
             ), "compat"
         try:
@@ -896,7 +905,7 @@ class FreeProxyPool:
             try:
                 return self._chatgpt_login_probe(
                     proxy,
-                    verify=False,
+                    verify=_PROBE_TLS_VERIFY,
                     socks5_dns_mode=self.socks5_dns_mode,
                 ), "compat"
             except Exception as second_error:

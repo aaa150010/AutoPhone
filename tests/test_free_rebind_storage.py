@@ -14,6 +14,7 @@ from unittest.mock import patch
 from mac_overrides.diagnostic_store import DiagnosticStore
 from mac_overrides.free_log_runtime import FreeLogStore
 from mac_overrides.free_register_store import FreeMailboxPool
+from mac_overrides.free_register_common import FreeRegisterError
 from mac_overrides.free_rebind_runtime import FreeRebindService, _invoke_otp_factory
 from mac_overrides.free_rebind_storage import (
     REBIND_MIGRATION_KEY,
@@ -628,6 +629,139 @@ class FreeRebindStorageTests(unittest.TestCase):
 
         self.assertEqual(proxies.released, ["rebind-recovery"])
         self.assertEqual(service._tasks["rebind-recovery"]["status"], "failed")
+
+    def test_startup_recovery_also_rescues_reserved_tasks(self) -> None:
+        """A task persisted as ``reserved`` before the worker ran must recover too."""
+        target_pool = RebindMailboxPool(self.root)
+        target_pool.import_text("target-reserved@example.com----https://mail.example/reserved")
+        target = target_pool.entries()[0]
+        target_pool.reserve(target.row_id, "rebind-reserved")
+        manager = SimpleNamespace(pool=FreeMailboxPool(self.root / "free_register"))
+        service = FreeRebindService(self.root, free_manager=manager)
+        service._tasks = {
+            "rebind-reserved": {
+                "task_id": "rebind-reserved",
+                "source_row_id": "source-row",
+                "target_row_id": target.row_id,
+                "status": "reserved",
+            },
+        }
+
+        service._recover_interrupted_tasks()
+
+        task = service._tasks["rebind-reserved"]
+        self.assertEqual(task["status"], "failed")
+        self.assertEqual(task["stage"], "free_rebind_process_recovery")
+        mailbox = target_pool.storage.get_mailbox(target.row_id)
+        assert mailbox is not None
+        self.assertEqual(mailbox["status"], "failed")
+
+    def test_login_stage_distinguishes_old_and_new_email_node_codes(self) -> None:
+        """Login failures attribute the old-email relogin to login_old and the
+        new-email relogin to login_new instead of always login_old."""
+        manager = SimpleNamespace(pool=FreeMailboxPool(self.root / "free_register"))
+        service = FreeRebindService(self.root, free_manager=manager)
+
+        def make_transport(fail_on_access_token: bool = False):
+            class Transport:
+                def initiate_oauth(self, url):
+                    return {"page_type": "email_identifier"}
+
+                def submit_email_identifier(self, email):
+                    return {"page_type": "password"}
+
+                def verify_password(self, password):
+                    return {"page_type": "none"}
+
+                def chatgpt_access_token(self):
+                    if fail_on_access_token:
+                        return ""
+                    return "token"
+
+            return Transport()
+
+        # Old-email login succeeds before any error path is reached.
+        token = service._login(
+            make_transport(),
+            "https://auth.example/oauth",
+            "source@example.com",
+            "pw",
+            "totp",
+            stage="free_rebind_login_old",
+            task_id="rebind-stage",
+            log=lambda *args, **kwargs: None,
+        )
+        self.assertEqual(token, "token")
+
+        # New-email login without a token hits the failure path and must
+        # carry the login_new node code and label.
+        with self.assertRaises(FreeRegisterError) as new_context:
+            service._login(
+                make_transport(fail_on_access_token=True),
+                "https://auth.example/oauth",
+                "target@example.com",
+                "pw",
+                "totp",
+                stage="free_rebind_login_new",
+                task_id="rebind-stage",
+                log=lambda *args, **kwargs: None,
+            )
+        self.assertEqual(new_context.exception.node_code, "free_rebind_login_new")
+        self.assertEqual(new_context.exception.node_label, "新邮箱密码 + TOTP 重登")
+
+        # The same failure on the old-email stage keeps its own node identity.
+        with self.assertRaises(FreeRegisterError) as old_context:
+            service._login(
+                make_transport(fail_on_access_token=True),
+                "https://auth.example/oauth",
+                "source@example.com",
+                "pw",
+                "totp",
+                stage="free_rebind_login_old",
+                task_id="rebind-stage",
+                log=lambda *args, **kwargs: None,
+            )
+        self.assertEqual(old_context.exception.node_code, "free_rebind_login_old")
+        self.assertEqual(old_context.exception.node_label, "旧邮箱密码 + TOTP 登录")
+
+    def test_source_rows_and_source_context_share_one_snapshot(self) -> None:
+        """The public source list and the worker source context must agree on
+        row eligibility and identity for one registration pool row."""
+        source_pool = FreeMailboxPool(self.root / "free_register")
+        source_pool.import_text("source@example.com----https://mail.example/source")
+        source_row = source_pool.entries()[0]
+        source_pool.update(source_row.row_id, status="success", driver="protocol")
+        source_pool.save_result(
+            source_row.row_id,
+            {
+                "password": "pw-secret",
+                "totp_secret": "totp-secret",
+                "proxy": "http://proxy.example:8080",
+                "proxy_id": "proxy-1",
+                "proxy_scheme": "http",
+            },
+        )
+        manager = SimpleNamespace(pool=source_pool)
+        service = FreeRebindService(self.root, free_manager=manager)
+
+        snapshot = service._source_snapshot(source_row.row_id)
+        rows = service._source_rows()
+        context = service._source_context(source_row.row_id)
+
+        self.assertEqual(snapshot["row_id"], source_row.row_id)
+        self.assertEqual(snapshot["source_email"], "source@example.com")
+        self.assertEqual(snapshot["saved"]["password"], "pw-secret")
+        self.assertEqual(rows[0]["row_id"], source_row.row_id)
+        self.assertEqual(rows[0]["email"], "source@example.com")
+        self.assertEqual(rows[0]["has_password"], True)
+        self.assertEqual(context["login_email"], "source@example.com")
+        self.assertEqual(context["proxy"], "http://proxy.example:8080")
+        self.assertEqual(context["proxy_masked"], snapshot["proxy_masked"])
+
+        # An unknown row fails identically through the shared snapshot path.
+        with self.assertRaises(FreeRegisterError) as missing:
+            service._source_snapshot("missing-row")
+        self.assertEqual(missing.exception.node_code, "free_rebind_source")
 
 
 if __name__ == "__main__":  # pragma: no cover

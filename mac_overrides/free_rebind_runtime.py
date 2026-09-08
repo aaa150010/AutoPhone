@@ -24,7 +24,14 @@ try:
     from .free_mailbox_otp import build_free_mailbox_otp_provider
     from .free_register_common import FreeRegisterError, atomic_write, fingerprint, mask_proxy, proxy_transport_value
     from .free_rebind_store import RebindMailboxPool
-    from .free_rebind_storage import RebindRevisionConflict, RebindSQLiteStore, RebindStorageError, _coerce_timestamp
+    from .free_rebind_storage import (
+        ACTIVE_REBIND_STATUSES,
+        TERMINAL_REBIND_STATUSES,
+        RebindRevisionConflict,
+        RebindSQLiteStore,
+        RebindStorageError,
+        _coerce_timestamp,
+    )
     from .diagnostic_writer import DiagnosticEventWriter, LogContext
     from .free_register_common import mask_email
 except ImportError:  # pragma: no cover - top-level runtime loading
@@ -32,7 +39,14 @@ except ImportError:  # pragma: no cover - top-level runtime loading
     from free_mailbox_otp import build_free_mailbox_otp_provider  # type: ignore[no-redef]
     from free_register_common import FreeRegisterError, atomic_write, fingerprint, mask_proxy, proxy_transport_value  # type: ignore[no-redef]
     from free_rebind_store import RebindMailboxPool  # type: ignore[no-redef]
-    from free_rebind_storage import RebindRevisionConflict, RebindSQLiteStore, RebindStorageError, _coerce_timestamp  # type: ignore[no-redef]
+    from free_rebind_storage import (  # type: ignore[no-redef]
+        ACTIVE_REBIND_STATUSES,
+        TERMINAL_REBIND_STATUSES,
+        RebindRevisionConflict,
+        RebindSQLiteStore,
+        RebindStorageError,
+        _coerce_timestamp,
+    )
     from diagnostic_writer import DiagnosticEventWriter, LogContext  # type: ignore[no-redef]
     from free_register_common import mask_email  # type: ignore[no-redef]
 
@@ -49,8 +63,11 @@ REBIND_STAGE_LABELS = {
     "free_rebind_result": "保存换绑结果",
     "free_rebind_process_recovery": "恢复换绑任务",
 }
-ACTIVE_REBIND_STATUSES = frozenset({"queued", "running"})
-TERMINAL_REBIND_STATUSES = frozenset({"success", "partial_success", "failed", "stopped"})
+# Task status sets are single-sourced from the rebind SQLite store above.  The
+# storage active set includes ``reserved`` so process recovery also rescues
+# tasks persisted in that pre-running state, matching mailbox reservations.
+ACTIVE_REBIND_STATUSES = ACTIVE_REBIND_STATUSES
+TERMINAL_REBIND_STATUSES = TERMINAL_REBIND_STATUSES
 CHAT_ORIGIN = "https://chatgpt.com"
 ELIGIBILITY_PATH = "/backend-api/accounts/change_email/eligibility"
 BEGIN_PATH = "/backend-api/accounts/change_email/begin"
@@ -558,35 +575,32 @@ class FreeRebindService:
         rows = pool.entries() if callable(getattr(pool, "entries", None)) else []
         result_rows: list[dict[str, Any]] = []
         for row in rows:
-            saved = pool.result(row.row_id) if callable(getattr(pool, "result", None)) else {}
-            private = pool._row_state(row.row_id) if callable(getattr(pool, "_row_state", None)) else {}
-            password = str(saved.get("password") or "").strip()
-            totp = str(saved.get("totp_secret") or "").strip()
-            if not password or not totp:
+            try:
+                snapshot = self._source_snapshot(row.row_id)
+            except FreeRegisterError:
+                # The public list silently drops rows that are ineligible as
+                # rebind sources (status changed, or credentials missing).
                 continue
-            source_status = str(private.get("status") or "available")
-            if source_status not in {"success", "partial_success", "available"}:
-                continue
-            source_email = str(saved.get("rebind_email") or row.email).strip()
-            rebind_email = str(saved.get("rebind_email") or "").strip()
+            source_email = snapshot["login_email"]
+            rebind_email = snapshot["rebind_email"]
             result_rows.append({
-                "row_id": row.row_id,
+                "row_id": snapshot["row_id"],
                 # Keep legacy display keys, but never return the private
                 # source address from a public state response.
                 "email": mask_email(source_email),
                 "email_masked": mask_email(source_email),
                 "subject_ref_fingerprint": self._public_subject_fingerprint(source_email),
-                "driver": str(saved.get("driver") or private.get("driver") or ""),
-                "status": source_status,
-                "plan_type": str(saved.get("subscription_plan") or saved.get("plan_type") or ""),
-                "plus_trial_eligible": bool(saved.get("plus_trial_eligible")),
+                "driver": snapshot["driver"],
+                "status": snapshot["source_status"],
+                "plan_type": snapshot["plan_type"],
+                "plus_trial_eligible": snapshot["plus_trial_eligible"],
                 "has_password": True,
                 "has_totp": True,
-                "proxy_masked": mask_proxy(saved.get("proxy") or private.get("proxy") or ""),
+                "proxy_masked": snapshot["proxy_masked"],
                 "rebind_email": mask_email(rebind_email),
                 "rebind_email_masked": mask_email(rebind_email),
                 "rebind_email_fingerprint": self._public_subject_fingerprint(rebind_email),
-                "rebind_status": str(saved.get("rebind_status") or ""),
+                "rebind_status": snapshot["rebind_status"],
             })
         return result_rows
 
@@ -656,7 +670,16 @@ class FreeRebindService:
     def set_mailbox_status(self, row_ids: Sequence[str], status: str) -> int:
         return self.pool.set_status(row_ids, status)
 
-    def _source_context(self, source_row_id: str) -> dict[str, Any]:
+    def _source_snapshot(self, source_row_id: str) -> dict[str, Any]:
+        """Build the single source-account snapshot shared by all consumers.
+
+        ``_source_rows`` (public list) and ``_source_context`` (worker input)
+        previously duplicated this lookup with drifting validation order and
+        strip semantics.  This implementation is the worker-path version: the
+        status check precedes the credentials check and all derived values
+        are stripped.  Callers decide whether an ineligible row raises (the
+        worker path) or is skipped (the public list).
+        """
         pool = getattr(self.free_manager, "pool", None)
         row = pool.entry(source_row_id) if pool is not None else None
         if row is None:
@@ -672,10 +695,18 @@ class FreeRebindService:
             raise FreeRegisterError("free_rebind_source", "读取换绑源账号", "源账号必须已有密码和已启用 TOTP", retryable=False, error_code="free_rebind_credentials_missing")
         proxy = str(saved.get("proxy") or private.get("proxy") or "").strip()
         login_email = str(saved.get("rebind_email") or row.email).strip()
+        rebind_email = str(saved.get("rebind_email") or "").strip()
         return {
             "row_id": row.row_id,
             "email": row.email,
             "login_email": login_email,
+            "source_email": login_email,
+            "rebind_email": rebind_email,
+            "source_status": source_status,
+            "driver": str(saved.get("driver") or private.get("driver") or ""),
+            "plan_type": str(saved.get("subscription_plan") or saved.get("plan_type") or ""),
+            "plus_trial_eligible": bool(saved.get("plus_trial_eligible")),
+            "rebind_status": str(saved.get("rebind_status") or ""),
             "password": password,
             "totp_secret": totp,
             "proxy": proxy,
@@ -686,6 +717,9 @@ class FreeRebindService:
             "proxy_masked": mask_proxy(proxy),
             "saved": saved,
         }
+
+    def _source_context(self, source_row_id: str) -> dict[str, Any]:
+        return self._source_snapshot(source_row_id)
 
     def start(self, source_row_id: str, target_row_id: str) -> dict[str, Any]:
         source = self._source_context(str(source_row_id or "").strip().lower())
@@ -889,7 +923,7 @@ class FreeRebindService:
             raise FreeRegisterError(stage_code, REBIND_STAGE_LABELS.get(stage_code, "密码 + TOTP 登录"), f"TOTP 验证返回 HTTP {_status(verified)}", provider_status=_status(verified), error_code="free_rebind_totp_verify_failed")
         return _json(verified)
 
-    def _advance_password_mfa(self, transport: Any, response: Any, password: str, totp_secret: str, *, email: str, task_id: str, log: Callable[..., Any]) -> Any:
+    def _advance_password_mfa(self, transport: Any, response: Any, password: str, totp_secret: str, *, stage: str, task_id: str, log: Callable[..., Any]) -> Any:
         try:
             import codex_oauth_chain
         except ImportError:  # injected transports in unit/integration tests
@@ -898,12 +932,11 @@ class FreeRebindService:
             self._check_stop()
             page = _response_page_type(codex_oauth_chain, response)
             if page in {"password", "password_verification", "email_password", "login_password"}:
-                self._stage(task_id, "free_rebind_login_old" if email == self._tasks.get(task_id, {}).get("source_email") else "free_rebind_login_new")
+                self._stage(task_id, stage)
                 response = transport.verify_password(password)
                 continue
             if page in {"mfa_otp", "mfa_challenge", "mfa_otp_verification", "totp", "totp_verification"}:
-                stage_code = "free_rebind_login_old" if email == self._tasks.get(task_id, {}).get("source_email") else "free_rebind_login_new"
-                response = self._verify_totp_protocol(transport, response, totp_secret, stage_code=stage_code)
+                response = self._verify_totp_protocol(transport, response, totp_secret, stage_code=stage)
                 continue
             if page in {"consent", "consent_required", "sign_in_with_chatgpt_codex_consent"}:
                 accept = getattr(transport, "accept_consent", None)
@@ -922,14 +955,21 @@ class FreeRebindService:
             from chatgpt_totp import totp_code  # type: ignore[no-redef]
         return totp_code(secret, now=now)
 
-    def _login(self, transport: Any, oauth_url: str, email: str, password: str, totp_secret: str, task_id: str, log: Callable[..., Any]) -> str:
+    def _login(self, transport: Any, oauth_url: str, email: str, password: str, totp_secret: str, *, stage: str, task_id: str, log: Callable[..., Any]) -> str:
+        """Run one password + TOTP login and return the fresh access token.
+
+        ``stage`` distinguishes the old-email relogin from the new-email
+        relogin so failures carry the matching ``free_rebind_login_old`` /
+        ``free_rebind_login_new`` node code and label.
+        """
         try:
             import codex_oauth_chain
         except ImportError:  # injected transports in unit/integration tests
             codex_oauth_chain = None
+        stage_label = REBIND_STAGE_LABELS.get(stage, stage)
         response = transport.initiate_oauth(oauth_url)
         response = transport.submit_email_identifier(email)
-        response = self._advance_password_mfa(transport, response, password, totp_secret, email=email, task_id=task_id, log=log)
+        response = self._advance_password_mfa(transport, response, password, totp_secret, stage=stage, task_id=task_id, log=log)
         for _ in range(8):
             self._check_stop()
             token = str(getattr(transport, "chatgpt_access_token", lambda: "")() or "").strip()
@@ -940,13 +980,13 @@ class FreeRebindService:
                 complete = getattr(transport, "complete_chatgpt_callback", None)
                 if callable(complete):
                     response = complete(continue_url)
-                    response = self._advance_password_mfa(transport, response, password, totp_secret, email=email, task_id=task_id, log=log)
+                    response = self._advance_password_mfa(transport, response, password, totp_secret, stage=stage, task_id=task_id, log=log)
                     continue
             page = _response_page_type(codex_oauth_chain, response)
             if page in {"email_otp", "email_verification", "email_otp_verification"}:
-                raise FreeRegisterError("free_rebind_login_old", "密码 + TOTP 登录", "登录流程要求邮箱验证码，换绑只允许密码 + TOTP", retryable=False, error_code="free_rebind_email_otp_required")
+                raise FreeRegisterError(stage, stage_label, "登录流程要求邮箱验证码，换绑只允许密码 + TOTP", retryable=False, error_code="free_rebind_email_otp_required")
             break
-        raise FreeRegisterError("free_rebind_login_old", "密码 + TOTP 登录", "协议登录完成后没有刷新 Session", error_code="free_rebind_session_missing")
+        raise FreeRegisterError(stage, stage_label, "协议登录完成后没有刷新 Session", error_code="free_rebind_session_missing")
 
     def _change_headers(self, transport: Any, path: str, token: str, *, json_body: bool = False) -> dict[str, str]:
         device_id = str(getattr(transport, "device_id", "") or "")
@@ -995,7 +1035,7 @@ class FreeRebindService:
             self._stage(task_id, "free_rebind_login_old")
             transport, oauth_url, _context = self._build_transport(str(source["login_email"]), proxy, config, task_id, log)
             setattr(transport, "_gptphone_rebind_session_id", f"rebind-{secrets.token_hex(12)}")
-            token = self._login(transport, oauth_url, str(source["login_email"]), str(source["password"]), str(source["totp_secret"]), task_id, log)
+            token = self._login(transport, oauth_url, str(source["login_email"]), str(source["password"]), str(source["totp_secret"]), stage="free_rebind_login_old", task_id=task_id, log=log)
             self._stage(task_id, "free_rebind_eligibility")
             eligibility = self._session_request(transport, "GET", ELIGIBILITY_PATH, token)
             eligibility_data = _json(eligibility)
@@ -1033,7 +1073,7 @@ class FreeRebindService:
                 detail = _response_text(begin).lower()
                 if begin_status in {401, 403} or "recent" in detail or "reauth" in detail:
                     response = transport.verify_password(str(source["password"]))
-                    self._advance_password_mfa(transport, response, str(source["password"]), str(source["totp_secret"]), email=str(source["login_email"]), task_id=task_id, log=log)
+                    self._advance_password_mfa(transport, response, str(source["password"]), str(source["totp_secret"]), stage="free_rebind_login_old", task_id=task_id, log=log)
                     token = str(getattr(transport, "chatgpt_access_token", lambda: "")() or token)
                     begin = self._session_request(transport, "POST", BEGIN_PATH, token, payload={"email": target.email})
                     begin_status = _status(begin)
@@ -1055,7 +1095,7 @@ class FreeRebindService:
             self._stage(task_id, "free_rebind_login_new")
             new_transport, new_oauth_url, _new_context = self._build_transport(target.email, proxy, config, task_id, log)
             setattr(new_transport, "_gptphone_rebind_session_id", f"rebind-{secrets.token_hex(12)}")
-            new_token = self._login(new_transport, new_oauth_url, target.email, str(source["password"]), str(source["totp_secret"]), task_id, log)
+            new_token = self._login(new_transport, new_oauth_url, target.email, str(source["password"]), str(source["totp_secret"]), stage="free_rebind_login_new", task_id=task_id, log=log)
             self._stage(task_id, "free_rebind_plan")
             try:
                 plan_type, plus_eligible = self.free_manager._plan_check(new_transport, new_token)

@@ -9,9 +9,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 import hashlib
 import json
+import os
 import re
 import threading
 import time
+from pathlib import Path
 from typing import Any, Callable
 import urllib.parse
 
@@ -237,6 +239,41 @@ def call_sms_with_retries(
     raise last_error
 
 
+def _sms_local_config() -> dict[str, Any]:
+    """Read the local config file, mirroring web_gui's resolution rules."""
+
+    app_dir = Path(__file__).resolve().parent.parent
+    data_dir = Path(
+        os.environ.get("GPTPHONE_DATA_DIR") or app_dir / "data"
+    ).expanduser().resolve()
+    config_file = Path(
+        os.environ.get("GPTPHONE_LOCAL_CONFIG_FILE") or data_dir / "local_config.json"
+    )
+    try:
+        value = json.loads(config_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _sms_tls_verify_enabled() -> bool:
+    """Return whether SMS API calls must verify TLS certificates.
+
+    Defaults to True; only an explicit ``sms_tls_verify: false`` in the local
+    config disables verification.
+    """
+
+    try:
+        value = _sms_local_config().get("sms_tls_verify")
+    except Exception:
+        return True
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return value.strip().lower() not in {"false", "0", "no", "off"}
+    return bool(value)
+
+
 def isolated_sms_get(
     url: str,
     *,
@@ -247,7 +284,12 @@ def isolated_sms_get(
     as_json: bool = False,
     session_factory: Callable[[], Any] | None = None,
 ) -> Any:
-    """Perform one SMS API GET without inheriting host proxy variables."""
+    """Perform one SMS API GET without inheriting host proxy variables.
+
+    TLS certificates are verified by default. Verification is only disabled
+    when the local config key ``sms_tls_verify`` is explicitly set to false;
+    a failed config read falls back to verification being enabled.
+    """
 
     if session_factory is None:
         from curl_cffi import requests as curl_requests
@@ -260,10 +302,10 @@ def isolated_sms_get(
         "params": dict(params or {}),
         "headers": dict(headers or {}),
         "timeout": max(1, int(timeout)),
+        "verify": _sms_tls_verify_enabled(),
     }
     if proxy:
         request_kwargs["proxy"] = str(proxy)
-        request_kwargs["verify"] = False
     response = session.get(str(url), **request_kwargs)
     if as_json:
         return response.json()
@@ -331,4 +373,5 @@ __all__ = [
     "call_sms_with_retries",
     "isolated_sms_get",
     "is_sms_route_infrastructure_error",
+    "_sms_tls_verify_enabled",
 ]

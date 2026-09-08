@@ -19,7 +19,6 @@ import sqlite3
 import threading
 import time
 from typing import Any, Iterator, Mapping, Sequence
-from urllib.parse import urlsplit, urlunsplit
 
 try:
     from .free_failure_runtime import canonical_failure, sanitize_failure_text
@@ -134,21 +133,6 @@ def _migration_marker_version(value: Any) -> int | None:
         return int(parsed.get("version"))
     except (TypeError, ValueError):
         return None
-
-
-def _mask_email(value: Any) -> str:
-    return str(value or "").strip()[:176]
-
-
-def _mask_url(value: Any) -> str:
-    """Expose only an origin/path-less marker in public rows."""
-    try:
-        parsed = urlsplit(str(value or "").strip())
-        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-            return ""
-        return urlunsplit((parsed.scheme.lower(), parsed.hostname, "", "", ""))
-    except (TypeError, ValueError):
-        return ""
 
 
 class RebindStorageError(RuntimeError):
