@@ -1,5 +1,6 @@
 """Focused tests for the Free same-error retry short circuit."""
 
+from __future__ import annotations
 import os
 import sys
 import unittest
@@ -30,7 +31,7 @@ def _attempt(node_code="free_oauth_session", error_code="oauth_bootstrap_html", 
     return value
 
 
-class ConsecutiveSameFailuresTest(unittest.TestCase):
+class ConsecutiveSameFailuresTests(unittest.TestCase):
     def test_counts_trailing_matches(self):
         history = [
             _attempt("free_protocol_preflight", "proxy_connect_timeout"),
@@ -64,7 +65,7 @@ class ConsecutiveSameFailuresTest(unittest.TestCase):
         self.assertEqual(consecutive_same_failures([_attempt()], {}), 0)
 
 
-class DecideShortCircuitTest(unittest.TestCase):
+class DecideShortCircuitTests(unittest.TestCase):
     def setUp(self):
         self.policy = FreeRetryPolicy(max_attempts=3)
 

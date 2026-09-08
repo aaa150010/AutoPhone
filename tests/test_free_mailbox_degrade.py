@@ -1,5 +1,6 @@
 """Focused tests for the consecutive mailbox-source failure degradation."""
 
+from __future__ import annotations
 import os
 import sys
 import unittest
@@ -48,7 +49,7 @@ def _mailbox_timeout_failure():
     }
 
 
-class MailboxSourceFailureClassifierTest(unittest.TestCase):
+class MailboxSourceFailureClassifierTests(unittest.TestCase):
     def test_timeout_failures_classify_as_source_failure(self):
         host = _Host({}, [], [])
         self.assertTrue(host._is_mailbox_source_failure(_mailbox_timeout_failure()))
@@ -75,7 +76,7 @@ class MailboxSourceFailureClassifierTest(unittest.TestCase):
         }))
 
 
-class MaybeDegradeMailboxTest(unittest.TestCase):
+class MaybeDegradeMailboxTests(unittest.TestCase):
     def _snapshot(self):
         return {"row_id": "row-1", "task_id": "task-1"}
 
@@ -134,7 +135,7 @@ class MaybeDegradeMailboxTest(unittest.TestCase):
         self.assertEqual(updates, [])
 
 
-class ManualRestoreClearsDegradeMarkerTest(unittest.TestCase):
+class ManualRestoreClearsDegradeMarkerTests(unittest.TestCase):
     def test_set_status_available_clears_degrade_state(self):
         import tempfile
         from pathlib import Path

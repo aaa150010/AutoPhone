@@ -1,5 +1,6 @@
 """Focused tests for protocol preflight/warmup/prelude per-step timing."""
 
+from __future__ import annotations
 import os
 import sys
 import time
@@ -72,7 +73,7 @@ class _NoopLog:
         pass
 
 
-class TimingCallbackTest(unittest.TestCase):
+class TimingCallbackTests(unittest.TestCase):
     def test_preflight_emits_per_step_timings(self):
         samples = []
         config = {"_timing_substep": lambda stage, code, ms, outcome="success": samples.append((stage, code, ms, outcome))}
@@ -159,7 +160,7 @@ class _PreludeTransport:
         return {"_status": 200, "_url": "https://auth.openai.com/log-in"}
 
 
-class PreludeTimingTest(unittest.TestCase):
+class PreludeTimingTests(unittest.TestCase):
     def test_prelude_emits_csrf_signin_authorize_timings(self):
         samples = []
         config = {"_timing_substep": lambda stage, code, ms, outcome="success": samples.append(code)}

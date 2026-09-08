@@ -6,6 +6,7 @@ contracts, persistence, scheduling, retry classification, worker execution,
 and timing.
 """
 
+from __future__ import annotations
 from .contracts import (
     ACTIVE_TASK_STATUSES,
     TERMINAL_TASK_STATUSES,

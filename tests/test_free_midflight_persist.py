@@ -1,5 +1,6 @@
 """Focused tests for mid-flight durable persistence of 2FA secret and password."""
 
+from __future__ import annotations
 import os
 import sys
 import unittest
@@ -17,7 +18,7 @@ except ImportError:  # pragma: no cover - direct mac_overrides execution
     from free_protocol_runtime import FreeProtocolMixin  # type: ignore[no-redef]
 
 
-class PersistPartialHelperTest(unittest.TestCase):
+class PersistPartialHelperTests(unittest.TestCase):
     """The protocol-side helper must be a safe, swappable no-op without the hook."""
 
     def test_missing_hook_is_noop(self):
@@ -54,7 +55,7 @@ class _Host:
         return FreeRegisterManager._persist_partial_result(self, task, values, stage_code=stage_code)
 
 
-class ManagerPersistPartialTest(unittest.TestCase):
+class ManagerPersistPartialTests(unittest.TestCase):
     def test_merges_into_saved_result(self):
         pool_save = []
 

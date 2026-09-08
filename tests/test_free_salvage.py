@@ -1,5 +1,6 @@
 """Focused tests for tail-failure salvage in completed_result_state."""
 
+from __future__ import annotations
 import os
 import sys
 import unittest
@@ -34,7 +35,7 @@ def _plan_failure():
     }
 
 
-class SalvageTailFailureTest(unittest.TestCase):
+class SalvageTailFailureTests(unittest.TestCase):
     def test_session_refresh_failure_with_token_is_salvaged_to_success(self):
         status, payload, failure = completed_result_state(
             _token_result(),

@@ -1,3 +1,7 @@
+"""Focused tests for result persistence runtime helpers."""
+
+from __future__ import annotations
+
 import json
 import tempfile
 import unittest

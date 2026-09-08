@@ -1,5 +1,6 @@
 """Focused tests for the same-session transient transport retry wrapper."""
 
+from __future__ import annotations
 import os
 import sys
 import unittest
@@ -65,7 +66,7 @@ class _Transport:
         self.session = session
 
 
-class WrapTransportSessionRetryTest(unittest.TestCase):
+class WrapTransportSessionRetryTests(unittest.TestCase):
     def test_first_try_success_is_untouched(self):
         session = _Session(["ok"])
         transport = wrap_transport_session_retry(_Transport(session))
@@ -123,7 +124,7 @@ class WrapTransportSessionRetryTest(unittest.TestCase):
         self.assertFalse(_response_received(Exception("plain")))
 
 
-class LiveCheckSessionRetryTest(unittest.TestCase):
+class LiveCheckSessionRetryTests(unittest.TestCase):
     def test_live_session_wrapper_retries_transient(self):
         session = _Session([_TlsError("curl: (35) TLS"), "ok"])
         wrap_live_session(session)

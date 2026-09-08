@@ -1,3 +1,7 @@
+"""Focused tests for the SMS cost ledger and exchange-rate cache."""
+
+from __future__ import annotations
+
 import json
 import os
 from pathlib import Path

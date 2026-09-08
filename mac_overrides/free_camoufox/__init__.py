@@ -5,6 +5,7 @@ The package is safe to import without Camoufox installed.  The historical
 code can depend on these smaller contracts and services.
 """
 
+from __future__ import annotations
 from .contracts import (
     CamoufoxFlowCheckpoint,
     CamoufoxFlowContext,
