@@ -144,3 +144,52 @@ npx vue-tsc --noEmit
 ```
 
 - 最后运行 `git diff --check`。除非用户明确要求，不要启动或重启 Flask 服务，也不要点击真实注册、短信、SUB2、Pixel、支付提取或代理测试动作。
+
+## 10. 代码规范
+
+本章是对现有代码事实标准的固化管理；标杆文件即规范的活样例。规则约束新增与修改的代码，存量欠账按 10.6 路线图单独排期，不要求一次性回改。
+
+### 10.1 通用
+
+- 新模块目标 <500 行，软上限 800 行；达到软上限必须在下一次触碰该模块时优先拆分。
+- 禁止向既有大文件（`web_gui.py`、`web_routes.py`、`free_*_runtime.py` 等）追加新业务逻辑；兼容 facade 只减不增。
+- 模块首行必须有英文 docstring（一句话职责说明）；代码注释与 docstring 一律英文，用户可见消息（日志摘要、错误公开消息、节点中文名）一律中文。
+- 禁止 TODO/FIXME/HACK 注释和 `print()` 调试残留；诊断输出走第 6 节的结构化事件。
+- 禁止新增 `globals()[_name] = ...` 式反射批量复制（`web_gui.py` 既有反射复制是历史例外）；新增导出必须显式登记。
+
+### 10.2 Python 后端
+
+- 每个模块 `from __future__ import annotations` + 现代注解语法（`str | None`、`dict[str, Any]`）；公开函数/方法签名必须完整注解（标杆 `mac_overrides/free_register/contracts.py`）。
+- 值对象、快照、分类结果用 `@dataclass(frozen=True, slots=True)`（标杆同上）；带锁的会话/请求/运行状态上下文允许可变 dataclass，但禁止绕过方法在类外直接写字段（标杆 `auth_session_runtime.py` 的 `AuthSessionContext`）。
+- 模块必须定义显式 `__all__`，只含公开名，不含 `_` 前缀私有名。
+- 领域业务异常统一 `*Error(RuntimeError)`，携带结构化字段（code、status、retryable、diagnostic 等；标杆 `mac_overrides/error_observability.py`、`mailbox_otp_service.py`）；纯输入校验可直接 `ValueError`，同一模块不得为同类错误混用两种基类。
+- try/except ImportError 双轨导入（包内相对导入 + 顶层脚本导入）是允许的既定兼容模式，fallback 分支加 `# type: ignore[no-redef]`。
+- 禁止静默吞异常：`except Exception` 至少必须经现有诊断/日志通道留痕（遵守第 6 节字段白名单与脱敏），仅在"清理/遥测失败不得改变业务结果"的语义下允许捕获后继续。
+- 覆盖恢复模块遵守第 8 节：保存 `_ORIGINAL_*`、窄覆盖、保持签名。
+
+### 10.3 测试
+
+- 统一 unittest（`unittest.TestCase`），文件名 `test_<被测模块名>.py` 与模块对应，跨模块契约/集成测试除外。
+- 测试类命名 `<被测对象>Tests`；断言面向行为契约而非实现细节。
+- 新增节点/契约同步登记 focused contract test（见第 4 节）。
+
+### 10.4 前端
+
+- 组件一律 `<script setup lang="ts">`，props/emits 用泛型类型形式；组件 PascalCase 多词命名。
+- tsconfig strict 下禁止新增 `any`（含 `catch (error: any)`，用 `unknown` + 收窄替代）；存量 any 只减不增。
+- 共享类型进 `frontend/src/types/`；`api/client.ts` 只保留端点封装与兼容再导出层（标杆 `types/free.ts` 的迁移模式）。
+- `composables/` 只放含 Vue 响应式逻辑且以 `use` 开头的组合函数；纯函数一律放 `utils/`，文件顶部必须有英文 JSDoc 职责说明（标杆 `utils/datetime.ts`）。
+- 样式用 `<style scoped>` + Element Plus CSS 变量；控件统一 `size="small"`；tooltip 统一 `:show-after="250"` + `placement="top"`；图标按钮必须提供 tooltip 和 aria-label（衔接第 9 节）。
+- 禁止 `console.*`；禁止无引用的死组件、死导出（同文件内部消费的导出不视为死代码）。
+
+### 10.5 提交信息
+
+- 格式 `type(scope): 中文描述`；type ∈ feat/fix/refactor/docs/chore/test；scope 用既有用法（free、frontend、backend、sms、diagnostics 等）。
+- 一次提交只做一个关注点；结构重构后单独 `chore(free)` 提交 bump `FREE_RUNTIME_VERSION`（见第 9 节）。
+
+### 10.6 存量欠账路线图（本轮不做，逐批排期）
+
+- 大文件拆分批次：`web_gui.py` 的 importer 生命周期/持久化补丁段（约 1559–2316）、codex 传输补丁段（2515–3296）、配置补丁段（686–1006）；`free_camoufox_runtime.py` 的浏览器池与注册表（4010–6266）、`_browser_flow`（2537–4010）、页面交互 helpers（411–2536）按子包既有 lazy `__getattr__` 兼容模式搬迁。
+- 后端 297 处 `except Exception: pass` 按域逐批治理（优先杂项域 importer_scheduler 20 处、SMS 域 32 处）；`sms_key_pool` ↔ `sms_provider_orchestration` 同构 facade 统一；auth 四件套公共 helper 抽取（`normalize_page_type` 三写、`_safe_path` 双实现行为分叉）。
+- 前端 270 处 `any` 治理（优先 `catch (error: any)` 83 处、`freeTaskDisplay.ts`/`freeLiveDisplay.ts` 接入 `FreeMailboxRow`/`FreeTaskRow` 类型）；tsconfig 增补 `noUnusedLocals`/`noUnusedParameters`/`noFallthroughCasesInSwitch`；`api/client.ts` 内联 `any` 返回类型建模。
+- 每批治理必须先定位首个真实失败风险，做定向测试、完整测试和 `git diff --check`（见第 5 节闭环）。
