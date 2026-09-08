@@ -47,9 +47,9 @@ async function run() {
   errorMessage.value = ''
   try {
     result.value = (await runOpenAIConnectivityDiagnostics()).diagnostic
-  } catch (error: any) {
+  } catch (error) {
     const payload = error instanceof ApiError ? error.payload : null
-    errorMessage.value = String(payload?.failure?.public_message || error?.message || 'OpenAI 链路诊断失败')
+    errorMessage.value = String(payload?.failure?.public_message || (error instanceof Error ? error.message : '') || 'OpenAI 链路诊断失败')
     ElMessage.error(errorMessage.value)
   } finally {
     running.value = false

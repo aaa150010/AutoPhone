@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { errorMessage } from '../utils/errorMessage'
 import { ElMessage } from 'element-plus'
 
 defineProps<{
@@ -30,8 +31,8 @@ async function importFile(event: Event) {
   if (!file) return
   try {
     emit('importConfig', JSON.parse(await file.text()))
-  } catch (error: any) {
-    ElMessage.error(error?.message || '配置文件不是有效 JSON')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || '配置文件不是有效 JSON')
   } finally {
     input.value = ''
   }

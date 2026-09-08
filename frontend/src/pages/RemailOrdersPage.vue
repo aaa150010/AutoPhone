@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
+import { errorMessage } from '../utils/errorMessage'
 import { ElMessage } from 'element-plus'
 import { getRemailOrders, importRemailOrders, type RemailOrder } from '../api/client'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import { useColumnWidths } from '../composables/useColumnWidths'
 import { formatDateTimeOrDash } from '../utils/datetime'
+type DragColumn = { label?: string; noLabelText?: string }
 const loading = ref(false); const rows = ref<RemailOrder[]>([]); const selected = ref<RemailOrder[]>([]); const filter = ref(''); const importedFilter = ref<boolean | 'all'>(false); const currentPage = ref(1); const pageSize = ref(50); const total = ref(0)
 const { colWidth: orderColWidth, handleHeaderDragend: onOrderHeaderDragend } = useColumnWidths('gptphone.table.widths.remail-orders')
 const formatTime = (value?: string) => formatDateTimeOrDash(value)
-async function load(showMessage = true) { loading.value = true; try { const result = await getRemailOrders({ page: currentPage.value, page_size: pageSize.value, imported: importedFilter.value, search: filter.value }); rows.value = result.orders || []; total.value = Number(result.total || 0); if (showMessage) ElMessage.success('订单已同步') } catch (error: any) { ElMessage.error(error?.message || 'Remail 订单同步失败') } finally { loading.value = false } }
-async function importSelected() { if (!selected.value.length) return ElMessage.warning('请选择未导入订单'); loading.value = true; try { const result = await importRemailOrders(selected.value.map(row => row.order_no)); selected.value = []; const skipped = result.skipped?.length || 0; ElMessage[skipped ? 'warning' : 'success'](`已导入 ${result.imported.length} 个订单${skipped ? `，跳过 ${skipped} 个` : ''}`); await load(false) } catch (error: any) { ElMessage.error(error?.message || '订单导入失败') } finally { loading.value = false } }
+async function load(showMessage = true) { loading.value = true; try { const result = await getRemailOrders({ page: currentPage.value, page_size: pageSize.value, imported: importedFilter.value, search: filter.value }); rows.value = result.orders || []; total.value = Number(result.total || 0); if (showMessage) ElMessage.success('订单已同步') } catch (error) { ElMessage.error(errorMessage(error) || 'Remail 订单同步失败') } finally { loading.value = false } }
+async function importSelected() { if (!selected.value.length) return ElMessage.warning('请选择未导入订单'); loading.value = true; try { const result = await importRemailOrders(selected.value.map(row => row.order_no)); selected.value = []; const skipped = result.skipped?.length || 0; ElMessage[skipped ? 'warning' : 'success'](`已导入 ${result.imported.length} 个订单${skipped ? `，跳过 ${skipped} 个` : ''}`); await load(false) } catch (error) { ElMessage.error(errorMessage(error) || '订单导入失败') } finally { loading.value = false } }
 watch([filter, importedFilter, pageSize], () => { currentPage.value = 1; void load(false) })
 watch(currentPage, () => void load(false))
 onMounted(load)
@@ -28,7 +30,7 @@ onMounted(load)
           <el-button size="small" type="primary" :disabled="!selected.length" :loading="loading" @click="importSelected">导入 Free 邮箱池</el-button>
           <el-button size="small" :loading="loading" @click="load">同步订单</el-button>
         </div>
-        <el-table v-loading="loading" :data="rows" row-key="order_no" border @header-dragend="(newWidth: number, oldWidth: number, column: any) => onOrderHeaderDragend(newWidth, oldWidth, column)" @selection-change="selected = $event" size="small">
+        <el-table v-loading="loading" :data="rows" row-key="order_no" border @header-dragend="(newWidth: number, oldWidth: number, column: DragColumn) => onOrderHeaderDragend(newWidth, oldWidth, column)" @selection-change="selected = $event" size="small">
           <el-table-column type="selection" width="48" />
           <el-table-column prop="order_no" label="订单号" :min-width="orderColWidth('订单号', 200)" show-overflow-tooltip />
           <el-table-column prop="delivery_email_masked" label="邮箱" :min-width="orderColWidth('邮箱', 210)" show-overflow-tooltip />

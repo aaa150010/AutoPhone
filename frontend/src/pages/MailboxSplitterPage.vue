@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessageBox } from 'element-plus'
 import { CopyDocument, Delete, Download, Scissor } from '@element-plus/icons-vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import { useMailboxSplitter } from '../composables/useMailboxSplitter'

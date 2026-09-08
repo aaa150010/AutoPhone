@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { type Component } from 'vue'
+
 defineProps<{
   title?: string
-  icon?: any
+  icon?: Component
   fill?: boolean
   scroll?: boolean
   bodyPadding?: 'none' | 'compact' | 'normal'

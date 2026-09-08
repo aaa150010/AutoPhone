@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { errorMessage } from '../utils/errorMessage'
 import { ElMessage } from 'element-plus'
-import { getRemailProjects, getRemailWallet, purchaseRemail } from '../api/client'
+import { getRemailProjects, getRemailWallet, purchaseRemail, type RemailProject, type RemailProjectProduct, type RemailWallet } from '../api/client'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 
 const loading = ref(false)
-const projects = ref<any[]>([])
-const wallet = ref<any>({})
+const projects = ref<RemailProject[]>([])
+const wallet = ref<RemailWallet>({})
 const walletBalance = computed(() => wallet.value.consumerBalance ?? wallet.value.balance ?? wallet.value.amount ?? '-')
 const projectId = ref<number | undefined>()
 const suffix = ref('')
@@ -19,12 +20,12 @@ const products = computed(() => {
   // use the type name as a suffix, or the server treats it as a private domain and
   // rejects the order with insufficient_inventory.
   const typeSuffixes: Record<string, string> = { icloud: 'icloud.com', gmail: 'gmail.com' }
-  return (project?.products || []).flatMap((product: any) => (product.purchaseEnabled && Number(product.purchaseAvailable ?? product.totalAvailable ?? 0) > 0)
-    ? (product.suffixes?.length ? product.suffixes.map((item: any) => ({ ...product, suffix: item.suffix, available: item.purchaseAvailable ?? item.totalAvailable })) : [{ ...product, suffix: typeSuffixes[product.type] || product.type, available: product.purchaseAvailable ?? product.totalAvailable }]) : [])
+  return (project?.products || []).flatMap((product: RemailProjectProduct) => (product.purchaseEnabled && Number(product.purchaseAvailable ?? product.totalAvailable ?? 0) > 0)
+    ? (product.suffixes?.length ? product.suffixes.map((item: { suffix?: string; purchaseAvailable?: number | string; totalAvailable?: number | string }) => ({ ...product, suffix: item.suffix, available: item.purchaseAvailable ?? item.totalAvailable })) : [{ ...product, suffix: typeSuffixes[product.type || ''] || product.type, available: product.purchaseAvailable ?? product.totalAvailable }]) : [])
 })
 // Unit price = purchasePrice × priceMultiplier (the server deducts credits by the
 // multiplier; a missing multiplier counts as 1).
-function productPrice(item: any): string {
+function productPrice(item: RemailProjectProduct | Record<string, unknown> | undefined): string {
   if (!item || typeof item !== 'object') return ''
   const base = Number(item.purchasePrice)
   if (!Number.isFinite(base) || base <= 0) return ''
@@ -33,7 +34,7 @@ function productPrice(item: any): string {
   return value % 1 === 0 ? String(value) : value.toFixed(2)
 }
 const totalPrice = computed(() => {
-  const selected = products.value.find((item: any) => item.suffix === suffix.value)
+  const selected = products.value.find((item: RemailProjectProduct) => item.suffix === suffix.value)
   const unit = productPrice(selected)
   if (!unit) return ''
   const value = Number(unit) * Math.max(1, Number(quantity.value) || 1)
@@ -47,13 +48,13 @@ async function load() {
     projects.value = Array.isArray(value) ? value : (value?.items || [])
     if (!projectId.value && projects.value.length) projectId.value = Number(projects.value[0].id)
     wallet.value = (await getRemailWallet()).wallet || {}
-  } catch (error: any) { ElMessage.error(error?.message || 'Remail 目录读取失败') } finally { loading.value = false }
+  } catch (error) { ElMessage.error(errorMessage(error) || 'Remail 目录读取失败') } finally { loading.value = false }
 }
 async function purchase() {
   if (!projectId.value || !suffix.value) return ElMessage.warning('请选择项目和邮箱类型')
   loading.value = true
   try { await purchaseRemail({ project_id: projectId.value, email_suffix: suffix.value, quantity: quantity.value, supply: supply.value }); ElMessage.success('订单已创建，可在订单查询中确认并导入 Free 池'); await load() }
-  catch (error: any) { ElMessage.error(error?.message || 'Remail 购买失败') } finally { loading.value = false }
+  catch (error) { ElMessage.error(errorMessage(error) || 'Remail 购买失败') } finally { loading.value = false }
 }
 onMounted(load)
 </script>

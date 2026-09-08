@@ -1,4 +1,5 @@
 import { nextTick } from 'vue'
+import { errorMessage } from '../utils/errorMessage'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   api,
@@ -12,7 +13,7 @@ import {
   restoreMailboxRowsManualUsed,
   setMailboxRowsUnavailable,
 } from '../api/client'
-import type { MailboxRow, MailboxRowAction } from '../types/api'
+import type { MailboxMutationResult, MailboxPayload, MailboxRow, MailboxRowAction } from '../types/api'
 import { needsSub2Rerun } from '../utils/mailboxFilters'
 import { safeMailboxUrl } from '../utils/safeMailboxUrl'
 
@@ -27,7 +28,7 @@ interface MailboxRowActionOptions {
   batchBusy: ReadonlyValue<boolean>
   refreshGuard: { invalidate: () => void }
   refresh: () => Promise<void>
-  applyMailboxPayload: (payload: any) => void
+  applyMailboxPayload: (payload: MailboxPayload | { mailboxes?: MailboxPayload }) => void
   scheduleMailboxPoll: (delay: number) => void
 }
 
@@ -46,11 +47,11 @@ export function useMailboxRowActions(options: MailboxRowActionOptions) {
       })
       await navigator.clipboard.writeText(String(result.password || ''))
       ElMessage.success('已复制密码')
-    } catch (error: any) {
+    } catch (error) {
       if (error instanceof ApiError && error.payload?.code === 'mailbox_row_stale') {
         await options.refresh()
       }
-      ElMessage.error(error?.message || '复制密码失败')
+      ElMessage.error(errorMessage(error) || '复制密码失败')
     } finally {
       options.loadingPasswords.value = options.loadingPasswords.value.filter(
         id => id !== row.row_id,
@@ -84,11 +85,11 @@ export function useMailboxRowActions(options: MailboxRowActionOptions) {
       const result = await getMailboxTotp({ row_id: row.row_id, line_no: row.line_no })
       await navigator.clipboard.writeText(String(result.code || ''))
       ElMessage.success(`已复制临时 2FA 验证码，约 ${result.remaining} 秒后刷新`)
-    } catch (error: any) {
+    } catch (error) {
       if (error instanceof ApiError && error.payload?.code === 'mailbox_row_stale') {
         await options.refresh()
       }
-      ElMessage.error(error?.message || '复制临时 2FA 验证码失败')
+      ElMessage.error(errorMessage(error) || '复制临时 2FA 验证码失败')
     } finally {
       options.loadingTotp.value = options.loadingTotp.value.filter(id => id !== row.row_id)
     }
@@ -110,12 +111,12 @@ export function useMailboxRowActions(options: MailboxRowActionOptions) {
       const destination = safeMailboxUrl(result.mailbox_url)
       if (!destination) throw new Error('取件 URL 无效或协议不安全')
       target.location.replace(destination)
-    } catch (error: any) {
+    } catch (error) {
       target.close()
       if (error instanceof ApiError && error.payload?.code === 'mailbox_row_stale') {
         await options.refresh()
       }
-      ElMessage.error(error?.message || '打开取件 URL 失败')
+      ElMessage.error(errorMessage(error) || '打开取件 URL 失败')
     }
   }
 
@@ -139,9 +140,9 @@ export function useMailboxRowActions(options: MailboxRowActionOptions) {
       }
       await navigator.clipboard.writeText(code)
       ElMessage.success('验证码已复制')
-    } catch (error: any) {
+    } catch (error) {
       if (error instanceof ApiError && error.payload?.code === 'mailbox_row_stale') await options.refresh()
-      ElMessage.error(error?.message || '提取邮箱验证码失败')
+      ElMessage.error(errorMessage(error) || '提取邮箱验证码失败')
     } finally {
       setActionLoading(row, false)
     }
@@ -166,8 +167,8 @@ export function useMailboxRowActions(options: MailboxRowActionOptions) {
   async function runMutation(
     row: MailboxRow,
     confirmation: string,
-    action: () => Promise<any>,
-    successMessage: string | ((result: any) => string),
+    action: () => Promise<MailboxMutationResult>,
+    successMessage: string | ((result: MailboxMutationResult) => string),
   ) {
     if (
       options.mutating.value
@@ -190,11 +191,11 @@ export function useMailboxRowActions(options: MailboxRowActionOptions) {
       ElMessage.success(
         typeof successMessage === 'function' ? successMessage(result) : successMessage,
       )
-    } catch (error: any) {
+    } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         window.setTimeout(() => void options.refresh(), 0)
       }
-      ElMessage.error(error?.message || '操作失败')
+      ElMessage.error(errorMessage(error) || '操作失败')
     } finally {
       setActionLoading(row, false)
       options.mutating.value = false

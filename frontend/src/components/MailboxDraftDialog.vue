@@ -18,7 +18,7 @@ const emit = defineEmits<{
   restore: [rows: Array<{ row_id: string; line_no: number }>]
 }>()
 
-const tableRef = ref<any>()
+const tableRef = ref<{ clearSelection: () => void } | null>(null)
 const selectedRows = ref<MailboxRow[]>([])
 const visible = computed({
   get: () => props.modelValue,

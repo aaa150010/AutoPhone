@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { type Component, computed } from 'vue'
 import RollingMetricValue from './RollingMetricValue.vue'
 
 const props = defineProps<{
   title: string
   value: string | number
-  icon: any
+  icon: Component
   tone?: 'primary' | 'success' | 'danger' | 'warning'
   compact?: boolean
   framed?: boolean

@@ -110,6 +110,7 @@ export interface TaskFailure {
   provider_code?: string
   public_message: string
   technical_summary?: string
+  incident_id?: string
   retryable: boolean
   http_status?: number | null
   action_hint?: string
@@ -220,6 +221,7 @@ export interface RuntimeTask {
   task_id: string
   incident_id?: string
   run_mode?: 'register' | 'free_register' | 'relogin' | string
+  driver?: string
   account?: string
   email?: string
   ordinal?: number
@@ -267,6 +269,11 @@ export interface RuntimeTask {
     run_mode?: 'relogin' | string
     batch_id?: string
     batch_started_at?: number
+    password_status?: string
+    account_flow?: string
+    totp_secret?: string | null
+    subscription_plan?: string
+    plan_check_status?: string
   }
 }
 
@@ -440,6 +447,7 @@ export interface MailboxRow {
   phone_risk_label?: string
   quota_status?: 'ok' | 'error' | string
   quota_error?: string
+  quota_error_code?: string
   quota_queried_at?: number | null
   quota_5h?: OpenAIQuotaWindow | null
   quota_7d?: OpenAIQuotaWindow | null
@@ -464,6 +472,10 @@ export interface MailboxRow {
   sms_exchange_date?: string
   sub2api_account_id?: string
   sub2_status?: Sub2MailboxStatus | null
+  /** Legacy task-snapshot alias of sub2_status; kept for old rows only. */
+  sub2?: Sub2MailboxStatus | null
+  /** Legacy quota result alias retained for old snapshots only. */
+  quota_code?: string
   updated_at?: number
 }
 
@@ -541,6 +553,18 @@ export interface MailboxBatchOperation {
   node_label?: string
   error_code?: string
   error?: string
+}
+
+export interface MailboxMutationResult {
+  ok?: boolean
+  used?: number
+  restored?: number
+  drafted?: number
+  unavailable?: number
+  mailboxes?: MailboxPayload
+  mailboxes_refresh_required?: boolean
+  state?: AppState
+  operation?: MailboxBatchOperation | null
 }
 
 export interface MailboxPayload {
@@ -677,5 +701,7 @@ export interface ApiErrorPayload {
   error?: string
   code?: string
   state?: AppState
-  [key: string]: any
+  failure?: TaskFailure
+  operation?: MailboxBatchOperation
+  [key: string]: unknown
 }

@@ -2,9 +2,10 @@
 import SecretInput from './SecretInput.vue'
 import type { NotificationRuntimeStatus } from '../types/api'
 import { formatDateTimeZh } from '../utils/datetime'
+import type { AppConfigForm } from '../utils/appConfigNormalize'
 
 const props = defineProps<{
-  modelValue: any
+  modelValue: AppConfigForm
   testing?: boolean
   status?: NotificationRuntimeStatus
 }>()
@@ -24,7 +25,7 @@ function updateEmail(values: Record<string, any>) {
   })
 }
 
-function updateEvent(key: string, value: any) {
+function updateEvent(key: string, value: unknown) {
   updateEmail({ events: { ...(current().events || {}), [key]: Boolean(value) } })
 }
 

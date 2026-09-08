@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { errorMessage } from '../utils/errorMessage'
 import { ElMessage } from 'element-plus'
 import { Aim, ArrowLeft, ArrowRight, Bottom, CopyDocument, Refresh } from '@element-plus/icons-vue'
 import { getFreeLogs } from '../api/client'
@@ -139,8 +140,8 @@ async function refresh(options: { forceLatest?: boolean; silent?: boolean } = {}
       : clampFreeLogWindowStart(filteredLogs.value.length, windowStart.value)
     await nextTick()
     setScrollTop(followLatest ? (logScroll.value?.scrollHeight || 0) : previousScrollTop)
-  } catch (error: any) {
-    if (!options.silent) ElMessage.error(error?.message || 'Free 账号日志读取失败')
+  } catch (error) {
+    if (!options.silent) ElMessage.error(errorMessage(error) || 'Free 账号日志读取失败')
   } finally {
     if (generation === requestGeneration && !options.silent) loading.value = false
   }

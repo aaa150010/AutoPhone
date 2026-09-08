@@ -1,4 +1,5 @@
 import { ref, type Ref } from 'vue'
+import { errorMessage } from '../utils/errorMessage'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ApiError, exportMailboxSource, exportMailboxSub2 } from '../api/client'
 import type { MailboxRow } from '../types/api'
@@ -42,9 +43,9 @@ export function useMailboxExports(options: MailboxExportOptions) {
       browserDownload(JSON.stringify(result.export, null, 2), 'application/json', result.filename || 'sub2api-export.json')
       const skipped = Number(result.skipped || 0)
       ElMessage.success(`已导出 ${Number(result.count || 0)} 条${skipped ? `，跳过 ${skipped} 条` : ''}`)
-    } catch (error: any) {
+    } catch (error) {
       if (error instanceof ApiError && error.status === 409) await options.refresh()
-      ElMessage.error(error?.message || 'SUB2API 导出失败')
+      ElMessage.error(errorMessage(error) || 'SUB2API 导出失败')
     } finally {
       exportingSub2.value = false
     }
@@ -60,9 +61,9 @@ export function useMailboxExports(options: MailboxExportOptions) {
       const result = await exportMailboxSource(bindings())
       browserDownload(result.content, 'text/plain;charset=utf-8', result.filename || 'mailboxes-original.txt')
       ElMessage.success(`已按原始格式导出 ${Number(result.count || 0)} 条`)
-    } catch (error: any) {
+    } catch (error) {
       if (error instanceof ApiError && error.status === 409) await options.refresh()
-      ElMessage.error(error?.message || '原始格式导出失败')
+      ElMessage.error(errorMessage(error) || '原始格式导出失败')
     } finally {
       exportingSource.value = false
     }

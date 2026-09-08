@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { copyText as copyTextToClipboard } from '../utils/clipboard'
+import { errorMessage } from '../utils/errorMessage'
 import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleCheck, CopyDocument, Delete, Download, Refresh, Search, View, Warning } from '@element-plus/icons-vue'
@@ -38,12 +39,12 @@ const statusOptions = [
 const scopeOptions = [{ label: '全部链路', value: '' }, { label: '普通流程', value: 'ordinary' }, { label: 'Free', value: 'free' }]
 const driverOptions = [{ label: '全部驱动', value: '' }, { label: '短信 / OAuth', value: 'sms_oauth' }, { label: '协议', value: 'protocol' }, { label: 'Camoufox', value: 'camoufox' }]
 
-function formatTime(value: any) {
+function formatTime(value: unknown) {
   if (!value) return '-'
   const date = parseTimestamp(value)
   return date ? date.toLocaleString() : String(value)
 }
-function formatBytes(value: any) {
+function formatBytes(value: unknown) {
   const bytes = Number(value || 0)
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
@@ -66,7 +67,7 @@ async function load() {
     samples.value = result.samples || []
     total.value = Number(result.total || 0)
     selected.value = []
-  } catch (error: any) { ElMessage.error(error?.message || '解析样本读取失败') } finally { loading.value = false }
+  } catch (error) { ElMessage.error(errorMessage(error) || '解析样本读取失败') } finally { loading.value = false }
 }
 function search() { page.value = 1; void load() }
 function selectRows(rows: MailboxParserSample[]) { selected.value = rows }
@@ -77,7 +78,7 @@ async function openDetail(row: MailboxParserSample) {
     detailOpen.value = true
     rawOpen.value = false
     reparse.value = null
-  } catch (error: any) { ElMessage.error(error?.message || '解析样本详情读取失败') }
+  } catch (error) { ElMessage.error(errorMessage(error) || '解析样本详情读取失败') }
 }
 async function revealRaw() {
   if (!detail.value) return
@@ -86,14 +87,14 @@ async function revealRaw() {
     const result = await revealMailboxParserSample(detail.value.sample_id, detail.value.scope)
     detail.value = result.sample
     rawOpen.value = true
-  } catch (error: any) { if (!['cancel', 'close', '取消'].includes(String(error))) ElMessage.error(error?.message || '原始样本读取失败') }
+  } catch (error) { if (!['cancel', 'close', '取消'].includes(String(error))) ElMessage.error(errorMessage(error) || '原始样本读取失败') }
 }
 async function runReparse() {
   if (!detail.value) return
   try {
     reparse.value = (await reparseMailboxParserSample(detail.value.sample_id, detail.value.scope)).reparse
     ElMessage.success('已使用当前解析器离线重跑')
-  } catch (error: any) { ElMessage.error(error?.message || '离线重解析失败') }
+  } catch (error) { ElMessage.error(errorMessage(error) || '离线重解析失败') }
 }
 function copyText(value: string, message: string) {
   void copyTextToClipboard(value, message)
@@ -106,21 +107,21 @@ async function exportSample(format: 'sanitized' | 'fixture') {
   try {
     const result = await exportMailboxParserSample(detail.value.sample_id, format, detail.value.scope)
     await copyText(result.content, format === 'fixture' ? '原文夹具已复制' : '脱敏夹具已复制')
-  } catch (error: any) { ElMessage.error(error?.message || '样本导出失败') }
+  } catch (error) { ElMessage.error(errorMessage(error) || '样本导出失败') }
 }
 async function updateStatus(status: string) {
   const ids = selected.value.length ? selected.value.map(item => item.sample_id) : detail.value ? [detail.value.sample_id] : []
   if (!ids.length) return
   const scope = selected.value.length ? '' : detail.value?.scope || ''
-  try { await updateMailboxParserSampleStatus(ids, status, scope); ElMessage.success('样本状态已更新'); await load(); if (detail.value && ids.includes(detail.value.sample_id)) detail.value.status = status; } catch (error: any) { ElMessage.error(error?.message || '样本状态更新失败') }
+  try { await updateMailboxParserSampleStatus(ids, status, scope); ElMessage.success('样本状态已更新'); await load(); if (detail.value && ids.includes(detail.value.sample_id)) detail.value.status = status; } catch (error) { ElMessage.error(errorMessage(error) || '样本状态更新失败') }
 }
 async function removeSelected() {
   const ids = selected.value.map(item => item.sample_id)
   if (!ids.length) return
-  try { await ElMessageBox.confirm(`确定删除选中的 ${ids.length} 条解析样本？`, '删除解析样本', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }); await deleteMailboxParserSamples(ids); ElMessage.success('解析样本已删除'); await load() } catch (error: any) { if (!['cancel', 'close', '取消'].includes(String(error))) ElMessage.error(error?.message || '样本删除失败') }
+  try { await ElMessageBox.confirm(`确定删除选中的 ${ids.length} 条解析样本？`, '删除解析样本', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }); await deleteMailboxParserSamples(ids); ElMessage.success('解析样本已删除'); await load() } catch (error) { if (!['cancel', 'close', '取消'].includes(String(error))) ElMessage.error(errorMessage(error) || '样本删除失败') }
 }
 async function cleanup() {
-  try { const result = await cleanupMailboxParserSamples(); await load(); ElMessage.success(`已清理 ${result.deleted || 0} 条过期样本`) } catch (error: any) { ElMessage.error(error?.message || '样本清理失败') }
+  try { const result = await cleanupMailboxParserSamples(); await load(); ElMessage.success(`已清理 ${result.deleted || 0} 条过期样本`) } catch (error) { ElMessage.error(errorMessage(error) || '样本清理失败') }
 }
 function downloadFixture() {
   if (!detail.value) return
@@ -128,7 +129,7 @@ function downloadFixture() {
     const blob = new Blob([result.content], { type: 'application/json;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${detail.value?.sample_id || 'sample'}.json`; anchor.click(); URL.revokeObjectURL(url)
-  }).catch((error: any) => ElMessage.error(error?.message || '夹具下载失败'))
+  }).catch((error: unknown) => ElMessage.error(errorMessage(error) || '夹具下载失败'))
 }
 function downloadSample(format: 'sanitized' | 'fixture') {
   if (!detail.value) return
@@ -142,7 +143,7 @@ function downloadSample(format: 'sanitized' | 'fixture') {
       const blob = new Blob([result.content], { type: 'application/json;charset=utf-8' })
       const url = URL.createObjectURL(blob)
       const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${sample.sample_id || 'sample'}-${format}.json`; anchor.click(); URL.revokeObjectURL(url)
-    } catch (error: any) { ElMessage.error(error?.message || '夹具下载失败') }
+    } catch (error) { ElMessage.error(errorMessage(error) || '夹具下载失败') }
   }
   void run()
 }

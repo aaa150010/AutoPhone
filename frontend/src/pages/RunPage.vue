@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { errorMessage } from '../utils/errorMessage'
 import { useRowClipboard } from '../composables/useRowClipboard'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -25,7 +26,7 @@ import OpenAIConnectivityBanner from '../components/OpenAIConnectivityBanner.vue
 import TaskResultsPanel from '../components/TaskResultsPanel.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import { useAppController } from '../composables/useAppController'
-import type { RuntimeTask } from '../types/api'
+import type { MailboxMutationResult, RuntimeTask } from '../types/api'
 import { buildOpenAIConnectivityView } from '../utils/openAIConnectivity'
 import { freeTaskSecretLookup } from '../utils/freeSecretLookup'
 import { safeMailboxUrl } from '../utils/safeMailboxUrl'
@@ -168,8 +169,8 @@ async function start() {
     const result = await controller.start(false, 'register')
     if (!result) return
     ElMessage.success('任务已启动')
-  } catch (error: any) {
-    ElMessage.error(error?.message || '启动失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || '启动失败')
   }
 }
 
@@ -177,12 +178,12 @@ async function stop() {
   try {
     await controller.stop()
     ElMessage.success('已发送停止请求')
-  } catch (error: any) {
-    ElMessage.error(error?.message || '停止失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || '停止失败')
   }
 }
 
-function applyImportedMailboxes(result: any) {
+function applyImportedMailboxes(result: MailboxMutationResult) {
   if (result?.state) controller.syncState(result.state)
   void controller.refresh()
 }
@@ -266,8 +267,8 @@ async function copyFreeTaskSecret(payload: { kind: 'token' | 'password' | 'totp'
     if (!value) throw new Error('服务端未返回可复制内容')
     await navigator.clipboard.writeText(value)
     ElMessage.success(`已复制 ${taskIds.length} 个 Free 账号敏感字段`)
-  } catch (error: any) {
-    ElMessage.error(error?.message || 'Free 敏感字段复制失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || 'Free 敏感字段复制失败')
   }
 }
 
@@ -278,8 +279,8 @@ async function retryFreeTaskTwofa(task: RuntimeTask) {
     await retryFreeTwofa(taskId)
     ElMessage.info('已重新加入 2FA 设置任务')
     await controller.refresh()
-  } catch (error: any) {
-    ElMessage.error(error?.message || '2FA 重试失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || '2FA 重试失败')
   }
 }
 
@@ -349,9 +350,9 @@ async function openTaskMailboxUrl(task: RuntimeTask) {
     const destination = safeMailboxUrl(result.mailbox_url)
     if (!destination) throw new Error('取件 URL 无效或协议不安全')
     target.location.replace(destination)
-  } catch (error: any) {
+  } catch (error) {
     target.close()
-    ElMessage.error(error?.message || '打开取件 URL 失败')
+    ElMessage.error(errorMessage(error) || '打开取件 URL 失败')
   } finally {
     openingMailboxUrlTaskIds.value = openingMailboxUrlTaskIds.value.filter(id => id !== taskId)
   }
@@ -370,8 +371,8 @@ async function disableConnectivityGuard() {
   try {
     await controller.setOpenAIConnectivityGuard(false)
     ElMessage.warning('OpenAI 链路保护已关闭')
-  } catch (error: any) {
-    ElMessage.error(error?.message || '关闭 OpenAI 链路保护失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || '关闭 OpenAI 链路保护失败')
   }
 }
 </script>

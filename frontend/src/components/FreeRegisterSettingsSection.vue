@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { errorMessage } from '../utils/errorMessage'
 import { ElMessage } from 'element-plus'
 import { CircleCheck, CopyDocument, Refresh, View } from '@element-plus/icons-vue'
-import { getFreeConfig, getFreeProxies, preflightFree, preflightFreeProxies, saveFreeConfig, type FreeConfig, type FreeState, type FreeProxyPreflightRow, type FreeProxyRow } from '../api/client'
+import { ApiError, getFreeConfig, getFreeProxies, preflightFree, preflightFreeProxies, saveFreeConfig, type FreeConfig, type FreeState, type FreeProxyPool, type FreeProxyPreflightRow, type FreeProxyRow } from '../api/client'
 import type { TaskFailure } from '../types/api'
 import FieldHelpLabel from './FieldHelpLabel.vue'
 
@@ -48,7 +49,7 @@ const proxyCheckSummary = computed(() => {
   return `最近检测 ${total} 个：可用 ${available} · 失败 ${total - available}`
 })
 
-function mergeConfig(value: any) {
+function mergeConfig(value: FreeConfig) {
   if (!value || typeof value !== 'object') return
   Object.assign(config, value)
   // Strip removed legacy fields from old responses before they can be
@@ -104,8 +105,8 @@ async function loadProxies() {
   try {
     const result = await getFreeProxies()
     applyPublicProxies(result.proxies)
-  } catch (error: any) {
-    ElMessage.error(error?.message || 'Free 代理池加载失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || 'Free 代理池加载失败')
   }
 }
 
@@ -118,8 +119,8 @@ async function load() {
     await loadProxies()
     loaded.value = true
     markSaved()
-  } catch (error: any) {
-    ElMessage.error(error?.message || 'Free 配置加载失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || 'Free 配置加载失败')
   } finally {
     busy.value = ''
   }
@@ -157,8 +158,8 @@ async function preflight() {
     mergeConfig(result.config)
     state.value = result.state || state.value
     ElMessage.success(`Free 预检通过：${Number(result.result?.target_count || 0)} 个账号，${Number(result.result?.proxies || 0)} 个代理`)
-  } catch (error: any) {
-    ElMessage.error(error?.message || 'Free 注册预检失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || 'Free 注册预检失败')
   } finally {
     busy.value = ''
   }
@@ -177,12 +178,12 @@ async function preflightProxyPool() {
     if (!proxyText.value.trim()) await loadProxies()
     if (failed) ElMessage.warning(`代理连通性检测完成：可用 ${available} 个，失败 ${failed} 个`)
     else ElMessage.success(`代理连通性检测通过：${available} 个`)
-  } catch (error: any) {
+  } catch (error) {
     proxyCheckRows.value = []
-    const payload = error?.payload && typeof error.payload === 'object' ? error.payload : {}
+    const payload = error instanceof ApiError && error.payload && typeof error.payload === 'object' ? error.payload : {}
     proxyCheckIncidentId.value = String(payload.incident_id || '').trim()
     proxyCheckFailure.value = payload.failure && typeof payload.failure === 'object' ? payload.failure : null
-    ElMessage.error(error?.message || 'Free 代理连通性检测失败')
+    ElMessage.error(errorMessage(error) || 'Free 代理连通性检测失败')
   } finally {
     busy.value = ''
   }
@@ -208,7 +209,7 @@ function openProxyCheckIncident() {
   }
 }
 
-function applyPublicProxies(value: any) {
+function applyPublicProxies(value: FreeProxyPool | undefined | null) {
   if (!value || typeof value !== 'object') return false
   proxyRows.value = Array.isArray(value.rows) ? value.rows : []
   if (typeof value.content === 'string') proxyText.value = value.content

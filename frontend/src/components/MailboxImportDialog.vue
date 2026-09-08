@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { errorMessage } from '../utils/errorMessage'
 import { ElMessage } from 'element-plus'
 import { Upload } from '@element-plus/icons-vue'
 import { importMailboxes } from '../api/client'
@@ -38,8 +39,8 @@ async function submit() {
     if (joined > 0) ElMessage.success(`${base}；${joined} 条已加入当前批次排队`)
     else if (nextBatch > 0) ElMessage.warning(`${base}；${nextBatch} 条进入下一批优先队列`)
     else ElMessage.success(base)
-  } catch (error: any) {
-    ElMessage.error(error?.message || '导入失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || '导入失败')
   } finally {
     loading.value = false
     emit('busyChange', false)

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { errorMessage } from '../utils/errorMessage'
 import { ElMessage } from 'element-plus'
 import { CircleCheck, Refresh } from '@element-plus/icons-vue'
 import { getRemailConfig, saveRemailConfig, type FreeConfig } from '../api/client'
@@ -10,8 +11,8 @@ const loading = ref(false)
 const saving = ref(false)
 const dirty = ref(false)
 function markDirty() { if (!dirty.value) { dirty.value = true; emit('dirtyChange', true) } }
-async function load() { loading.value = true; try { Object.assign(config, (await getRemailConfig()).config || {}); dirty.value = false; emit('dirtyChange', false) } catch (error: any) { ElMessage.error(error?.message || 'Remail 配置读取失败') } finally { loading.value = false } }
-async function save() { saving.value = true; try { Object.assign(config, (await saveRemailConfig({ ...config })).config || {}); dirty.value = false; emit('dirtyChange', false); ElMessage.success('Remail 配置已保存') } catch (error: any) { ElMessage.error(error?.message || 'Remail 配置保存失败') } finally { saving.value = false } }
+async function load() { loading.value = true; try { Object.assign(config, (await getRemailConfig()).config || {}); dirty.value = false; emit('dirtyChange', false) } catch (error) { ElMessage.error(errorMessage(error) || 'Remail 配置读取失败') } finally { loading.value = false } }
+async function save() { saving.value = true; try { Object.assign(config, (await saveRemailConfig({ ...config })).config || {}); dirty.value = false; emit('dirtyChange', false); ElMessage.success('Remail 配置已保存') } catch (error) { ElMessage.error(errorMessage(error) || 'Remail 配置保存失败') } finally { saving.value = false } }
 defineExpose({ save })
 onMounted(load)
 </script>

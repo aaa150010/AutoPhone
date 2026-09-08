@@ -15,7 +15,6 @@ import {
 } from '../api/client'
 import type { AppState, SmsKeyStatus, SmsProviderPool } from '../types/api'
 import {
-  defaultEmailNotification,
   defaultForm,
   mergeConfig,
   normalizeEmailNotificationDraft,
@@ -68,8 +67,8 @@ export function createAppController() {
     || []
   ))
 
-  function syncState(payload: any) {
-    const next = payload?.state || payload
+  function syncState(payload: { state?: AppState } | AppState) {
+    const next: AppState = 'state' in payload && payload.state ? payload.state : (payload as AppState)
     if (!next || typeof next !== 'object') return
     const accepted = preferNewestOpenAIConnectivityState(state.value, next)
     const nextSignature = JSON.stringify(accepted)
@@ -97,7 +96,7 @@ export function createAppController() {
     dirty.value = signature(form) !== baseline
   }
 
-  function acceptSavedField(key: string, value: any) {
+  function acceptSavedField(key: string, value: unknown) {
     const saved = JSON.parse(baseline)
     saved[key] = value
     baseline = signature(saved)
@@ -176,7 +175,7 @@ export function createAppController() {
     initialized.value = true
   }
 
-  async function loadSecret(target: () => any, assign: (value: any) => void, id: string) {
+  async function loadSecret(target: () => unknown, assign: (value: unknown) => void, id: string) {
     if (target() !== '********') return
     try {
       assign((await getSecret(id)).value)
@@ -316,7 +315,7 @@ export function createAppController() {
     }
   }
 
-  async function importConfig(value: any) {
+  async function importConfig(value: unknown) {
     actions.importing = true
     try {
       const imported = normalizeImportedConfig(value)

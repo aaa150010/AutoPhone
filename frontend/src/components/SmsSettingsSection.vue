@@ -3,11 +3,12 @@ import { computed } from 'vue'
 import { Coin, Setting } from '@element-plus/icons-vue'
 import SmsApiKeyEditor from './SmsApiKeyEditor.vue'
 import type { SmsKeyStatus, SmsProviderPool } from '../types/api'
+import type { AppConfigForm } from '../utils/appConfigNormalize'
 
-const props = defineProps<{ modelValue: any; statuses?: SmsKeyStatus[]; queryingBalances?: boolean }>()
+const props = defineProps<{ modelValue: AppConfigForm; statuses?: SmsKeyStatus[]; queryingBalances?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [any]; queryBalances: [] }>()
 
-function update(key: string, value: any) {
+function update(key: string, value: unknown) {
   emit('update:modelValue', { ...props.modelValue, [key]: value })
 }
 
@@ -18,15 +19,15 @@ const platformDefaults: Array<SmsProviderPool & { label: string }> = [
 ]
 
 const providerPools = computed(() => {
-  const rows = Array.isArray(props.modelValue.sms_provider_pools)
+  const rows = (Array.isArray(props.modelValue.sms_provider_pools)
     ? props.modelValue.sms_provider_pools
-    : []
+    : []) as SmsProviderPool[]
   const legacyKeys = Array.isArray(props.modelValue.sms_api_keys)
     ? props.modelValue.sms_api_keys
     : [props.modelValue.sms_api_key || '']
-  const byProvider = new Map(rows.map((row: any) => [String(row?.provider || '').toLowerCase(), row]))
+  const byProvider = new Map(rows.map((row: SmsProviderPool) => [String(row?.provider || '').toLowerCase(), row]))
   const known = platformDefaults.map((defaults) => {
-    const row: any = byProvider.get(defaults.provider)
+    const row: SmsProviderPool | undefined = byProvider.get(defaults.provider)
     const keys = Array.isArray(row?.api_keys)
       ? row.api_keys
       : defaults.provider === 'smsbower' && !rows.length
@@ -36,24 +37,24 @@ const providerPools = computed(() => {
       ...defaults,
       ...(row || {}),
       enabled: row?.enabled !== false,
-      api_keys: keys.length ? keys : [''],
+      api_keys: (keys as unknown[]).map(key => String(key ?? '')),
       service: String(row?.service || defaults.service),
     }
   })
   const extras = rows
-    .filter((row: any) => row?.provider && !platformDefaults.some(item => item.provider === row.provider))
-    .map((row: any) => ({
+    .filter((row: SmsProviderPool) => row?.provider && !platformDefaults.some(item => item.provider === row.provider))
+    .map((row: SmsProviderPool) => ({
       provider: String(row.provider),
       label: String(row.provider),
       enabled: row.enabled !== false,
-      api_keys: Array.isArray(row.api_keys) && row.api_keys.length ? row.api_keys : [''],
+      api_keys: (Array.isArray(row.api_keys) && row.api_keys.length ? row.api_keys : [''] as unknown[]).map(key => String(key ?? '')),
       service: String(row.service || 'dr'),
     }))
   return [...known, ...extras]
 })
 
 const hasConfiguredKeys = computed(() => providerPools.value.some(pool => (
-  pool.api_keys.some((key: string) => String(key || '').trim())
+  pool.api_keys.some(key => String(key || '').trim())
 )))
 
 function updateProvider(provider: string, patch: Partial<SmsProviderPool>) {
@@ -64,7 +65,7 @@ function updateProvider(provider: string, patch: Partial<SmsProviderPool>) {
     || pools.find(pool => pool.enabled && pool.api_keys.some(Boolean))
     || pools[0]
   const keys = (primaryPool?.api_keys || [])
-    .map((key: string) => String(key || '').trim())
+    .map(key => String(key || '').trim())
     .filter(Boolean)
   const enabledPlatforms = pools.filter(pool => (
     pool.enabled && pool.api_keys.some((key: string) => String(key || '').trim())

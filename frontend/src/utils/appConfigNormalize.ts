@@ -4,9 +4,67 @@
  * Pure defaults, merge and draft-normalization logic extracted verbatim from
  * useAppController so the composable keeps only reactive wiring.
  */
+import type { SmsProviderPool } from '../types/api'
 import { normalizeSmsProviderPools, syncLegacySmsFields } from './smsPools'
 
-export function defaultEmailNotification() {
+/** Structural shape of the operational form produced by defaultForm(). */
+export interface AppConfigForm {
+  proxy?: string
+  proxy_scope?: { sms?: boolean; email?: boolean; upload?: boolean }
+  target_count?: string | number
+  concurrency?: string | number
+  node_concurrency?: string | number
+  auto_email_login_concurrency?: number
+  phone_submission_concurrency?: number
+  node_timeout?: number
+  email_code_timeout?: number
+  auth_session_retries?: number
+  adaptive_task_concurrency?: boolean
+  task_inflight_optimization?: boolean
+  task_inflight_limit?: number
+  openai_connectivity_guard?: boolean
+  phone_binding_compatibility?: boolean
+  mailbox_result_index_cache?: boolean
+  protocol_concurrency_ceiling?: number
+  sms_provider?: string
+  sms_min_price?: string | number
+  max_price?: string | number
+  sms_timeout?: string | number
+  phone_max_attempts?: number
+  phone_attempts_per_provider?: number
+  phone_session_cycle_seconds?: number
+  sms_quality_optimization?: boolean
+  sms_api_keys?: string[]
+  sms_provider_pools?: SmsProviderPool[]
+  sub2api?: { url?: string; email?: string; password?: string; group?: string }
+  online_mailbox?: { base_url?: string; api_token?: string }
+  email_notification?: EmailNotificationDraft
+  [key: string]: unknown
+}
+
+export interface EmailNotificationDraft {
+  enabled?: boolean
+  provider?: string
+  smtp_host?: string
+  smtp_port?: number
+  security?: string
+  username?: string
+  sender?: string
+  password?: string
+  recipients?: string[]
+  stalled_minutes?: number
+  events?: {
+    batch_completed?: boolean
+    unexpected_stop?: boolean
+    stalled?: boolean
+    sms_exhausted?: boolean
+    sms_balance_low?: boolean
+    openai_auth_connectivity?: boolean
+    manual_stop?: boolean
+  }
+}
+
+export function defaultEmailNotification(): EmailNotificationDraft {
   return {
     enabled: false,
     provider: 'qq',
@@ -30,7 +88,7 @@ export function defaultEmailNotification() {
   }
 }
 
-export function defaultForm() {
+export function defaultForm(): AppConfigForm {
   return {
     proxy: 'http://127.0.0.1:7897',
     proxy_scope: { sms: false, email: false, upload: false },
@@ -69,7 +127,7 @@ export function defaultForm() {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function mergeConfig(...values: any[]) {
+export function mergeConfig(...values: unknown[]): Record<string, unknown> {
   const result: Record<string, unknown> = {}
   for (const value of values) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) continue
@@ -85,7 +143,7 @@ export function mergeConfig(...values: any[]) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function normalizeEmailNotificationDraft(value: any) {
+export function normalizeEmailNotificationDraft(value: unknown): EmailNotificationDraft {
   return {
     ...mergeConfig(defaultEmailNotification(), value || {}),
     provider: 'qq',
@@ -95,7 +153,7 @@ export function normalizeEmailNotificationDraft(value: any) {
   }
 }
 
-export function normalizeOperationalSettings(config: Record<string, any>) {
+export function normalizeOperationalSettings(config: Record<string, unknown>) {
   config.phone_submission_concurrency = Math.max(1, Math.min(5, Number(config.phone_submission_concurrency) || 2))
   config.adaptive_task_concurrency = config.adaptive_task_concurrency !== false
   config.task_inflight_optimization = config.task_inflight_optimization !== false
@@ -110,17 +168,18 @@ export function normalizeOperationalSettings(config: Record<string, any>) {
   return config
 }
 
-export function stableValue(value: any): any {
+export function stableValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stableValue)
   if (!value || typeof value !== 'object') return value
-  return Object.fromEntries(Object.keys(value).sort().map(key => [key, stableValue(value[key])]))
+  const record = value as Record<string, unknown>
+  return Object.fromEntries(Object.keys(record).sort().map(key => [key, stableValue(record[key])]))
 }
 
-export function signature(value: any) {
+export function signature(value: unknown) {
   return JSON.stringify(stableValue(value))
 }
 
-export function normalizeImportedConfig(value: any) {
+export function normalizeImportedConfig(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('配置 JSON 必须是对象')
   }

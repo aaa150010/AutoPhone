@@ -1,11 +1,13 @@
 /** Row-level Free task actions: secret copying, mailbox URL and latest code. */
 
 import { ref } from 'vue'
+import { errorMessage } from '../utils/errorMessage'
 import { ElMessage } from 'element-plus'
 import {
   getFreeMailboxUrl,
   getFreeSecret,
   getFreeTaskLatestCode,
+  type FreeTaskRow,
 } from '../api/client'
 import { freeTaskSecretLookup } from '../utils/freeSecretLookup'
 import { safeMailboxUrl } from '../utils/safeMailboxUrl'
@@ -18,7 +20,7 @@ export function useFreeTaskRowActions() {
   const openingMailboxUrlTaskIds = ref<string[]>([])
 
   /** Copy one secret kind for a batch of tasks via the server-side secret API. */
-  async function copyTaskSecret(kind: FreeSecretKind, tasks: any[], label: string) {
+  async function copyTaskSecret(kind: FreeSecretKind, tasks: FreeTaskRow[], label: string) {
     const ids = tasks.map(task => String(task?.task_id || '')).filter(Boolean)
     if (!ids.length) {
       ElMessage.warning('请先勾选账号')
@@ -36,16 +38,16 @@ export function useFreeTaskRowActions() {
       if (!value || !navigator.clipboard?.writeText) throw new Error('当前环境不支持复制')
       await navigator.clipboard.writeText(value)
       ElMessage.success(`已复制 ${eligible.length} 个 Free ${label}`)
-    } catch (error: any) {
-      ElMessage.error(error?.message || `Free ${label} 复制失败`)
+    } catch (error) {
+      ElMessage.error(errorMessage(error) || `Free ${label} 复制失败`)
     }
   }
 
-  async function copyTaskTokens(tasks: any[]) {
+  async function copyTaskTokens(tasks: FreeTaskRow[]) {
     await copyTaskSecret('token', tasks, 'Token')
   }
 
-  async function copyTaskToken(task: any) {
+  async function copyTaskToken(task: FreeTaskRow) {
     if (!task?.result?.has_access_token) {
       ElMessage.info('该任务暂无可复制的账号 Token')
       return
@@ -53,7 +55,7 @@ export function useFreeTaskRowActions() {
     await copyTaskTokens([task])
   }
 
-  async function copyTaskEmail(task: any) {
+  async function copyTaskEmail(task: FreeTaskRow) {
     const taskId = String(task?.task_id || '').trim()
     if (!taskId || loadingEmailTaskIds.value.includes(taskId)) return
     if (!navigator.clipboard?.writeText) {
@@ -67,14 +69,14 @@ export function useFreeTaskRowActions() {
       if (!email) throw new Error('服务端未返回可复制邮箱')
       await navigator.clipboard.writeText(email)
       ElMessage.success('已复制真实邮箱')
-    } catch (error: any) {
-      ElMessage.error(error?.message || '邮箱复制失败')
+    } catch (error) {
+      ElMessage.error(errorMessage(error) || '邮箱复制失败')
     } finally {
       loadingEmailTaskIds.value = loadingEmailTaskIds.value.filter(id => id !== taskId)
     }
   }
 
-  async function openTaskMailboxUrl(task: any) {
+  async function openTaskMailboxUrl(task: FreeTaskRow) {
     const taskId = String(task?.task_id || '').trim()
     const rowId = String(task?.row_id || '').trim()
     if (!taskId || !rowId) {
@@ -98,15 +100,15 @@ export function useFreeTaskRowActions() {
       const destination = safeMailboxUrl(result.mailbox_url)
       if (!destination) throw new Error('取件 URL 无效或协议不安全')
       target.location.replace(destination)
-    } catch (error: any) {
+    } catch (error) {
       target.close()
-      ElMessage.error(error?.message || '打开取件 URL 失败')
+      ElMessage.error(errorMessage(error) || '打开取件 URL 失败')
     } finally {
       openingMailboxUrlTaskIds.value = openingMailboxUrlTaskIds.value.filter(id => id !== taskId)
     }
   }
 
-  async function copyTaskLatestCode(task: any) {
+  async function copyTaskLatestCode(task: FreeTaskRow) {
     const taskId = String(task?.task_id || '').trim()
     if (!taskId) {
       ElMessage.info('该任务尚未生成任务 ID')
@@ -131,8 +133,8 @@ export function useFreeTaskRowActions() {
       }
       await navigator.clipboard.writeText(code)
       ElMessage.success('验证码已复制')
-    } catch (error: any) {
-      ElMessage.error(error?.message || '提取邮箱验证码失败')
+    } catch (error) {
+      ElMessage.error(errorMessage(error) || '提取邮箱验证码失败')
     } finally {
       loadingLatestCodeTaskIds.value = loadingLatestCodeTaskIds.value.filter(id => id !== taskId)
     }

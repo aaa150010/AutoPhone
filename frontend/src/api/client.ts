@@ -15,24 +15,23 @@ import type {
   MailboxParserSample,
   MailboxParserSampleHealth,
   MailboxParserSampleReparse,
+  RuntimeTask,
 } from '../types/api'
 import type {
   FreeConfig,
   FreeState,
-  FreeCamoufoxDebugSession,
   FreeCamoufoxDebugState,
-  FreeProxyRow,
+  FreeTaskRow,
   FreeProxyPool,
-  FreeProxySummary,
+  RemailProject,
+  RemailWallet,
   FreeConfigSavePayload,
   FreeCamoufoxDebugCloseResult,
   DiagnosticIncident,
-  DiagnosticEvent,
   FreeMailboxRow,
   RemailOrder,
   FreeLiveCheckState,
   FreePlanCheckState,
-  FreeProxyPreflightRow,
   FreeProxyPreflightResult,
 } from '../types/free'
 export type {
@@ -49,10 +48,14 @@ export type {
   DiagnosticEvent,
   FreeMailboxRow,
   RemailOrder,
+  RemailProject,
+  RemailWallet,
+  RemailProjectProduct,
   FreeLiveCheckState,
   FreePlanCheckState,
   FreeProxyPreflightRow,
   FreeProxyPreflightResult,
+  FreeTaskRow,
 } from '../types/free'
 
 export class ApiError extends Error {
@@ -90,7 +93,7 @@ export async function api<T = any>(path: string, body?: unknown): Promise<T> {
 
 export const getState = () => api<{ state: AppState }>('/api/state')
 export const getLocalConfig = () => api<{ config: Record<string, any> }>('/api/local-config')
-export const getSecret = (id: string) => api<{ value: any }>('/api/local-config/secret', { id })
+export const getSecret = (id: string) => api<{ value: unknown }>('/api/local-config/secret', { id })
 export const saveConfig = (data: Record<string, any>) => api('/api/config', data)
 export const updateOpenAIConnectivityGuard = (enabled: boolean) => api<{
   ok: true
@@ -117,14 +120,14 @@ export const getFreeCamoufoxDebugState = () => api<{ ok: true; camoufox_debug: F
 export const closeFreeCamoufoxDebug = (sessionId = '') => api<FreeCamoufoxDebugCloseResult>('/api/free/camoufox/debug/close', { session_id: sessionId })
 export const preflightFree = (config?: Partial<FreeConfig> & { proxy_content?: string }) => api<{
   ok: true
-  result: any
+  result: FreeProxyPreflightResult
   state: FreeState
   config: FreeConfig
   incident_id?: string
   failure?: TaskFailure | null
 }>('/api/free/preflight', config || {})
-export const startFree = (config?: Partial<FreeConfig> & { proxy_content?: string; row_ids?: string[] }) => api<{ ok: true; batch_id: string; batch?: any; state: FreeState }>('/api/free/start', config || {})
-export const rerunFreeTask = (taskId: string) => api<{ ok: true; batch_id: string; task?: any; batch?: any; state: FreeState }>('/api/free/rerun', { task_id: taskId })
+export const startFree = (config?: Partial<FreeConfig> & { proxy_content?: string; row_ids?: string[] }) => api<{ ok: true; batch_id: string; batch?: { batch_id: string; members?: string[] }; state: FreeState }>('/api/free/start', config || {})
+export const rerunFreeTask = (taskId: string) => api<{ ok: true; batch_id: string; task?: FreeTaskRow; batch?: { batch_id: string; members?: string[] }; state: FreeState }>('/api/free/rerun', { task_id: taskId })
 export const stopFree = () => api<{ ok: true; state: FreeState }>('/api/free/stop', {})
 export const getFreeLogs = (taskId = '') => api<{ ok: true; task_id?: string; logs: FreeLogEntry[] }>(`/api/free/logs${taskId ? `?task_id=${encodeURIComponent(taskId)}` : ''}`)
 // ---------------------------------------------------------------------------
@@ -146,11 +149,11 @@ export const getFreeMailboxes = () => api<{ ok: true; pool: 'free'; rows: FreeMa
 // Remail purchase & orders
 // ---------------------------------------------------------------------------
 
-export const getRemailProfile = () => api<{ ok: true; profile: any }>('/api/remail/profile')
-export const getRemailProjects = () => api<{ ok: true; projects: any }>('/api/remail/projects')
-export const getRemailWallet = () => api<{ ok: true; wallet: any }>('/api/remail/wallet')
+export const getRemailProfile = () => api<{ ok: true; profile: Record<string, unknown> }>('/api/remail/profile')
+export const getRemailProjects = () => api<{ ok: true; projects: RemailProject[] | { items?: RemailProject[] } }>('/api/remail/projects')
+export const getRemailWallet = () => api<{ ok: true; wallet: RemailWallet }>('/api/remail/wallet')
 export const getRemailOrders = (query: { page?: number; page_size?: number; imported?: boolean | 'all'; search?: string } = {}) => api<{ ok: true; orders: RemailOrder[]; remote_count?: number; total: number; page: number; page_size: number; has_more: boolean }>(`/api/remail/orders?${new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined && value !== '').map(([key, value]) => [key, String(value)]))}`)
-export const purchaseRemail = (data: { project_id: number; email_suffix: string; quantity: number; supply?: string }) => api<{ ok: true; result: any }>('/api/remail/purchase', data)
+export const purchaseRemail = (data: { project_id: number; email_suffix: string; quantity: number; supply?: string }) => api<{ ok: true; result: Record<string, unknown> }>('/api/remail/purchase', data)
 export const importRemailOrders = (order_nos: string[]) => api<{ ok: true; imported: Array<{ order_no: string; row_id: string }>; skipped: Array<{ order_no: string; reason: string }> }>('/api/remail/orders/import', { order_nos })
 export const getRemailConfig = () => api<{ ok: true; config: FreeConfig['remail']; state: FreeState }>('/api/remail/config')
 export const saveRemailConfig = (config: Partial<NonNullable<FreeConfig['remail']>>) => api<{ ok: true; config: FreeConfig['remail']; state: FreeState }>('/api/remail/config', config)
@@ -173,7 +176,7 @@ export const setFreeMailboxStatus = (status: 'available' | 'unavailable' | 'draf
 export const getFreeMailboxUrl = (rowId: string) => api<{ ok: true; mailbox_url: string }>('/api/free/mailboxes/url', { row_id: rowId })
 export const getFreeMailboxLatestCode = (rowId: string) => api<{ ok: true; kind: 'email'; code: string; message: string; fetched_at?: number }>('/api/free/mailboxes/latest-code', { row_id: rowId })
 export const getFreeTaskLatestCode = (taskId: string) => api<{ ok: true; kind: 'email'; code: string; message: string; fetched_at?: number }>('/api/free/tasks/latest-code', { task_id: taskId })
-export const freeBatchRetry = (taskIds: string[]) => api<{ ok: true; accepted: Array<{ task_id: string; retry_task: any }>; accepted_count: number; skipped: Array<{ task_id: string; reason: string }>; skipped_count: number; rejected: Array<{ task_id: string; reason: string }>; rejected_count: number; state?: FreeState }>('/api/free/retry/batch', { task_ids: taskIds })
+export const freeBatchRetry = (taskIds: string[]) => api<{ ok: true; accepted: Array<{ task_id: string; retry_task: FreeTaskRow }>; accepted_count: number; skipped: Array<{ task_id: string; reason: string }>; skipped_count: number; rejected: Array<{ task_id: string; reason: string }>; rejected_count: number; state?: FreeState }>('/api/free/retry/batch', { task_ids: taskIds })
 // ---------------------------------------------------------------------------
 // Free live/plan checks
 // ---------------------------------------------------------------------------
@@ -217,7 +220,7 @@ export const transferFreeMailboxes = (rowIds: string[]) => api<{
 // Free proxy pool & secrets
 // ---------------------------------------------------------------------------
 
-export const importFreeProxies = (proxyContent: string, _country?: string, _group?: string, scheme?: string) => api<{ ok: true; imported: number; proxies?: any }>(
+export const importFreeProxies = (proxyContent: string, _country?: string, _group?: string, scheme?: string) => api<{ ok: true; imported: number; proxies?: FreeProxyPool }>(
   '/api/free/proxies/import',
   { proxy_content: proxyContent, scheme },
 )
@@ -229,8 +232,8 @@ export const preflightFreeProxies = (proxyContent: string, proxyProbeUrl?: strin
   failure?: TaskFailure | null
 }>('/api/free/proxies/preflight', { proxy_content: proxyContent, proxy_probe_url: proxyProbeUrl, ...options })
 export const getFreeProxies = () => api<{ ok: true; proxies: FreeProxyPool }>('/api/free/proxies')
-export const updateFreeProxyGroup = (payload: { country: string; group: string; new_country?: string; new_group?: string; enabled?: boolean }) => api<{ ok: true; result: any; proxies: any }>('/api/free/proxies/group', payload)
-export const deleteFreeProxyGroup = (country: string, group: string) => api<{ ok: true; deleted: number; proxies: any }>('/api/free/proxies/group/delete', { country, group })
+export const updateFreeProxyGroup = (payload: { country: string; group: string; new_country?: string; new_group?: string; enabled?: boolean }) => api<{ ok: true; result: Record<string, unknown>; proxies: FreeProxyPool }>('/api/free/proxies/group', payload)
+export const deleteFreeProxyGroup = (country: string, group: string) => api<{ ok: true; deleted: number; proxies: FreeProxyPool }>('/api/free/proxies/group/delete', { country, group })
 export const getFreeSecret = (kind: 'token' | 'password' | 'totp' | 'proxy' | 'credential' | 'email', ids: { task_ids?: string[]; row_ids?: string[] }) => api<{ ok: true; kind: string; value: string }>(
   '/api/free/secrets',
   { kind, ...ids },
@@ -242,11 +245,11 @@ export const getFreeTotp = (ids: { task_id?: string; row_id?: string; task_ids?:
   remaining: number
 }>('/api/free/totp', ids)
 
-export const retryFreeTwofa = (id: string) => api<{ ok: true; task: any; state?: AppState }>(
+export const retryFreeTwofa = (id: string) => api<{ ok: true; task: FreeTaskRow | RuntimeTask; state?: AppState }>(
   '/api/free/2fa/retry',
   { task_id: id, row_id: id },
 )
-export const retryFreePassword = (id: string) => api<{ ok: true; task: any; state?: FreeState }>(
+export const retryFreePassword = (id: string) => api<{ ok: true; task: FreeTaskRow | RuntimeTask; state?: FreeState }>(
   '/api/free/password/retry',
   { task_id: id, row_id: id },
 )
@@ -369,7 +372,7 @@ export const openManualVerification = (data: { task_id: string; input_kind?: Man
   api<ManualVerificationRequest>('/api/runtime/tasks/manual-verification/open', data)
 )
 export const reloginMailboxRows = (rows: Array<{ row_id: string; line_no: number }>) => (
-  api<{ ok: true; run_mode: 'relogin'; started: number; mailboxes?: MailboxPayload; state?: any }>(
+  api<{ ok: true; run_mode: 'relogin'; started: number; mailboxes?: MailboxPayload; state?: AppState }>(
     '/api/mailboxes/relogin',
     { rows },
   )

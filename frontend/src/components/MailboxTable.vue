@@ -13,7 +13,6 @@ import {
   RefreshRight,
   Refresh,
   Tickets,
-  View,
 } from '@element-plus/icons-vue'
 import ContentEmptyState from './ContentEmptyState.vue'
 import TaskProgressCell from './TaskProgressCell.vue'
@@ -21,10 +20,6 @@ import StateDot from './StateDot.vue'
 import { useTaskProgressClock } from '../composables/useTaskProgressClock'
 import { useColumnWidths } from '../composables/useColumnWidths'
 import type { MailboxRow, MailboxRowAction } from '../types/api'
-import {
-  ACCOUNT_BANNED_DISPLAY_MESSAGE,
-  isCurrentAccountBanned,
-} from '../utils/freeFailure'
 import { needsSub2Rerun } from '../utils/mailboxFilters'
 import {
   batchDetail,
@@ -37,13 +32,11 @@ import {
   quotaLabel,
   statusLabel,
   statusTagType,
-  sub2Code,
   sub2Detail,
   sub2Label,
   sub2Tone,
-  sub2Value,
 } from '../utils/mailboxRowDisplay'
-import { formatDateTime } from '../utils/datetime'
+type DragColumn = { label?: string; noLabelText?: string }
 
 const props = defineProps<{
   rows: MailboxRow[]
@@ -69,7 +62,7 @@ const emit = defineEmits<{
   action: [MailboxRowAction, MailboxRow]
 }>()
 
-const tableRef = ref<any>()
+const tableRef = ref<{ clearSelection: () => void } | null>(null)
 const nowSeconds = useTaskProgressClock(() => props.rows)
 const { colWidth: smsColWidth, handleHeaderDragend: onSmsHeaderDragend } = useColumnWidths('gptphone.table.widths.sms-mailbox')
 
@@ -109,7 +102,7 @@ defineExpose({ clearSelection })
     height="100%"
     stripe
     border
-    @header-dragend="(newWidth: number, oldWidth: number, column: any) => onSmsHeaderDragend(newWidth, oldWidth, column)"
+    @header-dragend="(newWidth: number, oldWidth: number, column: DragColumn) => onSmsHeaderDragend(newWidth, oldWidth, column)"
     @selection-change="emit('select', $event)" size="small">
     <el-table-column type="selection" width="45" reserve-selection />
     <el-table-column label="批次" :width="smsColWidth('批次', 150)" show-overflow-tooltip>

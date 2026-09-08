@@ -7,6 +7,7 @@ import EmailNotificationSettingsSection from './EmailNotificationSettingsSection
 import FreeRegisterSettingsSection from './FreeRegisterSettingsSection.vue'
 import RemailSettingsSection from './RemailSettingsSection.vue'
 import type { SmsKeyStatus, NotificationRuntimeStatus } from '../types/api'
+import type { AppConfigForm } from '../utils/appConfigNormalize'
 
 interface SettingsNavNode {
   key: string
@@ -16,7 +17,7 @@ interface SettingsNavNode {
 }
 
 const props = defineProps<{
-  modelValue: any
+  modelValue: AppConfigForm
   smsKeyStatuses?: SmsKeyStatus[]
   queryingSmsBalances?: boolean
   testingNotification?: boolean
@@ -24,7 +25,7 @@ const props = defineProps<{
   initialAnchor?: string
 }>()
 const emit = defineEmits<{
-  'update:modelValue': [any]
+  'update:modelValue': [AppConfigForm]
   testNotification: []
   querySmsBalances: []
   freeDirtyChange: [boolean]

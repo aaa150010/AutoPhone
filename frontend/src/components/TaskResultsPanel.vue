@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { CopyDocument, Document, Key, Link, Loading, MoreFilled, Tickets, View, Warning } from '@element-plus/icons-vue'
+import { CopyDocument, Document, Key, Link, Loading, MoreFilled, Tickets, Warning } from '@element-plus/icons-vue'
 import ContentEmptyState from './ContentEmptyState.vue'
 import TaskDetailsDrawer from './TaskDetailsDrawer.vue'
 import TaskProgressCell from './TaskProgressCell.vue'
@@ -23,6 +23,7 @@ import {
   isCurrentAccountBanned,
   isRetryResolved,
 } from '../utils/freeFailure'
+type DragColumn = { label?: string; noLabelText?: string }
 
 const props = withDefaults(defineProps<{
   tasks: RuntimeTask[]
@@ -151,7 +152,7 @@ function failureTooltip(row: RuntimeTask) {
 }
 
 function isHistoricalDriver(row: RuntimeTask) {
-  const driver = String((row as any)?.driver || '').trim().toLowerCase()
+  const driver = String(row?.driver || '').trim().toLowerCase()
   return Boolean(driver) && driver !== 'protocol' && driver !== 'camoufox'
 }
 
@@ -185,7 +186,7 @@ function handleRowAction(command: string, row: RuntimeTask) {
       <el-button size="small" :disabled="!selectedFreeTasks.some(row => row.result?.has_access_token)" @click="emitFreeSecret('token', selectedFreeTasks)">复制选中 Token</el-button>
       <el-button size="small" :disabled="!selectedFreeTasks.some(row => row.result?.has_credential)" @click="emitFreeSecret('credential', selectedFreeTasks)">复制选中凭据</el-button>
     </div>
-    <el-table class="task-table" :data="visibleTasks" :row-key="taskRowKey" stripe height="100%" border @header-dragend="(newWidth: number, oldWidth: number, column: any) => onRunHeaderDragend(newWidth, oldWidth, column)" @selection-change="selectFreeTasks" size="small">
+    <el-table class="task-table" :data="visibleTasks" :row-key="taskRowKey" stripe height="100%" border @header-dragend="(newWidth: number, oldWidth: number, column: DragColumn) => onRunHeaderDragend(newWidth, oldWidth, column)" @selection-change="selectFreeTasks" size="small">
       <el-table-column type="selection" width="42" reserve-selection />
       <el-table-column label="邮箱" :min-width="runColWidth('邮箱', 180)">
         <template #default="{ row }">

@@ -1,14 +1,11 @@
 <script setup lang="ts">
+import type { AppConfigForm } from '../utils/appConfigNormalize'
 import SecretInput from './SecretInput.vue'
 
-const props = defineProps<{ modelValue: any }>()
-const emit = defineEmits<{ 'update:modelValue': [any] }>()
+const props = defineProps<{ modelValue: AppConfigForm }>()
+const emit = defineEmits<{ 'update:modelValue': [AppConfigForm] }>()
 
-function update(key: string, value: any) {
-  emit('update:modelValue', { ...props.modelValue, [key]: value })
-}
-
-function updateNested(group: string, key: string, value: any) {
+function updateNested(group: 'sub2api' | 'online_mailbox', key: string, value: unknown) {
   emit('update:modelValue', {
     ...props.modelValue,
     [group]: {

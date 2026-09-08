@@ -7,6 +7,7 @@ ElMessage.  This composable owns the loading array so callers only describe
 the per-row value producer.
 */
 import { ref } from 'vue'
+import { errorMessage } from '../utils/errorMessage'
 import { ElMessage } from 'element-plus'
 import { copyText } from '../utils/clipboard'
 
@@ -50,8 +51,8 @@ export function useRowClipboard() {
         ? options.successMessage()
         : options.successMessage
       await copyText(value, message)
-    } catch (error: any) {
-      ElMessage.error(error?.message || options.errorMessage)
+    } catch (error) {
+      ElMessage.error(errorMessage(error) || options.errorMessage)
     } finally {
       loadingIds.value = loadingIds.value.filter(id => id !== rowId)
     }

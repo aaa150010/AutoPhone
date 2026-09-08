@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { CopyDocument, View } from '@element-plus/icons-vue'
-import type { RuntimeTask, TaskStageGroup, TaskStageTiming, TaskTimingSubstep } from '../types/api'
+import type { RuntimeTask, TaskStageTiming, TaskTimingSubstep } from '../types/api'
 import { ACCOUNT_BANNED_DISPLAY_MESSAGE, isCurrentAccountBanned, isRetryResolved } from '../utils/freeFailure'
 import { FREE_CAMOUFOX_STAGE_NODES, type TaskStageNodeDefinition } from '../utils/taskStageNodes'
 

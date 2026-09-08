@@ -30,12 +30,12 @@ function statusCode(status: Sub2MailboxStatus | null | undefined) {
 }
 
 export function isMailboxHttp400(row: MailboxRow) {
-  const openaiStatus = row.sub2_status || (row as any).sub2
+  const openaiStatus = row.sub2_status || row.sub2
   if (statusCode(openaiStatus) === 400) return true
   if (row.quota_status !== 'error') return false
   const detail = [
-    (row as any).quota_error_code,
-    (row as any).quota_code,
+    row.quota_error_code,
+    row.quota_code,
     row.quota_error,
   ].filter(Boolean).join(' ')
   return /(?:\bHTTP\s*400\b|\bstatus[_ -]?code\s*[:=]?\s*400\b|\b400\b)/i.test(detail)
@@ -66,8 +66,8 @@ export function isMailboxNetworkDisconnected(row: MailboxRow) {
 
   if (row.quota_status !== 'error') return false
   const quotaDetail = [
-    (row as any).quota_error_code,
-    (row as any).quota_code,
+    row.quota_error_code,
+    row.quota_code,
     row.quota_error,
   ].filter(Boolean).join(' ')
   return Boolean(quotaDetail && !NON_NETWORK_PATTERN.test(quotaDetail) && NETWORK_PATTERN.test(quotaDetail))
@@ -139,7 +139,7 @@ export function matchesMailboxView(row: MailboxRow, filters: MailboxViewFilters)
     || (filters.status === 'latest_batch' && inLatestBatch)
     || (filters.status === 'latest_batch_failed' && inLatestBatch && isLatestMailboxBatchFailure(row))
     || (filters.status === 'not_consumed' ? row.status !== 'consumed' : row.status === filters.status)
-  const sub2Status = row.sub2_status || (row as any).sub2
+  const sub2Status = row.sub2_status || row.sub2
   const matchesSub2 = filters.sub2 === 'all'
     || (filters.sub2 === 'test_failure' && isSub2TestFailure(sub2Status))
     || (filters.sub2 === 'needs_rerun' && needsSub2Rerun(sub2Status))

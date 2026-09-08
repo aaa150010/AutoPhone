@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { errorMessage } from '../utils/errorMessage'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Connection,
@@ -30,7 +31,7 @@ import { useAppController } from '../composables/useAppController'
 import { useMailboxBatchOperations } from '../composables/useMailboxBatchOperations'
 import { useMailboxExports } from '../composables/useMailboxExports'
 import { useMailboxRowActions } from '../composables/useMailboxRowActions'
-import type { MailboxOperationKind, MailboxPayload, MailboxRow } from '../types/api'
+import type { MailboxMutationResult, MailboxOperationKind, MailboxPayload, MailboxRow } from '../types/api'
 import {
   latestMailboxBatchId,
   mailboxBatchCandidates,
@@ -125,10 +126,10 @@ function openDraftDialog() {
   draftDialogOpen.value = true
 }
 
-function applyMailboxPayload(payload: any) {
+function applyMailboxPayload(payload: MailboxMutationResult | MailboxPayload) {
   mailboxBatch.sync(payload)
-  const next = payload?.mailboxes || payload
-  if (next && Array.isArray(next.rows)) {
+  const next = ('mailboxes' in payload && payload.mailboxes) ? payload.mailboxes : payload
+  if (next && 'rows' in next && Array.isArray(next.rows)) {
     data.value = {
       ok: next.ok,
       counts: next.counts || {},
@@ -138,7 +139,7 @@ function applyMailboxPayload(payload: any) {
       ),
     }
   }
-  if (payload?.state) controller.syncState(payload.state)
+  if ('state' in payload && payload.state) controller.syncState(payload.state)
 }
 
 function batchCandidates(kind: MailboxOperationKind) {
@@ -217,7 +218,7 @@ async function retryQuota(row: MailboxRow) {
     const status = result.results?.[0]
     if (status?.status === 'ok') ElMessage.success('OpenAI 额度已更新')
     else ElMessage.error(status?.error || '查询 OpenAI 额度失败')
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof ApiError && error.status === 409) {
       try {
         applyMailboxPayload(await getMailboxes())
@@ -225,7 +226,7 @@ async function retryQuota(row: MailboxRow) {
         // Normal polling will retry after this mutation finishes.
       }
     }
-    ElMessage.error(error?.message || '查询 OpenAI 额度失败')
+    ElMessage.error(errorMessage(error) || '查询 OpenAI 额度失败')
   } finally {
     retryingQuotaRows.value = retryingQuotaRows.value.filter(id => id !== row.row_id)
     mutating.value = false
@@ -253,8 +254,8 @@ async function refresh() {
   try {
     const result = await getMailboxes()
     if (!mutating.value && refreshGuard.accepts(ticket)) applyMailboxPayload(result)
-  } catch (error: any) {
-    if (refreshGuard.accepts(ticket)) ElMessage.error(error?.message || '邮箱列表刷新失败')
+  } catch (error) {
+    if (refreshGuard.accepts(ticket)) ElMessage.error(errorMessage(error) || '邮箱列表刷新失败')
   }
 }
 
@@ -263,7 +264,7 @@ function setImportBusy(value: boolean) {
   mutating.value = value
 }
 
-function applyImportedMailboxes(result: any) {
+function applyImportedMailboxes(result: MailboxMutationResult) {
   const hasMailboxSnapshot = Array.isArray(result?.mailboxes?.rows)
   if (hasMailboxSnapshot) applyMailboxPayload(result)
   currentPage.value = 1
@@ -278,8 +279,8 @@ function applyImportedMailboxes(result: any) {
 async function mutate(
   path: string,
   message: string,
-  action?: (rows: Array<{ row_id: string; line_no: number }>) => Promise<any>,
-  successMessage: string | ((result: any) => string) = '操作完成',
+  action?: (rows: Array<{ row_id: string; line_no: number }>) => Promise<MailboxMutationResult>,
+  successMessage: string | ((result: MailboxMutationResult) => string) = '操作完成',
 ) {
   if (!selectedRows.value.length) {
     ElMessage.warning('请先选择邮箱')
@@ -298,16 +299,16 @@ async function mutate(
   try {
     mailboxTable.value?.clearSelection()
     selectedRows.value = []
-    const result: any = action
+    const result = action
       ? await action(selected)
       : await api(path, { line_nos: lineNumbers, rows: selected })
     applyMailboxPayload(result)
     await nextTick()
     mailboxTable.value?.clearSelection()
     ElMessage.success(typeof successMessage === 'function' ? successMessage(result) : successMessage)
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof ApiError && error.status === 409) window.setTimeout(() => void refresh(), 0)
-    ElMessage.error(error?.message || '操作失败')
+    ElMessage.error(errorMessage(error) || '操作失败')
   } finally {
     mutating.value = false
   }
@@ -351,9 +352,9 @@ async function restoreDraftRows(rows: Array<{ row_id: string; line_no: number }>
     applyMailboxPayload(result)
     await nextTick()
     ElMessage.success(`已放回可用 ${Number(result.restored || 0)} 条`)
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof ApiError && error.status === 409) window.setTimeout(() => void refresh(), 0)
-    ElMessage.error(error?.message || '草稿邮箱放回可用失败')
+    ElMessage.error(errorMessage(error) || '草稿邮箱放回可用失败')
   } finally {
     restoringDraft.value = false
     mutating.value = false
@@ -395,8 +396,8 @@ async function uploadWebsiteMailboxes() {
         // The upload is complete; closing the result dialog needs no follow-up.
       }
     }
-  } catch (error: any) {
-    ElMessage.error(error?.message || '网站邮箱上传失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || '网站邮箱上传失败')
   } finally {
     uploadingWebsite.value = false
     mutating.value = false
@@ -438,9 +439,9 @@ async function startRelogin() {
     await nextTick()
     mailboxTable.value?.clearSelection()
     ElMessage.success(`已启动 ${Number(result.started || selected.length)} 个重登任务`)
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof ApiError && error.status === 409) await refresh()
-    ElMessage.error(error?.message || '重登任务启动失败')
+    ElMessage.error(errorMessage(error) || '重登任务启动失败')
   } finally {
     reloginStarting.value = false
     mutating.value = false

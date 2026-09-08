@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { errorMessage } from '../utils/errorMessage'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowDown, CircleCheck, Collection, CopyDocument, Delete, Document, DocumentCopy, Download, Key, Link, Lock, MoreFilled, Plus, PriceTag, Refresh, RefreshLeft, RefreshRight, Tickets, Upload, View, VideoPlay, Warning } from '@element-plus/icons-vue'
+import { ArrowDown, CircleCheck, Collection, CopyDocument, Delete, Document, DocumentCopy, Download, Key, Link, Lock, MoreFilled, Plus, PriceTag, Refresh, RefreshLeft, RefreshRight, Tickets, Upload, VideoPlay, Warning } from '@element-plus/icons-vue'
 import { deleteFreeMailboxes, exportFreeResults, formatFreeMailboxes, getFreeLiveCheckState, getFreeMailboxLatestCode, getFreeMailboxUrl, getFreeMailboxes, getFreeSecret, getFreeTotp, importFreeMailboxes, retryFreeTwofa, setFreeMailboxStatus, startFree, startFreeLiveCheck, startFreePlanCheck, transferFreeMailboxes } from '../api/client'
 import type { FreeLiveCheckState, FreeMailboxRow, FreeState } from '../api/client'
 import ContentEmptyState from './ContentEmptyState.vue'
@@ -31,6 +32,7 @@ import {
 } from '../utils/freeLiveDisplay'
 import { useColumnWidths } from '../composables/useColumnWidths'
 import { usePolling } from '../composables/usePolling'
+type DragColumn = { label?: string; noLabelText?: string }
 
 const FAST_LIVE_CHECK_TIP = '用注册时保存的 Token，通过原绑定代理查询一次账号状态：正常 / Token 失效 / 已停用 / 被出口或安全策略拒绝。不重新登录、不收取邮件。'
 const DEEP_LIVE_CHECK_TIP = '通过原绑定代理完整重新登录确认账号状态：可能收取一封邮箱 OTP 验证码，并按需校验密码 / 2FA。成功后刷新 Token 并同步套餐与 Plus 资格。'
@@ -42,7 +44,7 @@ const importOpen = ref(false)
 const mailboxText = ref('')
 const currentPage = ref(1)
 const pageSize = ref(100)
-const tableRef = ref<any>()
+const tableRef = ref<{ clearSelection: () => void } | null>(null)
 const search = ref('')
 const statusFilter = ref('')
 const driverFilter = ref('')
@@ -50,7 +52,7 @@ const liveStatusFilter = ref('')
 const liveBusy = ref<'fast' | 'deep' | ''>('')
 const planBusy = ref('')
 const { loadingIds: loadingEmail, copyForRow: copyEmailRow } = useRowClipboard()
-const { loadingIds: loadingLatestCode, copyForRow: copyLatestCodeRow } = useRowClipboard()
+const { copyForRow: copyLatestCodeRow } = useRowClipboard()
 const loadingTotp = ref<string[]>([])
 const joinCurrentBatch = ref(false)
 const freeState = ref<FreeState>({ running: false, tasks: [], summary: {}, pool: {} })
@@ -102,8 +104,8 @@ async function refresh() {
     const result = await getFreeMailboxes()
     rows.value = result.rows || []
     freeState.value = result.state || freeState.value
-  } catch (error: any) {
-    ElMessage.error(error?.message || 'Free 邮箱池刷新失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || 'Free 邮箱池刷新失败')
   } finally {
     loading.value = false
   }
@@ -118,8 +120,8 @@ async function refreshLiveState() {
     if (logDialogOpen.value && logRow.value?.live_check_task_id) {
       await logDialog.value?.refresh({ silent: true })
     }
-  } catch (error: any) {
-    if (liveState.value.running) ElMessage.error(error?.message || 'Free 测活状态刷新失败')
+  } catch (error) {
+    if (liveState.value.running) ElMessage.error(errorMessage(error) || 'Free 测活状态刷新失败')
   }
 }
 
@@ -152,8 +154,8 @@ async function startLiveCheck(mode: 'fast' | 'deep', selection = selected.value)
     liveState.value = result.state || liveState.value
     const skipped = Number(result.skipped_count || 0)
     ElMessage.success(`已加入${mode === 'fast' ? '快速' : '深度'}测活 ${Number(result.accepted_count || 0)} 个${skipped ? `，跳过 ${skipped} 个` : ''}`)
-  } catch (error: any) {
-    ElMessage.error(error?.message || `${mode === 'fast' ? '快速' : '深度'}测活启动失败`)
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || `${mode === 'fast' ? '快速' : '深度'}测活启动失败`)
   } finally {
     liveBusy.value = ''
   }
@@ -175,8 +177,8 @@ async function quickStart() {
     const result = await startFree()
     ElMessage.success(`Free 注册已启动：${result.batch_id || '新批次'}`)
     await refresh()
-  } catch (error: any) {
-    ElMessage.error(error?.message || 'Free 注册启动失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || 'Free 注册启动失败')
   } finally {
     runBusy.value = false
   }
@@ -249,8 +251,8 @@ async function importPools() {
     tableRef.value?.clearSelection()
     await refresh()
     ElMessage.success(`Free 池导入完成：${messages.join('，')}`)
-  } catch (error: any) {
-    ElMessage.error(error?.message || 'Free 池导入失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || 'Free 池导入失败')
   } finally {
     loading.value = false
   }
@@ -275,8 +277,8 @@ async function deleteSelected() {
     tableRef.value?.clearSelection()
     await refresh()
     ElMessage.success(`已删除 ${Number(result.deleted || 0)} 条 Free 邮箱`)
-  } catch (error: any) {
-    ElMessage.error(error?.message || 'Free 邮箱删除失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || 'Free 邮箱删除失败')
   } finally {
     loading.value = false
   }
@@ -292,8 +294,8 @@ async function copySecret(kind: 'token' | 'password' | 'totp' | 'credential', se
     const value = (await getFreeSecret(kind, { row_ids: eligible.map(row => row.row_id) })).value
     await navigator.clipboard.writeText(value || '')
     ElMessage.success(`已复制 ${eligible.length} 条${kind === 'token' ? ' Token' : kind === 'password' ? '密码' : kind === 'totp' ? '2FA 密钥' : '完整凭据'}`)
-  } catch (error: any) {
-    ElMessage.error(error?.message || 'Free 敏感字段复制失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || 'Free 敏感字段复制失败')
   }
 }
 
@@ -333,8 +335,8 @@ async function copyMailboxFormat(mode: 'mailbox' | 'full') {
     const suffix = skippedDetails ? `；${skippedDetails}${skipped > 3 ? '；其余跳过项未展开' : ''}` : ''
     if (skipped) ElMessage.warning(`${details}${suffix}`)
     else ElMessage.success(details)
-  } catch (error: any) {
-    ElMessage.error(error?.message || 'Free 格式复制失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || 'Free 格式复制失败')
   }
 }
 
@@ -366,8 +368,8 @@ async function transferSelected() {
       .join('；')
     if (skipped) ElMessage.warning(`${summary}${skippedDetails ? `；${skippedDetails}${skipped > 3 ? '；其余跳过项未展开' : ''}` : ''}`)
     else ElMessage.success(summary)
-  } catch (error: any) {
-    ElMessage.error(error?.message || 'Free 邮箱传输失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || 'Free 邮箱传输失败')
   } finally {
     loading.value = false
   }
@@ -381,8 +383,8 @@ async function copyRow(kind: 'token' | 'password' | 'totp' | 'credential', row: 
       const result = await getFreeTotp({ row_id: row.row_id })
       await navigator.clipboard.writeText(String(result.code || ''))
       ElMessage.success(`已复制临时 2FA 验证码，约 ${Number(result.remaining || 0)} 秒后刷新`)
-    } catch (error: any) {
-      ElMessage.error(error?.message || '复制临时 2FA 验证码失败')
+    } catch (error) {
+      ElMessage.error(errorMessage(error) || '复制临时 2FA 验证码失败')
     } finally {
       loadingTotp.value = loadingTotp.value.filter(id => id !== row.row_id)
     }
@@ -440,8 +442,8 @@ async function retryTwofa(row: FreeMailboxRow) {
     await retryFreeTwofa(row.row_id)
     ElMessage.info('已重新加入 2FA 设置任务')
     await refresh()
-  } catch (error: any) {
-    ElMessage.error(error?.message || '2FA 重试失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || '2FA 重试失败')
   }
 }
 
@@ -458,8 +460,8 @@ async function retryPlan(row: FreeMailboxRow) {
     await startFreePlanCheck([row.row_id])
     ElMessage.info('套餐查询已加入队列')
     await refresh()
-  } catch (error: any) {
-    ElMessage.error(error?.message || '重新查询套餐失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || '重新查询套餐失败')
   } finally {
     planBusy.value = ''
   }
@@ -482,8 +484,8 @@ async function setStatus(status: 'available' | 'unavailable' | 'draft') {
     tableRef.value?.clearSelection()
     await refresh()
     ElMessage.success(`已更新 ${ids.length} 条 Free 邮箱状态`)
-  } catch (error: any) {
-    ElMessage.error(error?.message || 'Free 邮箱状态更新失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || 'Free 邮箱状态更新失败')
   } finally { loading.value = false }
 }
 
@@ -501,7 +503,7 @@ async function openUrl(row: FreeMailboxRow) {
     if (!destination) throw new Error('取件 URL 无效或协议不安全')
     const target = window.open(destination, '_blank', 'noopener,noreferrer')
     if (!target) throw new Error('浏览器阻止了新窗口，请允许弹出窗口后重试')
-  } catch (error: any) { ElMessage.error(error?.message || '打开 Free 取件地址失败') }
+  } catch (error) { ElMessage.error(errorMessage(error) || '打开 Free 取件地址失败') }
 }
 
 async function handleMailboxAction(command: string, row: FreeMailboxRow) {
@@ -528,7 +530,7 @@ async function exportResults() {
     link.click()
     URL.revokeObjectURL(link.href)
     ElMessage.success(`已导出 ${Number(result.count || 0)} 条 Free 结果`)
-  } catch (error: any) { ElMessage.error(error?.message || 'Free 结果导出失败') }
+  } catch (error) { ElMessage.error(errorMessage(error) || 'Free 结果导出失败') }
 }
 
 onMounted(async () => {
@@ -581,7 +583,7 @@ onMounted(async () => {
           height="100%"
           border
           :row-class-name="mailboxRowClass"
-          @header-dragend="(newWidth: number, oldWidth: number, column: any) => onPoolHeaderDragend(newWidth, oldWidth, column)"
+          @header-dragend="(newWidth: number, oldWidth: number, column: DragColumn) => onPoolHeaderDragend(newWidth, oldWidth, column)"
           @selection-change="selected = $event" size="small">
           <el-table-column type="selection" width="42" reserve-selection />
           <el-table-column label="邮箱" :min-width="poolColWidth('邮箱', 280)" show-overflow-tooltip>

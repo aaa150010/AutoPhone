@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { errorMessage } from '../utils/errorMessage'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, CircleCheck, CircleClose, CopyDocument, Delete, Document, Key, Link, Lock, MoreFilled, Refresh, RefreshLeft, RefreshRight, Setting, Tickets, VideoPause, VideoPlay, Warning } from '@element-plus/icons-vue'
-import { closeFreeCamoufoxDebug, deleteFreeTasks, freeBatchRetry, getFreeConfig, getFreeState, preflightFree, rerunFreeTask, retryFreePassword, retryFreeTwofa, startFree, startFreePlanCheck, stopFree, type FreeConfig, type FreeState } from '../api/client'
+import { closeFreeCamoufoxDebug, deleteFreeTasks, freeBatchRetry, getFreeConfig, getFreeState, preflightFree, rerunFreeTask, retryFreePassword, retryFreeTwofa, startFree, startFreePlanCheck, stopFree, type FreeConfig, type FreeState, type FreeTaskRow } from '../api/client'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import ContentEmptyState from '../components/ContentEmptyState.vue'
 import FreeTaskLogDialog from '../components/FreeTaskLogDialog.vue'
@@ -39,6 +40,7 @@ import {
   taskTwofaLabel,
   taskTwofaType,
 } from '../utils/freeTaskDisplay'
+type DragColumn = { label?: string; noLabelText?: string }
 
 const defaultConfig: FreeConfig = {
   driver: 'protocol', flow_profile: 'reference_20260823', proxy_allocation_mode: 'healthy_random', target_count: 1, concurrency: 3, email_code_timeout: 90, account_password: 'Aa150010150010', auto_set_password: false, auto_set_2fa: true,
@@ -63,7 +65,7 @@ const taskSearch = ref('')
 const taskStatusFilter = ref('all')
 const taskDriverFilter = ref('')
 const selectedTasks = ref<any[]>([])
-const taskTable = ref<any>()
+const taskTable = ref<{ clearSelection: () => void } | null>(null)
 const logDialogOpen = ref(false)
 const logDialog = ref<{ refresh: (options?: { forceLatest?: boolean; silent?: boolean }) => Promise<void> }>()
 const loading = ref(false)
@@ -76,14 +78,12 @@ const running = computed(() => Boolean(state.value.running))
 const debugWindowsOpen = computed(() => Number(state.value.camoufox_debug?.open_contexts || 0) > 0)
 const nowSeconds = useTaskProgressClock(() => state.value.tasks || [], () => Boolean(state.value.running))
 const { colWidth: taskColWidth, handleHeaderDragend: onTaskHeaderDragend } = useColumnWidths('gptphone.table.widths.free-register')
-function automaticOtpRemaining(task: any) {
+function automaticOtpRemaining(task: FreeTaskRow) {
   return automaticOtpRemainingPure(task, nowSeconds.value)
 }
 
 const {
   loadingEmailTaskIds,
-  loadingLatestCodeTaskIds,
-  openingMailboxUrlTaskIds,
   copyTaskSecret,
   copyTaskTokens,
   copyTaskToken,
@@ -101,9 +101,9 @@ const visibleTasks = computed(() => (state.value.tasks || []).slice().sort((a, b
 const filteredTasks = computed(() => {
   const query = taskSearch.value.trim().toLowerCase()
   return visibleTasks.value.filter(task => {
-    const haystack = [task.email, task.task_id, task.failure?.node_label, task.failure?.node_code].join(' ').toLowerCase()
+    const haystack = [task.email, task.task_id || '', task.failure?.node_label, task.failure?.node_code].join(' ').toLowerCase()
     return (!query || haystack.includes(query))
-      && (taskStatusFilter.value === 'all' || (taskStatusFilter.value === 'active' ? ['queued', 'running'].includes(task.status) : task.status === taskStatusFilter.value && !isRetryResolved(task.retry_resolved)))
+      && (taskStatusFilter.value === 'all' || (taskStatusFilter.value === 'active' ? ['queued', 'running'].includes(task.status || '') : task.status === taskStatusFilter.value && !isRetryResolved(task.retry_resolved)))
       && (!taskDriverFilter.value || task.driver === taskDriverFilter.value)
   })
 })
@@ -129,7 +129,7 @@ function handleCopyCommand(command: string) {
   void copyTaskSecret(kind, selectedTasks.value, labels[kind])
 }
 const selectedTask = computed(() => visibleTasks.value.find(task => task.task_id === selectedTaskId.value))
-function mergeConfig(value: any, forceQuickRun = false) {
+function mergeConfig(value: FreeConfig, forceQuickRun = false) {
   if (!value || typeof value !== 'object') return
   Object.assign(config, value)
   // Do not let removed legacy fields re-enter the reactive draft when loading
@@ -186,8 +186,8 @@ async function refresh() {
     if (logDialogOpen.value && selectedTaskId.value) {
       await logDialog.value?.refresh({ silent: true })
     }
-  } catch (error: any) {
-    if (!loading.value) ElMessage.error(error?.message || 'Free 状态刷新失败')
+  } catch (error) {
+    if (!loading.value) ElMessage.error(errorMessage(error) || 'Free 状态刷新失败')
   }
 }
 
@@ -197,8 +197,8 @@ async function load() {
     const result = await getFreeConfig()
     mergeConfig(result.config, true)
     state.value = result.state || state.value
-  } catch (error: any) {
-    ElMessage.error(error?.message || 'Free 配置加载失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || 'Free 配置加载失败')
   } finally {
     loading.value = false
   }
@@ -210,8 +210,8 @@ async function preflight() {
     const result = await preflightFree(quickRunConfig())
     state.value = result.state || state.value
     ElMessage.success(`预检通过：${Number(result.result?.target_count || 0)} 个邮箱，健康池 ${Number(result.result?.proxies || 0)} 个代理`)
-  } catch (error: any) {
-    ElMessage.error(error?.message || 'Free 预检失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || 'Free 预检失败')
   } finally {
     busy.value = ''
   }
@@ -229,8 +229,8 @@ async function start() {
     quickRunDirty.value = false
     state.value = result.state || state.value
     ElMessage.success('Free 注册已启动')
-  } catch (error: any) {
-    ElMessage.error(error?.message || 'Free 注册启动失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || 'Free 注册启动失败')
   } finally {
     busy.value = ''
   }
@@ -242,8 +242,8 @@ async function stop() {
     const result = await stopFree()
     state.value = result.state || state.value
     ElMessage.success('已请求停止 Free 注册')
-  } catch (error: any) {
-    ElMessage.error(error?.message || '停止 Free 注册失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || '停止 Free 注册失败')
   } finally {
     busy.value = ''
   }
@@ -256,14 +256,14 @@ async function closeDebugWindows() {
     const result = await closeFreeCamoufoxDebug()
     state.value = result.state || state.value
     ElMessage.success(`已关闭 ${Number(result.closed_contexts || 0)} 个调试窗口`)
-  } catch (error: any) {
-    ElMessage.error(error?.message || '关闭 Camoufox 调试窗口失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || '关闭 Camoufox 调试窗口失败')
   } finally {
     busy.value = ''
   }
 }
 
-function openTaskLog(task: any) {
+function openTaskLog(task: FreeTaskRow) {
   selectedTaskId.value = String(task?.task_id || '')
   logDialogOpen.value = true
 }
@@ -273,7 +273,7 @@ function openIncidentCenter(value: string) {
   if (incidentId) emit('navigate', `/logs?incident_id=${encodeURIComponent(incidentId)}`)
 }
 
-function openTaskIncident(task: any) {
+function openTaskIncident(task: FreeTaskRow) {
   const incidentId = taskIncidentId(task)
   if (!incidentId) {
     ElMessage.info('该任务尚未生成故障日志')
@@ -282,7 +282,7 @@ function openTaskIncident(task: any) {
   openIncidentCenter(incidentId)
 }
 
-async function rerunTaskAction(task: any) {
+async function rerunTaskAction(task: FreeTaskRow) {
   if (isHistoricalDriver(task)) {
     ElMessage.info('历史链路任务仅支持查看，不能重跑')
     return
@@ -294,7 +294,7 @@ async function rerunTaskAction(task: any) {
   await rerunTask(task)
 }
 
-async function retryTwofaTaskAction(task: any) {
+async function retryTwofaTaskAction(task: FreeTaskRow) {
   if (isHistoricalDriver(task)) {
     ElMessage.info('历史链路任务不支持 2FA 重试')
     return
@@ -306,7 +306,7 @@ async function retryTwofaTaskAction(task: any) {
   await retryTwofaTask(task)
 }
 
-async function retryPasswordTaskAction(task: any) {
+async function retryPasswordTaskAction(task: FreeTaskRow) {
   if (!canRetryPassword(task)) {
     ElMessage.info('该任务当前没有可重试的密码设置节点')
     return
@@ -314,7 +314,7 @@ async function retryPasswordTaskAction(task: any) {
   await retryPasswordTask(task)
 }
 
-async function handleTaskAction(command: string, task: any) {
+async function handleTaskAction(command: string, task: FreeTaskRow) {
   if (command === 'details') return openTaskLog(task)
   if (command === 'mailbox_url') return openTaskMailboxUrl(task)
   if (command === 'latest_code') return copyTaskLatestCode(task)
@@ -325,7 +325,7 @@ async function handleTaskAction(command: string, task: any) {
   if (command === 'password') return retryPasswordTaskAction(task)
 }
 
-function handleTaskSelection(rows: any[]) {
+function handleTaskSelection(rows: FreeTaskRow[]) {
   selectedTasks.value = rows
 }
 
@@ -353,8 +353,8 @@ async function deleteSelectedTasks() {
     }
     await refresh()
     ElMessage.success(`已删除 ${Number(result.deleted || 0)} 条 Free 任务记录`)
-  } catch (error: any) {
-    ElMessage.error(error?.message || 'Free 任务记录删除失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || 'Free 任务记录删除失败')
   } finally {
     taskTable.value?.clearSelection()
     selectedTasks.value = []
@@ -362,7 +362,7 @@ async function deleteSelectedTasks() {
   }
 }
 
-async function rerunTask(task: any) {
+async function rerunTask(task: FreeTaskRow) {
   const taskId = String(task?.task_id || '')
   if (isHistoricalDriver(task) || !taskId || !['failed', 'stopped', 'pending_rerun'].includes(String(task?.status || ''))) return
   try {
@@ -380,14 +380,14 @@ async function rerunTask(task: any) {
     state.value = result.state || state.value
     ElMessage.success(`已加入重试队列 ${result.task?.task_id || result.batch_id || ''}`)
     await refresh()
-  } catch (error: any) {
-    ElMessage.error(error?.message || 'Free 账号重跑失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || 'Free 账号重跑失败')
   } finally {
     loading.value = false
   }
 }
 
-async function retryTwofaTask(task: any) {
+async function retryTwofaTask(task: FreeTaskRow) {
   const taskId = String(task?.task_id || task?.row_id || '')
   if (isHistoricalDriver(task) || !taskId || String(task?.status || '') !== 'twofa_pending' || loading.value) return
   loading.value = true
@@ -396,14 +396,14 @@ async function retryTwofaTask(task: any) {
     if (result.state) state.value = result.state as FreeState
     ElMessage.info(`已加入 2FA 重试队列 ${result.task?.task_id || ''}`)
     await refresh()
-  } catch (error: any) {
-    ElMessage.error(error?.message || '2FA 重试失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || '2FA 重试失败')
   } finally {
     loading.value = false
   }
 }
 
-async function retryPasswordTask(task: any) {
+async function retryPasswordTask(task: FreeTaskRow) {
   const taskId = String(task?.task_id || task?.row_id || '')
   if (!canRetryPassword(task) || !taskId || loading.value) return
   loading.value = true
@@ -412,8 +412,8 @@ async function retryPasswordTask(task: any) {
     if (result.state) state.value = result.state
     ElMessage.info(`已加入密码重试队列 ${result.task?.task_id || ''}`)
     await refresh()
-  } catch (error: any) {
-    ElMessage.error(error?.message || '密码设置重试失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || '密码设置重试失败')
   } finally {
     loading.value = false
   }
@@ -434,12 +434,12 @@ async function batchRetryCurrentNode() {
     taskTable.value?.clearSelection()
     ElMessage.success(`已接受 ${Number(result.accepted_count || 0)} 条，跳过 ${Number(result.skipped_count || 0)} 条，拒绝 ${Number(result.rejected_count || 0)} 条`)
     await refresh()
-  } catch (error: any) {
-    ElMessage.error(error?.message || '批量重试失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || '批量重试失败')
   }
 }
 
-async function refreshPlan(task: any) {
+async function refreshPlan(task: FreeTaskRow) {
   const rowId = String(task?.row_id || '')
   if (!rowId || !task?.result?.has_access_token || String(task?.result?.plan_check_status || '').toLowerCase() !== 'failed' || planBusy.value) return
   planBusy.value = String(task.task_id || rowId)
@@ -447,26 +447,26 @@ async function refreshPlan(task: any) {
     await startFreePlanCheck([rowId])
     ElMessage.info('套餐查询已加入队列')
     await refresh()
-  } catch (error: any) {
-    ElMessage.error(error?.message || '重新查询套餐失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || '重新查询套餐失败')
   } finally {
     planBusy.value = ''
   }
 }
 
-function taskFailureCause(task: any) {
+function taskFailureCause(task: FreeTaskRow) {
   return freeFailureCause(task?.failure, { retryResolved: task?.retry_resolved })
 }
 
-function taskIsAccountBanned(task: any) {
+function taskIsAccountBanned(task: FreeTaskRow) {
   return isCurrentAccountBanned(task?.status, task?.failure, task?.retry_resolved)
 }
 
-function taskFailureDetails(task: any) {
+function taskFailureDetails(task: FreeTaskRow) {
   return freeFailureDetails(task?.failure)
 }
 
-function taskFailureNode(task: any) {
+function taskFailureNode(task: FreeTaskRow) {
   return freeFailureNodeIdentity(task?.failure)
 }
 
@@ -524,7 +524,7 @@ onMounted(async () => {
               <el-button size="small" :icon="Refresh" @click="refresh" aria-label="刷新任务">刷新任务</el-button>
             </div>
           </div>
-          <el-table ref="taskTable" :data="filteredTasks" row-key="task_id" height="100%" size="small" border :row-class-name="taskRowClass" @header-dragend="(newWidth: number, oldWidth: number, column: any) => onTaskHeaderDragend(newWidth, oldWidth, column)" @selection-change="handleTaskSelection">
+          <el-table ref="taskTable" :data="filteredTasks" row-key="task_id" height="100%" size="small" border :row-class-name="taskRowClass" @header-dragend="(newWidth: number, oldWidth: number, column: DragColumn) => onTaskHeaderDragend(newWidth, oldWidth, column)" @selection-change="handleTaskSelection">
             <el-table-column type="selection" width="42" reserve-selection />
             <el-table-column label="账号" :min-width="taskColWidth('账号', 280)" show-overflow-tooltip>
               <template #default="{ row }">

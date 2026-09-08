@@ -1,8 +1,9 @@
 <script setup lang="ts">
-const props = defineProps<{ modelValue: any }>()
-const emit = defineEmits<{ 'update:modelValue': [any] }>()
+import type { AppConfigForm } from '../utils/appConfigNormalize'
+const props = defineProps<{ modelValue: AppConfigForm }>()
+const emit = defineEmits<{ 'update:modelValue': [AppConfigForm] }>()
 
-function update(key: string, value: any) {
+function update(key: string, value: unknown) {
   emit('update:modelValue', { ...props.modelValue, [key]: value })
 }
 

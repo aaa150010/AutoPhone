@@ -1,6 +1,7 @@
 /** Shared clipboard helpers with consistent user feedback. */
 
 import { ElMessage } from 'element-plus'
+import { errorMessage } from './errorMessage'
 
 /** Copy plain text, reporting success/failure through ElMessage. */
 export async function copyText(value: string, successMessage = '已复制'): Promise<boolean> {
@@ -12,8 +13,8 @@ export async function copyText(value: string, successMessage = '已复制'): Pro
     await navigator.clipboard.writeText(value)
     ElMessage.success(successMessage)
     return true
-  } catch (error: any) {
-    ElMessage.error(error?.message || '复制失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || '复制失败')
     return false
   }
 }

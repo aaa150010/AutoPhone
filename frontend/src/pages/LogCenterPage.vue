@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { errorMessage } from '../utils/errorMessage'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CopyDocument, Delete, Download, Document, Refresh, Search, Warning } from '@element-plus/icons-vue'
 import {
@@ -21,7 +22,7 @@ import {
   isSuccessfulDiagnosticOutcome,
 } from '../utils/freeFailure'
 import { copyText as copyTextToClipboard } from '../utils/clipboard'
-import { formatDateTimeOrDash, parseTimestamp } from '../utils/datetime'
+import { formatDateTimeOrDash } from '../utils/datetime'
 
 const props = defineProps<{ locationKey?: string }>()
 
@@ -62,11 +63,11 @@ const chainOptions = [
 ]
 const filteredCount = computed(() => incidents.value.length)
 
-function outcomeLabel(value: any, status?: any) {
+function outcomeLabel(value: unknown, status?: unknown) {
   if (String(status || '').toLowerCase() === 'open' && !['error', 'failed', 'failure'].includes(String(value || '').toLowerCase())) return '运行中'
   return ({ error: '失败', failed: '失败', failure: '失败', stopped: '已停止', partial: '部分成功', partial_success: '部分成功', warn: '警告', success: '成功', info: '信息' } as Record<string, string>)[String(value || '').toLowerCase()] || String(value || '未知')
 }
-function outcomeType(value: any, status?: any) {
+function outcomeType(value: unknown, status?: unknown) {
   const normalized = String(value || '').toLowerCase()
   if (String(status || '').toLowerCase() === 'open') return 'warning'
   if (['error', 'failed', 'failure'].includes(normalized)) return 'danger'
@@ -75,10 +76,10 @@ function outcomeType(value: any, status?: any) {
   if (normalized === 'warn' || normalized === 'stopped') return 'warning'
   return 'info'
 }
-function chainLabel(value: any) {
+function chainLabel(value: unknown) {
   return ({ ordinary: '普通流程', free: 'Free', network: '网络' } as Record<string, string>)[String(value || '')] || String(value || '未知链路')
 }
-function driverLabel(value: any) {
+function driverLabel(value: unknown) {
   const driver = String(value || '').trim().toLowerCase()
   if (driver === 'protocol') return '协议'
   if (driver === 'camoufox') return 'Camoufox'
@@ -112,7 +113,7 @@ function eventNodeLabel(event: DiagnosticEvent) {
 function incidentNodeLabel(row: DiagnosticIncident) {
   return diagnosticIncidentNodeLabel(row)
 }
-function formatTime(value: any) {
+function formatTime(value: unknown) {
   return formatDateTimeOrDash(value)
 }
 function formatDuration(event: DiagnosticEvent) {
@@ -134,22 +135,22 @@ async function runSearch() {
     const result = await searchDiagnostics(payload)
     incidents.value = Array.isArray(result.results) ? result.results : []
     selected.value = []
-  } catch (error: any) {
-    searchError.value = error?.message || '日志检索失败'
-    ElMessage.error(error?.message || '日志检索失败')
+  } catch (error) {
+    searchError.value = errorMessage(error) || '日志检索失败'
+    ElMessage.error(errorMessage(error) || '日志检索失败')
   } finally {
     loading.value = false
   }
 }
 async function refreshHealth() {
   healthLoading.value = true
-  try { health.value = (await getDiagnosticsHealth()).health || {} } catch (error: any) { ElMessage.error(error?.message || '日志中心状态读取失败') } finally { healthLoading.value = false }
+  try { health.value = (await getDiagnosticsHealth()).health || {} } catch (error) { ElMessage.error(errorMessage(error) || '日志中心状态读取失败') } finally { healthLoading.value = false }
 }
 async function openIncident(row: DiagnosticIncident) {
   try {
     detail.value = (await getDiagnosticIncident(row.incident_id)).incident
     detailOpen.value = true
-  } catch (error: any) { ElMessage.error(error?.message || '日志详情读取失败') }
+  } catch (error) { ElMessage.error(errorMessage(error) || '日志详情读取失败') }
 }
 function copyText(value: string, success = '已复制') {
   void copyTextToClipboard(value, success)
@@ -159,8 +160,8 @@ async function copyGpt(row: DiagnosticIncident) {
   try {
     const result = await exportDiagnostics([row.incident_id], 'markdown')
     await copyText(result.content, 'GPT 脱敏诊断已复制')
-  } catch (error: any) {
-    ElMessage.error(error?.message || 'GPT 诊断复制失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || 'GPT 诊断复制失败')
   }
 }
 async function downloadJson(row: DiagnosticIncident) {
@@ -173,8 +174,8 @@ async function downloadJson(row: DiagnosticIncident) {
     anchor.download = `${row.incident_id}.json`
     anchor.click()
     URL.revokeObjectURL(url)
-  } catch (error: any) {
-    ElMessage.error(error?.message || 'JSON 下载失败')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || 'JSON 下载失败')
   }
 }
 async function deleteSelected() {
@@ -186,8 +187,8 @@ async function deleteSelected() {
     ElMessage.success('诊断日志已删除')
     await runSearch()
     await refreshHealth()
-  } catch (error: any) {
-    if (!['cancel', 'close', '取消'].includes(String(error))) ElMessage.error(error?.message || '诊断日志删除失败')
+  } catch (error) {
+    if (!['cancel', 'close', '取消'].includes(String(error))) ElMessage.error(errorMessage(error) || '诊断日志删除失败')
   }
 }
 async function clearAll() {
@@ -197,8 +198,8 @@ async function clearAll() {
     ElMessage.success(`已清空 ${result.deleted || 0} 条诊断日志`)
     await runSearch()
     await refreshHealth()
-  } catch (error: any) {
-    if (!['cancel', 'close', '取消'].includes(String(error))) ElMessage.error(error?.message || '清空诊断日志失败')
+  } catch (error) {
+    if (!['cancel', 'close', '取消'].includes(String(error))) ElMessage.error(errorMessage(error) || '清空诊断日志失败')
   }
 }
 function selectRows(rows: DiagnosticIncident[]) { selected.value = rows }

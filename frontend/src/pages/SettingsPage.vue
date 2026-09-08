@@ -7,6 +7,7 @@ import RunStartDialog from '../components/RunStartDialog.vue'
 import SettingsForm from '../components/SettingsForm.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import { useAppController } from '../composables/useAppController'
+import { errorMessage } from '../utils/errorMessage'
 
 const emit = defineEmits<{ navigate: [string] }>()
 const props = defineProps<{ initialAnchor?: string }>()
@@ -17,8 +18,8 @@ const freeDirty = ref(false)
 const savingAll = ref(false)
 const dirty = computed(() => controller.dirty.value || freeDirty.value)
 
-function messageFor(error: any) {
-  return error?.message || String(error || '操作失败')
+function messageFor(error: unknown) {
+  return errorMessage(error) || '操作失败'
 }
 
 async function save() {
@@ -69,7 +70,7 @@ async function stop() {
   }
 }
 
-async function importConfig(config: any) {
+async function importConfig(config: unknown) {
   try {
     await controller.importConfig(config)
     ElMessage.success('配置已导入并应用')

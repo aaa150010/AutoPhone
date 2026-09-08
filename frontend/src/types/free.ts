@@ -6,7 +6,7 @@ these names, so existing ``from '../api/client'`` imports keep working; new
 code can import from ``types/free`` directly.
 */
 
-import type { TaskFailure } from './api'
+import type { ManualVerificationRequest, TaskFailure, TaskProgress, TaskTiming } from './api'
 
 export interface FreeConfig {
   version?: number
@@ -85,7 +85,7 @@ export interface FreeState {
   running: boolean
   batch_id?: string
   driver?: 'protocol' | 'camoufox' | string
-  tasks?: any[]
+  tasks?: FreeTaskRow[]
   pool?: { total?: number; available?: number; proxies?: number }
   scheduler?: { concurrency?: number; active_slots?: number; queued_slots?: number }
   camoufox_debug?: FreeCamoufoxDebugState
@@ -286,6 +286,128 @@ export interface FreeMailboxRow {
   retry_resolved?: boolean | string
   error?: string
   failure?: TaskFailure | null
+  profile_summary?: string
+  account_flow?: string
+  has_active_subscription?: boolean
+  eligible_campaign_id?: string
+  plan_checked_at?: number | string
+  plan_error_code?: string
+  plan_http_status?: number | null
+  rebind_email?: string
+  rebind_email_masked?: string
+  rebind_task_id?: string
+  rebind_status?: string
+  rebind_plan_type?: string
+  rebind_plus_trial_eligible?: boolean
+  display_index?: number
+  progress?: Record<string, unknown> | null
+}
+
+export interface FreeTaskRow {
+  task_id?: string
+  incident_id?: string
+  slot_id?: string
+  batch_id?: string
+  batch_started_at?: number
+  run_mode?: string
+  driver?: 'protocol' | 'camoufox' | string
+  row_id?: string
+  stage?: string
+  stage_label?: string
+  proxy_fingerprint?: string
+  proxy_id?: string
+  proxy_masked?: string
+  proxy_scheme?: string
+  proxy_effective_scheme?: string
+  proxy_attempts?: Array<Record<string, unknown>>
+  proxy_country?: string
+  proxy_group?: string
+  retry_of?: string
+  retry_task_id?: string
+  retry_status?: string
+  retry_attempt?: number
+  retry_resolved?: boolean | string
+  retry_updated_at?: number
+  ordinal?: number
+  slot_index?: number
+  concurrency_limit?: number
+  status?: string
+  cleanup_status?: string
+  created_at?: number
+  updated_at?: number
+  email?: string
+  email_masked?: string
+  account?: string
+  subject_ref_fingerprint?: string
+  has_mailbox_url?: boolean
+  mailbox_verification?: {
+    phase: 'automatic' | 'manual' | string
+    stage?: string
+    opened_at?: number
+    deadline_at?: number
+  } | null
+  manual_verification?: ManualVerificationRequest | null
+  progress?: TaskProgress | null
+  timing?: TaskTiming | null
+  result?: {
+    account_flow?: string
+    plan_type?: string
+    subscription_plan?: string
+    eligible_campaign_id?: string
+    plan_check_task_id?: string
+    plan_error_code?: string
+    plan_check_status?: string
+    password_status?: string
+    twofa_status?: string
+    twofa_error?: string
+    plus_trial_eligible?: boolean
+    has_active_subscription?: boolean
+    password_set_after_registration?: boolean
+    has_access_token?: boolean
+    has_password?: boolean
+    has_totp?: boolean
+    has_credential?: boolean
+    totp_secret?: string | null
+    plan_checked_at?: number | null
+    plan_retry_after_until?: number | null
+    plan_http_status?: number | null
+    driver?: string
+    expected_exit_ip?: string
+    sms_cost_usd?: number | null
+    sms_cost_cny?: number | null
+    sms_exchange_rate?: number | null
+    sms_exchange_date?: string
+    timing?: TaskTiming
+    run_mode?: string
+    batch_id?: string
+    batch_started_at?: number
+  }
+  error?: string
+  failure?: TaskFailure | null
+}
+
+export interface RemailProjectProduct {
+  id?: number | string
+  type?: string
+  suffix?: string
+  suffixes?: Array<{ suffix?: string; purchaseAvailable?: number | string; totalAvailable?: number | string }>
+  purchaseEnabled?: boolean
+  purchaseAvailable?: number | string
+  totalAvailable?: number | string
+  purchasePrice?: number | string
+  priceMultiplier?: number | string
+}
+
+export interface RemailProject {
+  id?: number | string
+  name?: string
+  products?: RemailProjectProduct[]
+}
+
+export interface RemailWallet {
+  consumerBalance?: number | string
+  balance?: number | string
+  amount?: number | string
 }
 
 export interface RemailOrder {
@@ -364,6 +486,9 @@ export interface FreeProxyPreflightRow {
 export interface FreeProxyPreflightResult {
   proxies: number
   rows: FreeProxyPreflightRow[]
+  target_count?: number
+  mailboxes?: number
+  driver?: string
   failure_count?: number
   health_write_failures?: number
   incident_id?: string

@@ -16,7 +16,7 @@ const emit = defineEmits<{ accepted: [] }>()
 const code = ref('')
 const submitting = ref(false)
 const acceptedRequestKey = ref('')
-const inputRef = ref<any>()
+const inputRef = ref<HTMLInputElement | null>(null)
 
 const requestKey = computed(() => manualVerificationRequestKey(props.taskId, props.request))
 

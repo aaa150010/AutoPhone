@@ -38,11 +38,20 @@ export function normalizeSmsKeyRows(value: unknown[]): string[] {
   return keys
 }
 
-export function normalizeSmsProviderPools(value: any, legacy: any = {}): SmsProviderPool[] {
+interface RawSmsPoolRow {
+  provider?: unknown
+  api_keys?: unknown
+  api_key?: unknown
+  enabled?: unknown
+  service?: unknown
+}
+
+export function normalizeSmsProviderPools(value: unknown, legacy: unknown = {}): SmsProviderPool[] {
   const rows = Array.isArray(value) ? value : []
   const byProvider = new Map<string, SmsProviderPool>()
-  rows.forEach((row: any) => {
-    if (!row || typeof row !== 'object') return
+  rows.forEach((input: unknown) => {
+    if (!input || typeof input !== 'object') return
+    const row = input as RawSmsPoolRow
     const providerName = String(row.provider || '').trim().toLowerCase()
     const provider = smsProviderAliases[providerName] || providerName
     if (!provider) return
@@ -66,11 +75,12 @@ export function normalizeSmsProviderPools(value: any, legacy: any = {}): SmsProv
   const normalized = [...byProvider.values()]
   if (normalized.length) return normalized
 
-  const legacyProviderName = String(legacy.sms_provider || 'smsbower').trim().toLowerCase()
+  const legacyRecord = (legacy && typeof legacy === 'object' ? legacy : {}) as Record<string, unknown>
+  const legacyProviderName = String(legacyRecord.sms_provider || 'smsbower').trim().toLowerCase()
   const provider = smsProviderAliases[legacyProviderName] || legacyProviderName || 'smsbower'
-  const rawKeys = Array.isArray(legacy.sms_api_keys)
-    ? legacy.sms_api_keys
-    : [legacy.sms_api_key || '']
+  const rawKeys = Array.isArray(legacyRecord.sms_api_keys)
+    ? legacyRecord.sms_api_keys
+    : [legacyRecord.sms_api_key || '']
   const keys = normalizeSmsKeyRows(rawKeys)
   return [{
     provider,
@@ -87,12 +97,13 @@ export function legacySmsKeys(pools: SmsProviderPool[]) {
   return normalizeSmsKeyRows(primary?.api_keys || [])
 }
 
-export function mergeRevealedSmsPools(current: any, revealed: any): SmsProviderPool[] {
+export function mergeRevealedSmsPools(current: unknown, revealed: unknown): SmsProviderPool[] {
   const secretPools = normalizeSmsProviderPools(revealed)
   const secretByProvider = new Map(secretPools.map(pool => [pool.provider, pool]))
   const rows = Array.isArray(current) ? current : []
   if (!rows.length) return secretPools
-  return rows.map((raw: any) => {
+  return rows.map((input: unknown) => {
+    const raw = (input && typeof input === 'object' ? input : {}) as RawSmsPoolRow
     const providerName = String(raw?.provider || '').trim().toLowerCase()
     const provider = smsProviderAliases[providerName] || providerName
     const secret = secretByProvider.get(provider)
@@ -111,7 +122,7 @@ export function mergeRevealedSmsPools(current: any, revealed: any): SmsProviderP
   }).filter(pool => pool.provider)
 }
 
-export function smsProviderKeyCounts(value: any) {
+export function smsProviderKeyCounts(value: unknown) {
   return Object.fromEntries(normalizeSmsProviderPools(value).map(pool => [
     pool.provider,
     pool.api_keys.filter(key => String(key || '').trim()).length,

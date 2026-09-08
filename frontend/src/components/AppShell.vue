@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
+import { onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { Document, Expand, Fold, Link, MessageBox, Monitor, Scissor, Setting, ShoppingCart, Tickets, Wallet } from '@element-plus/icons-vue'

@@ -1,7 +1,8 @@
 import { computed, ref } from 'vue'
+import { errorMessage } from '../utils/errorMessage'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ApiError, startMailboxBatchOperation } from '../api/client'
-import type {
+import type { MailboxMutationResult,
   MailboxBatchOperation,
   MailboxOperationKind,
   MailboxPayload,
@@ -106,10 +107,10 @@ export function useMailboxBatchOperations(options: {
   }
 
   function sync(
-    payload: MailboxPayload | { mailboxes?: MailboxPayload } | any,
+    payload: MailboxMutationResult | MailboxPayload,
     authoritativeJobId = '',
   ) {
-    const source = payload?.mailboxes || payload
+    const source = ('mailboxes' in payload && payload.mailboxes) ? payload.mailboxes : payload
     if (!source || !Object.prototype.hasOwnProperty.call(source, 'operation')) return
     const next = source.operation
     const normalized = next && typeof next === 'object' ? next : null
@@ -153,11 +154,11 @@ export function useMailboxBatchOperations(options: {
       sync(result, result.operation.job_id)
       options.onStarted?.()
       return true
-    } catch (error: any) {
+    } catch (error) {
       if (error instanceof ApiError && error.payload?.operation) {
         sync(error.payload, error.payload.operation.job_id)
       }
-      ElMessage.error(error?.message || (kind === 'quota'
+      ElMessage.error(errorMessage(error) || (kind === 'quota'
         ? '批量查询 OpenAI 额度失败'
         : '本机 OpenAI 连接测试失败'))
       return false
