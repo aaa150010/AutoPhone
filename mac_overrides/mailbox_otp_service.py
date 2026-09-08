@@ -51,6 +51,7 @@ DIAGNOSTIC_LABELS = {
     "mailbox_only_baseline_code": "邮箱当前只有本次请求前的旧验证码",
     "mailbox_baseline_code_fallback": "轮询达到兜底节点后，已尝试最近的 OpenAI 基线验证码",
     "mailbox_final_baseline_code_fallback": "邮箱等待超时后，已最后尝试一次最新的 OpenAI 基线验证码",
+    "mailbox_last_resort_code": "最终超时兜底：使用邮箱中可获取到的最新验证码",
     "mailbox_candidate_too_old": "识别到的验证码邮件早于本次请求",
     "mailbox_detail_request_failed": "部分邮件详情读取失败，未识别到新验证码",
     "mailbox_detail_refresh_pending": "仍有缓存邮件详情等待下一轮刷新",
@@ -988,6 +989,17 @@ class MailboxOtpService:
                 self._log_diagnostic(force=True)
                 self.state.finish_request()
                 return code
+        last_resort = self._last_resort_code(
+            stage_key,
+            used_codes,
+            used_identities,
+            code_identities,
+            successful_scan=successful_scan,
+        )
+        if last_resort is not None:
+            self._log_diagnostic(force=True)
+            self.state.finish_request()
+            return last_resort
         diagnostic = self.diagnostic()
         self._record_parser_sample(str(diagnostic.get("reason") or "mailbox_code_timeout"), diagnostic)
         self._log_diagnostic(force=True)
@@ -1008,6 +1020,75 @@ class MailboxOtpService:
             retryable=True,
             diagnostic=diagnostic,
         )
+
+    def _last_resort_code(
+        self,
+        stage_key: str,
+        used_codes: set[str],
+        used_identities: set[str],
+        code_identities: dict[str, set[str]],
+        *,
+        successful_scan: bool,
+    ) -> str | None:
+        """Final timeout fallback: submit the newest readable code.
+
+        All normal strategies (baseline exclusion, time filtering, OpenAI
+        pattern matching, bounded baseline fallback) have failed by the time
+        this runs.  Rather than discarding a readable code outright, submit
+        the newest code-bearing message; a rejected code is handled by the
+        caller's existing resend/next-round logic.  2FA enrollment never uses
+        this fallback so a stale authorization code can not reach re-auth.
+        """
+        if stage_key == "free_twofa_enroll":
+            return None
+        if not successful_scan:
+            return None
+        scan = self.state.last_scan
+        if scan is None:
+            return None
+        candidates = [
+            message
+            for message in scan.messages
+            if str(message.code or "").strip()
+        ]
+        if not candidates:
+            return None
+
+        def _message_order(message: Any) -> tuple[float, int]:
+            timestamp = message.received_timestamp
+            if not isinstance(timestamp, (int, float)) or isinstance(timestamp, bool):
+                timestamp = 0.0
+            return (float(timestamp), int(getattr(message, "order", 0) or 0))
+
+        candidates.sort(key=_message_order, reverse=True)
+        started = self.monotonic_fn()
+        for message in candidates:
+            code = str(message.code or "").strip()
+            identity = str(message.identity or "").strip()
+            is_new_message = bool(identity and identity not in used_identities)
+            if code in used_codes and not is_new_message:
+                continue
+            used_codes.add(code)
+            used_identities.add(identity) if identity else None
+            code_identities.setdefault(code, set()).add(identity or "__value__")
+            self._last_returned_by_stage[stage_key] = (code, identity)
+            self._timing(
+                "mailbox_last_resort_code",
+                (self.monotonic_fn() - started) * 1000.0,
+                "success",
+            )
+            self._log(
+                f"[邮箱验证码兜底/{self.current_stage}] 等待超时且常规策略均未取到新验证码，"
+                "使用邮箱中可获取到的最新验证码兜底提交",
+                "warn",
+            )
+            return code
+        self._timing(
+            "mailbox_last_resort_code",
+            (self.monotonic_fn() - started) * 1000.0,
+            "exhausted",
+        )
+        return None
 
     def close(self) -> None:
         if self.transport is not None:

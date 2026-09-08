@@ -818,6 +818,98 @@ class MailboxOtpServiceTests(unittest.TestCase):
         self.assertEqual(diagnostic["request_attempts"], 0)
         service.close()
 
+    def _timeout_service_with_old_code_message(self, stage_code: str) -> MailboxOtpService:
+        clock = _Clock()
+        # The only message predates the request far beyond the 600s baseline
+        # fallback window, so every existing strategy rejects it and the wait
+        # reaches the final timeout with the code still readable in last_scan.
+        payload = json.dumps({
+            "messages": [{
+                "id": "aged-code",
+                "sender": "noreply@openai.com",
+                "subject": "OpenAI verification code",
+                "receivedAt": 100.0,
+                "body": "OpenAI verification code 246810",
+            }],
+        }).encode()
+
+        def fetch(url: str) -> MailboxResponse:
+            return MailboxResponse(url, payload, "application/json", 200)
+
+        return MailboxOtpService(
+            "https://mail.example.test/inbox",
+            timeout_seconds=4,
+            poll_interval_seconds=1,
+            fetcher=fetch,
+            sleep_fn=clock.sleep,
+            now_fn=clock.time,
+            monotonic_fn=clock.monotonic,
+        )
+
+    def test_timeout_last_resort_returns_readable_code(self):
+        service = self._timeout_service_with_old_code_message("free_email_otp_wait")
+        service.prepare("free_email_otp_wait", force_snapshot=True)
+        self.assertEqual(service.wait_code(stage_code="free_email_otp_wait"), "246810")
+        self.assertIn("246810", service.used_codes_by_stage["free_email_otp_wait"])
+        service.close()
+
+    def test_timeout_last_resort_never_applies_to_twofa_enroll(self):
+        service = self._timeout_service_with_old_code_message("free_twofa_enroll")
+        service.prepare("free_twofa_enroll", force_snapshot=True)
+        with self.assertRaises(MailboxOtpError) as raised:
+            service.wait_code(stage_code="free_twofa_enroll")
+        self.assertEqual(raised.exception.code, "mailbox_code_timeout")
+        self.assertEqual(service.used_codes_by_stage.get("free_twofa_enroll", set()), set())
+        service.close()
+
+    def test_timeout_last_resort_skips_fully_used_messages(self):
+        clock = _Clock()
+        payload = json.dumps({
+            "messages": [{
+                "id": "aged-code",
+                "sender": "noreply@openai.com",
+                "subject": "OpenAI verification code",
+                "receivedAt": 100.0,
+                "body": "OpenAI verification code 246810",
+            }],
+        }).encode()
+        service = MailboxOtpService(
+            "https://mail.example.test/inbox",
+            timeout_seconds=4,
+            poll_interval_seconds=1,
+            fetcher=lambda url: MailboxResponse(url, payload, "application/json", 200),
+            sleep_fn=clock.sleep,
+            now_fn=clock.time,
+            monotonic_fn=clock.monotonic,
+        )
+        stage_key = "free_email_otp_wait"
+        service.prepare(stage_key, force_snapshot=True)
+        service.used_codes_by_stage.setdefault(stage_key, set()).add("246810")
+        service.used_identities_by_stage.setdefault(stage_key, set()).update(
+            message.identity for message in service.state.last_scan.messages
+        )
+        with self.assertRaises(MailboxOtpError) as raised:
+            service.wait_code(stage_code=stage_key)
+        self.assertEqual(raised.exception.code, "mailbox_code_timeout")
+        service.close()
+
+    def test_timeout_last_resort_keeps_timeout_without_any_code(self):
+        clock = _Clock()
+        service = MailboxOtpService(
+            "https://mail.example.test/inbox",
+            timeout_seconds=4,
+            poll_interval_seconds=1,
+            fetcher=lambda url: MailboxResponse(url, b'{"messages":[]}', "application/json", 200),
+            sleep_fn=clock.sleep,
+            now_fn=clock.time,
+            monotonic_fn=clock.monotonic,
+        )
+        service.prepare("free_email_otp_wait", force_snapshot=True)
+        with self.assertRaises(MailboxOtpError) as raised:
+            service.wait_code(stage_code="free_email_otp_wait")
+        self.assertEqual(raised.exception.code, "mailbox_code_timeout")
+        service.close()
+
 
 if __name__ == "__main__":
     unittest.main()
