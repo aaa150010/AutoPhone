@@ -288,6 +288,167 @@ class ChatGptTotpPatchSet:
     reset_task_state: Callable[[], None]
 
 
+def _replacement_for_row(
+    raw: str,
+    line_no: int,
+    *,
+    runtime_module: Any,
+    parse_oauth_mailbox_row: Callable[[Any], tuple[str, str, str, str] | None],
+    existing_by_line: dict[int, Any],
+    state_keys: set[str],
+    compatible_key: Callable[..., str],
+) -> tuple[Any, str] | None:
+    """Build the replacement pool entry for one raw row, if any format matches."""
+    parsed_password_url = parse_mailbox_password_url_row(raw)
+    parsed_oauth = parse_oauth_mailbox_row(raw)
+    parsed_url_totp = parse_mailbox_url_totp_row(raw)
+    parsed_totp = parse_chatgpt_totp_row(raw)
+    parsed_url = parse_mailbox_url_row(raw)
+    parsed_plain = parse_plain_password_mailbox_row(raw)
+    if parsed_password_url:
+        email = parsed_password_url.email
+        password = parsed_password_url.password
+        mailbox_url = parsed_password_url.mailbox_url
+        identity = plain_password_identity(email, password)
+        entry_key = compatible_key(
+            email,
+            identity,
+            raw,
+            line_no,
+            _plain_password_legacy_rows(raw, email, password),
+        )
+        return runtime_module.PoolEntry(
+            email=email,
+            mailbox_url=mailbox_url,
+            line_no=line_no,
+            key=entry_key,
+            mailbox_type="url",
+            password=password,
+            oauth_client_id="",
+            oauth_refresh_token="",
+            source_row=raw,
+        ), identity
+    if parsed_oauth:
+        email, password, oauth_client_id, oauth_refresh_token = parsed_oauth
+        identity = f"outlook:{oauth_client_id}:{oauth_refresh_token or password}"
+        entry_key = compatible_key(email, identity, raw, line_no)
+        current = existing_by_line.get(line_no)
+        if (
+            current is not None
+            and str(getattr(current, "oauth_client_id", "") or "") == oauth_client_id
+            and str(getattr(current, "oauth_refresh_token", "") or "") == oauth_refresh_token
+            and _can_reuse_entry_key(
+                runtime_module, current, email, identity, raw, state_keys
+            )
+        ):
+            return None
+        return runtime_module.PoolEntry(
+            email=email,
+            mailbox_url="",
+            line_no=line_no,
+            key=entry_key,
+            mailbox_type="outlook_oauth",
+            password=password,
+            oauth_client_id=oauth_client_id,
+            oauth_refresh_token=oauth_refresh_token,
+            source_row=raw,
+        ), identity
+    if parsed_url_totp:
+        email, mailbox_url, totp_secret = parsed_url_totp
+        identity = f"url:{mailbox_url}:totp:{totp_secret}"
+        entry_key = compatible_key(email, identity, raw, line_no)
+        return runtime_module.PoolEntry(
+            email=email,
+            mailbox_url=mailbox_url,
+            line_no=line_no,
+            key=entry_key,
+            mailbox_type="url",
+            password="",
+            oauth_client_id="chatgpt_totp",
+            oauth_refresh_token=totp_secret,
+            source_row=raw,
+        ), identity
+    if parsed_totp:
+        email, password, totp_secret = parsed_totp
+        identity = f"outlook:chatgpt_totp:{totp_secret}"
+        entry_key = compatible_key(email, identity, raw, line_no)
+        return runtime_module.PoolEntry(
+            email=email,
+            mailbox_url="",
+            line_no=line_no,
+            key=entry_key,
+            mailbox_type="outlook_password",
+            password=password,
+            oauth_client_id="chatgpt_totp",
+            oauth_refresh_token=totp_secret,
+            source_row=raw,
+        ), identity
+    if parsed_url:
+        current = existing_by_line.get(line_no)
+        identity = f"url:{parsed_url.mailbox_url}"
+        entry_key = compatible_key(
+            parsed_url.email, identity, raw, line_no
+        )
+        if (
+            current is not None
+            and str(getattr(current, "mailbox_url", "") or "")
+            == parsed_url.mailbox_url
+            and _can_reuse_entry_key(
+                runtime_module,
+                current,
+                parsed_url.email,
+                identity,
+                raw,
+                state_keys,
+            )
+        ):
+            return None
+        return runtime_module.PoolEntry(
+            email=parsed_url.email,
+            mailbox_url=parsed_url.mailbox_url,
+            line_no=line_no,
+            key=entry_key,
+            mailbox_type="url",
+            password="",
+            oauth_client_id="",
+            oauth_refresh_token="",
+            source_row=raw,
+        ), identity
+    if parsed_plain:
+        email, password, _delimiter = parsed_plain
+        identity = plain_password_identity(email, password)
+        entry_key = compatible_key(
+            email,
+            identity,
+            raw,
+            line_no,
+            _plain_password_legacy_rows(raw, email, password),
+        )
+        current = existing_by_line.get(line_no)
+        if (
+            current is not None
+            and str(getattr(current, "email", "") or "").strip().lower() == email
+            and str(getattr(current, "password", "") or "") == password
+            and not str(getattr(current, "oauth_client_id", "") or "")
+            and _can_reuse_entry_key(
+                runtime_module, current, email, identity, raw, state_keys
+            )
+        ):
+            return None
+        return runtime_module.PoolEntry(
+            email=email,
+            mailbox_url="",
+            line_no=line_no,
+            key=entry_key,
+            mailbox_type="outlook_password",
+            password=password,
+            oauth_client_id="",
+            oauth_refresh_token="",
+            source_row=raw,
+        ), identity
+    return None
+
+
 def build_chatgpt_totp_patches(
     *,
     runtime_module: Any,
@@ -591,162 +752,17 @@ def build_chatgpt_totp_patches(
         identities: dict[int, str] = {}
         for line_no, raw in enumerate(raw_lines, start=1):
             raw = raw.strip()
-            parsed_password_url = parse_mailbox_password_url_row(raw)
-            parsed_oauth = parse_oauth_mailbox_row(raw)
-            parsed_url_totp = parse_mailbox_url_totp_row(raw)
-            parsed_totp = parse_chatgpt_totp_row(raw)
-            parsed_url = parse_mailbox_url_row(raw)
-            parsed_plain = parse_plain_password_mailbox_row(raw)
-            if parsed_password_url:
-                email = parsed_password_url.email
-                password = parsed_password_url.password
-                mailbox_url = parsed_password_url.mailbox_url
-                identity = plain_password_identity(email, password)
-                entry_key = compatible_key(
-                    email,
-                    identity,
-                    raw,
-                    line_no,
-                    _plain_password_legacy_rows(raw, email, password),
-                )
-                replacements[line_no] = runtime_module.PoolEntry(
-                    email=email,
-                    mailbox_url=mailbox_url,
-                    line_no=line_no,
-                    key=entry_key,
-                    mailbox_type="url",
-                    password=password,
-                    oauth_client_id="",
-                    oauth_refresh_token="",
-                    source_row=raw,
-                )
-                identities[line_no] = identity
-            elif parsed_oauth:
-                email, password, oauth_client_id, oauth_refresh_token = parsed_oauth
-                identity = f"outlook:{oauth_client_id}:{oauth_refresh_token or password}"
-                entry_key = compatible_key(email, identity, raw, line_no)
-                current = existing_by_line.get(line_no)
-                if (
-                    current is not None
-                    and str(getattr(current, "oauth_client_id", "") or "") == oauth_client_id
-                    and str(getattr(current, "oauth_refresh_token", "") or "") == oauth_refresh_token
-                    and _can_reuse_entry_key(
-                        runtime_module, current, email, identity, raw, state_keys
-                    )
-                ):
-                    identities[line_no] = identity
-                    continue
-                replacements[line_no] = runtime_module.PoolEntry(
-                    email=email,
-                    mailbox_url="",
-                    line_no=line_no,
-                    key=entry_key,
-                    mailbox_type="outlook_oauth",
-                    password=password,
-                    oauth_client_id=oauth_client_id,
-                    oauth_refresh_token=oauth_refresh_token,
-                    source_row=raw,
-                )
-                identities[line_no] = identity
-            elif parsed_url_totp:
-                email, mailbox_url, totp_secret = parsed_url_totp
-                identity = f"url:{mailbox_url}:totp:{totp_secret}"
-                entry_key = compatible_key(email, identity, raw, line_no)
-                replacements[line_no] = runtime_module.PoolEntry(
-                    email=email,
-                    mailbox_url=mailbox_url,
-                    line_no=line_no,
-                    key=entry_key,
-                    mailbox_type="url",
-                    password="",
-                    oauth_client_id="chatgpt_totp",
-                    oauth_refresh_token=totp_secret,
-                    source_row=raw,
-                )
-                identities[line_no] = identity
-            elif parsed_totp:
-                email, password, totp_secret = parsed_totp
-                identity = f"outlook:chatgpt_totp:{totp_secret}"
-                entry_key = compatible_key(email, identity, raw, line_no)
-                replacements[line_no] = runtime_module.PoolEntry(
-                    email=email,
-                    mailbox_url="",
-                    line_no=line_no,
-                    key=entry_key,
-                    mailbox_type="outlook_password",
-                    password=password,
-                    oauth_client_id="chatgpt_totp",
-                    oauth_refresh_token=totp_secret,
-                    source_row=raw,
-                )
-                identities[line_no] = identity
-            elif parsed_url:
-                current = existing_by_line.get(line_no)
-                identity = f"url:{parsed_url.mailbox_url}"
-                entry_key = compatible_key(
-                    parsed_url.email, identity, raw, line_no
-                )
-                if (
-                    current is not None
-                    and str(getattr(current, "mailbox_url", "") or "")
-                    == parsed_url.mailbox_url
-                    and _can_reuse_entry_key(
-                        runtime_module,
-                        current,
-                        parsed_url.email,
-                        identity,
-                        raw,
-                        state_keys,
-                    )
-                ):
-                    identities[line_no] = identity
-                    continue
-                replacements[line_no] = runtime_module.PoolEntry(
-                    email=parsed_url.email,
-                    mailbox_url=parsed_url.mailbox_url,
-                    line_no=line_no,
-                    key=entry_key,
-                    mailbox_type="url",
-                    password="",
-                    oauth_client_id="",
-                    oauth_refresh_token="",
-                    source_row=raw,
-                )
-                identities[line_no] = identity
-            elif parsed_plain:
-                email, password, _delimiter = parsed_plain
-                identity = plain_password_identity(email, password)
-                entry_key = compatible_key(
-                    email,
-                    identity,
-                    raw,
-                    line_no,
-                    _plain_password_legacy_rows(raw, email, password),
-                )
-                current = existing_by_line.get(line_no)
-                if (
-                    current is not None
-                    and str(getattr(current, "email", "") or "").strip().lower() == email
-                    and str(getattr(current, "password", "") or "") == password
-                    and not str(getattr(current, "oauth_client_id", "") or "")
-                    and _can_reuse_entry_key(
-                        runtime_module, current, email, identity, raw, state_keys
-                    )
-                ):
-                    identities[line_no] = identity
-                    continue
-                replacements[line_no] = runtime_module.PoolEntry(
-                    email=email,
-                    mailbox_url="",
-                    line_no=line_no,
-                    key=entry_key,
-                    mailbox_type="outlook_password",
-                    password=password,
-                    oauth_client_id="",
-                    oauth_refresh_token="",
-                    source_row=raw,
-                )
-                identities[line_no] = identity
+            replacement = _replacement_for_row(
+                raw,
+                line_no,
+                runtime_module=runtime_module,
+                parse_oauth_mailbox_row=parse_oauth_mailbox_row,
+                existing_by_line=existing_by_line,
+                state_keys=state_keys,
+                compatible_key=compatible_key,
+            )
+            if replacement is not None:
+                replacements[line_no], identities[line_no] = replacement
 
         replaced_lines = set(replacements)
         errors = [
