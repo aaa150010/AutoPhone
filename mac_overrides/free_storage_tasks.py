@@ -128,7 +128,10 @@ class FreeStorageTaskMixin:
                     row = db.execute("SELECT * FROM tasks WHERE task_id=?", (task,)).fetchone()
                     db.execute("COMMIT")
                 except BaseException:
-                    db.execute("ROLLBACK")
+                    try:
+                        db.execute("ROLLBACK")
+                    except sqlite3.OperationalError:
+                        pass
                     raise
         assert row is not None
         return self._task_dict(row)

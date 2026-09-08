@@ -727,7 +727,7 @@ class PublicStateRuntime:
                             candidate
                         )
                 except Exception:
-                    # A missing phone snapshot leaves the state field absent.
+                    # A missing connectivity snapshot leaves the state field absent.
                     pass
             concurrency["phone"] = self.sms_phone_gate_getter().status()
             if callable(self.phone_binding_metrics_getter):

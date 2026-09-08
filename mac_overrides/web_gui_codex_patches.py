@@ -626,7 +626,7 @@ def run_codex_after_registration(
         )
 
     staged_pipeline = host._inflight_pipeline_runtime_ext.optimization_active(
-        globals().get("_CURRENT_INFLIGHT_GATE")
+        host._CURRENT_INFLIGHT_GATE
     ) and str(runtime_config.get("run_mode") or "register").strip().lower() != "relogin"
     try:
         with host._inflight_pipeline_runtime_ext.protocol_session_scope(

@@ -164,7 +164,6 @@ class FreeStorageSchemaMixin:
         with self._lock:
             yield None
 
-    staticmethod
     @staticmethod
     def _decode_json_value(value: Any) -> Any:
         try:

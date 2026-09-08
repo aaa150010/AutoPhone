@@ -1295,10 +1295,6 @@ def _real_new_session(self, impersonate="chrome"):
 
 
 def _real_headers(self, flow, referer):
-    return _codex_patches.real_headers(_host_module(), self, flow, referer)
-
-
-def _real_headers(self, flow, referer):
     headers = _ORIGINAL_REAL_HEADERS(self, flow, referer)
     _chatgpt_totp_ext.refresh_transport_totp_payload(self, flow)
     return _auth_request_runtime_ext.request_headers(self, headers)

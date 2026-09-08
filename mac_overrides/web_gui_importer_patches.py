@@ -165,8 +165,8 @@ def patched_importer_start(host, self, settings):
                     "warn",
                 ),
             )
-        _CURRENT_TASK_ADMISSION = task_admission
-        _CURRENT_INFLIGHT_GATE = inflight_gate
+        host._CURRENT_TASK_ADMISSION = task_admission
+        host._CURRENT_INFLIGHT_GATE = inflight_gate
         host._PROTOCOL_COORDINATOR.synchronize_connectivity_pause(
             host._CONNECTIVITY_PROXY, inflight_gate,
         )
@@ -269,10 +269,10 @@ def patched_importer_start(host, self, settings):
         if notification_context is not None:
             host._cancel_notification_run(self, notification_context)
         if not already_running:
-            if _CURRENT_TASK_ADMISSION is task_admission:
-                _CURRENT_TASK_ADMISSION = None
-            if _CURRENT_INFLIGHT_GATE is inflight_gate:
-                _CURRENT_INFLIGHT_GATE = None
+            if host._CURRENT_TASK_ADMISSION is task_admission:
+                host._CURRENT_TASK_ADMISSION = None
+            if host._CURRENT_INFLIGHT_GATE is inflight_gate:
+                host._CURRENT_INFLIGHT_GATE = None
             host._TASK_PROGRESS.reset()
             with host._TASK_FAILURES_LOCK:
                 host._TASK_FAILURES.clear()
@@ -327,6 +327,9 @@ def patched_importer_run_one(
                 # Challenge cleanup must not mask the original stop reason.
                 pass
         if not host._SMS_TRANSPORT_REGISTRY.close_task(task_id):
+            # Transports whose deferred cleanup did not finish are retained in
+            # the registry's pending set; one immediate retry flushes them
+            # before task teardown ends.
             host._SMS_TRANSPORT_REGISTRY.close_task(task_id)
         host._AUTH_SESSIONS.clear(task_id)
         host._SMS_PROVIDER_REGISTRY.clear_task_attempt_counts(task_id)
@@ -698,7 +701,7 @@ def patched_retire_after_failure(host, self, settings, pool, entry, task_id, res
                 "error",
             )
         except Exception:
-            # Telemetry must not mask the relogin failure surfaced above.
+            # Telemetry must not mask the damaged-password failure above.
             pass
         return None
 

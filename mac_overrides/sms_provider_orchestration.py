@@ -15,16 +15,11 @@ from typing import Any, Callable
 
 try:
     from .sms_order_runtime import (
-        HeroSmsCancellationDeferred,
-        _herosms_min_cancel_seconds,
-        _provider_exception_text,
-        _safe_provider_token,
         confirm_herosms_cancellation,
-        herosms_cancel_delay_seconds,
         safe_cancel_receipt,
     )
     from .sms_provider_runtime import (
-        SECRET_MASK,
+        SMS_PROVIDER_DEFAULT_SERVICES,
         SmsProviderBatchHealth,
         normalize_sms_keys,
         normalize_sms_provider_name,
@@ -32,20 +27,14 @@ try:
     )
     from .sms_route_runtime import (
         SmsWaitPlan,
-        build_sms_wait_plan,
     )
 except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
     from sms_order_runtime import (  # type: ignore[no-redef]
-        HeroSmsCancellationDeferred,
-        _herosms_min_cancel_seconds,
-        _provider_exception_text,
-        _safe_provider_token,
         confirm_herosms_cancellation,
-        herosms_cancel_delay_seconds,
         safe_cancel_receipt,
     )
     from sms_provider_runtime import (  # type: ignore[no-redef]
-        SECRET_MASK,
+        SMS_PROVIDER_DEFAULT_SERVICES,
         SmsProviderBatchHealth,
         normalize_sms_keys,
         normalize_sms_provider_name,
@@ -53,7 +42,6 @@ except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
     )
     from sms_route_runtime import (  # type: ignore[no-redef]
         SmsWaitPlan,
-        build_sms_wait_plan,
     )
 
 try:
@@ -63,11 +51,8 @@ try:
         SMS_POLL_INTERVAL_SECONDS,
         SMS_PREFLIGHT_MAX_WORKERS,
         SMS_SECOND_WAIT_SECONDS,
-        _StaleSmsPreflight,
         _as_float,
         call_sms_with_retries,
-        classify_key_error,
-        key_fingerprint,
         redact_sms_secrets,
     )
     from .sms_key_pool import SmsKeyHealth, SmsKeyPool, _PooledSmsActivationMixin
@@ -78,11 +63,8 @@ except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
         SMS_POLL_INTERVAL_SECONDS,
         SMS_PREFLIGHT_MAX_WORKERS,
         SMS_SECOND_WAIT_SECONDS,
-        _StaleSmsPreflight,
         _as_float,
         call_sms_with_retries,
-        classify_key_error,
-        key_fingerprint,
         redact_sms_secrets,
     )
     from sms_key_pool import (  # type: ignore[no-redef]
@@ -902,7 +884,9 @@ class PooledSmsProvider(_PooledSmsActivationMixin):
                 self.activation_id,
                 leased_at=self.current_order_meta.get("leased_at"),
                 defer_early=True,
-                on_wait=lambda seconds: self.registry._log(
+                # SmsKeyPool owns the configured logger; the registry facade
+                # only exposes safe_error/alert plumbing without an _log alias.
+                on_wait=lambda seconds: self._pool._log(
                     f"HeroSMS 订单处于前置取消保护期，已安排约 {int(seconds)} 秒后后台取消并核对返款",
                     "warn",
                 ),
