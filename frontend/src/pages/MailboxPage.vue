@@ -71,7 +71,6 @@ const retryingQuotaRows = ref<string[]>([])
 const retryingOpenAIRows = ref<string[]>([])
 const rowActionLoading = ref<string[]>([])
 const refreshGuard = createMailboxRefreshGuard()
-let timer = 0
 let pollingStopped = false
 
 const latestBatchId = computed(() => latestMailboxBatchId(data.value.rows))
@@ -462,7 +461,6 @@ onMounted(async () => {
 
 onUnmounted(() => {
   pollingStopped = true
-  window.clearTimeout(timer)
 })
 </script>
 

@@ -194,11 +194,12 @@ async function copyTaskAccount(task: RuntimeTask) {
       rowId: taskId,
       produce: async () => {
         const rowId = String((task as RuntimeTask & { row_id?: string }).row_id || '').trim()
-        return String((await getFreeSecret('email', freeTaskSecretLookup(taskId, rowId))).value || '')
+        const value = String((await getFreeSecret('email', freeTaskSecretLookup(taskId, rowId))).value || '').trim()
+        if (!value) throw new Error('服务端未返回可复制邮箱')
+        return value
       },
       successMessage: '已复制真实邮箱',
       errorMessage: '邮箱复制失败',
-      emptyMessage: '服务端未返回可复制邮箱',
     })
     return
   }

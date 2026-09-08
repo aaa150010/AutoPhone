@@ -217,7 +217,11 @@ async function copyEmail(row: FreeMailboxRow) {
     rowId,
     // Public mailbox rows intentionally expose only a masked address. Resolve
     // the raw address through the existing on-demand secret boundary.
-    produce: async () => String((await getFreeSecret('email', freeRowSecretLookup(row.row_id))).value || ''),
+    produce: async () => {
+      const value = String((await getFreeSecret('email', freeRowSecretLookup(row.row_id))).value || '')
+      if (!value || !navigator.clipboard?.writeText) throw new Error('当前环境不支持复制')
+      return value
+    },
     successMessage: '已复制邮箱',
     errorMessage: '邮箱复制失败',
   })

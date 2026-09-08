@@ -26,7 +26,7 @@ import {
   isCurrentAccountBanned,
 } from '../utils/freeFailure'
 import { needsSub2Rerun } from '../utils/mailboxFilters'
-import { formatDateTime, formatDateTimeZh, formatShortDateTime } from '../utils/datetime'
+import { formatDateTime, formatDateTimeZh, formatShortDateTime, parseTimestamp } from '../utils/datetime'
 
 const props = defineProps<{
   rows: MailboxRow[]
@@ -174,11 +174,8 @@ function sub2Detail(row: MailboxRow) {
   const parts = [sub2Label(row)]
   if (value.summary) parts.push(String(value.summary))
   if (value.tested_at) {
-    const numeric = Number(value.tested_at)
-    const date = Number.isFinite(numeric)
-      ? new Date(numeric < 10_000_000_000 ? numeric * 1000 : numeric)
-      : new Date(String(value.tested_at))
-    if (!Number.isNaN(date.getTime())) parts.push(formatDateTimeZh(value.tested_at))
+    const date = parseTimestamp(value.tested_at)
+    if (date) parts.push(formatDateTimeZh(value.tested_at))
   }
   return parts.join(' · ')
 }
