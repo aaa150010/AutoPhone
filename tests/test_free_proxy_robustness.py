@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 from mac_overrides.free_register_common import FreeRegisterError
 from mac_overrides.diagnostic_store import DiagnosticStore
-from mac_overrides.free_proxy_store import FreeProxyPool
+from mac_overrides.free_proxy_store import FreeProxyPool, _ProxyProbeHTTPError
 from mac_overrides.free_register_runtime import FreeRegisterManager
 
 
@@ -204,7 +204,7 @@ class FreeProxyRobustnessTests(unittest.TestCase):
             "mac_overrides.free_proxy_store.get_via_proxy",
             return_value=SimpleNamespace(status_code=403, content=b""),
         ):
-            with self.assertRaisesRegex(ValueError, "HTTP 403"):
+            with self.assertRaisesRegex(_ProxyProbeHTTPError, "HTTP 403"):
                 FreeProxyPool._probe(
                     "http://proxy.example.test:8000",
                     "https://probe.example.test/",

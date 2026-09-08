@@ -27,7 +27,7 @@ MAX_SUMMARY_CHARS = 240
 TOKEN_TTL_SECONDS = 600
 
 
-class Sub2ConfigurationError(ValueError):
+class Sub2ConfigurationError(RuntimeError):
     """The local SUB2 configuration is incomplete or invalid."""
 
 
@@ -1008,7 +1008,7 @@ _EXPORT_IDENTITY_FIELDS = (
 )
 
 
-class Sub2ExportPayloadError(ValueError):
+class Sub2ExportPayloadError(RuntimeError):
     """Raised when a success result cannot become a SUB2 export payload."""
 
     def __init__(self, public_message: str) -> None:
