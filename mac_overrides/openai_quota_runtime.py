@@ -286,7 +286,7 @@ def public_quota_snapshot(
 class OpenAIQuotaSnapshotStore:
     """Atomic quota snapshots keyed by a non-reversible account fingerprint."""
 
-    def __init__(self, path: str | Path, *, now_fn=time.time) -> None:
+    def __init__(self, path: str | Path, *, now_fn: Callable[[], float] = time.time) -> None:
         self.path = Path(path)
         self.now_fn = now_fn
         self._lock = RLock()
@@ -552,7 +552,7 @@ class OpenAIQuotaClient:
         transport: QuotaTransport | None = None,
         proxy: str = "",
         timeout: float = OPENAI_QUOTA_TIMEOUT_SECONDS,
-        now_fn=time.time,
+        now_fn: Callable[[], float] = time.time,
     ) -> None:
         self.transport = transport or CurlCffiQuotaTransport(proxy=proxy)
         self.timeout = max(1.0, float(timeout))
