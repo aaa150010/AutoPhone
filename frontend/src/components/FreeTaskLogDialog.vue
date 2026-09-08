@@ -210,7 +210,7 @@ defineExpose({ refresh })
     <div class="log-dialog-meta">
       <span>任务 {{ task?.task_id || '-' }}</span>
       <span>阶段 {{ task?.stage_label || task?.stage || '-' }}</span>
-      <el-button size="small" :icon="Refresh" :loading="loading" @click="refresh({ forceLatest: autoFollow })">刷新</el-button>
+      <el-button size="small" :icon="Refresh" :loading="loading" @click="refresh({ forceLatest: autoFollow })" aria-label="刷新">刷新</el-button>
     </div>
     <div v-if="logs.length" class="log-dialog-controls">
       <el-select v-model="levelFilter" size="small" aria-label="日志级别" class="level-filter">
@@ -220,7 +220,7 @@ defineExpose({ refresh })
         <el-option v-for="item in nodeOptions" :key="item.code" :label="item.label" :value="item.code" />
       </el-select>
       <span class="follow-control"><el-switch v-model="autoFollow" size="small" @change="autoFollow && scrollToLatest()" />自动跟随</span>
-      <el-button size="small" :icon="Aim" :disabled="firstErrorIndex < 0" @click="locateFirstError">定位首个错误</el-button>
+      <el-button size="small" :icon="Aim" :disabled="firstErrorIndex < 0" @click="locateFirstError" aria-label="定位首个错误">定位首个错误</el-button>
       <el-tooltip content="滚动到最新日志"><el-button circle size="small" :icon="Bottom" aria-label="滚动到最新日志" @click="scrollToLatest" /></el-tooltip>
       <span class="filtered-count">匹配 {{ filteredLogs.length }} / {{ logs.length }}</span>
       <span class="window-control">
@@ -248,7 +248,7 @@ defineExpose({ refresh })
           <small v-if="entry.row.error_code || entry.row.provider_code" class="log-code">{{ entry.row.error_code || '' }}{{ entry.row.provider_code ? ` · Provider ${entry.row.provider_code}` : '' }}</small>
           <small v-if="entry.row.diagnostic || entry.row.technical_summary" class="log-diagnostic">{{ entry.row.diagnostic || entry.row.technical_summary }}</small>
             <small v-if="entry.row.action_hint" class="log-action">建议：{{ entry.row.action_hint }}</small>
-            <small v-if="entry.row.incident_id" class="log-incident"><el-button text size="small" :icon="CopyDocument" @click="copyIncidentId(entry.row.incident_id)">日志 ID {{ entry.row.incident_id }}</el-button></small>
+            <small v-if="entry.row.incident_id" class="log-incident"><el-button text size="small" :icon="CopyDocument" @click="copyIncidentId(entry.row.incident_id)" aria-label="复制日志 ID">日志 ID {{ entry.row.incident_id }}</el-button></small>
           </span>
       </div>
       <ContentEmptyState v-if="!filteredLogs.length && !loading" :description="logs.length ? '没有符合筛选条件的日志' : '暂无账号日志'" />

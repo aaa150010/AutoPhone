@@ -1,3 +1,9 @@
+/**
+ * Shared Free secret lookup helpers.
+ *
+ * Builds request payloads used to fetch stored Free credentials (mailbox
+ * password, registration password, TOTP) for one or more rows/tasks.
+ */
 export interface FreeSecretLookup {
   task_ids?: string[]
   row_ids?: string[]

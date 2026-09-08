@@ -1,3 +1,9 @@
+/**
+ * Free pipeline stage label and grouping definitions.
+ *
+ * Single source of truth for stage codes, their Chinese display labels and
+ * the stage grouping used by task progress rendering.
+ */
 const FREE_STAGE_LABELS: Record<string, string> = {
   oauth_create_node: '初始化 Node/Sentinel',
   free_protocol_preflight: '协议网络预检',

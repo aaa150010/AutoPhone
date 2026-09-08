@@ -393,13 +393,13 @@ async function disableConnectivityGuard() {
     <div class="console-grid">
       <div class="run-toolbar">
         <div class="run-toolbar-main">
-          <el-button size="small" :icon="Setting" @click="emit('navigate', '/settings')">运行配置</el-button>
-          <el-button size="small" :icon="Upload" @click="mailboxImportDialog?.open()">导入邮箱</el-button>
+          <el-button size="small" :icon="Setting" @click="emit('navigate', '/settings')" aria-label="运行配置">运行配置</el-button>
+          <el-button size="small" :icon="Upload" @click="mailboxImportDialog?.open()" aria-label="导入邮箱">导入邮箱</el-button>
           <el-tooltip v-if="controller.dirty.value" content="存在未保存配置，请先进入运行配置保存" placement="bottom">
-            <span><el-button size="small" type="primary" :icon="VideoPlay" disabled>开始运行</el-button></span>
+            <span><el-button size="small" type="primary" :icon="VideoPlay" disabled aria-label="开始运行">开始运行</el-button></span>
           </el-tooltip>
-          <el-button v-else size="small" type="primary" :icon="VideoPlay" :loading="controller.actions.starting" :disabled="controller.running.value || !controller.hasPool.value" @click="start">开始运行</el-button>
-          <el-button size="small" type="danger" plain :icon="VideoPause" :loading="controller.actions.stopping" :disabled="!controller.running.value" @click="stop">停止</el-button>
+          <el-button v-else size="small" type="primary" :icon="VideoPlay" :loading="controller.actions.starting" :disabled="controller.running.value || !controller.hasPool.value" @click="start" aria-label="开始运行">开始运行</el-button>
+          <el-button size="small" type="danger" plain :icon="VideoPause" :loading="controller.actions.stopping" :disabled="!controller.running.value" @click="stop" aria-label="停止">停止</el-button>
         </div>
         <div v-if="batchId" class="batch-identity">
           <span>运行批次</span>

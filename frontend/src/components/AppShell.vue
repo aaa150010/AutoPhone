@@ -106,7 +106,7 @@ onUnmounted(() => {
         <div class="brand-block">
           <div class="brand-mark"><img src="/assets/gpt-register-center-v1633.svg" alt="" /></div>
           <div class="brand-copy"><strong>GPT 注册中心</strong><span>FREE + SMS</span></div>
-          <el-tooltip :content="sidebarCollapsed ? '展开菜单' : '收缩菜单'" placement="right"><el-button class="sidebar-toggle" link :icon="sidebarCollapsed ? Expand : Fold" aria-label="收缩或展开左侧菜单" @click="toggleSidebar" /></el-tooltip>
+          <el-tooltip :content="sidebarCollapsed ? '展开菜单' : '收缩菜单'" placement="right" :show-after="250"><el-button class="sidebar-toggle" link :icon="sidebarCollapsed ? Expand : Fold" aria-label="收缩或展开左侧菜单" @click="toggleSidebar" /></el-tooltip>
         </div>
 
         <el-menu :default-active="activePath" :default-openeds="sidebarCollapsed ? [] : ['sms-workspace', 'free-workspace', 'remail-workspace', 'diagnostic-workspace', 'system-settings']" :collapse="sidebarCollapsed" :collapse-transition="false" @select="selectPage">

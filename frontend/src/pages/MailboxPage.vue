@@ -512,7 +512,7 @@ onUnmounted(() => {
         </div>
         <div class="toolbar-section action-row">
           <span class="toolbar-label">批量操作</span>
-          <el-tooltip content="导入邮箱" placement="top"><el-button size="small" type="primary" :disabled="mutating || batchBusy" :icon="Upload" aria-label="导入邮箱" @click="mailboxImportDialog?.open()" /></el-tooltip>
+          <el-tooltip content="导入邮箱" placement="top" :show-after="250"><el-button size="small" type="primary" :disabled="mutating || batchBusy" :icon="Upload" aria-label="导入邮箱" @click="mailboxImportDialog?.open()" /></el-tooltip>
           <el-button size="small" :loading="queryingQuota" :disabled="mutating || batchBusy" @click="queryQuotas">
             <el-icon><DataAnalysis /></el-icon>{{ queryingQuota && quotaProgress ? `查询额度 ${quotaProgress}` : '批量查询额度' }}
           </el-button>

@@ -235,16 +235,16 @@ watch(() => props.locationKey, (value, previous) => {
     <WorkspacePanel title="故障检索" :icon="Search" body-padding="compact">
       <el-form :model="query" label-position="right" label-width="72px" class="search-form" @submit.prevent="runSearch">
         <div class="search-grid">
-          <el-form-item label="日志 ID"><el-input v-model="query.incident_id" clearable placeholder="LOG-20260825-..." /></el-form-item>
-          <el-form-item label="任务 ID"><el-input v-model="query.task_id" clearable /></el-form-item>
-          <el-form-item label="批次 ID"><el-input v-model="query.batch_id" clearable /></el-form-item>
-          <el-form-item label="账号 / 邮箱"><el-input v-model="query.subject" clearable /></el-form-item>
-          <el-form-item label="开始时间"><el-input v-model="query.from" clearable placeholder="2026-08-25T00:00:00" /></el-form-item>
-          <el-form-item label="结束时间"><el-input v-model="query.to" clearable placeholder="2026-08-25T23:59:59" /></el-form-item>
-          <el-form-item label="状态"><el-select v-model="query.outcome" class="full-width"><el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select></el-form-item>
-          <el-form-item label="链路"><el-select v-model="query.chain" class="full-width"><el-option v-for="item in chainOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select></el-form-item>
-          <el-form-item label="驱动"><el-select v-model="query.driver" class="full-width"><el-option v-for="item in driverOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select></el-form-item>
-          <el-form-item label="节点"><el-input v-model="query.first_node_code" clearable placeholder="例如 free_email_otp_wait" /></el-form-item>
+          <el-form-item label="日志 ID"><el-input v-model="query.incident_id" clearable placeholder="LOG-20260825-..." size="small" /></el-form-item>
+          <el-form-item label="任务 ID"><el-input v-model="query.task_id" clearable size="small" /></el-form-item>
+          <el-form-item label="批次 ID"><el-input v-model="query.batch_id" clearable size="small" /></el-form-item>
+          <el-form-item label="账号 / 邮箱"><el-input v-model="query.subject" clearable size="small" /></el-form-item>
+          <el-form-item label="开始时间"><el-input v-model="query.from" clearable placeholder="2026-08-25T00:00:00" size="small" /></el-form-item>
+          <el-form-item label="结束时间"><el-input v-model="query.to" clearable placeholder="2026-08-25T23:59:59" size="small" /></el-form-item>
+          <el-form-item label="状态"><el-select v-model="query.outcome" class="full-width" size="small"><el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select></el-form-item>
+          <el-form-item label="链路"><el-select v-model="query.chain" class="full-width" size="small"><el-option v-for="item in chainOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select></el-form-item>
+          <el-form-item label="驱动"><el-select v-model="query.driver" class="full-width" size="small"><el-option v-for="item in driverOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select></el-form-item>
+          <el-form-item label="节点"><el-input v-model="query.first_node_code" clearable placeholder="例如 free_email_otp_wait" size="small" /></el-form-item>
         </div>
         <div class="search-actions"><el-button type="primary" :icon="Search" :loading="loading" @click="runSearch">检索</el-button><el-button @click="searchWindow(0.25)">最近 15 分钟</el-button><el-button @click="searchWindow(1)">最近 1 小时</el-button><el-button @click="searchWindow(24)">最近 24 小时</el-button><span class="search-count">找到 {{ filteredCount }} 条</span></div>
       </el-form>
@@ -260,7 +260,7 @@ watch(() => props.locationKey, (value, previous) => {
       </template>
       <el-alert v-if="searchError" class="search-error" type="error" :closable="false" show-icon :title="searchError" />
       <div v-else class="table-wrap">
-        <el-table class="incident-table" :data="incidents" v-loading="loading" height="100%" stripe border @selection-change="selectRows">
+        <el-table class="incident-table" :data="incidents" v-loading="loading" height="100%" stripe border @selection-change="selectRows" size="small">
         <el-table-column type="selection" width="46" fixed="left" />
         <el-table-column label="日志 ID" width="230" fixed="left"><template #default="{ row }"><div class="incident-id"><el-link type="primary" @click="openIncident(row)">{{ row.incident_id }}</el-link><el-tooltip content="复制日志 ID" placement="top"><el-button text size="small" :icon="CopyDocument" aria-label="复制日志 ID" @click="copyIncidentId(row)" /></el-tooltip></div></template></el-table-column>
         <el-table-column label="状态" width="96" align="center"><template #default="{ row }"><el-tag size="small" :type="incidentStatusType(row)">{{ incidentStatusLabel(row) }}</el-tag></template></el-table-column>

@@ -24,8 +24,7 @@ function updateProxyScope(key: string, value: boolean | string | number) {
       <el-input
         :model-value="modelValue.proxy"
         placeholder="http://127.0.0.1:7897"
-        @update:model-value="update('proxy', $event)"
-      />
+        @update:model-value="update('proxy', $event)" size="small" />
     </el-form-item>
 
     <div class="proxy-scope">
@@ -51,8 +50,7 @@ function updateProxyScope(key: string, value: boolean | string | number) {
             :min="1"
             :max="10000"
             controls-position="right"
-            @update:model-value="update('target_count', String($event ?? 1))"
-          />
+            @update:model-value="update('target_count', String($event ?? 1))" size="small" />
         </el-form-item>
       </el-col>
       <el-col :span="12">
@@ -62,8 +60,7 @@ function updateProxyScope(key: string, value: boolean | string | number) {
             :min="1"
             :max="8"
             controls-position="right"
-            @update:model-value="update('concurrency', String($event ?? 5))"
-          />
+            @update:model-value="update('concurrency', String($event ?? 5))" size="small" />
         </el-form-item>
       </el-col>
     </el-row>
@@ -76,8 +73,7 @@ function updateProxyScope(key: string, value: boolean | string | number) {
             :min="1"
             :max="100"
             controls-position="right"
-            @update:model-value="update('node_concurrency', String($event ?? 5))"
-          />
+            @update:model-value="update('node_concurrency', String($event ?? 5))" size="small" />
         </el-form-item>
       </el-col>
       <el-col :span="12">
@@ -87,8 +83,7 @@ function updateProxyScope(key: string, value: boolean | string | number) {
             :min="1"
             :max="3600"
             controls-position="right"
-            @update:model-value="update('node_timeout', Number($event ?? 45))"
-          />
+            @update:model-value="update('node_timeout', Number($event ?? 45))" size="small" />
         </el-form-item>
       </el-col>
     </el-row>
@@ -101,8 +96,7 @@ function updateProxyScope(key: string, value: boolean | string | number) {
             :min="1"
             :max="Math.max(1, Number(modelValue.concurrency || 5))"
             controls-position="right"
-            @update:model-value="update('auto_email_login_concurrency', Number($event ?? 5))"
-          />
+            @update:model-value="update('auto_email_login_concurrency', Number($event ?? 5))" size="small" />
         </el-form-item>
       </el-col>
       <el-col :span="12">
@@ -112,8 +106,7 @@ function updateProxyScope(key: string, value: boolean | string | number) {
             :min="0"
             :max="4"
             controls-position="right"
-            @update:model-value="update('auth_session_retries', Number($event ?? 1))"
-          />
+            @update:model-value="update('auth_session_retries', Number($event ?? 1))" size="small" />
         </el-form-item>
       </el-col>
     </el-row>
@@ -126,8 +119,7 @@ function updateProxyScope(key: string, value: boolean | string | number) {
             :min="1"
             :max="5"
             controls-position="right"
-            @update:model-value="update('phone_submission_concurrency', Number($event ?? 2))"
-          />
+            @update:model-value="update('phone_submission_concurrency', Number($event ?? 2))" size="small" />
         </el-form-item>
       </el-col>
       <el-col :span="12">
@@ -137,8 +129,7 @@ function updateProxyScope(key: string, value: boolean | string | number) {
             :min="30"
             :max="600"
             controls-position="right"
-            @update:model-value="update('email_code_timeout', Number($event ?? 60))"
-          />
+            @update:model-value="update('email_code_timeout', Number($event ?? 60))" size="small" />
         </el-form-item>
       </el-col>
     </el-row>
@@ -159,8 +150,7 @@ function updateProxyScope(key: string, value: boolean | string | number) {
             :min="8"
             :max="15"
             controls-position="right"
-            @update:model-value="update('protocol_concurrency_ceiling', Number($event ?? 12))"
-          />
+            @update:model-value="update('protocol_concurrency_ceiling', Number($event ?? 12))" size="small" />
         </el-form-item>
       </el-col>
     </el-row>
@@ -189,8 +179,7 @@ function updateProxyScope(key: string, value: boolean | string | number) {
             :max="20"
             controls-position="right"
             :disabled="modelValue.task_inflight_optimization === false"
-            @update:model-value="update('task_inflight_limit', Number($event ?? 20))"
-          />
+            @update:model-value="update('task_inflight_limit', Number($event ?? 20))" size="small" />
         </el-form-item>
       </el-col>
     </el-row>

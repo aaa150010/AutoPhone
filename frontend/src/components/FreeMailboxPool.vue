@@ -582,8 +582,7 @@ onMounted(async () => {
           border
           :row-class-name="mailboxRowClass"
           @header-dragend="(newWidth: number, oldWidth: number, column: any) => onPoolHeaderDragend(newWidth, oldWidth, column)"
-          @selection-change="selected = $event"
-        >
+          @selection-change="selected = $event" size="small">
           <el-table-column type="selection" width="42" reserve-selection />
           <el-table-column label="邮箱" :min-width="poolColWidth('邮箱', 280)" show-overflow-tooltip>
             <template #default="{ row }">

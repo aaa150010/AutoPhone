@@ -59,8 +59,7 @@ function statusText() {
           <el-input
             :model-value="current().username"
             placeholder="name@qq.com"
-            @update:model-value="updateEmail({ username: $event })"
-          />
+            @update:model-value="updateEmail({ username: $event })" size="small" />
         </el-form-item>
       </el-col>
       <el-col :span="12">
@@ -79,8 +78,7 @@ function statusText() {
           <el-input
             :model-value="current().sender"
             placeholder="默认使用发件账号"
-            @update:model-value="updateEmail({ sender: $event })"
-          />
+            @update:model-value="updateEmail({ sender: $event })" size="small" />
         </el-form-item>
       </el-col>
       <el-col :span="12">
@@ -90,8 +88,7 @@ function statusText() {
             :min="5"
             :max="120"
             controls-position="right"
-            @update:model-value="updateEmail({ stalled_minutes: Number($event || 10) })"
-          />
+            @update:model-value="updateEmail({ stalled_minutes: Number($event || 10) })" size="small" />
         </el-form-item>
       </el-col>
     </el-row>
@@ -105,8 +102,7 @@ function statusText() {
         default-first-option
         :reserve-keyword="false"
         placeholder="输入邮箱后回车，可添加多个"
-        @update:model-value="updateEmail({ recipients: $event })"
-      />
+        @update:model-value="updateEmail({ recipients: $event })" size="small" />
     </el-form-item>
 
     <el-form-item label="通知事件">

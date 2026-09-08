@@ -114,8 +114,7 @@ function statusesFor(provider: string) {
         <el-form-item label="SMS 最低价格">
           <el-input
             :model-value="modelValue.sms_min_price || '0.01'"
-            @update:model-value="update('sms_min_price', $event)"
-          />
+            @update:model-value="update('sms_min_price', $event)" size="small" />
         </el-form-item>
       </el-col>
       <el-col :span="12">
@@ -127,8 +126,7 @@ function statusesFor(provider: string) {
             :step="0.005"
             :precision="3"
             controls-position="right"
-            @update:model-value="update('max_price', String($event ?? 0.15))"
-          />
+            @update:model-value="update('max_price', String($event ?? 0.15))" size="small" />
         </el-form-item>
       </el-col>
     </el-row>
@@ -141,8 +139,7 @@ function statusesFor(provider: string) {
             :min="1"
             :max="3600"
             controls-position="right"
-            @update:model-value="update('sms_timeout', String($event ?? 30))"
-          />
+            @update:model-value="update('sms_timeout', String($event ?? 30))" size="small" />
         </el-form-item>
       </el-col>
       <el-col :span="12">
@@ -152,8 +149,7 @@ function statusesFor(provider: string) {
             :min="1"
             :max="15"
             controls-position="right"
-            @update:model-value="updateAttempts"
-          />
+            @update:model-value="updateAttempts" size="small" />
         </el-form-item>
       </el-col>
     </el-row>
@@ -164,8 +160,7 @@ function statusesFor(provider: string) {
         :min="30"
         :max="1800"
         controls-position="right"
-        @update:model-value="update('phone_session_cycle_seconds', Number($event ?? 1800))"
-      />
+        @update:model-value="update('phone_session_cycle_seconds', Number($event ?? 1800))" size="small" />
     </el-form-item>
 
     <el-form-item label="质量优先与自适应等待">
@@ -199,8 +194,7 @@ function statusesFor(provider: string) {
               <el-form-item label="服务代码" class="advanced-item">
                 <el-input
                   :model-value="pool.service"
-                  @update:model-value="updateProvider(pool.provider, { service: String($event || '') })"
-                />
+                  @update:model-value="updateProvider(pool.provider, { service: String($event || '') })" size="small" />
               </el-form-item>
             </el-popover>
           </div>

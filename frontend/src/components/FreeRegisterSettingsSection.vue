@@ -252,18 +252,18 @@ defineExpose({ save })
     </div>
 
     <el-row :gutter="10">
-      <el-col :span="12"><el-form-item><template #label><FieldHelpLabel label="流程配置" help="使用参考项目 2026-08-23 的协议和 Camoufox 状态机；遇到兼容问题时可临时切回旧流程，便于回滚定位。" /></template><el-select v-model="config.flow_profile" :disabled="running"><el-option label="参考流程（推荐）" value="reference_20260823" /><el-option label="旧流程（回滚）" value="legacy" /></el-select></el-form-item></el-col>
+      <el-col :span="12"><el-form-item><template #label><FieldHelpLabel label="流程配置" help="使用参考项目 2026-08-23 的协议和 Camoufox 状态机；遇到兼容问题时可临时切回旧流程，便于回滚定位。" /></template><el-select v-model="config.flow_profile" :disabled="running" size="small"><el-option label="参考流程（推荐）" value="reference_20260823" /><el-option label="旧流程（回滚）" value="legacy" /></el-select></el-form-item></el-col>
       <el-col :span="12"><el-form-item><template #label><FieldHelpLabel label="代理分配方式" help="按 AutoRegister 使用健康代理随机分配，多个并发任务可以共享同一代理；不比较或锁定出口地址。" /></template><el-tag type="success" effect="plain">健康随机共享池</el-tag></el-form-item></el-col>
     </el-row>
 
     <el-row :gutter="10">
-      <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="Free 注册数量（1-200）" help="本批最多启动的 Free 账号数。Free 注册中心启动条使用并保存同一个数值。" /></template><el-input-number v-model="config.target_count" class="free-scale-number" :min="1" :max="200" controls-position="right" :disabled="running" /></el-form-item></el-col>
-      <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="Free 并发数（1-16）" help="配置允许同时运行的 Free 注册任务数；运行时可能因协议压力控制降低实际并发。" /></template><el-input-number v-model="config.concurrency" class="free-scale-number" :min="1" :max="16" controls-position="right" :disabled="running" /></el-form-item></el-col>
-      <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="邮箱 OTP 超时（秒）" help="注册流程等待邮箱验证码的最长时间。启用自动动态口令后，第二封 OTP 也使用这项超时。" /></template><el-input-number v-model="config.email_code_timeout" :min="10" :max="600" controls-position="right" :disabled="running" /></el-form-item></el-col>
+      <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="Free 注册数量（1-200）" help="本批最多启动的 Free 账号数。Free 注册中心启动条使用并保存同一个数值。" /></template><el-input-number v-model="config.target_count" class="free-scale-number" :min="1" :max="200" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
+      <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="Free 并发数（1-16）" help="配置允许同时运行的 Free 注册任务数；运行时可能因协议压力控制降低实际并发。" /></template><el-input-number v-model="config.concurrency" class="free-scale-number" :min="1" :max="16" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
+      <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="邮箱 OTP 超时（秒）" help="注册流程等待邮箱验证码的最长时间。启用自动动态口令后，第二封 OTP 也使用这项超时。" /></template><el-input-number v-model="config.email_code_timeout" :min="10" :max="600" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
     </el-row>
-    <el-form-item><template #label><FieldHelpLabel label="代理连通性目标地址" help="手动检测时通过每条待用代理访问该地址，只确认代理请求和 HTTP 响应是否建立；不会解析、保存或展示账号出口 IP。" /></template><el-input v-model="config.proxy_probe_url" :disabled="running" placeholder="https://chatgpt.com/" /></el-form-item>
+    <el-form-item><template #label><FieldHelpLabel label="代理连通性目标地址" help="手动检测时通过每条待用代理访问该地址，只确认代理请求和 HTTP 响应是否建立；不会解析、保存或展示账号出口 IP。" /></template><el-input v-model="config.proxy_probe_url" :disabled="running" placeholder="https://chatgpt.com/" size="small" /></el-form-item>
     <div class="check-row proxy-tls-options"><el-checkbox v-model="config.proxy_tls_verify" :disabled="running"><FieldHelpLabel label="严格校验探测站证书" help="默认按标准 TLS 证书校验访问探测地址。关闭后只影响连通性探测，不会改代理协议、不会切换节点，也不会影响浏览器页面证书校验。" /></el-checkbox><el-checkbox v-model="config.proxy_tls_compat_fallback" :disabled="running || !config.proxy_tls_verify"><FieldHelpLabel label="TLS/CONNECT 兼容重试" help="严格校验遇到明确证书错误时，用同一代理和同一协议再试一次；协议不匹配不会走证书兼容重试。" /></el-checkbox></div>
-    <el-form-item><template #label><FieldHelpLabel label="注册账号密码" help="启用自动设置密码后，注册页和补设密码流程都会使用这里的值。默认是 Aa150010150010；已保存密码会以掩码显示，输入新值即可替换。" /></template><el-input v-model="config.account_password" type="password" show-password autocomplete="new-password" maxlength="256" :disabled="running" placeholder="Aa150010150010" /></el-form-item>
+    <el-form-item><template #label><FieldHelpLabel label="注册账号密码" help="启用自动设置密码后，注册页和补设密码流程都会使用这里的值。默认是 Aa150010150010；已保存密码会以掩码显示，输入新值即可替换。" /></template><el-input v-model="config.account_password" type="password" show-password autocomplete="new-password" maxlength="256" :disabled="running" placeholder="Aa150010150010" size="small" /></el-form-item>
     <el-form-item><template #label><FieldHelpLabel label="注册后安全设置" help="密码和 2FA 可独立启用。每个启用的设置都会在对应分支单独重新获取一封邮箱 OTP；关闭后跳过该步骤。" /></template><div class="check-row security-options"><el-checkbox v-model="config.auto_set_password" :disabled="running">注册完成后自动设置密码</el-checkbox><el-checkbox v-model="config.auto_set_2fa" :disabled="running">注册完成后自动设置动态口令（2FA）</el-checkbox></div></el-form-item>
 
     <div class="subsection mailbox-network-section">
@@ -276,9 +276,9 @@ defineExpose({ save })
         </el-radio-group>
       </el-form-item>
       <el-row :gutter="10">
-        <el-col :span="12"><el-form-item><template #label><FieldHelpLabel label="本机取件代理" help="Free 邮箱取件专用代理。默认是当前 Mac 的 Clash Verge HTTP 代理 http://127.0.0.1:7897；支持 HTTP、HTTPS、SOCKS5 和 SOCKS5H 完整地址。" /></template><el-input v-model="config.mailbox_proxy_url" :disabled="running || config.mailbox_network_mode === 'direct'" placeholder="http://127.0.0.1:7897" /></el-form-item></el-col>
-        <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="网络额外重试次数" help="邮箱取件遇到 SSL、连接超时、429 或 5xx 时的额外重试次数。401、403、404 和响应格式错误不会盲目重试。" /></template><el-input-number v-model="config.mailbox_request_retries" :min="0" :max="5" controls-position="right" :disabled="running" /></el-form-item></el-col>
-        <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="重试退避（秒）" help="两次邮箱取件网络请求之间的基础等待时间，后续尝试会按次数递增。" /></template><el-input-number v-model="config.mailbox_retry_backoff_seconds" :min="0" :max="15" :step="0.25" controls-position="right" :disabled="running" /></el-form-item></el-col>
+        <el-col :span="12"><el-form-item><template #label><FieldHelpLabel label="本机取件代理" help="Free 邮箱取件专用代理。默认是当前 Mac 的 Clash Verge HTTP 代理 http://127.0.0.1:7897；支持 HTTP、HTTPS、SOCKS5 和 SOCKS5H 完整地址。" /></template><el-input v-model="config.mailbox_proxy_url" :disabled="running || config.mailbox_network_mode === 'direct'" placeholder="http://127.0.0.1:7897" size="small" /></el-form-item></el-col>
+        <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="网络额外重试次数" help="邮箱取件遇到 SSL、连接超时、429 或 5xx 时的额外重试次数。401、403、404 和响应格式错误不会盲目重试。" /></template><el-input-number v-model="config.mailbox_request_retries" :min="0" :max="5" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
+        <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="重试退避（秒）" help="两次邮箱取件网络请求之间的基础等待时间，后续尝试会按次数递增。" /></template><el-input-number v-model="config.mailbox_retry_backoff_seconds" :min="0" :max="15" :step="0.25" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
       </el-row>
       <p class="section-hint">注册页面继续固定使用账号住宅代理；邮箱取件只使用这里保存的网络方式。</p>
     </div>
@@ -286,25 +286,25 @@ defineExpose({ save })
     <div class="subsection">
       <div class="humanize-heading"><h3>代理稳定性策略</h3><FieldHelpLabel label="规则说明" help="这些规则只作用于独立 Free 代理池：控制注册前可否更换备用代理和连续失败隔离。" /></div>
       <el-row :gutter="10">
-        <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="代理额外重试次数" help="仅对邮箱提交前的连接失败和非挑战 401/403 访问拒绝切换健康代理；Cloudflare/Turnstile 安全挑战，以及邮箱提交、验证码或账号创建后的失败不会自动换代理或重放。" /></template><el-input-number v-model="config.proxy_retry_count" :min="0" :max="5" controls-position="right" :disabled="running" /></el-form-item></el-col>
-        <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="连续失败隔离阈值" help="同一代理连续失败达到此次数后进入隔离，当前批次不再分配它。成功探测会清零连续失败次数。" /></template><el-input-number v-model="config.proxy_failure_threshold" :min="1" :max="10" controls-position="right" :disabled="running" /></el-form-item></el-col>
-        <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="代理隔离时间（秒）" help="代理达到失败阈值后的暂停使用时间。到期后可重新参与检测和任务分配。" /></template><el-input-number v-model="config.proxy_quarantine_seconds" :min="30" :max="86400" controls-position="right" :disabled="running" /></el-form-item></el-col>
+        <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="代理额外重试次数" help="仅对邮箱提交前的连接失败和非挑战 401/403 访问拒绝切换健康代理；Cloudflare/Turnstile 安全挑战，以及邮箱提交、验证码或账号创建后的失败不会自动换代理或重放。" /></template><el-input-number v-model="config.proxy_retry_count" :min="0" :max="5" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
+        <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="连续失败隔离阈值" help="同一代理连续失败达到此次数后进入隔离，当前批次不再分配它。成功探测会清零连续失败次数。" /></template><el-input-number v-model="config.proxy_failure_threshold" :min="1" :max="10" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
+        <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="代理隔离时间（秒）" help="代理达到失败阈值后的暂停使用时间。到期后可重新参与检测和任务分配。" /></template><el-input-number v-model="config.proxy_quarantine_seconds" :min="30" :max="86400" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
       </el-row>
       <el-row :gutter="10">
-        <el-col :span="12"><el-form-item><template #label><FieldHelpLabel label="健康探测有效期（秒）" help="代理最近一次成功探测在这段时间内直接复用；超过后仅在绑定前执行一次有界连通性探测。设为 0 可关闭自动刷新，保留手动代理检测。" /></template><el-input-number v-model="config.proxy_health_probe_ttl_seconds" :min="0" :max="86400" controls-position="right" :disabled="running" /></el-form-item></el-col>
+        <el-col :span="12"><el-form-item><template #label><FieldHelpLabel label="健康探测有效期（秒）" help="代理最近一次成功探测在这段时间内直接复用；超过后仅在绑定前执行一次有界连通性探测。设为 0 可关闭自动刷新，保留手动代理检测。" /></template><el-input-number v-model="config.proxy_health_probe_ttl_seconds" :min="0" :max="86400" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
       </el-row>
     </div>
 
     <div v-if="config.driver === 'protocol'" class="subsection">
       <h3>全协议专属配置</h3>
       <el-row :gutter="10">
-        <el-col :span="16"><el-form-item><template #label><FieldHelpLabel label="Node / Sentinel Runner" help="全协议链路使用的本地 Node/Sentinel 执行器。留空时沿用运行时默认路径。" /></template><el-input v-model="config.protocol.node_runner" placeholder="留空使用运行时默认配置" :disabled="running" /></el-form-item></el-col>
-        <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="Sentinel 超时（秒）" help="全协议链路等待 Sentinel 初始化和响应的最长时间，超时后任务在对应节点失败。" /></template><el-input-number v-model="config.protocol.sentinel_timeout" :min="10" :max="300" controls-position="right" :disabled="running" /></el-form-item></el-col>
+        <el-col :span="16"><el-form-item><template #label><FieldHelpLabel label="Node / Sentinel Runner" help="全协议链路使用的本地 Node/Sentinel 执行器。留空时沿用运行时默认路径。" /></template><el-input v-model="config.protocol.node_runner" placeholder="留空使用运行时默认配置" :disabled="running" size="small" /></el-form-item></el-col>
+        <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="Sentinel 超时（秒）" help="全协议链路等待 Sentinel 初始化和响应的最长时间，超时后任务在对应节点失败。" /></template><el-input-number v-model="config.protocol.sentinel_timeout" :min="10" :max="300" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
       </el-row>
       <el-row :gutter="10">
-        <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="网络预检重试" help="ChatGPT、Auth 和 Sentinel 预检的额外尝试次数；每次仍使用同一任务代理。" /></template><el-input-number v-model="config.protocol.network_preflight_retries" :min="1" :max="5" controls-position="right" :disabled="running" /></el-form-item></el-col>
-        <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="网络超时（秒）" help="全协议预检和匿名预热的单次网络请求超时。" /></template><el-input-number v-model="config.protocol.network_timeout" :min="5" :max="60" controls-position="right" :disabled="running" /></el-form-item></el-col>
-        <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="安全挑战等待（秒）" help="同一会话和代理等待 Cloudflare/安全挑战自然解除的最长时间；不会自动绕过或切换代理。" /></template><el-input-number v-model="config.protocol.security_challenge_wait_seconds" :min="0" :max="60" controls-position="right" :disabled="running" /></el-form-item></el-col>
+        <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="网络预检重试" help="ChatGPT、Auth 和 Sentinel 预检的额外尝试次数；每次仍使用同一任务代理。" /></template><el-input-number v-model="config.protocol.network_preflight_retries" :min="1" :max="5" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
+        <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="网络超时（秒）" help="全协议预检和匿名预热的单次网络请求超时。" /></template><el-input-number v-model="config.protocol.network_timeout" :min="5" :max="60" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
+        <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="安全挑战等待（秒）" help="同一会话和代理等待 Cloudflare/安全挑战自然解除的最长时间；不会自动绕过或切换代理。" /></template><el-input-number v-model="config.protocol.security_challenge_wait_seconds" :min="0" :max="60" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
       </el-row>
       <div class="check-row"><el-checkbox v-model="config.protocol.anonymous_warmup" :disabled="running">匿名态预热</el-checkbox><el-checkbox v-model="config.protocol.authenticated_warmup" :disabled="running">认证态预热</el-checkbox></div>
     </div>
@@ -313,14 +313,14 @@ defineExpose({ save })
       <el-row :gutter="10">
         <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="失败后保留窗口" help="默认开启调试模式：普通业务失败和 Cloudflare/Turnstile 挑战会保留当前窗口，并生成脱敏截图、DOM 和事件摘要；成功、超时、取消及浏览器进程断开会正常回收。" /></template><el-switch v-model="config.camoufox.debug_mode" active-text="开启" inactive-text="关闭" :disabled="running" /></el-form-item></el-col>
         <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="窗口模式" help="调试模式开启时必须使用有头模式才能查看失败页面；关闭调试模式后才可切换无头或有头。" /></template><el-switch :model-value="camoufoxEffectiveHeadless" active-text="无头" inactive-text="有头" :disabled="running || Boolean(config.camoufox.debug_mode)" @update:model-value="updateCamoufoxHeadless" /><small v-if="config.camoufox.debug_mode" class="field-note">调试模式实际运行：有头（关闭调试后恢复已保存偏好）</small></el-form-item></el-col>
-        <el-col :span="6"><el-form-item label="浏览器进程"><el-input-number v-model="config.camoufox.pool_size" :min="1" :max="16" controls-position="right" :disabled="running" /></el-form-item></el-col>
-        <el-col :span="6"><el-form-item label="每进程 context"><el-input-number v-model="config.camoufox.max_contexts_per_browser" :min="1" :max="32" controls-position="right" :disabled="running" /></el-form-item></el-col>
-        <el-col :span="6"><el-form-item label="注册超时"><el-input-number v-model="config.camoufox.registration_timeout_seconds" :min="60" :max="3600" controls-position="right" :disabled="running" /></el-form-item></el-col>
+        <el-col :span="6"><el-form-item label="浏览器进程"><el-input-number v-model="config.camoufox.pool_size" :min="1" :max="16" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
+        <el-col :span="6"><el-form-item label="每进程 context"><el-input-number v-model="config.camoufox.max_contexts_per_browser" :min="1" :max="32" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
+        <el-col :span="6"><el-form-item label="注册超时"><el-input-number v-model="config.camoufox.registration_timeout_seconds" :min="60" :max="3600" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
       </el-row>
       <el-row :gutter="10">
-        <el-col :span="8"><el-form-item label="context 关闭超时"><el-input-number v-model="config.camoufox.context_close_timeout_seconds" :min="1" :max="120" controls-position="right" :disabled="running" /></el-form-item></el-col>
-        <el-col :span="8"><el-form-item label="进程回收超时"><el-input-number v-model="config.camoufox.browser_recycle_timeout_seconds" :min="5" :max="300" controls-position="right" :disabled="running" /></el-form-item></el-col>
-        <el-col :span="8"><el-form-item label="单进程最大注册数"><el-input-number v-model="config.camoufox.max_registrations_per_browser" :min="1" :max="1000" controls-position="right" :disabled="running" /></el-form-item></el-col>
+        <el-col :span="8"><el-form-item label="context 关闭超时"><el-input-number v-model="config.camoufox.context_close_timeout_seconds" :min="1" :max="120" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
+        <el-col :span="8"><el-form-item label="进程回收超时"><el-input-number v-model="config.camoufox.browser_recycle_timeout_seconds" :min="5" :max="300" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
+        <el-col :span="8"><el-form-item label="单进程最大注册数"><el-input-number v-model="config.camoufox.max_registrations_per_browser" :min="1" :max="1000" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
       </el-row>
       <div class="check-row"><el-checkbox v-model="config.camoufox.block_images" :disabled="running">无头模式阻止图片加载</el-checkbox><el-checkbox v-model="config.camoufox.existing_account_login" :disabled="running">允许已有账号邮箱验证码登录</el-checkbox></div>
       <p class="section-hint">Camoufox 是可选依赖；未安装时预检会明确提示，不影响全协议。调试窗口会占用现有 context 容量，完成排查后请在 Free 注册页手动关闭。</p>
@@ -329,9 +329,9 @@ defineExpose({ save })
     <div class="subsection proxy-section">
       <div class="section-heading-row"><div><h3>Free 独立代理池</h3><p class="section-hint">粘贴后可检测代理池连通性，再保存到 Free 池。</p></div><span class="muted">已保存 {{ Number(state.pool?.proxies || 0) }} 个</span></div>
       <div class="proxy-import-meta">
-        <div class="proxy-import-field"><FieldHelpLabel label="无协议默认协议" help="支持 scheme://用户名:密码@主机:端口、主机:端口:用户名:密码、用户名:密码@主机:端口、主机:端口@用户名:密码；裸格式按当前下拉协议解析，显式协议始终优先。" /><el-select v-model="proxyScheme" placeholder="无协议时默认协议"><el-option label="HTTP" value="http" /><el-option label="HTTPS" value="https" /><el-option label="SOCKS4" value="socks4" /><el-option label="SOCKS5" value="socks5" /><el-option label="SOCKS5H" value="socks5h" /></el-select></div>
-        <div class="proxy-import-field"><FieldHelpLabel label="SOCKS5 DNS" help="只影响 SOCKS5 代理的域名解析位置，不改变保存的协议标签。默认使用代理端解析，避免本机 Fake-IP 或 DNS 污染导致连接失败；也可按需选择本机解析或严格声明。" /><el-select v-model="config.proxy_socks5_dns_mode" :disabled="running"><el-option label="自动适配" value="auto" /><el-option label="本机解析" value="local" /><el-option label="代理端解析" value="remote" /><el-option label="严格声明" value="declared" /></el-select></div>
-        <div class="proxy-import-field"><FieldHelpLabel label="代理来源（可选）" help="仅用于报表和供应商对比，例如 1024、cliproxy；不会参与代理分配，也不会写入代理凭据。" /><el-input v-model="proxySourceLabel" maxlength="40" show-word-limit placeholder="例如 1024 / cliproxy" /></div>
+        <div class="proxy-import-field"><FieldHelpLabel label="无协议默认协议" help="支持 scheme://用户名:密码@主机:端口、主机:端口:用户名:密码、用户名:密码@主机:端口、主机:端口@用户名:密码；裸格式按当前下拉协议解析，显式协议始终优先。" /><el-select v-model="proxyScheme" placeholder="无协议时默认协议" size="small"><el-option label="HTTP" value="http" /><el-option label="HTTPS" value="https" /><el-option label="SOCKS4" value="socks4" /><el-option label="SOCKS5" value="socks5" /><el-option label="SOCKS5H" value="socks5h" /></el-select></div>
+        <div class="proxy-import-field"><FieldHelpLabel label="SOCKS5 DNS" help="只影响 SOCKS5 代理的域名解析位置，不改变保存的协议标签。默认使用代理端解析，避免本机 Fake-IP 或 DNS 污染导致连接失败；也可按需选择本机解析或严格声明。" /><el-select v-model="config.proxy_socks5_dns_mode" :disabled="running" size="small"><el-option label="自动适配" value="auto" /><el-option label="本机解析" value="local" /><el-option label="代理端解析" value="remote" /><el-option label="严格声明" value="declared" /></el-select></div>
+        <div class="proxy-import-field"><FieldHelpLabel label="代理来源（可选）" help="仅用于报表和供应商对比，例如 1024、cliproxy；不会参与代理分配，也不会写入代理凭据。" /><el-input v-model="proxySourceLabel" maxlength="40" show-word-limit placeholder="例如 1024 / cliproxy" size="small" /></div>
       </div>
       <el-input v-model="proxyText" type="textarea" :rows="5" :disabled="running" placeholder="每行一个代理，支持 URL、host:port:user:pass 和两种 @ 格式" autocomplete="off" />
       <div class="inline-actions"><el-button size="small" :icon="CircleCheck" :loading="busy === 'proxy-preflight'" :disabled="running || (!proxyText.trim() && !proxyRows.length)" @click="preflightProxyPool">{{ proxyText.trim() ? '检测代理连通性' : '复检已保存代理' }}</el-button><el-checkbox v-model="layeredProbe" :disabled="running">分层诊断</el-checkbox><span class="muted">留空时复检已保存代理，成功会解除隔离；分层诊断会额外记录 TCP、HTTPS 和 ChatGPT 登录页耗时，不保存响应正文。</span></div>

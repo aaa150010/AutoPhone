@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createRuntimeAlertTracker, runtimeAlertDuration } from '../src/composables/runtimeAlerts.ts'
+import { createRuntimeAlertTracker, runtimeAlertDuration } from '../src/utils/runtimeAlerts.ts'
 import type { SmsRuntimeAlert } from '../src/types/api.ts'
 
 function alert(overrides: Partial<SmsRuntimeAlert> = {}): SmsRuntimeAlert {

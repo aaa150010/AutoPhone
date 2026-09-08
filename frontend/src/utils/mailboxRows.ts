@@ -1,3 +1,9 @@
+/**
+ * Mailbox row derivation helpers.
+ *
+ * Pure projections over MailboxRow lists: counts, managed totals and row
+ * updates applied from batch operations.
+ */
 import type {
   MailboxOperationRowUpdate,
   MailboxRow,

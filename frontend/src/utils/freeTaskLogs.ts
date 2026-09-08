@@ -1,3 +1,10 @@
+/**
+ * Free task log presentation helpers.
+ *
+ * Level filtering, safe pagination and normalization for the Free task log
+ * dialog; these functions preserve the exact filtering semantics of the
+ * page-local implementations they replaced.
+ */
 import type { FreeLogEntry } from '../types/api'
 
 export type FreeLogLevelFilter = 'all' | 'error' | 'warn' | 'success' | 'info' | 'debug'

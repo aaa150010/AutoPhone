@@ -100,7 +100,7 @@ const tooltip = computed(() => {
 </script>
 
 <template>
-  <el-tooltip v-if="progress || resolvedTiming" :content="tooltip" placement="top">
+  <el-tooltip v-if="progress || resolvedTiming" :content="tooltip" placement="top" :show-after="250">
     <div class="progress-cell">
       <el-tag v-if="progress" :type="tagType" effect="light">{{ progress.label }}</el-tag>
       <span class="progress-seconds">{{ totalElapsedSeconds }}s</span>

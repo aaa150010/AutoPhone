@@ -55,7 +55,7 @@ async function clearSource() {
 
     <div class="split-controls">
       <label>切出数量</label>
-      <el-input-number v-model="state.amount" :min="0" :step="1" step-strictly controls-position="right" />
+      <el-input-number v-model="state.amount" :min="0" :step="1" step-strictly controls-position="right"  size="small" />
       <div class="count-item"><span>原始</span><strong>{{ result.sourceCount }}</strong></div>
       <div class="count-item"><span>剩余</span><strong>{{ result.valid ? result.remainingCount : 0 }}</strong></div>
       <div class="count-item"><span>切出</span><strong>{{ result.valid ? result.splitCount : 0 }}</strong></div>

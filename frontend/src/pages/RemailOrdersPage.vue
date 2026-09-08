@@ -28,7 +28,7 @@ onMounted(load)
           <el-button size="small" type="primary" :disabled="!selected.length" :loading="loading" @click="importSelected">导入 Free 邮箱池</el-button>
           <el-button size="small" :loading="loading" @click="load">同步订单</el-button>
         </div>
-        <el-table v-loading="loading" :data="rows" row-key="order_no" border @header-dragend="(newWidth: number, oldWidth: number, column: any) => onOrderHeaderDragend(newWidth, oldWidth, column)" @selection-change="selected = $event">
+        <el-table v-loading="loading" :data="rows" row-key="order_no" border @header-dragend="(newWidth: number, oldWidth: number, column: any) => onOrderHeaderDragend(newWidth, oldWidth, column)" @selection-change="selected = $event" size="small">
           <el-table-column type="selection" width="48" />
           <el-table-column prop="order_no" label="订单号" :min-width="orderColWidth('订单号', 200)" show-overflow-tooltip />
           <el-table-column prop="delivery_email_masked" label="邮箱" :min-width="orderColWidth('邮箱', 210)" show-overflow-tooltip />

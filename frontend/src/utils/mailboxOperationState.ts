@@ -1,3 +1,9 @@
+/**
+ * Mailbox batch-operation persistence keys and status helpers.
+ *
+ * Local-storage keys and dedup state for the "operation notified" marker
+ * shared across mailbox pages.
+ */
 import type { MailboxBatchOperation } from '../types/api'
 
 export const MAILBOX_OPERATION_NOTIFICATION_KEY = 'gptphone_mailbox_operation_notified'

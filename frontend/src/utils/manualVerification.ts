@@ -1,3 +1,8 @@
+/**
+ * Manual verification (2FA / email code) request helpers.
+ *
+ * Identity keys and deadline math shared by the verification input widgets.
+ */
 import type { ManualVerificationRequest } from '../types/api'
 
 export function manualVerificationRequestKey(

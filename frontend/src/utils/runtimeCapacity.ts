@@ -1,3 +1,9 @@
+/**
+ * Runtime capacity snapshot helpers.
+ *
+ * Safely converts unknown backend fields into numeric capacity metrics for
+ * the dashboard cards.
+ */
 export interface RuntimeCapacitySnapshot {
   active?: unknown
   base?: unknown

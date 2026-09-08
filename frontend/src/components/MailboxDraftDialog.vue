@@ -84,7 +84,7 @@ watch(() => props.modelValue, async (open) => {
       height="440px"
       stripe
       @selection-change="selectedRows = $event"
-    >
+     size="small">
       <el-table-column type="selection" width="46" reserve-selection :selectable="() => !disabled && !restoring" />
       <el-table-column type="index" label="序号" width="58" align="center" fixed="left" />
       <el-table-column prop="email" label="邮箱" min-width="270" show-overflow-tooltip />
@@ -107,7 +107,7 @@ watch(() => props.modelValue, async (open) => {
             :loading="restoring"
             :disabled="disabled || restoring || !selectedRows.length"
             @click="restoreSelected"
-          >放回可用</el-button>
+           aria-label="放回可用">放回可用</el-button>
         </div>
       </div>
     </template>

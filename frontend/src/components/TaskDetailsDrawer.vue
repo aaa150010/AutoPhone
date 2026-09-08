@@ -196,8 +196,8 @@ function checkpointType() {
       <div v-if="task.incident_id" class="diagnostic-actions">
         <span>故障档案</span>
         <code>{{ task.incident_id }}</code>
-        <el-button size="small" :icon="CopyDocument" @click="emit('copyDiagnosticId', task.incident_id)">复制日志 ID</el-button>
-        <el-button size="small" :icon="View" @click="emit('diagnostic', task)">打开日志中心</el-button>
+        <el-button size="small" :icon="CopyDocument" @click="emit('copyDiagnosticId', task.incident_id)" aria-label="复制日志 ID">复制日志 ID</el-button>
+        <el-button size="small" :icon="View" @click="emit('diagnostic', task)" aria-label="打开日志中心">打开日志中心</el-button>
       </div>
       <el-descriptions :column="2" border size="small" class="summary-grid">
         <el-descriptions-item label="账号">{{ task.account || task.email || '-' }}</el-descriptions-item>

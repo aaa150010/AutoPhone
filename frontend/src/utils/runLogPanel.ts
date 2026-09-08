@@ -1,3 +1,9 @@
+/**
+ * Run log panel width persistence.
+ *
+ * Local-storage backed width state with safe clamping between the configured
+ * minimum and maximum panel sizes.
+ */
 export const RUN_LOG_PANEL_WIDTH_KEY = 'gptphone.run.log-panel-width'
 export const DEFAULT_RUN_LOG_PANEL_WIDTH = 700
 export const MIN_RUN_LOG_PANEL_WIDTH = 240

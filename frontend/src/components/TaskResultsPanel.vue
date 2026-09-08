@@ -185,7 +185,7 @@ function handleRowAction(command: string, row: RuntimeTask) {
       <el-button size="small" :disabled="!selectedFreeTasks.some(row => row.result?.has_access_token)" @click="emitFreeSecret('token', selectedFreeTasks)">复制选中 Token</el-button>
       <el-button size="small" :disabled="!selectedFreeTasks.some(row => row.result?.has_credential)" @click="emitFreeSecret('credential', selectedFreeTasks)">复制选中凭据</el-button>
     </div>
-    <el-table class="task-table" :data="visibleTasks" :row-key="taskRowKey" stripe height="100%" border @header-dragend="(newWidth: number, oldWidth: number, column: any) => onRunHeaderDragend(newWidth, oldWidth, column)" @selection-change="selectFreeTasks">
+    <el-table class="task-table" :data="visibleTasks" :row-key="taskRowKey" stripe height="100%" border @header-dragend="(newWidth: number, oldWidth: number, column: any) => onRunHeaderDragend(newWidth, oldWidth, column)" @selection-change="selectFreeTasks" size="small">
       <el-table-column type="selection" width="42" reserve-selection />
       <el-table-column label="邮箱" :min-width="runColWidth('邮箱', 180)">
         <template #default="{ row }">

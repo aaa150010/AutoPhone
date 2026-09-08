@@ -486,16 +486,16 @@ onMounted(async () => {
         <div class="task-panel">
           <div class="task-start-bar">
             <el-tag effect="plain">{{ config.driver === 'camoufox' ? 'Camoufox' : '全协议' }}</el-tag>
-            <label class="quick-run-field"><span>注册数量</span><el-input-number v-model="quickTargetCount" class="quick-run-number" :min="1" :max="200" controls-position="right" :disabled="running || Boolean(busy)" @update:model-value="markQuickRunDirty" /></label>
-            <label class="quick-run-field"><span>并发</span><el-input-number v-model="quickConcurrency" class="quick-run-number" :min="1" :max="16" controls-position="right" :disabled="running || Boolean(busy)" @update:model-value="markQuickRunDirty" /></label>
+            <label class="quick-run-field"><span>注册数量</span><el-input-number v-model="quickTargetCount" class="quick-run-number" :min="1" :max="200" controls-position="right" :disabled="running || Boolean(busy)" @update:model-value="markQuickRunDirty"  size="small" /></label>
+            <label class="quick-run-field"><span>并发</span><el-input-number v-model="quickConcurrency" class="quick-run-number" :min="1" :max="16" controls-position="right" :disabled="running || Boolean(busy)" @update:model-value="markQuickRunDirty"  size="small" /></label>
             <span class="muted task-start-meta">可用邮箱 {{ Number(state.pool?.available || 0) }} · 代理 {{ Number(state.pool?.proxies || 0) }}</span>
-            <el-button size="small" :icon="CircleCheck" :loading="busy === 'preflight'" :disabled="running" @click="preflight">预检</el-button>
-            <el-button size="small" type="primary" :icon="VideoPlay" :loading="busy === 'start'" :disabled="running || !Number(state.pool?.available || 0)" @click="start">开始注册</el-button>
-            <el-button size="small" type="danger" plain :icon="VideoPause" :loading="busy === 'stop'" :disabled="!running" @click="stop">停止</el-button>
+            <el-button size="small" :icon="CircleCheck" :loading="busy === 'preflight'" :disabled="running" @click="preflight" aria-label="预检">预检</el-button>
+            <el-button size="small" type="primary" :icon="VideoPlay" :loading="busy === 'start'" :disabled="running || !Number(state.pool?.available || 0)" @click="start" aria-label="开始注册">开始注册</el-button>
+            <el-button size="small" type="danger" plain :icon="VideoPause" :loading="busy === 'stop'" :disabled="!running" @click="stop" aria-label="停止">停止</el-button>
             <el-tooltip content="关闭保留的 Camoufox 调试窗口" placement="top">
               <el-button size="small" plain :icon="CircleClose" :loading="busy === 'close-debug'" :disabled="!debugWindowsOpen || Boolean(busy)" aria-label="关闭 Camoufox 调试窗口" @click="closeDebugWindows">关闭调试窗口</el-button>
             </el-tooltip>
-            <el-button size="small" :icon="Setting" @click="emit('navigate', '/settings#free-register')">运行配置</el-button>
+            <el-button size="small" :icon="Setting" @click="emit('navigate', '/settings#free-register')" aria-label="运行配置">运行配置</el-button>
           </div>
           <div class="task-filter-row">
             <div class="task-summary-strip" role="group" aria-label="任务状态筛选">
@@ -507,7 +507,7 @@ onMounted(async () => {
             <el-select v-model="taskDriverFilter" size="small" clearable placeholder="链路" class="task-driver-filter"><el-option label="全协议" value="protocol" /><el-option label="Camoufox" value="camoufox" /></el-select>
             <div class="task-actions">
               <span class="muted">已选 {{ selectedTasks.length }} 个</span>
-              <el-button v-if="['success', 'partial_success', 'twofa_pending', 'pending_rerun'].includes(taskStatusFilter)" size="small" type="warning" :icon="Refresh" :disabled="!selectedTasks.some(task => !isHistoricalDriver(task) && (['failed', 'stopped', 'pending_rerun', 'twofa_pending'].includes(String(task.status || '')) || canRetryPassword(task)))" @click="batchRetryCurrentNode">按当前失败节点批量重试</el-button>
+              <el-button v-if="['success', 'partial_success', 'twofa_pending', 'pending_rerun'].includes(taskStatusFilter)" size="small" type="warning" :icon="Refresh" :disabled="!selectedTasks.some(task => !isHistoricalDriver(task) && (['failed', 'stopped', 'pending_rerun', 'twofa_pending'].includes(String(task.status || '')) || canRetryPassword(task)))" aria-label="按当前失败节点批量重试" @click="batchRetryCurrentNode">按当前失败节点批量重试</el-button>
               <el-dropdown trigger="click" @command="(command: string) => handleCopyCommand(command)">
                 <el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" aria-label="批量复制账号凭据">复制<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
                 <template #dropdown>
@@ -520,8 +520,8 @@ onMounted(async () => {
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
-              <el-button size="small" type="danger" plain :icon="Delete" :disabled="!selectedTasks.length || loading" @click="deleteSelectedTasks">删除选中</el-button>
-              <el-button size="small" :icon="Refresh" @click="refresh">刷新任务</el-button>
+              <el-button size="small" type="danger" plain :icon="Delete" :disabled="!selectedTasks.length || loading" @click="deleteSelectedTasks" aria-label="删除选中">删除选中</el-button>
+              <el-button size="small" :icon="Refresh" @click="refresh" aria-label="刷新任务">刷新任务</el-button>
             </div>
           </div>
           <el-table ref="taskTable" :data="filteredTasks" row-key="task_id" height="100%" size="small" border :row-class-name="taskRowClass" @header-dragend="(newWidth: number, oldWidth: number, column: any) => onTaskHeaderDragend(newWidth, oldWidth, column)" @selection-change="handleTaskSelection">

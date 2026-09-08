@@ -251,8 +251,7 @@ defineExpose({ clearSelection })
     stripe
     border
     @header-dragend="(newWidth: number, oldWidth: number, column: any) => onSmsHeaderDragend(newWidth, oldWidth, column)"
-    @selection-change="emit('select', $event)"
-  >
+    @selection-change="emit('select', $event)" size="small">
     <el-table-column type="selection" width="45" reserve-selection />
     <el-table-column label="批次" :width="smsColWidth('批次', 150)" show-overflow-tooltip>
       <template #default="{ row }">

@@ -1,3 +1,9 @@
+/**
+ * Mailbox batch-operation presentation helpers.
+ *
+ * Maps a MailboxBatchOperation to its user-facing message and status so the
+ * table and the notification surfaces stay consistent.
+ */
 import type { MailboxBatchOperation } from '../types/api'
 
 export function mailboxOperationMessage(operation: MailboxBatchOperation) {

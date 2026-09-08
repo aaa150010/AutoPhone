@@ -1,3 +1,9 @@
+/**
+ * Task result view helpers.
+ *
+ * Terminal-status detection and "needs attention" classification for the
+ * task results panel; also executed directly by node --test suites.
+ */
 import type { RuntimeTask } from '../types/api'
 
 // Keep this tiny normalizer local.  The utility is also executed directly by

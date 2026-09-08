@@ -28,16 +28,14 @@ function updateNested(group: string, key: string, value: any) {
         <el-form-item label="SUB2 地址">
           <el-input
             :model-value="modelValue.sub2api?.url"
-            @update:model-value="updateNested('sub2api', 'url', $event)"
-          />
+            @update:model-value="updateNested('sub2api', 'url', $event)" size="small" />
         </el-form-item>
       </el-col>
       <el-col :span="12">
         <el-form-item label="SUB2 账号">
           <el-input
             :model-value="modelValue.sub2api?.email"
-            @update:model-value="updateNested('sub2api', 'email', $event)"
-          />
+            @update:model-value="updateNested('sub2api', 'email', $event)" size="small" />
         </el-form-item>
       </el-col>
       </el-row>
@@ -55,8 +53,7 @@ function updateNested(group: string, key: string, value: any) {
         <el-form-item label="SUB2 分组">
           <el-input
             :model-value="modelValue.sub2api?.group"
-            @update:model-value="updateNested('sub2api', 'group', $event)"
-          />
+            @update:model-value="updateNested('sub2api', 'group', $event)" size="small" />
         </el-form-item>
       </el-col>
       </el-row>
@@ -69,8 +66,7 @@ function updateNested(group: string, key: string, value: any) {
           <el-input
             :model-value="modelValue.online_mailbox?.base_url"
             placeholder="https://lynote.xyz/token-tool"
-            @update:model-value="updateNested('online_mailbox', 'base_url', $event)"
-          />
+            @update:model-value="updateNested('online_mailbox', 'base_url', $event)" size="small" />
         </el-form-item>
       </el-col>
       <el-col :span="12">

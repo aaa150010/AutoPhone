@@ -1,3 +1,9 @@
+/**
+ * Mailbox splitter page helpers.
+ *
+ * Pure splitting/preview math for dividing imported mailbox sources into
+ * batches.
+ */
 export interface MailboxSplitResult {
   sourceCount: number
   splitCount: number

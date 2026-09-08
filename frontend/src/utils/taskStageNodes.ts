@@ -1,3 +1,8 @@
+/**
+ * Task stage node definitions.
+ *
+ * Maps task stages to their node graphs used by the run pipeline monitors.
+ */
 import type { TaskStageGroup } from '../types/api'
 
 export interface TaskStageNodeDefinition {

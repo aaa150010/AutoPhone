@@ -158,17 +158,17 @@ onMounted(() => { void load() })
         <el-button :icon="Warning" @click="cleanup">清理过期</el-button>
       </template>
       <el-form :model="query" inline @submit.prevent="search">
-        <el-form-item label="链路"><el-select v-model="query.scope" class="filter-width-sm"><el-option v-for="item in scopeOptions" :key="item.value" v-bind="item" /></el-select></el-form-item>
-        <el-form-item label="状态"><el-select v-model="query.status" class="filter-width-sm"><el-option v-for="item in statusOptions" :key="item.value" v-bind="item" /></el-select></el-form-item>
-        <el-form-item label="驱动"><el-select v-model="query.driver" class="filter-width-md"><el-option v-for="item in driverOptions" :key="item.value" v-bind="item" /></el-select></el-form-item>
-        <el-form-item label="原因"><el-input v-model="query.reason" clearable class="filter-width-lg" /></el-form-item>
-        <el-form-item label="关键字"><el-input v-model="query.q" clearable class="filter-width-xl" placeholder="样本 ID、任务或主机" /></el-form-item>
+        <el-form-item label="链路"><el-select v-model="query.scope" class="filter-width-sm" size="small"><el-option v-for="item in scopeOptions" :key="item.value" v-bind="item" /></el-select></el-form-item>
+        <el-form-item label="状态"><el-select v-model="query.status" class="filter-width-sm" size="small"><el-option v-for="item in statusOptions" :key="item.value" v-bind="item" /></el-select></el-form-item>
+        <el-form-item label="驱动"><el-select v-model="query.driver" class="filter-width-md" size="small"><el-option v-for="item in driverOptions" :key="item.value" v-bind="item" /></el-select></el-form-item>
+        <el-form-item label="原因"><el-input v-model="query.reason" clearable class="filter-width-lg" size="small" /></el-form-item>
+        <el-form-item label="关键字"><el-input v-model="query.q" clearable class="filter-width-xl" placeholder="样本 ID、任务或主机" size="small" /></el-form-item>
         <el-form-item><el-button type="primary" :icon="Search" @click="search">检索</el-button></el-form-item>
       </el-form>
     </WorkspacePanel>
     <WorkspacePanel title="未识别响应" :icon="Warning" fill body-padding="none">
       <div class="table-actions"><span>找到 {{ total }} 条 · 已选 {{ selected.length }} 条</span><div><el-button size="small" :icon="CircleCheck" :disabled="!selected.length" @click="updateStatus('resolved')">标记已解决</el-button><el-button size="small" :icon="Delete" type="danger" plain :disabled="!selected.length" @click="removeSelected">删除</el-button></div></div>
-      <el-table :data="samples" height="100%" stripe border v-loading="loading" @selection-change="selectRows">
+      <el-table :data="samples" height="100%" stripe border v-loading="loading" @selection-change="selectRows" size="small">
         <el-table-column type="selection" width="44" />
         <el-table-column label="样本 ID" min-width="180" show-overflow-tooltip><template #default="{ row }"><el-link type="primary" @click="openDetail(row)">{{ row.sample_id }}</el-link></template></el-table-column>
         <el-table-column label="链路 / 驱动" min-width="130" show-overflow-tooltip><template #default="{ row }">{{ scopeLabel(row.scope) }} / {{ driverLabel(row.driver) }}</template></el-table-column>

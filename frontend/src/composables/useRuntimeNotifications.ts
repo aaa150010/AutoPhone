@@ -5,7 +5,7 @@ import {
   buildConnectivityRecoveryMessage,
   createConnectivityNotificationTracker,
 } from '../utils/openAIConnectivity'
-import { createRuntimeAlertTracker, runtimeAlertDuration } from './runtimeAlerts'
+import { createRuntimeAlertTracker, runtimeAlertDuration } from '../utils/runtimeAlerts'
 
 export function createRuntimeNotificationObserver() {
   const smsTracker = createRuntimeAlertTracker()

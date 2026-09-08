@@ -98,10 +98,11 @@ async function submit() {
       inputmode="numeric"
       :aria-label="`输入${kindLabel}`"
       @keyup.enter="submit"
+      size="small"
     >
       <template #suffix><span class="countdown">{{ remainingSeconds }}s</span></template>
     </el-input>
-    <el-tooltip :content="`提交${kindLabel}`" placement="top">
+    <el-tooltip :content="`提交${kindLabel}`" placement="top" :show-after="250">
       <el-button
         type="primary"
         :icon="Check"

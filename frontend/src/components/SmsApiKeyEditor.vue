@@ -105,8 +105,7 @@ function statusType(status?: SmsKeyStatus) {
           show-password
           autocomplete="new-password"
           :placeholder="`SMS API Key ${index + 1}`"
-          @update:model-value="updateRow(index, $event)"
-        />
+          @update:model-value="updateRow(index, $event)" size="small" />
         <el-tag class="key-status" :type="statusType(statusAt(index))">
           {{ statusLabel(statusAt(index)) }}
         </el-tag>

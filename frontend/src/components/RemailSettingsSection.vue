@@ -18,7 +18,7 @@ onMounted(load)
 
 <template>
   <div class="remail-settings-section">
-    <div class="section-heading-row"><div><h2 class="section-title">Remail 运行配置</h2><p class="section-hint">配置 Remail API、供应策略和订单同步。运行任务期间不能修改。</p></div><el-button size="small" :icon="Refresh" :loading="loading" @click="load">刷新</el-button></div>
+    <div class="section-heading-row"><div><h2 class="section-title">Remail 运行配置</h2><p class="section-hint">配置 Remail API、供应策略和订单同步。运行任务期间不能修改。</p></div><el-button size="small" :icon="Refresh" :loading="loading" @click="load" aria-label="刷新">刷新</el-button></div>
     <el-form label-position="top" class="config-grid" @change="markDirty">
       <el-form-item label="启用 Remail"><el-switch v-model="config.enabled" @change="markDirty" /></el-form-item>
       <el-form-item label="API Key"><el-input v-model="config.api_key" size="small" type="password" show-password placeholder="rk-..." @input="markDirty" /></el-form-item>
@@ -31,7 +31,7 @@ onMounted(load)
       <el-form-item label="订单同步"><el-switch v-model="config.order_sync_enabled" @change="markDirty" /></el-form-item>
       <el-form-item label="新订单自动导入 Free 池"><el-switch v-model="config.auto_import_new_purchase_orders" @change="markDirty" /></el-form-item>
     </el-form>
-    <div class="settings-actions"><el-button type="primary" size="small" :icon="CircleCheck" :loading="saving" @click="save">保存 Remail 配置</el-button></div>
+    <div class="settings-actions"><el-button type="primary" size="small" :icon="CircleCheck" :loading="saving" @click="save" aria-label="保存 Remail 配置">保存 Remail 配置</el-button></div>
   </div>
 </template>
 

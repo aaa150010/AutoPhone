@@ -1,3 +1,9 @@
+/**
+ * Mailbox refresh guard.
+ *
+ * Issues monotonic refresh tickets so a stale in-flight request can never
+ * overwrite a newer snapshot.
+ */
 export interface MailboxRefreshTicket {
   request: number
   generation: number

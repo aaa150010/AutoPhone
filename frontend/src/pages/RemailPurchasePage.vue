@@ -14,13 +14,16 @@ const quantity = ref(1)
 const supply = ref('private_first')
 const products = computed(() => {
   const project = projects.value.find(item => Number(item.id) === Number(projectId.value))
-  // Remail 的可选 emailSuffix 是邮箱域名（icloud.com/gmail.com）或特殊值（gmail_variant/domain）；
-  // 无 suffixes 列表的商品不能直接把类型名当后缀，否则会被当作私有域名导致 insufficient_inventory。
+  // Remail's optional emailSuffix is a mailbox domain (icloud.com/gmail.com) or a
+  // special value (gmail_variant/domain); products without a suffixes list must not
+  // use the type name as a suffix, or the server treats it as a private domain and
+  // rejects the order with insufficient_inventory.
   const typeSuffixes: Record<string, string> = { icloud: 'icloud.com', gmail: 'gmail.com' }
   return (project?.products || []).flatMap((product: any) => (product.purchaseEnabled && Number(product.purchaseAvailable ?? product.totalAvailable ?? 0) > 0)
     ? (product.suffixes?.length ? product.suffixes.map((item: any) => ({ ...product, suffix: item.suffix, available: item.purchaseAvailable ?? item.totalAvailable })) : [{ ...product, suffix: typeSuffixes[product.type] || product.type, available: product.purchaseAvailable ?? product.totalAvailable }]) : [])
 })
-// 购买单价 = purchasePrice × priceMultiplier（服务端按倍率扣积分；缺省倍率按 1 计）。
+// Unit price = purchasePrice × priceMultiplier (the server deducts credits by the
+// multiplier; a missing multiplier counts as 1).
 function productPrice(item: any): string {
   if (!item || typeof item !== 'object') return ''
   const base = Number(item.purchasePrice)

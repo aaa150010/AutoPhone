@@ -1,3 +1,9 @@
+/**
+ * OpenAI connectivity diagnostics projections.
+ *
+ * Normalizes backend connectivity state into display-ready snapshots for the
+ * run page and the diagnostics dialog.
+ */
 import type {
   AppState,
   OpenAIAuthConnectivityState,

@@ -1,3 +1,9 @@
+/**
+ * Mailbox table filtering helpers.
+ *
+ * Pure predicates and comparators shared by the mailbox pool pages. Column
+ * filters and sorting keep the original page-local behavior verbatim.
+ */
 import type { MailboxOperationKind, MailboxRow, Sub2MailboxStatus } from '../types/api'
 
 const NETWORK_KINDS = new Set(['network_error', 'remote_disconnected', 'timeout'])
