@@ -548,3 +548,8 @@ class FreeProtocolTwoFaMixin:
                 node_code=phase[0], node_label=phase[1], error_code=phase[2], retryable=True,
                 action_hint=phase[3],
             ) from exc
+
+
+__all__ = [
+    "FreeProtocolTwoFaMixin",
+]

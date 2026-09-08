@@ -180,3 +180,9 @@ class OpenAIConnectivityNotificationService:
 
     def close(self, *, wait: bool = True, timeout: float = 2.0) -> None:
         self.dispatcher.close(wait=wait, timeout=timeout)
+
+
+__all__ = [
+    "ConnectivityIncidentContextStore",
+    "OpenAIConnectivityNotificationService",
+]

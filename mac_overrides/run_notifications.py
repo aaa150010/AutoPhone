@@ -84,7 +84,7 @@ _CONNECTIVITY_REASON_LABELS = {
 MAX_UNFINISHED_TASK_IDS = 200
 
 
-class NotificationConfigError(ValueError):
+class NotificationConfigError(RuntimeError):
     """Raised when an enabled notification configuration is incomplete."""
 
 
@@ -1167,3 +1167,34 @@ class RunNotificationService:
 
     def __exit__(self, *_args: Any) -> None:
         self.close()
+
+
+__all__ = [
+    "SMTP_TIMEOUT_SECONDS",
+    "EVENT_BATCH_COMPLETED",
+    "EVENT_UNEXPECTED_STOP",
+    "EVENT_STALLED",
+    "EVENT_SMS_EXHAUSTED",
+    "EVENT_MANUAL_STOP",
+    "EVENT_SMS_BALANCE_LOW",
+    "EVENT_OPENAI_AUTH_CONNECTIVITY",
+    "NOTIFICATION_EVENTS",
+    "DEFAULT_EVENT_SETTINGS",
+    "QQ_SMTP_HOST",
+    "QQ_SMTP_PORT",
+    "SMS_BALANCE_ALERT_THRESHOLD_USD",
+    "MAX_UNFINISHED_TASK_IDS",
+    "NotificationConfigError",
+    "normalize_recipients",
+    "normalize_email_notification",
+    "validate_email_notification",
+    "RunAggregate",
+    "SmsBalanceAlert",
+    "RunNotification",
+    "OpenAIConnectivityNotification",
+    "build_notification_message",
+    "SmtpNotificationSender",
+    "send_test_notification",
+    "RunNotificationCoordinator",
+    "RunNotificationService",
+]

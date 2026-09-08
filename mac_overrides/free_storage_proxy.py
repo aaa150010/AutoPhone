@@ -756,3 +756,8 @@ class FreeStorageProxyMixin:
                         pass
                     raise
         return changed
+
+
+__all__ = [
+    "FreeStorageProxyMixin",
+]

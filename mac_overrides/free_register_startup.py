@@ -580,3 +580,8 @@ class FreeRegisterStartupMixin:
                 # Notification delivery is advisory and must never affect the
                 # persisted registration result or retry queue.
                 pass
+
+
+__all__ = [
+    "FreeRegisterStartupMixin",
+]

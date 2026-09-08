@@ -37,3 +37,10 @@ def resolve_secret_input(value: Any, fallback: Any = "", *, present: bool = True
     if text == mask:
         return str(fallback or "")
     return text
+
+
+__all__ = [
+    "PROXY_ENV_NAMES",
+    "clear_inherited_proxy_environment",
+    "resolve_secret_input",
+]

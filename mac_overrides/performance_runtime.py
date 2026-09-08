@@ -637,3 +637,28 @@ def format_task_admission_event(event: Any) -> tuple[str, str] | None:
         f"任务并发 {old_limit} -> {new_limit}，暂停新任务 {pause_seconds} 秒",
         "warn",
     )
+
+
+__all__ = [
+    "SMS_QUALITY_OPTIMIZATION",
+    "ADAPTIVE_TASK_CONCURRENCY",
+    "TASK_INFLIGHT_OPTIMIZATION",
+    "OPENAI_CONNECTIVITY_GUARD",
+    "PHONE_BINDING_COMPATIBILITY",
+    "MAILBOX_RESULT_INDEX_CACHE",
+    "PERFORMANCE_FEATURE_DEFAULTS",
+    "PERFORMANCE_POLICY_VERSION",
+    "PHONE_MAX_ATTEMPTS_LIMIT",
+    "TASK_INFLIGHT_LIMIT",
+    "PERFORMANCE_DEFAULTS",
+    "INFLIGHT_ROLLING_WINDOW_TASKS",
+    "INFLIGHT_SUCCESS_RATE_FLOOR",
+    "as_bool",
+    "normalize_feature_flags",
+    "migrate_performance_config",
+    "TaskAdmissionPolicy",
+    "InflightRollbackBaseline",
+    "InflightAdmissionGate",
+    "resolve_task_admission",
+    "format_task_admission_event",
+]

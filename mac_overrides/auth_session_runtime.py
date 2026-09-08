@@ -297,3 +297,12 @@ class AuthSessionRegistry:
                 item = self._items.get(str(task_id).strip())
                 return item.public_snapshot() if item is not None else {}
             return [item.public_snapshot() for item in self._items.values()]
+
+
+__all__ = [
+    "SESSION_INVALID_MARKERS",
+    "is_session_invalid",
+    "invalidation_reason_code",
+    "AuthSessionContext",
+    "AuthSessionRegistry",
+]

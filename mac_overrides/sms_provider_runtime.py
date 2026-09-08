@@ -164,3 +164,16 @@ class SmsProviderBatchHealth:
     def snapshot(self) -> frozenset[str]:
         with self._lock:
             return frozenset(self._exhausted)
+
+
+__all__ = [
+    "SECRET_MASK",
+    "SMS_PROVIDER_DEFAULT_SERVICES",
+    "SMS_PROVIDER_ALIASES",
+    "normalize_sms_keys",
+    "normalize_sms_provider_name",
+    "normalize_sms_provider_pools",
+    "flatten_sms_provider_keys",
+    "legacy_sms_provider_keys",
+    "SmsProviderBatchHealth",
+]

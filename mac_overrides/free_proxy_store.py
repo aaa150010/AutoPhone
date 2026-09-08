@@ -85,7 +85,7 @@ CHATGPT_LOGIN_PROBE_URL = "https://chatgpt.com/login"
 _CHATGPT_CONNECTIVITY_STATUSES = frozenset({401, 403})
 
 
-class _ProxyProbeHTTPError(ValueError):
+class _ProxyProbeHTTPError(RuntimeError):
     """Credential-free HTTP failure carrying the upstream status internally."""
 
     def __init__(self, status: int) -> None:
@@ -1522,6 +1522,4 @@ __all__ = [
     "normalize_country",
     "normalize_group",
     "normalize_probe_url",
-    "_extract_probe_ip",
-    "_is_tls_compatibility_error",
 ]

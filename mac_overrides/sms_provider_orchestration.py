@@ -1033,3 +1033,9 @@ class PooledSmsProvider:
         if self._reject_requested:
             return self.reject()
         return self._finish("cancel")
+
+
+__all__ = [
+    "SmsProviderRegistry",
+    "PooledSmsProvider",
+]

@@ -195,3 +195,9 @@ class NotificationQueue:
                 "error_code": self._last_error_code,
                 "error": self._last_error,
             }
+
+
+__all__ = [
+    "NOTIFICATION_QUEUE_CAPACITY",
+    "NotificationQueue",
+]

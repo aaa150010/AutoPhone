@@ -467,3 +467,8 @@ class FreeRegisterPreflightMixin:
             for row in failed_rows:
                 row["incident_id"] = incident_id
         return result
+
+
+__all__ = [
+    "FreeRegisterPreflightMixin",
+]

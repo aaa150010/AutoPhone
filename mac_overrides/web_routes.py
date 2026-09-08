@@ -13,8 +13,10 @@ import uuid
 
 try:
     from .mailbox_batch_operations import MailboxBatchRouteController
+    from .run_notifications import NotificationConfigError
 except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
     from mailbox_batch_operations import MailboxBatchRouteController
+    from run_notifications import NotificationConfigError  # type: ignore[no-redef]
 
 try:
     from .mailbox_mutation_routes import MailboxMutationRouteController
@@ -1378,7 +1380,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
                 return module.jsonify(ok=False, error="配置必须是 JSON 对象"), 400
             result = context.test_email_notification(data)
             return module.jsonify(ok=True, notification=result, state=public_state())
-        except ValueError as exc:
+        except (ValueError, NotificationConfigError) as exc:
             payload = explicit_failure_payload(
                 node_code="notification_test", node_label="测试邮件通知",
                 error_code="notification_test_failed", cause=context.safe_runtime_error(exc),
@@ -1576,3 +1578,9 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
 
     app._gptphone_mac_patched = True
     return app
+
+
+__all__ = [
+    "WebRouteContext",
+    "patch_flask_app",
+]

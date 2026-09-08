@@ -23,7 +23,6 @@ try:
         sanitize_public_http_status,
         sanitize_public_identifier,
         sanitize_public_manual_prompt,
-        sanitize_public_manual_prompt,
         sanitize_public_number,
         sanitize_public_progress,
         sanitize_public_scheme,
@@ -50,7 +49,6 @@ except ImportError:  # macOS launcher imports overrides as top-level modules.
         sanitize_public_email,
         sanitize_public_http_status,
         sanitize_public_identifier,
-        sanitize_public_manual_prompt,
         sanitize_public_manual_prompt,
         sanitize_public_number,
         sanitize_public_progress,
@@ -1100,3 +1098,9 @@ class FreeRegisterProjectionMixin:
                 "_debug_artifact_dir": str(self.data_dir / "camoufox_debug"),
             }
         return value
+
+
+__all__ = [
+    "FreeRegisterTimingMixin",
+    "FreeRegisterProjectionMixin",
+]

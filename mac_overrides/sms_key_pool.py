@@ -323,7 +323,12 @@ class SmsKeyPool:
                 try:
                     provider = self.provider_factory(state.key, proxy=proxy)
                     rows = provider.get_price_candidates(service=service)
-                except Exception:
+                except Exception as exc:
+                    self._log(
+                        f"[Key池选号/price_floor] 平台 {state.fingerprint} 价格候选查询失败，"
+                        f"本次价格底线计算跳过该平台（{type(exc).__name__}）",
+                        "warn",
+                    )
                     continue
                 prices = []
                 for row in rows or []:
@@ -478,8 +483,12 @@ class SmsKeyPool:
         if callable(callback):
             try:
                 callback()
-            except Exception:
-                pass
+            except Exception as exc:
+                self._log(
+                    f"[Key池告警/exhausted] Key 池耗尽回调执行失败，耗尽告警可能丢失"
+                    f"（{type(exc).__name__}）",
+                    "error",
+                )
 
     def query(self, method: str, *, proxy: str = "", **kwargs: Any) -> Any:
         excluded: set[str] = set()
@@ -698,3 +707,10 @@ class PooledSmsBowerProvider:
 
     def cancel(self) -> None:
         self._finish("cancel")
+
+
+__all__ = [
+    "SmsKeyHealth",
+    "SmsKeyPool",
+    "PooledSmsBowerProvider",
+]

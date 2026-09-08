@@ -617,3 +617,8 @@ class FreeStorageSchemaMixin:
             "heartbeat_age_seconds": round(age, 3) if age is not None else None,
             "ttl_seconds": ttl,
         }
+
+
+__all__ = [
+    "FreeStorageSchemaMixin",
+]

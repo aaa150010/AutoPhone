@@ -355,3 +355,10 @@ def _ensure_oauth_context_params(
         return urlunsplit(parsed._replace(query=urlencode(pairs)))
     except (TypeError, ValueError):
         return str(oauth_url or "")
+
+
+__all__ = [
+    "DEFAULT_AUTH_IMPERSONATES",
+    "CHATGPT_ADD_PASSWORD_ELIGIBILITY_URL",
+    "resolve_auth_impersonates",
+]

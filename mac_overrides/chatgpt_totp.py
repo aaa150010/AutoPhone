@@ -796,18 +796,18 @@ def build_chatgpt_totp_patches(
             remember_totp_secret(getattr(entry, "oauth_refresh_token", ""))
             activate()
 
-        def acquire_login_slot(self):
+        def acquire_login_slot(self) -> None:
             return None
 
-        def mark_sent(self):
+        def mark_sent(self) -> None:
             remember_totp_secret(getattr(self.entry, "oauth_refresh_token", ""))
             activate()
             self.sent_at = time.time()
 
-        def mark_verified(self):
+        def mark_verified(self) -> None:
             return None
 
-        def wait_code(self, _email):
+        def wait_code(self, _email: str) -> str:
             if self.stop_event is not None and self.stop_event.is_set():
                 return ""
             secret = getattr(self.entry, "oauth_refresh_token", "")
@@ -842,7 +842,7 @@ def build_chatgpt_totp_patches(
             _call_log(self.log_fn, "  [Codex] 已根据 2FA 密钥生成临时验证码", "info")
             return code
 
-        def close(self):
+        def close(self) -> None:
             return None
 
     def patched_outlook_otp_provider(entry: Any, config: Any, log_fn: Any, **kwargs: Any) -> Any:
@@ -1078,3 +1078,17 @@ def _entry_identity(entry: Any) -> str:
     if client_id or refresh_token:
         return f"outlook:{client_id}:{refresh_token or password}"
     return plain_password_identity(getattr(entry, "email", ""), password)
+
+
+__all__ = [
+    "parse_chatgpt_totp_row",
+    "parse_mailbox_url_totp_row",
+    "masked_chatgpt_totp_row",
+    "masked_mailbox_url_totp_row",
+    "mailbox_credential_identity",
+    "totp_code",
+    "refresh_transport_totp_payload",
+    "pending_transport_totp_payload",
+    "ChatGptTotpPatchSet",
+    "build_chatgpt_totp_patches",
+]

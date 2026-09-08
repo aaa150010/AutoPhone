@@ -862,3 +862,8 @@ class FreeStorageMailboxMixin:
                         pass
                     raise
         return self._mailbox_dict(row) if row is not None else None
+
+
+__all__ = [
+    "FreeStorageMailboxMixin",
+]

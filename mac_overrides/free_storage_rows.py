@@ -261,3 +261,8 @@ class FreeStorageRowMixin:
             "limit": page_limit,
             "revision": f"{total}:{latest}",
         }
+
+
+__all__ = [
+    "FreeStorageRowMixin",
+]

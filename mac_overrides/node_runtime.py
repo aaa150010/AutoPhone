@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from pathlib import Path
 import shutil
 from typing import MutableMapping
 
 
-def _executable_path(value: str, *, which=shutil.which) -> str | None:
+def _executable_path(value: str, *, which: Callable[[str], str | None] = shutil.which) -> str | None:
     candidate = str(value or "").strip()
     if not candidate:
         return None
@@ -24,7 +25,7 @@ def _executable_path(value: str, *, which=shutil.which) -> str | None:
 def configure_node_runtime(
     environ: MutableMapping[str, str] | None = None,
     *,
-    which=shutil.which,
+    which: Callable[[str], str | None] = shutil.which,
 ) -> str | None:
     """Set a verified Node path and prepend its directory to PATH.
 
@@ -48,3 +49,8 @@ def configure_node_runtime(
     if node_dir not in path_parts:
         env["PATH"] = os.pathsep.join([node_dir, *path_parts])
     return node_binary
+
+
+__all__ = [
+    "configure_node_runtime",
+]

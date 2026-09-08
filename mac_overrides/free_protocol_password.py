@@ -681,3 +681,8 @@ class FreeProtocolPasswordMixin:
             "access_token": active_token,
             "has_access_token": True,
         }
+
+
+__all__ = [
+    "FreeProtocolPasswordMixin",
+]

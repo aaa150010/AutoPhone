@@ -792,3 +792,8 @@ class PublicStateRuntime:
             if isinstance(snapshot.get("logs"), list):
                 snapshot["logs"] = self.public_logs_view(snapshot.get("logs"), raw_tasks)
         return snapshot
+
+
+__all__ = [
+    "PublicStateRuntime",
+]

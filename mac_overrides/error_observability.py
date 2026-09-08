@@ -901,3 +901,18 @@ def format_node_retry_log(task_id: Any, detail: Any) -> str:
         f"{prefix}[Node/Sentinel 重试/oauth_create_node] "
         f"本次尝试未完成，正在自动重试：{cause}"
     )
+
+
+__all__ = [
+    "FAILURE_FIELDS",
+    "NODE_LABELS",
+    "ACCOUNT_BANNED_MESSAGE",
+    "sanitize_failure_detail",
+    "is_retryable_node_failure",
+    "is_node_retry_log",
+    "classify_failure",
+    "public_failure",
+    "format_failure_log",
+    "is_success_diagnostic_trace",
+    "format_node_retry_log",
+]

@@ -918,3 +918,28 @@ class OpenAIAuthConnectivityRuntime:
                     max(0, int(self.next_probe_at - now)) if self.paused else 0
                 ),
             }
+
+
+__all__ = [
+    "AUTH_ORIGIN",
+    "SENTINEL_ORIGIN",
+    "OPENAI_CONNECTIVITY_ORIGINS",
+    "STATUS_UNKNOWN",
+    "STATUS_HEALTHY",
+    "STATUS_OUTAGE",
+    "STATUS_RECOVERING",
+    "KIND_CONNECTIVITY",
+    "KIND_RATE_LIMITED",
+    "KIND_OTHER",
+    "OUTAGE_REASON_CODE",
+    "OUTAGE_REASON_LABEL",
+    "PAUSE_REASON",
+    "RUNTIME_EPOCH",
+    "ConnectivityClassification",
+    "ProbeResult",
+    "normalize_openai_origin",
+    "proxy_fingerprint",
+    "classify_openai_connectivity_failure",
+    "is_openai_connectivity_failure",
+    "OpenAIAuthConnectivityRuntime",
+]

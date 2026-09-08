@@ -574,3 +574,8 @@ class FreeStorageMigrationMixin:
             "version": SCHEMA_VERSION,
             **detail,
         }
+
+
+__all__ = [
+    "FreeStorageMigrationMixin",
+]

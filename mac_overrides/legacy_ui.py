@@ -705,3 +705,9 @@ def apply_legacy_ui_overrides(
         f'placeholder="{_min_price_html_js}"',
     )
     _module._LOGIN_FORM_USABILITY_INJECT += _legacy_dashboard_inject
+
+
+__all__ = [
+    "MAILBOX_MANAGER_HTML",
+    "apply_legacy_ui_overrides",
+]

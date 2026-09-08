@@ -664,3 +664,8 @@ class FreeRegisterRetryMixin:
             "challenge", "captcha", "security", "account_disabled", "account_banned",
             "suspended", "invalid_totp", "invalid code", "rate_limit", "429",
         ))
+
+
+__all__ = [
+    "FreeRegisterRetryMixin",
+]

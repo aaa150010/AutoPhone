@@ -474,8 +474,13 @@ class SmsWebIntegration:
                     reason,
                     cancel_error,
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            _call_log(
+                getattr(adapter, "log_fn", None),
+                f"  [SMS/lease_cancel] 取消订单落账失败，租约台账与订单态可能脱节"
+                f"（{type(exc).__name__}）",
+                "error",
+            )
 
     def _cancel_account_banned_lease(self, task_id: str) -> None:
         self.cancel_active_lease(task_id, ACCOUNT_BANNED_MESSAGE)
@@ -1129,7 +1134,7 @@ class SmsWebIntegration:
             return []
         return [dict(row) for row in statuses or () if isinstance(row, dict)]
 
-    def preflight_pool(self, config: Any, *, logs: Any = None, importer: Any = None):
+    def preflight_pool(self, config: Any, *, logs: Any = None, importer: Any = None) -> Any:
         proxy = self.configure_pool(config, logs=logs, importer=importer)
         pool = self.provider_registry or self.key_pool
         if not pool.has_keys():
@@ -1195,3 +1200,9 @@ class SmsWebIntegration:
             if logs is not None:
                 logs.add(message, "warn")
         return statuses
+
+
+__all__ = [
+    "SMS_MAX_PRICE_HARD_LIMIT",
+    "SmsWebIntegration",
+]
