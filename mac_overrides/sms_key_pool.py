@@ -552,15 +552,47 @@ class SmsKeyPool:
             return "sms_key_missing: 请至少填写一个 SMS API Key"
 
 
-class PooledSmsBowerProvider:
-    """Provider-compatible facade that keeps an activation on its selected key."""
+class _PooledSmsActivationMixin:
+    """Shared SMART flags, number entry and release flow for pooled facades.
+
+    Concrete facades must provide ``_activate``, ``_pool`` (release target or
+    None) and ``_released``; the wait/finish paths intentionally stay separate
+    because the key pool and the multi-platform registry diverge there.
+    """
 
     SMART_ANY_PROVIDER_FALLBACK = True
     SMART_COUNTRY_SCOPE_FILTER = True
     SMART_FIXED_COUNTRY_FALLBACK = False
 
+    def get_number(
+        self,
+        service: str = "dr",
+        country: str = "151",
+        provider_ids: str = "",
+        max_price: str = "",
+    ) -> tuple[str, str]:
+        return self._activate(
+            "get_number",
+            service=service,
+            country=country,
+            provider_ids=provider_ids,
+            max_price=max_price,
+        )
+
+    def _release(self) -> None:
+        if self._released:
+            return
+        self._released = True
+        if self._pool is not None:
+            self._pool.release(self._state)
+
+
+class PooledSmsBowerProvider(_PooledSmsActivationMixin):
+    """Provider-compatible facade that keeps an activation on its selected key."""
+
     def __init__(self, pool: SmsKeyPool, *, proxy: str = "") -> None:
         self.pool = pool
+        self._pool: SmsKeyPool | None = pool
         self.proxy = proxy
         self.api_key = ""
         self.activation_id: str | None = None
@@ -626,21 +658,6 @@ class PooledSmsBowerProvider:
         self.current_order_meta = order_meta
         return self.activation_id, self.phone
 
-    def get_number(
-        self,
-        service: str = "dr",
-        country: str = "151",
-        provider_ids: str = "",
-        max_price: str = "",
-    ) -> tuple[str, str]:
-        return self._activate(
-            "get_number",
-            service=service,
-            country=country,
-            provider_ids=provider_ids,
-            max_price=max_price,
-        )
-
     def get_number_from_candidate(
         self,
         service: str,
@@ -695,12 +712,6 @@ class PooledSmsBowerProvider:
                 self._release()
         else:
             self._release()
-
-    def _release(self) -> None:
-        if self._released:
-            return
-        self._released = True
-        self.pool.release(self._state)
 
     def complete(self) -> None:
         self._finish("complete")

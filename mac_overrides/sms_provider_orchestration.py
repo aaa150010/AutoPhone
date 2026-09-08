@@ -70,7 +70,7 @@ try:
         key_fingerprint,
         redact_sms_secrets,
     )
-    from .sms_key_pool import SmsKeyHealth, SmsKeyPool
+    from .sms_key_pool import SmsKeyHealth, SmsKeyPool, _PooledSmsActivationMixin
 except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
     from sms_balance_runtime import query_registry_balances  # type: ignore[no-redef]
     from sms_network import (  # type: ignore[no-redef]
@@ -85,7 +85,11 @@ except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
         key_fingerprint,
         redact_sms_secrets,
     )
-    from sms_key_pool import SmsKeyHealth, SmsKeyPool  # type: ignore[no-redef]
+    from sms_key_pool import (  # type: ignore[no-redef]
+        SmsKeyHealth,
+        SmsKeyPool,
+        _PooledSmsActivationMixin,
+    )
 
 
 def _sms_timeout_error(value: Any) -> bool:
@@ -579,12 +583,8 @@ class SmsProviderRegistry:
         raise RuntimeError(f"sms_provider_pool_unavailable: {detail}")
 
 
-class PooledSmsProvider:
+class PooledSmsProvider(_PooledSmsActivationMixin):
     """Provider-compatible facade for an order selected from any platform."""
-
-    SMART_ANY_PROVIDER_FALLBACK = True
-    SMART_COUNTRY_SCOPE_FILTER = True
-    SMART_FIXED_COUNTRY_FALLBACK = False
 
     def __init__(self, registry: SmsProviderRegistry, *, proxy: str = "") -> None:
         self.registry = registry
@@ -889,13 +889,6 @@ class PooledSmsProvider:
             raise RuntimeError(
                 f"sms_provider_ready_failed: {detail or type(exc).__name__}"
             ) from exc
-
-    def _release(self) -> None:
-        if self._released:
-            return
-        self._released = True
-        if self._pool is not None:
-            self._pool.release(self._state)
 
     def _cancel_provider(self, platform: str) -> dict[str, str]:
         provider = self._provider

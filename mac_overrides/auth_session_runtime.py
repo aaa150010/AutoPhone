@@ -64,7 +64,9 @@ def _short_fingerprint(value: Any) -> str:
     return hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()[:12]
 
 
-def _safe_path(value: Any) -> str:
+def _continue_url_path(value: Any) -> str:
+    """Extract a truncated path from a continue_url without host validation."""
+
     try:
         parsed = urlsplit(str(value or ""))
     except (TypeError, ValueError):
@@ -128,7 +130,7 @@ class AuthSessionContext:
         value = str(stage or "").strip()
         if value:
             self.current_stage = value
-        path = _safe_path(continue_url)
+        path = _continue_url_path(continue_url)
         if path:
             self.latest_continue_path = path
         if success and value:
@@ -159,7 +161,7 @@ class AuthSessionContext:
         if isinstance(response, Mapping):
             result["response_status"] = _response_status(response)
             result["page_type"] = _response_page_type(response)
-            result["continue_path"] = _safe_path(response.get("continue_url")) or result["continue_path"]
+            result["continue_path"] = _continue_url_path(response.get("continue_url")) or result["continue_path"]
         self.events.append(result)
         del self.events[:-30]
         return dict(result)
@@ -180,8 +182,8 @@ class AuthSessionContext:
             if isinstance(response, Mapping):
                 event["response_status"] = _response_status(response)
                 event["page_type"] = _response_page_type(response)
-                event["continue_path"] = _safe_path(response.get("continue_url")) or event.get("continue_path", "")
-            path = _safe_path(continue_url)
+                event["continue_path"] = _continue_url_path(response.get("continue_url")) or event.get("continue_path", "")
+            path = _continue_url_path(continue_url)
             if path:
                 event["continue_path"] = path
                 self.latest_continue_path = path

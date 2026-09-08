@@ -10,6 +10,11 @@ import re
 from typing import Any, Callable
 from urllib.parse import urljoin, urlsplit
 
+try:
+    from .auth_page_type import normalize_page_type
+except ImportError:  # Loaded as a top-level runtime override.
+    from auth_page_type import normalize_page_type  # type: ignore[no-redef]
+
 
 _TOTP_SECRET_RE = re.compile(r"^[A-Z2-7]+=*$")
 _MFA_PAGE_TYPES = frozenset({"mfa_otp", "mfa_challenge", "mfa_otp_verification"})
@@ -21,12 +26,6 @@ _MFA_PATH_PREFIXES = (
     "/2fa",
     "/totp",
 )
-
-
-def normalize_page_type(value: Any) -> str:
-    """Normalize provider page aliases before applying MFA routing."""
-    text = str(value or "").strip().lower().replace("-", "_")
-    return re.sub(r"[^a-z0-9_]+", "_", text)[:80].strip("_")
 
 
 def _response_is_mfa(response: Any, page_type_get: Callable[[Any], Any]) -> bool:

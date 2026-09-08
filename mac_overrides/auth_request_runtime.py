@@ -9,25 +9,26 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import hashlib
-import re
 import time
 import uuid
 from typing import Any, Mapping
 from urllib.parse import urljoin, urlsplit
 
 try:
+    from .auth_page_type import normalize_page_type
     from .auth_session_runtime import (
         AuthSessionRegistry,
         _short_fingerprint,
-        _safe_path,
+        _continue_url_path,
         invalidation_reason_code,
         is_session_invalid,
     )
 except ImportError:  # Loaded as a top-level runtime override.
+    from auth_page_type import normalize_page_type  # type: ignore[no-redef]
     from auth_session_runtime import (  # type: ignore[no-redef]
         AuthSessionRegistry,
         _short_fingerprint,
-        _safe_path,
+        _continue_url_path,
         invalidation_reason_code,
         is_session_invalid,
     )
@@ -120,13 +121,6 @@ _HTML_MFA_MARKERS = (
 )
 
 
-def normalize_page_type(value: Any) -> str:
-    """Normalize OpenAI page aliases without retaining arbitrary response text."""
-
-    text = str(value or "").strip().lower().replace("-", "_")
-    return re.sub(r"[^a-z0-9_]+", "_", text)[:80].strip("_")
-
-
 def is_phone_page_type(value: Any) -> bool:
     return normalize_page_type(value) in PHONE_PAGE_TYPES
 
@@ -203,7 +197,7 @@ class TransportRequestContext:
             continue_url = response.get("continue_url") or continue_url
         if page_type:
             self.page_type = str(page_type)[:80]
-        path = _safe_path(continue_url)
+        path = _continue_url_path(continue_url)
         if path:
             self.continue_path = path
 
@@ -407,7 +401,7 @@ def finish_request(
     if isinstance(response, Mapping):
         result["response_status"] = response.get("_status")
         result["page_type"] = _page_type(response)
-        result["continue_path"] = _safe_path(response.get("continue_url")) or result.get("continue_path", "")
+        result["continue_path"] = _continue_url_path(response.get("continue_url")) or result.get("continue_path", "")
     return result
 
 

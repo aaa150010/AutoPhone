@@ -12,6 +12,11 @@ import re
 from typing import Any, Callable, Mapping
 from urllib.parse import urljoin, urlsplit
 
+try:
+    from .auth_page_type import normalize_page_type
+except ImportError:  # Loaded as a top-level runtime override.
+    from auth_page_type import normalize_page_type  # type: ignore[no-redef]
+
 
 DYNAMIC_AUTH_CHALLENGES = "dynamic_auth_challenges"
 MAX_CHALLENGE_STEPS = 8
@@ -152,11 +157,6 @@ def dynamic_auth_enabled(config: Any) -> bool:
     return _as_bool(value.get(DYNAMIC_AUTH_CHALLENGES), True)
 
 
-def normalize_page_type(value: Any) -> str:
-    text = str(value or "").strip().lower().replace("-", "_")
-    return re.sub(r"[^a-z0-9_]+", "_", text)[:80].strip("_")
-
-
 def _page_type(response: Any, callback: Callable[[Any], Any] | None = None) -> str:
     if callable(callback):
         try:
@@ -186,7 +186,9 @@ def _continue_url(response: Any, callback: Callable[[Any], Any] | None = None) -
     return ""
 
 
-def _safe_path(value: Any) -> str:
+def _whitelisted_auth_path(value: Any) -> str:
+    """Return only the path portion of a same-site auth URL, else an empty string."""
+
     text = str(value or "").strip()
     if not text:
         return ""
@@ -214,7 +216,7 @@ def classify_challenge(
     continue_url_fn: Callable[[Any], Any] | None = None,
 ) -> ChallengeSnapshot:
     page_type = _page_type(response, page_type_fn)
-    continue_path = _safe_path(_continue_url(response, continue_url_fn))
+    continue_path = _whitelisted_auth_path(_continue_url(response, continue_url_fn))
     if page_type in PASSWORD_PAGE_TYPES or _path_matches(
         continue_path, _PASSWORD_CONTINUE_PREFIXES
     ):
