@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import math
+import sys
 import threading
 import time
 from typing import Any, Callable, Mapping
@@ -499,10 +500,17 @@ async def _await_account_otp_callback(
             kind = "result"
         try:
             loop.call_soon_threadsafe(publish, kind, value)
-        except RuntimeError:
+        except RuntimeError as exc:
             # The owning loop may be closing after cancellation. The daemon
-            # worker has no useful result to deliver in that state.
-            pass
+            # worker has no useful result to deliver in that state.  Leave a
+            # credential-free stderr trace because this thread has no store
+            # or logger wiring.
+            stage_label = clean(stage_code, 32) or "otp_wait"
+            print(
+                f"[Free账号OTP/free_account_otp_worker] 阶段 {stage_label} "
+                f"结果回投失败，事件循环已关闭（{type(exc).__name__}）",
+                file=sys.stderr,
+            )
 
     threading.Thread(
         target=worker,

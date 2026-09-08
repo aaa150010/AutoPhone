@@ -1178,8 +1178,17 @@ def _real_send_passwordless_otp(self, continue_url=""):
             }
         try:
             self.last_response = data
-        except Exception:
-            pass
+        except Exception as exc:
+            _DIAGNOSTIC_STORE.record({
+                "level": "warn",
+                "outcome": "error",
+                "chain": "ordinary",
+                "workflow": "run",
+                "driver": "sms_oauth",
+                "node_code": "passwordless_otp_send",
+                "node_label": "passwordless OTP 发送",
+                "message": f"passwordless OTP 响应回写失败：{type(exc).__name__}",
+            })
         if _codex_oauth_chain._is_success_response(data):
             _call_log(
                 getattr(self, "log_fn", None),
@@ -1658,9 +1667,16 @@ def _patched_importer_start(self, settings):
                     phase_reason = str((event or {}).get("reason") or "task_admission")
                     node_phase_gate.set_capacity(phase_limit, reason=phase_reason)
                     _PROTOCOL_GATE.synchronize_capacity(phase_limit)
-                except Exception:
+                except Exception as exc:
                     # Capacity observability must not break task state updates.
-                    pass
+                    try:
+                        self._log(
+                            "[任务并发/registration_admission] 容量同步失败，"
+                            f"协议门与实际并发可能脱节（{type(exc).__name__}）",
+                            "error",
+                        )
+                    except Exception:
+                        pass
             formatted = _performance_runtime_ext.format_task_admission_event(event)
             if formatted is None:
                 return

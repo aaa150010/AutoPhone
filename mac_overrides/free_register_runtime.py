@@ -959,18 +959,30 @@ class FreeRegisterManager(
                     if mailbox_lease_acquired and self.mailbox_leases is not None:
                         try:
                             self.mailbox_leases.release(task_id=task_id, reusable=True)
-                        except Exception:
-                            pass
+                        except Exception as release_exc:
+                            self._log(
+                                f"[导入回滚/import_rollback] 任务 {task_id} 邮箱租约释放失败，"
+                                f"可能留下悬挂租约（{type(release_exc).__name__}）",
+                                "warn",
+                            )
                     if binding is not None:
                         try:
                             self.proxies.release(binding, owner=task_id or batch_id)
-                        except Exception:
-                            pass
+                        except Exception as release_exc:
+                            self._log(
+                                f"[导入回滚/import_rollback] 任务 {task_id} 代理释放失败，"
+                                f"代理可能被占用（{type(release_exc).__name__}）",
+                                "warn",
+                            )
                     if reserved:
                         try:
                             self.pool.update(row.row_id, status="available", batch_id="", stage="")
-                        except Exception:
-                            pass
+                        except Exception as release_exc:
+                            self._log(
+                                f"[导入回滚/import_rollback] 邮箱行 {row.row_id} 状态回滚失败，"
+                                f"可能保持已占用（{type(release_exc).__name__}）",
+                                "warn",
+                            )
                     self._save_tasks_safely("运行中导入回滚")
                     result["skipped_items"].append({"row_id": row.row_id, "reason": _safe_log_message(exc)[:240]})
             self._save_tasks_safely("运行中导入后的 Free 任务状态")
@@ -1568,8 +1580,16 @@ class FreeRegisterManager(
                 node_label="邮箱源连续失败降级",
                 outcome="degraded",
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            self._log(
+                f"[{snapshot.get('task_id') or ''}/邮箱源连续失败降级/free_mailbox_degraded] "
+                f"邮箱降级写库或告警记录失败，坏邮箱可能继续接单（{type(exc).__name__}）",
+                "error",
+                task_id=str(snapshot.get("task_id") or ""),
+                node_code="free_mailbox_degraded",
+                node_label="邮箱源连续失败降级",
+                outcome="error",
+            )
 
     def _record_proxy_failure(self, task: Mapping[str, Any], exc: BaseException) -> None:
         proxy_id = str(task.get("proxy_id") or "")

@@ -4458,13 +4458,21 @@ class CamoufoxBrowserPool:
         for session in sessions:
             try:
                 await _close_context_safely(session.context, 1.0)
-            except Exception:
-                pass
+            except Exception as exc:
+                if session.trace is not None:
+                    session.trace.add(
+                        "debug_session_context_close_failed",
+                        message=f"调试会话 context 关闭失败（{type(exc).__name__}）",
+                    )
             if session.proxy_bridge is not None:
                 try:
                     session.proxy_bridge.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    if session.trace is not None:
+                        session.trace.add(
+                            "debug_session_proxy_bridge_close_failed",
+                            message=f"调试会话代理桥关闭失败（{type(exc).__name__}）",
+                        )
             with _ARTIFACT_LOCK:
                 _ARTIFACT_PROTECTED_SESSIONS.discard(session.session_id)
         if sessions:
@@ -4796,18 +4804,24 @@ class CamoufoxBrowserPool:
                     asyncio.create_task(
                         self._recycle_slot(slot, generation, "Camoufox 浏览器断开事件")
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    slot.recycle_error = clean(
+                        f"camoufox_recycle_schedule_failed: {type(exc).__name__}", 240
+                    )
 
             try:
                 loop.call_soon_threadsafe(schedule_recycle)
-            except Exception:
-                pass
+            except Exception as exc:
+                slot.recycle_error = clean(
+                    f"camoufox_recycle_dispatch_failed: {type(exc).__name__}", 240
+                )
 
         try:
             on("disconnected", disconnected)
-        except Exception:
-            pass
+        except Exception as exc:
+            slot.recycle_error = clean(
+                f"camoufox_disconnect_listener_failed: {type(exc).__name__}", 240
+            )
 
     async def _launch_browser(self) -> tuple[Any, Any]:
         AsyncCamoufox, _ = _load_camoufox_api()

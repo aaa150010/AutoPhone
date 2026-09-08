@@ -187,8 +187,18 @@ def _is_state_response(response: Any, ok: Callable[[Any], bool] | None = None) -
     try:
         if _is_known_state_response(response, ok, page_types):
             return True
-    except Exception:
-        pass
+    except Exception as exc:
+        # A broken classifier must not rewrite the real page state; fall
+        # through to the generic detection and leave a trace for triage.
+        try:
+            _log(
+                getattr(response, "log_fn", None),
+                f"[Free协议状态分类/state_classifier] 分类器异常，按通用规则继续判定"
+                f"（{type(exc).__name__}）",
+                "warn",
+            )
+        except Exception:
+            pass
     status = _status(response)
     page_value = response.get("page") if isinstance(response, Mapping) else ""
     explicit_page = page_value.get("type") if isinstance(page_value, Mapping) else page_value
