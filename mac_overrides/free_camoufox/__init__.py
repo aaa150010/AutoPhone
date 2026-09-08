@@ -46,6 +46,9 @@ from .transport import CamoufoxTransport, CamoufoxTransportError, PageTransportC
 def __getattr__(name: str):
     """Resolve compatibility classes without importing the legacy runtime eagerly."""
 
+    if name in {"page_interactions", "browser_flow", "browser_registry"}:
+        import importlib
+        return importlib.import_module(f"{__name__}.{name}")
     if name == "CamoufoxRegistrationRunner":
         from . import runner
         return getattr(runner, name)
