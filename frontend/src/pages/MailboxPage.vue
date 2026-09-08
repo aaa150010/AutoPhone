@@ -19,6 +19,7 @@ import {
   restoreMailboxDraftRows,
   setMailboxRowsUnavailable,
 } from '../api/client'
+import { usePolling } from '../composables/usePolling'
 import MailboxActionMenus from '../components/MailboxActionMenus.vue'
 import MailboxDraftDialog from '../components/MailboxDraftDialog.vue'
 import MailboxImportDialog from '../components/MailboxImportDialog.vue'
@@ -145,10 +146,11 @@ function batchCandidates(kind: MailboxOperationKind) {
   return mailboxBatchCandidates(data.value.rows, kind)
 }
 
-function scheduleMailboxPoll(delay: number) {
+const mailboxPolling = usePolling(poll, () => (mailboxBatch.running.value
+  || data.value.rows.some(row => row.progress && row.progress.finished_at == null) ? 1000 : 3000))
+function scheduleMailboxPoll() {
   if (pollingStopped) return
-  window.clearTimeout(timer)
-  timer = window.setTimeout(poll, delay)
+  mailboxPolling.schedule()
 }
 
 const mailboxBatch = useMailboxBatchOperations({
@@ -159,7 +161,7 @@ const mailboxBatch = useMailboxBatchOperations({
   },
   onStarted: () => {
     refreshGuard.invalidate()
-    scheduleMailboxPoll(0)
+    scheduleMailboxPoll()
   },
 })
 const {
@@ -449,17 +451,13 @@ async function startRelogin() {
 async function poll() {
   await refresh()
   if (pollingStopped) return
-  const active = mailboxBatch.running.value
-    || data.value.rows.some(row => row.progress && row.progress.finished_at == null)
-  scheduleMailboxPoll(active ? 1000 : 3000)
+  scheduleMailboxPoll()
 }
 
 onMounted(async () => {
   pollingStopped = false
   await refresh()
-  const active = mailboxBatch.running.value
-    || data.value.rows.some(row => row.progress && row.progress.finished_at == null)
-  scheduleMailboxPoll(active ? 1000 : 3000)
+  scheduleMailboxPoll()
 })
 
 onUnmounted(() => {

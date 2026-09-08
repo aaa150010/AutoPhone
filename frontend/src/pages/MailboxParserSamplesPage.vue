@@ -15,6 +15,7 @@ import {
 } from '../api/client'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import type { MailboxParserSample, MailboxParserSampleReparse } from '../types/api'
+import { parseTimestamp } from '../utils/datetime'
 
 const loading = ref(false)
 const samples = ref<MailboxParserSample[]>([])
@@ -39,8 +40,8 @@ const driverOptions = [{ label: '全部驱动', value: '' }, { label: '短信 / 
 
 function formatTime(value: any) {
   if (!value) return '-'
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString()
+  const date = parseTimestamp(value)
+  return date ? date.toLocaleString() : String(value)
 }
 function formatBytes(value: any) {
   const bytes = Number(value || 0)

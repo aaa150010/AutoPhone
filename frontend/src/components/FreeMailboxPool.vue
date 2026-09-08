@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, CircleCheck, Collection, CopyDocument, Delete, Document, DocumentCopy, Download, Key, Link, Lock, MoreFilled, Plus, PriceTag, Refresh, RefreshLeft, RefreshRight, Tickets, Upload, View, VideoPlay, Warning } from '@element-plus/icons-vue'
 import { deleteFreeMailboxes, exportFreeResults, formatFreeMailboxes, getFreeLiveCheckState, getFreeMailboxLatestCode, getFreeMailboxUrl, getFreeMailboxes, getFreeSecret, getFreeTotp, importFreeMailboxes, retryFreeTwofa, setFreeMailboxStatus, startFree, startFreeLiveCheck, startFreePlanCheck, transferFreeMailboxes } from '../api/client'
@@ -22,6 +22,8 @@ import { freeRowSecretLookup } from '../utils/freeSecretLookup'
 import { safeMailboxUrl } from '../utils/safeMailboxUrl'
 import { freeStageDetail, freeStageLabel, freeStageType } from '../utils/freeStage'
 import { useColumnWidths } from '../composables/useColumnWidths'
+import { usePolling } from '../composables/usePolling'
+import { formatDateTime } from '../utils/datetime'
 
 const FAST_LIVE_CHECK_TIP = '用注册时保存的 Token，通过原绑定代理查询一次账号状态：正常 / Token 失效 / 已停用 / 被出口或安全策略拒绝。不重新登录、不收取邮件。'
 const DEEP_LIVE_CHECK_TIP = '通过原绑定代理完整重新登录确认账号状态：可能收取一封邮箱 OTP 验证码，并按需校验密码 / 2FA。成功后刷新 Token 并同步套餐与 Plus 资格。'
@@ -51,7 +53,6 @@ const logDialogOpen = ref(false)
 const logRow = ref<FreeMailboxRow | null>(null)
 const logDialog = ref<{ refresh: (options?: { forceLatest?: boolean; silent?: boolean }) => Promise<void> }>()
 const { colWidth: poolColWidth, handleHeaderDragend: onPoolHeaderDragend } = useColumnWidths('gptphone.table.widths.free-mailbox-pool')
-let refreshTimer = 0
 
 const filteredRows = computed(() => rows.value.filter(row => {
   const needle = search.value.trim().toLowerCase()
@@ -84,8 +85,7 @@ function mailboxDriverLabel(row: FreeMailboxRow) {
   return '历史链路'
 }
 function mailboxCreatedText(row: FreeMailboxRow) {
-  if (!row.created_at) return ''
-  return new Date(typeof row.created_at === 'number' ? row.created_at * 1000 : row.created_at).toLocaleString()
+  return formatDateTime(row.created_at)
 }
 function mailboxRowClass({ row }: { row: FreeMailboxRow }) {
   return ['failed', 'partial_success'].includes(String(row?.status || '')) && !isRetryResolved(row?.retry_resolved)
@@ -305,12 +305,8 @@ async function copyEmail(row: FreeMailboxRow) {
   }
 }
 
-function scheduleRefresh() {
-  refreshTimer = window.setTimeout(async () => {
-    await refreshLiveState()
-    scheduleRefresh()
-  }, liveState.value.running || logDialogOpen.value ? 1200 : 5000)
-}
+const polling = usePolling(refreshLiveState, () => (liveState.value.running || logDialogOpen.value ? 1200 : 5000))
+const scheduleRefresh = polling.schedule
 
 async function importPools() {
   if (!mailboxText.value.trim()) {
@@ -631,7 +627,6 @@ onMounted(async () => {
   await refreshLiveState()
   scheduleRefresh()
 })
-onUnmounted(() => window.clearTimeout(refreshTimer))
 </script>
 
 <template>

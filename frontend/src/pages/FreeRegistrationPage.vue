@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, CircleCheck, CircleClose, CopyDocument, Delete, Document, Key, Link, Lock, MoreFilled, Refresh, RefreshLeft, RefreshRight, Setting, Tickets, VideoPause, VideoPlay, Warning } from '@element-plus/icons-vue'
 import { closeFreeCamoufoxDebug, deleteFreeTasks, freeBatchRetry, getFreeConfig, getFreeState, preflightFree, rerunFreeTask, retryFreePassword, retryFreeTwofa, startFree, startFreePlanCheck, stopFree, type FreeConfig, type FreeState } from '../api/client'
@@ -19,6 +19,7 @@ import {
 } from '../utils/freeFailure'
 import { useTaskProgressClock } from '../composables/useTaskProgressClock'
 import { useColumnWidths } from '../composables/useColumnWidths'
+import { usePolling } from '../composables/usePolling'
 import { useFreeTaskRowActions } from '../composables/useFreeTaskRowActions'
 import {
   automaticOtpRemaining as automaticOtpRemainingPure,
@@ -90,7 +91,6 @@ const {
   openTaskMailboxUrl,
   copyTaskLatestCode,
 } = useFreeTaskRowActions()
-let timer = 0
 
 const visibleTasks = computed(() => (state.value.tasks || []).slice().sort((a, b) => {
   const batchOrder = Number(b.created_at || 0) - Number(a.created_at || 0)
@@ -470,18 +470,13 @@ function taskFailureNode(task: any) {
   return freeFailureNodeIdentity(task?.failure)
 }
 
-function scheduleRefresh() {
-  timer = window.setTimeout(async () => {
-    await refresh()
-    scheduleRefresh()
-  }, running.value || logDialogOpen.value ? 1000 : 3000)
-}
+const polling = usePolling(refresh, () => (running.value || logDialogOpen.value ? 1000 : 3000))
+const scheduleRefresh = polling.schedule
 
 onMounted(async () => {
   await load()
   scheduleRefresh()
 })
-onUnmounted(() => window.clearTimeout(timer))
 </script>
 
 <template>

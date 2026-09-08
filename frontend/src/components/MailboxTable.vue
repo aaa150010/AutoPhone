@@ -26,6 +26,7 @@ import {
   isCurrentAccountBanned,
 } from '../utils/freeFailure'
 import { needsSub2Rerun } from '../utils/mailboxFilters'
+import { formatDateTime, formatDateTimeZh, formatShortDateTime } from '../utils/datetime'
 
 const props = defineProps<{
   rows: MailboxRow[]
@@ -56,8 +57,7 @@ const nowSeconds = useTaskProgressClock(() => props.rows)
 const { colWidth: smsColWidth, handleHeaderDragend: onSmsHeaderDragend } = useColumnWidths('gptphone.table.widths.sms-mailbox')
 
 function createdText(row: MailboxRow) {
-  if (!row.created_at) return ''
-  return new Date(typeof row.created_at === 'number' ? row.created_at * 1000 : row.created_at).toLocaleString()
+  return formatDateTime(row.created_at)
 }
 
 function clearSelection() {
@@ -178,7 +178,7 @@ function sub2Detail(row: MailboxRow) {
     const date = Number.isFinite(numeric)
       ? new Date(numeric < 10_000_000_000 ? numeric * 1000 : numeric)
       : new Date(String(value.tested_at))
-    if (!Number.isNaN(date.getTime())) parts.push(date.toLocaleString('zh-CN', { hour12: false }))
+    if (!Number.isNaN(date.getTime())) parts.push(formatDateTimeZh(value.tested_at))
   }
   return parts.join(' · ')
 }
@@ -186,15 +186,7 @@ function sub2Detail(row: MailboxRow) {
 function batchLabel(row: MailboxRow) {
   const value = Number(row.batch_started_at || 0)
   if (!value) return '-'
-  const date = new Date(value < 10_000_000_000 ? value * 1000 : value)
-  if (Number.isNaN(date.getTime())) return '-'
-  return date.toLocaleString('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  })
+  return formatShortDateTime(value)
 }
 
 function batchDetail(row: MailboxRow) {

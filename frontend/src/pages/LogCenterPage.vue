@@ -21,6 +21,7 @@ import {
   isSuccessfulDiagnosticOutcome,
 } from '../utils/freeFailure'
 import { copyText as copyTextToClipboard } from '../utils/clipboard'
+import { formatDateTimeOrDash, parseTimestamp } from '../utils/datetime'
 
 const props = defineProps<{ locationKey?: string }>()
 
@@ -112,9 +113,7 @@ function incidentNodeLabel(row: DiagnosticIncident) {
   return diagnosticIncidentNodeLabel(row)
 }
 function formatTime(value: any) {
-  if (!value) return '-'
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString()
+  return formatDateTimeOrDash(value)
 }
 function formatDuration(event: DiagnosticEvent) {
   if (event.elapsed_ms == null) return '-'

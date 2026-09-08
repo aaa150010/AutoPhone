@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import SecretInput from './SecretInput.vue'
 import type { NotificationRuntimeStatus } from '../types/api'
+import { formatDateTimeZh } from '../utils/datetime'
 
 const props = defineProps<{
   modelValue: any
@@ -31,7 +32,7 @@ function statusText() {
   if (!props.status?.status) return ''
   const labels = { queued: '等待发送', sent: '最近发送成功', failed: '最近发送失败' }
   const time = props.status.timestamp
-    ? new Date(props.status.timestamp * 1000).toLocaleString('zh-CN', { hour12: false })
+    ? formatDateTimeZh(props.status.timestamp * 1000)
     : ''
   return `${labels[props.status.status]}${time ? ` · ${time}` : ''}`
 }

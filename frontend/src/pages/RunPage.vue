@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useRowClipboard } from '../composables/useRowClipboard'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Document,
@@ -39,10 +40,11 @@ const emit = defineEmits<{ navigate: [string] }>()
 const controller = useAppController()
 const mailboxImportDialog = ref<InstanceType<typeof MailboxImportDialog>>()
 const openingMailboxUrlTaskIds = ref<string[]>([])
-const loadingFreeTaskEmailIds = ref<string[]>([])
-const loadingMailboxPasswordTaskIds = ref<string[]>([])
-const loadingMailboxTotpTaskIds = ref<string[]>([])
-const loadingMailboxLatestCodeTaskIds = ref<string[]>([])
+const { loadingIds: loadingFreeTaskEmailIds, copyForRow: copyFreeTaskEmailRow } = useRowClipboard()
+const { loadingIds: loadingMailboxPasswordTaskIds, copyForRow: copyMailboxPasswordRow } = useRowClipboard()
+const { loadingIds: loadingMailboxTotpTaskIds, copyForRow: copyMailboxTotpRow } = useRowClipboard()
+const remaining = ref(0)
+const { loadingIds: loadingMailboxLatestCodeTaskIds, copyForRow: copyMailboxLatestCodeRow } = useRowClipboard()
 const taskView = ref<'pending' | 'running' | 'all'>('pending')
 const taskCounts = ref({ pending: 0, running: 0, all: 0 })
 const connectivityView = computed(() => buildOpenAIConnectivityView(controller.runtime.value))
@@ -188,23 +190,16 @@ function applyImportedMailboxes(result: any) {
 async function copyTaskAccount(task: RuntimeTask) {
   const taskId = String(task.task_id || '').trim()
   if (task.run_mode === 'free_register') {
-    if (!taskId || loadingFreeTaskEmailIds.value.includes(taskId)) return
-    if (!navigator.clipboard?.writeText) {
-      ElMessage.error('当前浏览器不支持安全剪贴板写入')
-      return
-    }
-    loadingFreeTaskEmailIds.value = [...loadingFreeTaskEmailIds.value, taskId]
-    try {
-      const rowId = String((task as RuntimeTask & { row_id?: string }).row_id || '').trim()
-      const value = String((await getFreeSecret('email', freeTaskSecretLookup(taskId, rowId))).value || '').trim()
-      if (!value) throw new Error('服务端未返回可复制邮箱')
-      await navigator.clipboard.writeText(value)
-      ElMessage.success('已复制真实邮箱')
-    } catch (error: any) {
-      ElMessage.error(error?.message || '邮箱复制失败')
-    } finally {
-      loadingFreeTaskEmailIds.value = loadingFreeTaskEmailIds.value.filter(id => id !== taskId)
-    }
+    await copyFreeTaskEmailRow({
+      rowId: taskId,
+      produce: async () => {
+        const rowId = String((task as RuntimeTask & { row_id?: string }).row_id || '').trim()
+        return String((await getFreeSecret('email', freeTaskSecretLookup(taskId, rowId))).value || '')
+      },
+      successMessage: '已复制真实邮箱',
+      errorMessage: '邮箱复制失败',
+      emptyMessage: '服务端未返回可复制邮箱',
+    })
     return
   }
   const value = String(task.account || task.email || '').trim()
@@ -289,40 +284,26 @@ async function retryFreeTaskTwofa(task: RuntimeTask) {
 
 async function copyTaskPassword(task: RuntimeTask) {
   const taskId = String(task.task_id || '').trim()
-  if (!taskId || loadingMailboxPasswordTaskIds.value.includes(taskId)) return
-  if (!navigator.clipboard?.writeText) {
-    ElMessage.error('当前浏览器不支持安全剪贴板写入')
-    return
-  }
-  loadingMailboxPasswordTaskIds.value = [...loadingMailboxPasswordTaskIds.value, taskId]
-  try {
-    const result = await getRuntimeTaskMailboxPassword(taskId)
-    await navigator.clipboard.writeText(String(result.password || ''))
-    ElMessage.success('已复制密码')
-  } catch (error: any) {
-    ElMessage.error(error?.message || '复制密码失败')
-  } finally {
-    loadingMailboxPasswordTaskIds.value = loadingMailboxPasswordTaskIds.value.filter(id => id !== taskId)
-  }
+  await copyMailboxPasswordRow({
+    rowId: taskId,
+    produce: async () => String((await getRuntimeTaskMailboxPassword(taskId)).password || ''),
+    successMessage: '已复制密码',
+    errorMessage: '复制密码失败',
+  })
 }
 
 async function copyTaskTotp(task: RuntimeTask) {
   const taskId = String(task.task_id || '').trim()
-  if (!taskId || loadingMailboxTotpTaskIds.value.includes(taskId)) return
-  if (!navigator.clipboard?.writeText) {
-    ElMessage.error('当前浏览器不支持安全剪贴板写入')
-    return
-  }
-  loadingMailboxTotpTaskIds.value = [...loadingMailboxTotpTaskIds.value, taskId]
-  try {
-    const result = await getRuntimeTaskMailboxTotp(taskId)
-    await navigator.clipboard.writeText(String(result.code || ''))
-    ElMessage.success(`已复制临时 2FA 验证码，约 ${Number(result.remaining || 0)} 秒后刷新`)
-  } catch (error: any) {
-    ElMessage.error(error?.message || '复制临时 2FA 验证码失败')
-  } finally {
-    loadingMailboxTotpTaskIds.value = loadingMailboxTotpTaskIds.value.filter(id => id !== taskId)
-  }
+  await copyMailboxTotpRow({
+    rowId: taskId,
+    produce: async () => {
+      const result = await getRuntimeTaskMailboxTotp(taskId)
+      remaining.value = Number(result.remaining || 0)
+      return String(result.code || '')
+    },
+    successMessage: () => `已复制临时 2FA 验证码，约 ${remaining.value} 秒后刷新`,
+    errorMessage: '复制临时 2FA 验证码失败',
+  })
 }
 
 async function copyTaskLatestCode(task: RuntimeTask) {
@@ -335,26 +316,13 @@ async function copyTaskLatestCode(task: RuntimeTask) {
     ElMessage.info('该任务暂无取件 URL，无法提取验证码')
     return
   }
-  if (loadingMailboxLatestCodeTaskIds.value.includes(taskId)) return
-  if (!navigator.clipboard?.writeText) {
-    ElMessage.error('当前浏览器不支持安全剪贴板写入')
-    return
-  }
-  loadingMailboxLatestCodeTaskIds.value = [...loadingMailboxLatestCodeTaskIds.value, taskId]
-  try {
-    const result = await getRuntimeTaskLatestCode(taskId)
-    const code = String(result.code || '').trim()
-    if (!code) {
-      ElMessage.info('未找到新的 OpenAI 邮箱验证码')
-      return
-    }
-    await navigator.clipboard.writeText(code)
-    ElMessage.success('验证码已复制')
-  } catch (error: any) {
-    ElMessage.error(error?.message || '提取邮箱验证码失败')
-  } finally {
-    loadingMailboxLatestCodeTaskIds.value = loadingMailboxLatestCodeTaskIds.value.filter(id => id !== taskId)
-  }
+  await copyMailboxLatestCodeRow({
+    rowId: taskId,
+    produce: async () => String((await getRuntimeTaskLatestCode(taskId)).code || ''),
+    successMessage: '验证码已复制',
+    errorMessage: '提取邮箱验证码失败',
+    emptyMessage: '未找到新的 OpenAI 邮箱验证码',
+  })
 }
 
 async function openTaskMailboxUrl(task: RuntimeTask) {

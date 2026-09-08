@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { RefreshLeft } from '@element-plus/icons-vue'
 import type { MailboxRow } from '../types/api'
 import ContentEmptyState from './ContentEmptyState.vue'
+import { formatDateTimeZh } from '../utils/datetime'
 
 const props = defineProps<{
   modelValue: boolean
@@ -44,8 +45,7 @@ function draftRowKey(row: MailboxRow) {
 function draftedAt(row: MailboxRow) {
   const timestamp = Number(row.updated_at || 0)
   if (!timestamp) return '-'
-  const date = new Date(timestamp < 10_000_000_000 ? timestamp * 1000 : timestamp)
-  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString('zh-CN', { hour12: false })
+  return formatDateTimeZh(timestamp)
 }
 
 async function restoreSelected() {

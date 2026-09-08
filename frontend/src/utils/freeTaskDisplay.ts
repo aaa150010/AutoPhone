@@ -1,5 +1,6 @@
 /** Pure display helpers for Free registration task rows. */
 
+import { formatDateTime } from './datetime'
 import { ACCOUNT_BANNED_DISPLAY_MESSAGE, isCurrentAccountBanned, isRetryResolved } from './freeFailure'
 
 export function taskDriverLabel(driver: unknown): string {
@@ -16,7 +17,7 @@ export function isHistoricalDriver(task: any): boolean {
 
 export function taskCreatedText(task: any): string {
   if (!task?.created_at) return ''
-  return new Date(typeof task.created_at === 'number' ? task.created_at * 1000 : task.created_at).toLocaleString()
+  return formatDateTime(task.created_at)
 }
 
 export function taskIncidentId(task: any): string {
