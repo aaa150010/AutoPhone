@@ -70,6 +70,7 @@ class ObservedPhaseGate:
                 try:
                     self.on_wait(max(0.0, float(self.now_fn()) - started))
                 except Exception:
+                    # Wait-time observation must not alter admission outcome.
                     pass
 
     def release(self) -> None:
@@ -208,11 +209,13 @@ def _startup_cleanup(
         try:
             importer._log(diagnostic, "error")
         except Exception:
+            # Telemetry must not mask the original startup failure.
             pass
     try:
         if cleanup_failures:
             importer._log(f"启动失败清理有 {cleanup_failures} 项未完成", "error")
     except Exception:
+        # Telemetry must not mask the original startup failure.
         pass
     finally:
         importer.executor = None
@@ -239,6 +242,7 @@ def _startup_cleanup(
                     "error",
                 )
             except Exception:
+                # Telemetry must not mask the reconcile failure above.
                 pass
     elif (
         batch_manifest is not None
@@ -256,6 +260,7 @@ def _startup_cleanup(
                     "error",
                 )
             except Exception:
+                # Telemetry must not mask the rollback failure above.
                 pass
 
 
@@ -330,7 +335,9 @@ def start_bounded_importer(
                     int(inflight_snapshot.get("effective") or scheduling_capacity),
                 ),
             )
-        except Exception:
+        except (AttributeError, TypeError, ValueError):
+            # A broken gate snapshot must not block scheduling; fall back to
+            # the recovered concurrency baseline.
             pass
     if task_admission is not None:
         try:
@@ -351,7 +358,9 @@ def start_bounded_importer(
                         int(inflight_gate.snapshot().get("effective") or admission_capacity),
                     ),
                 )
-        except Exception:
+        except (AttributeError, TypeError, ValueError):
+            # A broken admission snapshot must not block scheduling; fall back
+            # to the recovered concurrency baseline.
             worker_capacity = scheduling_capacity
     email_login_concurrency = _bounded_int(
         settings.get("auto_email_login_concurrency"),
@@ -437,6 +446,7 @@ def start_bounded_importer(
                     "error",
                 )
             except Exception:
+                # Telemetry must not mask the manifest failure surfaced above.
                 pass
 
     def finish_before_admission(
@@ -482,12 +492,14 @@ def start_bounded_importer(
                     "error",
                 )
             except Exception:
+                # Telemetry must not mask the terminal-state write failure.
                 pass
 
         if restore_error:
             try:
                 importer._log(f"{task_id} {error}", "error")
             except Exception:
+                # Telemetry must not change the recorded restore outcome.
                 pass
         if stopped:
             with importer.lock:
@@ -532,6 +544,7 @@ def start_bounded_importer(
                     try:
                         on_task_started(task_id, 0.0)
                     except Exception:
+                        # Start-notification telemetry must not skip the task.
                         pass
                 record_batch("mark_started", task_id)
                 business_started = True
@@ -549,6 +562,7 @@ def start_bounded_importer(
                     try:
                         on_task_started(task_id, wait_seconds)
                     except Exception:
+                        # Start-notification telemetry must not skip the task.
                         pass
                 record_batch("mark_started", task_id)
                 business_started = True
@@ -787,12 +801,16 @@ def start_bounded_importer(
                                 try:
                                     discard_pending(len(appended_specs))
                                 except Exception:
+                                    # Cleanup after a failed append must not mask
+                                    # the original submission error.
                                     pass
                         staged_gate.set()
                         for future, _entry, _task_id in staged_futures:
                             try:
                                 future.cancel()
                             except Exception:
+                                # Cleanup after a failed append must not mask
+                                # the original submission error.
                                 pass
                         for task_id in created_task_ids:
                             importer.tasks.pop(task_id, None)
@@ -825,6 +843,8 @@ def start_bounded_importer(
                         try:
                             future.result()
                         except Exception:
+                            # Worker failures are already recorded on the task
+                            # state; the watcher must keep draining the queue.
                             pass
                     importer._watch()
                 finally:
@@ -845,6 +865,8 @@ def start_bounded_importer(
                                     "error",
                                 )
                             except Exception:
+                                # Telemetry must not mask the reconcile failure
+                                # already surfaced above.
                                 pass
 
             watcher = thread_factory(
@@ -915,6 +937,7 @@ def _log_startup_summary(
             )
         importer._log(message, "success")
     except Exception:
+        # The banner is pure telemetry; scheduling has already succeeded.
         pass
 
 
@@ -926,6 +949,7 @@ def stop_bounded_importer(importer: Any) -> None:
         try:
             task_admission.wake_all()
         except Exception:
+            # Wake failures must not prevent the remaining stop cleanup.
             pass
     inflight_gate = getattr(importer, "inflight_gate", None)
     if inflight_gate is not None:
@@ -936,6 +960,7 @@ def stop_bounded_importer(importer: Any) -> None:
             else:
                 inflight_gate.wake_all()
         except Exception:
+            # Wake failures must not prevent the remaining stop cleanup.
             pass
     cleanup_failures = 0
     try:
@@ -1014,6 +1039,7 @@ def stop_bounded_importer(importer: Any) -> None:
         if cleanup_failures:
             importer._log(f"停止清理有 {cleanup_failures} 项未完成", "error")
     except Exception:
+        # The stop summary is pure telemetry; all cleanup already ran.
         pass
 
 

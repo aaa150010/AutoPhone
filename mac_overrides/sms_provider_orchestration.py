@@ -224,6 +224,7 @@ class SmsProviderRegistry:
             try:
                 self.alert_fn(value)
             except Exception:
+                # Alert failures must never break provider orchestration.
                 pass
 
     def _platform_exhausted(self, _provider: str) -> None:
@@ -236,11 +237,13 @@ class SmsProviderRegistry:
                     "warn",
                 )
             except Exception:
+                # Telemetry must not mask the exhaustion being reported.
                 pass
         if self.is_exhausted() and callable(self.exhausted_fn):
             try:
                 self.exhausted_fn()
             except Exception:
+                # Exhausted-notification failures must not break selection.
                 pass
 
     def begin_run(self) -> None:
@@ -438,6 +441,7 @@ class SmsProviderRegistry:
                         "warn",
                     )
                 except Exception:
+                    # Telemetry must not mask the inventory failure surfaced above.
                     pass
             return []
         normalized: list[dict[str, Any]] = []

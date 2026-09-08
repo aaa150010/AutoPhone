@@ -128,6 +128,7 @@ class SmsWebIntegration:
             if task_id and callable(recorder):
                 recorder(task_id, code, elapsed_seconds)
         except Exception:
+            # Segment telemetry must never change the SMS task outcome.
             pass
 
     def clamp_max_price(self, value: Any) -> str:
@@ -275,6 +276,7 @@ class SmsWebIntegration:
                 else:
                     discard_stale()
         except Exception:
+            # Cache invalidation must never change the route decision.
             pass
 
     def create_provider(self, name: str, api_key: str, proxy: str = "") -> Any:
@@ -756,6 +758,7 @@ class SmsWebIntegration:
                     try:
                         self._mark_cancel_finished(task_id, lease, adapter, cancel_reason, exc)
                     except Exception:
+                        # Cancel-finalize must not mask the original order failure.
                         pass
                 return None
             raise
@@ -1074,6 +1077,7 @@ class SmsWebIntegration:
             try:
                 self.cleanup_queue.start_worker(self._retry_cleanup_entry)
             except Exception:
+                # Cleanup-worker startup must not break provider configuration.
                 pass
         return sms_proxy
 
@@ -1143,6 +1147,7 @@ class SmsWebIntegration:
             try:
                 self.cleanup_queue.process(self._retry_cleanup_entry)
             except Exception:
+                # Cleanup failures must not block the preflight being requested.
                 pass
         statuses = pool.preflight(proxy=proxy)
         insufficient = [row for row in statuses if row.get("status") == "insufficient_balance"]

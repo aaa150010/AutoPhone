@@ -459,6 +459,7 @@ class PhoneSubmissionGate:
                 try:
                     on_retry(delay, attempt)
                 except Exception:
+                    # Retry-notification telemetry must never alter retry timing.
                     pass
 
         if isinstance(last_error, Exception):

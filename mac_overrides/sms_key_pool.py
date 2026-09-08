@@ -209,6 +209,7 @@ class SmsKeyPool:
             try:
                 self.logger(message, level)
             except Exception:
+                # Logger failures must never break key-pool operations.
                 pass
 
     def _emit_alert_locked(self, state: SmsKeyHealth, kind: str, message: str) -> None:
@@ -226,6 +227,7 @@ class SmsKeyPool:
             try:
                 self.alert_fn(payload)
             except Exception:
+                # Alert failures must never break key-pool operations.
                 pass
 
     def _mark_error(

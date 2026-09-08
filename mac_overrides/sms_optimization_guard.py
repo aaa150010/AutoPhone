@@ -343,6 +343,7 @@ class SmsOptimizationGuard:
             try:
                 self.on_disable(dict(event))
             except Exception:
+                # Disable-notification telemetry must not change the verdict.
                 pass
         return event
 
@@ -361,6 +362,7 @@ class SmsOptimizationGuard:
             try:
                 self.on_disable(dict(event))
             except Exception:
+                # Disable-notification telemetry must not change the verdict.
                 pass
         return event
 

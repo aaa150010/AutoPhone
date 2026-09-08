@@ -74,6 +74,7 @@ def _provider_exception_text(error: BaseException) -> str:
                 body = body.decode("utf-8", "replace")
             parts.append(str(body or ""))
         except Exception:
+            # An unreadable error body must not mask the original exception.
             pass
     return " ".join(part for part in parts if part)
 
@@ -184,6 +185,7 @@ def confirm_herosms_cancellation(
             try:
                 on_wait(wait_seconds)
             except Exception:
+                # Wait-observation telemetry must never alter retry timing.
                 pass
         if defer_early:
             raise HeroSmsCancellationDeferred(wait_seconds, minimum_seconds)
@@ -432,6 +434,7 @@ class SmsCleanupQueue:
                 try:
                     self.process(handler)
                 except Exception:
+                    # Worker-loop failures stay local; the loop keeps draining.
                     pass
             with self.condition:
                 if self.worker_stop.is_set():
