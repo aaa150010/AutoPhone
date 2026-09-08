@@ -167,7 +167,7 @@ defineExpose({ clearSelection })
             <el-icon :class="{ 'is-loading': quotaRetrying(row) }"><Refresh /></el-icon>
             <span>{{ quotaLabel(row.quota_5h, row.quota_status) }}</span>
           </button>
-          <span v-else :class="['quota-value', row.quota_5h?.remaining_percent > 0 ? 'quota-available' : '']">{{ quotaLabel(row.quota_5h, row.quota_status) }}</span>
+          <span v-else :class="['quota-value', Number(row.quota_5h?.remaining_percent ?? 0) > 0 ? 'quota-available' : '']">{{ quotaLabel(row.quota_5h, row.quota_status) }}</span>
         </el-tooltip>
       </template>
     </el-table-column>
@@ -185,7 +185,7 @@ defineExpose({ clearSelection })
             <el-icon :class="{ 'is-loading': quotaRetrying(row) }"><Refresh /></el-icon>
             <span>{{ quotaLabel(row.quota_7d, row.quota_status) }}</span>
           </button>
-          <span v-else :class="['quota-value', row.quota_7d?.remaining_percent > 0 ? 'quota-available' : '']">{{ quotaLabel(row.quota_7d, row.quota_status) }}</span>
+          <span v-else :class="['quota-value', Number(row.quota_7d?.remaining_percent ?? 0) > 0 ? 'quota-available' : '']">{{ quotaLabel(row.quota_7d, row.quota_status) }}</span>
         </el-tooltip>
       </template>
     </el-table-column>
@@ -370,7 +370,5 @@ defineExpose({ clearSelection })
 .openai-status-retry:disabled { cursor: not-allowed; opacity: 0.7; }
 .openai-status-retry:focus-visible { outline: 2px solid var(--el-color-primary-light-5); outline-offset: 2px; border-radius: 2px; }
 .row-action-button { min-width: 30px; padding: 4px 8px; }
-.mailbox-operation-cell { display: inline-flex; align-items: center; justify-content: flex-start; gap: 1px; min-width: 0; white-space: nowrap; }
-.mailbox-operation-cell :deep(.el-button) { width: 25px; height: 25px; margin-left: 0; padding: 4px; }
 .danger-icon, .danger-label { color: var(--el-color-danger); }
 </style>

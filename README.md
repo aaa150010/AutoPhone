@@ -324,22 +324,18 @@ Pixel、NV outbox 和批次清单分别保存在 `data/pixel_upload_records.json
 mac_runtime/.venv/bin/python -m unittest discover -s tests -v
 mac_runtime/.venv/bin/python -m py_compile \
   mac_overrides/web_gui.py \
-  mac_overrides/batch_upload_runtime.py \
   mac_overrides/chatgpt_totp.py \
   mac_overrides/importer_scheduler.py \
   mac_overrides/legacy_ui.py \
   mac_overrides/mailbox_admin.py \
   mac_overrides/run_notifications.py \
   mac_overrides/runtime_policy.py \
-  mac_overrides/pixel_runtime.py \
-  mac_overrides/nv_runtime.py \
   mac_overrides/sms_runtime.py \
   mac_overrides/sms_web.py \
   mac_overrides/sub2_runtime.py \
   mac_overrides/task_progress.py \
   mac_overrides/web_routes.py \
   tests/test_chatgpt_totp.py \
-  tests/test_batch_upload_runtime.py \
   tests/test_importer_scheduler.py \
   tests/test_legacy_ui.py \
   tests/test_mailbox_admin.py \
@@ -347,8 +343,6 @@ mac_runtime/.venv/bin/python -m py_compile \
   tests/test_runtime_policy.py \
   tests/test_sms_runtime.py \
   tests/test_sms_web.py \
-  tests/test_pixel_runtime.py \
-  tests/test_nv_runtime.py \
   tests/test_sub2_runtime.py \
   tests/test_task_progress.py \
   tests/test_web_gui_security.py \

@@ -17,6 +17,7 @@ import {
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import type { MailboxParserSample, MailboxParserSampleReparse } from '../types/api'
 import { parseTimestamp } from '../utils/datetime'
+import { freeDriverLabel } from '../utils/freeDriverLabel'
 
 const loading = ref(false)
 const samples = ref<MailboxParserSample[]>([])
@@ -54,10 +55,7 @@ function statusLabel(value: string) { return ({ new: '待处理', in_review: '�
 function statusType(value: string) { return value === 'resolved' ? 'success' : value === 'ignored' ? 'info' : value === 'in_review' ? 'warning' : 'danger' }
 function scopeLabel(value: string) { return value === 'free' ? 'Free' : '普通' }
 function driverLabel(value: unknown) {
-  const driver = String(value || '').trim().toLowerCase()
-  if (driver === 'protocol') return '协议'
-  if (driver === 'camoufox') return 'Camoufox'
-  return driver ? '历史链路' : '-'
+  return freeDriverLabel(value, '-', '协议')
 }
 
 async function load() {

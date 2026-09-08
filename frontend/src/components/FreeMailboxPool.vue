@@ -201,18 +201,6 @@ async function startLiveCheckAction(mode: 'fast' | 'deep', row: FreeMailboxRow) 
   await startLiveCheck(mode, [row])
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
 async function copyEmail(row: FreeMailboxRow) {
   const rowId = String(row.row_id || '').trim()
   await copyEmailRow({
@@ -647,7 +635,7 @@ onMounted(async () => {
       </el-form>
       <template #footer><el-button @click="importOpen = false">取消</el-button><el-button type="primary" :loading="loading" @click="importPools">导入</el-button></template>
     </el-dialog>
-    <FreeTaskLogDialog ref="logDialog" v-model="logDialogOpen" :task="logRow ? { task_id: logRow.live_check_task_id, email: logRow.email, driver: logRow.live_check_mode === 'deep' ? '深度测活' : '快速测活', stage: liveStatusLabel(logRow.live_check_status) } : undefined" />
+    <FreeTaskLogDialog ref="logDialog" v-model="logDialogOpen" :task="logRow ? { task_id: logRow.live_check_task_id, email: logRow.email, stage: liveStatusLabel(logRow.live_check_status) } : undefined" />
   </div>
 </template>
 

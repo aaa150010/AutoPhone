@@ -23,6 +23,7 @@ import {
 } from '../utils/freeFailure'
 import { copyText as copyTextToClipboard } from '../utils/clipboard'
 import { formatDateTimeOrDash } from '../utils/datetime'
+import { freeDriverLabel } from '../utils/freeDriverLabel'
 
 const props = defineProps<{ locationKey?: string }>()
 
@@ -80,10 +81,7 @@ function chainLabel(value: unknown) {
   return ({ ordinary: '普通流程', free: 'Free', network: '网络' } as Record<string, string>)[String(value || '')] || String(value || '未知链路')
 }
 function driverLabel(value: unknown) {
-  const driver = String(value || '').trim().toLowerCase()
-  if (driver === 'protocol') return '协议'
-  if (driver === 'camoufox') return 'Camoufox'
-  return driver ? '历史链路' : '-'
+  return freeDriverLabel(value, '-', '协议')
 }
 function incidentIsAccountBannedStatus(row: DiagnosticIncident) {
   // An incident can retain an earlier failure after a later retry succeeds.

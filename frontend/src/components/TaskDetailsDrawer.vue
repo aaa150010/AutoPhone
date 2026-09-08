@@ -4,6 +4,7 @@ import { CopyDocument, View } from '@element-plus/icons-vue'
 import type { RuntimeTask, TaskStageTiming, TaskTimingSubstep } from '../types/api'
 import { ACCOUNT_BANNED_DISPLAY_MESSAGE, isCurrentAccountBanned, isRetryResolved } from '../utils/freeFailure'
 import { FREE_CAMOUFOX_STAGE_NODES, type TaskStageNodeDefinition } from '../utils/taskStageNodes'
+import { TASK_TERMINAL_STATUSES } from '../utils/taskResultViews'
 
 const props = defineProps<{
   modelValue: boolean
@@ -59,11 +60,7 @@ const freeNodes: TaskStageNodeDefinition[] = [
   { code: 'free_result_save', label: '保存 Free 注册结果', group: 'free' },
 ]
 
-const terminalStatuses = new Set([
-  'success', 'failed', 'stopped', 'stopped_before_start', 'retryable_infra',
-  'retryable_email', 'repair_pending', 'email_damaged', 'account_banned',
-  'twofa_pending',
-])
+const terminalStatuses = TASK_TERMINAL_STATUSES
 const failureStatuses = new Set([
   'failed', 'retryable_infra', 'retryable_email', 'repair_pending',
   'email_damaged', 'account_banned',

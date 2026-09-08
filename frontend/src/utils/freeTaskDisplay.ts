@@ -2,13 +2,11 @@
 
 import type { FreeTaskRow } from '../types/free'
 import { formatDateTime } from './datetime'
+import { freeDriverLabel } from './freeDriverLabel'
 import { ACCOUNT_BANNED_DISPLAY_MESSAGE, isCurrentAccountBanned, isRetryResolved } from './freeFailure'
 
 export function taskDriverLabel(driver: unknown): string {
-  const value = String(driver || '').trim().toLowerCase()
-  if (value === 'camoufox') return 'Camoufox'
-  if (value === 'protocol') return '全协议'
-  return value ? '历史链路' : '全协议'
+  return freeDriverLabel(driver, '全协议')
 }
 
 export function isHistoricalDriver(task: FreeTaskRow | null | undefined): boolean {

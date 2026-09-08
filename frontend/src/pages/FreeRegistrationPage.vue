@@ -22,6 +22,7 @@ import { useTaskProgressClock } from '../composables/useTaskProgressClock'
 import { useColumnWidths } from '../composables/useColumnWidths'
 import { usePolling } from '../composables/usePolling'
 import { useFreeTaskRowActions } from '../composables/useFreeTaskRowActions'
+import { defaultFreeConfig, stripLegacyFreeConfigDraft } from '../utils/freeConfigDefaults'
 import {
   automaticOtpRemaining as automaticOtpRemainingPure,
   canRetryPassword,
@@ -42,20 +43,7 @@ import {
 } from '../utils/freeTaskDisplay'
 type DragColumn = { label?: string; noLabelText?: string }
 
-const defaultConfig: FreeConfig = {
-  driver: 'protocol', flow_profile: 'reference_20260823', proxy_allocation_mode: 'healthy_random', target_count: 1, concurrency: 3, email_code_timeout: 90, account_password: 'Aa150010150010', auto_set_password: false, auto_set_2fa: true,
-  mailbox_network_mode: 'local_proxy', mailbox_proxy_url: 'http://127.0.0.1:7897',
-  mailbox_request_retries: 3, mailbox_retry_backoff_seconds: 1,
-  proxy_probe_url: 'https://chatgpt.com/', proxy_socks5_dns_mode: 'remote', protocol: { node_runner: '', sentinel_version: '20260219f9f6', sentinel_timeout: 90, network_timeout: 20, network_preflight_retries: 3, security_challenge_wait_seconds: 60, anonymous_warmup: true, authenticated_warmup: true },
-  proxy_default_scheme: 'socks5',
-  camoufox: {
-    debug_mode: true, headless: true, pool_size: 2, max_contexts_per_browser: 3, context_start_interval_ms: 175,
-    startup_concurrency: 4, block_images: true, registration_timeout_seconds: 600,
-    context_close_timeout_seconds: 15, browser_recycle_timeout_seconds: 45,
-    browser_recycle_drain_timeout_seconds: 20, max_registrations_per_browser: 12,
-    browser_launch_attempts: 3, existing_account_login: true,
-  },
-}
+const defaultConfig: FreeConfig = defaultFreeConfig()
 
 const emit = defineEmits<{ navigate: [string] }>()
 const config = reactive<FreeConfig>(structuredClone(defaultConfig))
@@ -135,16 +123,7 @@ function mergeConfig(value: FreeConfig, forceQuickRun = false) {
   // Do not let removed legacy fields re-enter the reactive draft when loading
   // a pre-migration config from the server. Spreading this draft is
   // used for every new preflight/start request.
-  const draft = config as Record<string, unknown>
-  delete draft.roxybrowser
-  delete draft.roxy_circuit_failure_threshold
-  delete draft.roxy_circuit_recovery_seconds
-  delete draft.roxy_api_key
-  delete draft.roxy_workspace_id
-  const proxySelection = draft.proxy_selection
-  if (proxySelection && typeof proxySelection === 'object') {
-    delete (proxySelection as Record<string, unknown>).roxybrowser
-  }
+  stripLegacyFreeConfigDraft(config as unknown as Record<string, unknown>)
   Object.assign(config.protocol, value.protocol || {})
   Object.assign(config.camoufox, value.camoufox || {})
   // Old persisted configs may still report a removed driver. Keep the editor
@@ -158,17 +137,12 @@ function mergeConfig(value: FreeConfig, forceQuickRun = false) {
   }
 }
 function quickRunConfig(): FreeConfig {
-  const draft = {
+  const sanitized = {
     ...config,
     target_count: Math.min(200, Math.max(1, Number(quickTargetCount.value) || 1)),
     concurrency: Math.min(16, Math.max(1, Number(quickConcurrency.value) || 1)),
-  }
-  const sanitized = draft as FreeConfig & Record<string, unknown>
-  delete sanitized.roxybrowser
-  delete sanitized.roxy_circuit_failure_threshold
-  delete sanitized.roxy_circuit_recovery_seconds
-  delete sanitized.roxy_api_key
-  delete sanitized.roxy_workspace_id
+  } as FreeConfig & Record<string, unknown>
+  stripLegacyFreeConfigDraft(sanitized)
   return sanitized
 }
 

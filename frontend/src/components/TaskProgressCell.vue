@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { TaskProgress, TaskStageGroup, TaskTiming } from '../types/api'
+import { TASK_TERMINAL_STATUSES } from '../utils/taskResultViews'
 
 const props = defineProps<{
   progress?: TaskProgress | null
@@ -9,11 +10,7 @@ const props = defineProps<{
   status?: string
 }>()
 
-const terminalStatuses = new Set([
-  'success', 'failed', 'stopped', 'stopped_before_start', 'retryable_infra',
-  'retryable_email', 'repair_pending', 'email_damaged', 'account_banned',
-  'twofa_pending',
-])
+const terminalStatuses = TASK_TERMINAL_STATUSES
 
 const normalizedStatus = computed(() => String(props.status || '').trim().toLowerCase())
 const terminal = computed(() => terminalStatuses.has(normalizedStatus.value))

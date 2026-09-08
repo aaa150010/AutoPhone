@@ -18,6 +18,7 @@ import {
   type FreeFailureNodeIdentity,
 } from './freeFailure'
 import { freeStageDetail, freeStageLabel, freeStageType } from './freeStage'
+import { freeDriverLabel } from './freeDriverLabel'
 
 export function isHistoricalMailboxDriver(row: FreeMailboxRow | null | undefined): boolean {
   const driver = String(row?.driver || '').trim().toLowerCase()
@@ -25,11 +26,7 @@ export function isHistoricalMailboxDriver(row: FreeMailboxRow | null | undefined
 }
 
 export function mailboxDriverLabel(row: FreeMailboxRow | null | undefined): string {
-  const driver = String(row?.driver || '').trim().toLowerCase()
-  if (driver === 'camoufox') return 'Camoufox'
-  if (driver === 'protocol') return '全协议'
-  if (!driver) return '未运行'
-  return '历史链路'
+  return freeDriverLabel(row?.driver, '未运行')
 }
 
 export function mailboxCreatedText(row: FreeMailboxRow | null | undefined): string {

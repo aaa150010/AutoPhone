@@ -58,6 +58,41 @@ class RecoveryError(RuntimeError):
     """Raised when bytecode recovery cannot produce a valid archive."""
 
 
+# Markers delimiting the auto-generated module manifest inside BUSINESS_MODULES.md.
+GENERATED_START_MARKER = "<!-- generated:business-bytecode:start -->"
+GENERATED_END_MARKER = "<!-- generated:business-bytecode:end -->"
+
+
+def _write_business_manifest(root: Path, manifest_lines: list[str]) -> Path:
+    """Update only the generated manifest section of BUSINESS_MODULES.md.
+
+    If the target file exists and contains the generated-section markers, the
+    content between them is replaced in place and the hand-written sections
+    are preserved. Otherwise the manifest is written to
+    ``disassembly/BUSINESS_MODULES_generated.md`` so a curated document is
+    never overwritten.
+    """
+    generated = "\n".join(manifest_lines) + "\n"
+    block = f"{GENERATED_START_MARKER}\n{generated}{GENERATED_END_MARKER}\n"
+    target = root / "BUSINESS_MODULES.md"
+    if target.is_file():
+        text = target.read_text(encoding="utf-8")
+        start = text.find(GENERATED_START_MARKER)
+        end = text.find(GENERATED_END_MARKER)
+        if start != -1 and end != -1 and end >= start:
+            end += len(GENERATED_END_MARKER)
+            target.write_text(text[:start] + block.rstrip("\n") + text[end:], encoding="utf-8")
+            return target
+    generated_target = root / "disassembly" / "BUSINESS_MODULES_generated.md"
+    generated_target.parent.mkdir(parents=True, exist_ok=True)
+    generated_target.write_text(generated, encoding="utf-8")
+    print(
+        "notice: BUSINESS_MODULES.md has no generated-section markers; "
+        f"manifest written to {generated_target} instead of overwriting it",
+    )
+    return generated_target
+
+
 def copy_with_tree(src: Path, dest_root: Path, base: Path) -> Path:
     rel = src.relative_to(base)
     dest = dest_root / rel
@@ -125,6 +160,7 @@ def recover(
         raise RecoveryError(f"no selected bytecode modules found under {extracted}")
 
     manifest_lines = [
+        GENERATED_START_MARKER,
         "# Selected Business Bytecode",
         "",
         "These files were selected from the PyInstaller/PYZ extraction as likely first-party modules.",
@@ -152,12 +188,13 @@ def recover(
 
             manifest_lines.append(f"- `{rel_name}`")
 
+        manifest_lines.append(GENERATED_END_MARKER)
         try:
             stats = create_archive(full_disassembly, disasm_dest, max_lines=max_lines)
         except ArchiveError as exc:
             raise RecoveryError(str(exc)) from exc
 
-    (root / "BUSINESS_MODULES.md").write_text("\n".join(manifest_lines) + "\n", encoding="utf-8")
+    _write_business_manifest(root, manifest_lines)
     return stats
 
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import SecretInput from './SecretInput.vue'
+import { Promotion } from '@element-plus/icons-vue'
 import type { NotificationRuntimeStatus } from '../types/api'
 import { formatDateTimeZh } from '../utils/datetime'
 import type { AppConfigForm } from '../utils/appConfigNormalize'

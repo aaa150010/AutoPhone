@@ -35,9 +35,11 @@ test('one outage incident opens diagnostics once while a new incident opens agai
   const first = trigger.request.value
   trigger.clear()
   trigger.observeState(state('incident-1'))
-  assert.equal(trigger.request.value, null)
+  const repeated = trigger.request.value
+  assert.equal(repeated, null)
   trigger.observeState(state('incident-2'))
-  assert.notEqual(trigger.request.value?.id, first?.id)
+  const secondIncident = trigger.request.value
+  assert.notEqual(secondIncident?.id, first?.id)
 })
 
 test('task failures are deduplicated per batch and a new batch opens again', () => {
@@ -53,9 +55,11 @@ test('task failures are deduplicated per batch and a new batch opens again', () 
   const first = trigger.request.value
   trigger.clear()
   trigger.observeState(state('batch-1'))
-  assert.equal(trigger.request.value, null)
+  const repeated = trigger.request.value
+  assert.equal(repeated, null)
   trigger.observeState(state('batch-2'))
-  assert.notEqual(trigger.request.value?.id, first?.id)
+  const secondBatch = trigger.request.value
+  assert.notEqual(secondBatch?.id, first?.id)
 })
 
 test('a seen historical task cannot block a new current-batch failure', () => {
@@ -115,10 +119,12 @@ test('manual diagnostics always opens and unrelated provider DNS errors stay sil
   })
 
   trigger.observeState({ runtime: { tasks: [{ task_id: 'task-1', failure: unrelated }] } })
-  assert.equal(trigger.request.value, null)
+  const unseen = trigger.request.value
+  assert.equal(unseen, null)
   trigger.open()
   const first = trigger.request.value
   trigger.clear()
   trigger.open()
-  assert.notEqual(trigger.request.value?.id, first?.id)
+  const secondManual = trigger.request.value
+  assert.notEqual(secondManual?.id, first?.id)
 })

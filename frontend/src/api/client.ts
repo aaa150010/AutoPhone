@@ -6,7 +6,6 @@ import type {
   MailboxPayload,
   MailboxUrlTestResult,
   ManualVerificationAccepted,
-  ManualVerificationRequest,
   ManualVerificationSubmission,
   FreeLogEntry,
   TaskFailure,
@@ -20,7 +19,6 @@ import type {
 import type {
   FreeConfig,
   FreeState,
-  FreeCamoufoxDebugState,
   FreeTaskRow,
   FreeProxyPool,
   RemailProject,
@@ -70,7 +68,7 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T = any>(path: string, body?: unknown): Promise<T> {
+export async function api<T = unknown>(path: string, body?: unknown): Promise<T> {
   const options: RequestInit = body === undefined
     ? { cache: 'no-store' }
     : {
@@ -92,22 +90,22 @@ export async function api<T = any>(path: string, body?: unknown): Promise<T> {
 // ---------------------------------------------------------------------------
 
 export const getState = () => api<{ state: AppState }>('/api/state')
-export const getLocalConfig = () => api<{ config: Record<string, any> }>('/api/local-config')
+export const getLocalConfig = () => api<{ config: Record<string, unknown> }>('/api/local-config')
 export const getSecret = (id: string) => api<{ value: unknown }>('/api/local-config/secret', { id })
-export const saveConfig = (data: Record<string, any>) => api('/api/config', data)
+export const saveConfig = (data: Record<string, unknown>) => api<{ state?: AppState; settings?: Record<string, unknown> }>('/api/config', data)
 export const updateOpenAIConnectivityGuard = (enabled: boolean) => api<{
   ok: true
   enabled: boolean
-  settings?: Record<string, any>
+  settings?: Record<string, unknown>
   state?: AppState
 }>('/api/openai-connectivity-guard', { enabled })
 export const runOpenAIConnectivityDiagnostics = () => api<{
   ok: true
   diagnostic: OpenAIConnectivityDiagnostic
 }>('/api/openai-connectivity-diagnostics', {})
-export const preflightRun = (data: Record<string, any>) => api('/api/preflight', data)
-export const startExistingRun = (data: Record<string, any>) => api('/api/start-existing', data)
-export const stopRun = () => api('/api/stop', {})
+export const preflightRun = (data: Record<string, unknown>) => api<{ state?: AppState; sms_key_statuses?: SmsKeyStatus[] }>('/api/preflight', data)
+export const startExistingRun = (data: Record<string, unknown>) => api<{ state?: AppState }>('/api/start-existing', data)
+export const stopRun = () => api<{ state?: AppState }>('/api/stop', {})
 export const getMailboxes = () => api<MailboxPayload>('/api/mailboxes')
 // ---------------------------------------------------------------------------
 // Free registration chain (protocol / Camoufox)
@@ -116,7 +114,6 @@ export const getMailboxes = () => api<MailboxPayload>('/api/mailboxes')
 export const getFreeConfig = () => api<{ ok: true; config: FreeConfig; state: FreeState }>('/api/free/config')
 export const saveFreeConfig = (config: FreeConfigSavePayload) => api<{ ok: true; config: FreeConfig; state: FreeState; proxies?: FreeProxyPool }>('/api/free/config', config)
 export const getFreeState = () => api<{ ok: true; state: FreeState; config: FreeConfig }>('/api/free/state')
-export const getFreeCamoufoxDebugState = () => api<{ ok: true; camoufox_debug: FreeCamoufoxDebugState; state: FreeState }>('/api/free/camoufox/debug')
 export const closeFreeCamoufoxDebug = (sessionId = '') => api<FreeCamoufoxDebugCloseResult>('/api/free/camoufox/debug/close', { session_id: sessionId })
 export const preflightFree = (config?: Partial<FreeConfig> & { proxy_content?: string }) => api<{
   ok: true
@@ -134,12 +131,12 @@ export const getFreeLogs = (taskId = '') => api<{ ok: true; task_id?: string; lo
 // Diagnostics / log center
 // ---------------------------------------------------------------------------
 
-export const searchDiagnostics = (query: Record<string, any>) => api<{ ok: true; results: DiagnosticIncident[] }>('/api/diagnostics/search', query)
+export const searchDiagnostics = (query: Record<string, unknown>) => api<{ ok: true; results: DiagnosticIncident[] }>('/api/diagnostics/search', query)
 export const getDiagnosticIncident = (incidentId: string) => api<{ ok: true; incident: DiagnosticIncident }>(`/api/diagnostics/incidents/${encodeURIComponent(incidentId)}`)
 export const exportDiagnostics = (incidentIds: string[], format: 'json' | 'markdown' = 'markdown') => api<{ ok: true; format: string; content: string; redaction_applied: boolean }>('/api/diagnostics/export', { incident_ids: incidentIds, format })
 export const deleteDiagnostics = (incidentIds: string[]) => api<{ ok: true; deleted: number }>('/api/diagnostics/delete', { incident_ids: incidentIds })
 export const clearDiagnostics = () => api<{ ok: true; deleted: number }>('/api/diagnostics/clear-all', {})
-export const getDiagnosticsHealth = () => api<{ ok: true; health: Record<string, any> }>('/api/diagnostics/health')
+export const getDiagnosticsHealth = () => api<{ ok: true; health: Record<string, unknown> }>('/api/diagnostics/health')
 // ---------------------------------------------------------------------------
 // Free mailbox pool
 // ---------------------------------------------------------------------------
@@ -149,7 +146,6 @@ export const getFreeMailboxes = () => api<{ ok: true; pool: 'free'; rows: FreeMa
 // Remail purchase & orders
 // ---------------------------------------------------------------------------
 
-export const getRemailProfile = () => api<{ ok: true; profile: Record<string, unknown> }>('/api/remail/profile')
 export const getRemailProjects = () => api<{ ok: true; projects: RemailProject[] | { items?: RemailProject[] } }>('/api/remail/projects')
 export const getRemailWallet = () => api<{ ok: true; wallet: RemailWallet }>('/api/remail/wallet')
 export const getRemailOrders = (query: { page?: number; page_size?: number; imported?: boolean | 'all'; search?: string } = {}) => api<{ ok: true; orders: RemailOrder[]; remote_count?: number; total: number; page: number; page_size: number; has_more: boolean }>(`/api/remail/orders?${new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined && value !== '').map(([key, value]) => [key, String(value)]))}`)
@@ -198,7 +194,6 @@ export const startFreePlanCheck = (rowIds: string[]) => api<{
   state: FreePlanCheckState
   rows: FreeMailboxRow[]
 }>('/api/free/plan-check', { row_ids: rowIds })
-export const getFreePlanCheckState = () => api<{ ok: true; state: FreePlanCheckState; rows: FreeMailboxRow[] }>('/api/free/plan-check/state')
 export const exportFreeResults = (rowIds: string[] = []) => api<{ ok: true; count: number; filename: string; content: string }>('/api/free/mailboxes/export', { row_ids: rowIds })
 export const formatFreeMailboxes = (mode: 'mailbox' | 'full', rowIds: string[]) => api<{
   ok: true
@@ -220,11 +215,6 @@ export const transferFreeMailboxes = (rowIds: string[]) => api<{
 // Free proxy pool & secrets
 // ---------------------------------------------------------------------------
 
-export const importFreeProxies = (proxyContent: string, _country?: string, _group?: string, scheme?: string) => api<{ ok: true; imported: number; proxies?: FreeProxyPool }>(
-  '/api/free/proxies/import',
-  { proxy_content: proxyContent, scheme },
-)
-
 export const preflightFreeProxies = (proxyContent: string, proxyProbeUrl?: string, options: { driver?: string; scheme?: string; proxy_tls_verify?: boolean; proxy_tls_compat_fallback?: boolean; proxy_socks5_dns_mode?: string; layered_probe?: boolean } = {}) => api<{
   ok: true
   result: FreeProxyPreflightResult
@@ -232,8 +222,6 @@ export const preflightFreeProxies = (proxyContent: string, proxyProbeUrl?: strin
   failure?: TaskFailure | null
 }>('/api/free/proxies/preflight', { proxy_content: proxyContent, proxy_probe_url: proxyProbeUrl, ...options })
 export const getFreeProxies = () => api<{ ok: true; proxies: FreeProxyPool }>('/api/free/proxies')
-export const updateFreeProxyGroup = (payload: { country: string; group: string; new_country?: string; new_group?: string; enabled?: boolean }) => api<{ ok: true; result: Record<string, unknown>; proxies: FreeProxyPool }>('/api/free/proxies/group', payload)
-export const deleteFreeProxyGroup = (country: string, group: string) => api<{ ok: true; deleted: number; proxies: FreeProxyPool }>('/api/free/proxies/group/delete', { country, group })
 export const getFreeSecret = (kind: 'token' | 'password' | 'totp' | 'proxy' | 'credential' | 'email', ids: { task_ids?: string[]; row_ids?: string[] }) => api<{ ok: true; kind: string; value: string }>(
   '/api/free/secrets',
   { kind, ...ids },
@@ -333,7 +321,7 @@ export const restoreMailboxRowsManualUsed = (rows: Array<{ row_id: string; line_
   )
 )
 export const exportMailboxSub2 = (rows: Array<{ row_id: string; line_no: number }>) => (
-  api<{ count: number; skipped?: number; filename: string; export: Record<string, any> }>(
+  api<{ count: number; skipped?: number; filename: string; export: Record<string, unknown> }>(
     '/api/mailboxes/sub2-export',
     { rows },
   )
@@ -368,9 +356,6 @@ export const getRuntimeTaskMailboxTotp = (taskId: string) => (
 export const submitManualVerification = (data: ManualVerificationSubmission) => (
   api<ManualVerificationAccepted>('/api/runtime/tasks/manual-verification', data)
 )
-export const openManualVerification = (data: { task_id: string; input_kind?: ManualVerificationSubmission['input_kind']; generation?: number }) => (
-  api<ManualVerificationRequest>('/api/runtime/tasks/manual-verification/open', data)
-)
 export const reloginMailboxRows = (rows: Array<{ row_id: string; line_no: number }>) => (
   api<{ ok: true; run_mode: 'relogin'; started: number; mailboxes?: MailboxPayload; state?: AppState }>(
     '/api/mailboxes/relogin',
@@ -394,7 +379,7 @@ export const importWebsiteMailboxes = () => (
 export const testMailboxUrl = (value: string) => (
   api<MailboxUrlTestResult>('/api/mailbox-url-test', { value })
 )
-export const getMailboxParserSamples = (query: Record<string, any> = {}) => {
+export const getMailboxParserSamples = (query: Record<string, unknown> = {}) => {
   const params = new URLSearchParams()
   Object.entries(query).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') params.set(key, String(value))
@@ -411,8 +396,7 @@ export const cleanupMailboxParserSamples = () => api<{ ok: true; deleted: number
 export const exportMailboxParserSample = (sampleId: string, format: 'sanitized' | 'fixture' = 'sanitized', scope = '') => api<{ ok: true; format: string; content: string; redaction_applied: boolean }>(
   '/api/mailbox-parser-samples/export', { sample_id: sampleId, format, scope, ...(format === 'fixture' ? { confirm_raw: true } : {}) },
 )
-export const getMailboxParserSampleHealth = () => api<{ ok: true; health: Record<string, MailboxParserSampleHealth> }>('/api/mailbox-parser-samples/health')
-export const testEmailNotification = (data: Record<string, any>) => api('/api/notifications/email/test', data)
-export const querySmsBalances = (data: Record<string, any>) => (
+export const testEmailNotification = (data: Record<string, unknown>) => api<{ state?: AppState }>('/api/notifications/email/test', data)
+export const querySmsBalances = (data: Record<string, unknown>) => (
   api<{ ok: true; queried_at: number; sms_key_statuses: SmsKeyStatus[] }>('/api/sms/balances', data)
 )

@@ -28,6 +28,7 @@ import WorkspacePanel from '../components/WorkspacePanel.vue'
 import { useAppController } from '../composables/useAppController'
 import type { MailboxMutationResult, RuntimeTask } from '../types/api'
 import { buildOpenAIConnectivityView } from '../utils/openAIConnectivity'
+import { TASK_TERMINAL_STATUSES } from '../utils/taskResultViews'
 import { freeTaskSecretLookup } from '../utils/freeSecretLookup'
 import { safeMailboxUrl } from '../utils/safeMailboxUrl'
 import {
@@ -93,11 +94,7 @@ onMounted(() => {
 
 onUnmounted(finishLogResize)
 
-const terminalStatuses = new Set([
-  'success', 'failed', 'stopped', 'stopped_before_start', 'retryable_infra',
-  'retryable_email', 'repair_pending', 'email_damaged', 'account_banned',
-  'twofa_pending',
-])
+const terminalStatuses = TASK_TERMINAL_STATUSES
 
 const tasks = computed(() => controller.runtime.value.tasks || [])
 const summary = computed(() => {

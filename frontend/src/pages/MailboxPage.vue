@@ -301,7 +301,7 @@ async function mutate(
     selectedRows.value = []
     const result = action
       ? await action(selected)
-      : await api(path, { line_nos: lineNumbers, rows: selected })
+      : await api<MailboxMutationResult>(path, { line_nos: lineNumbers, rows: selected })
     applyMailboxPayload(result)
     await nextTick()
     mailboxTable.value?.clearSelection()

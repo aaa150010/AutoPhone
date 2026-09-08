@@ -5,25 +5,12 @@ import { ElMessage } from 'element-plus'
 import { CircleCheck, CopyDocument, Refresh, View } from '@element-plus/icons-vue'
 import { ApiError, getFreeConfig, getFreeProxies, preflightFree, preflightFreeProxies, saveFreeConfig, type FreeConfig, type FreeState, type FreeProxyPool, type FreeProxyPreflightRow, type FreeProxyRow } from '../api/client'
 import type { TaskFailure } from '../types/api'
+import { defaultFreeConfig, stripLegacyFreeConfigDraft } from '../utils/freeConfigDefaults'
 import FieldHelpLabel from './FieldHelpLabel.vue'
 
 const emit = defineEmits<{ dirtyChange: [boolean]; navigate: [string] }>()
 
-const defaultConfig: FreeConfig = {
-  driver: 'protocol', flow_profile: 'reference_20260823', proxy_allocation_mode: 'healthy_random', target_count: 1, concurrency: 3, email_code_timeout: 90, account_password: 'Aa150010150010', auto_set_password: false, auto_set_2fa: true,
-  mailbox_network_mode: 'local_proxy', mailbox_proxy_url: 'http://127.0.0.1:7897',
-  mailbox_request_retries: 3, mailbox_retry_backoff_seconds: 1,
-  proxy_probe_url: 'https://chatgpt.com/', proxy_socks5_dns_mode: 'remote', proxy_tls_verify: true, proxy_tls_compat_fallback: true, protocol: { node_runner: '', sentinel_version: '20260219f9f6', sentinel_timeout: 90, network_timeout: 20, network_preflight_retries: 3, security_challenge_wait_seconds: 60, anonymous_warmup: true, authenticated_warmup: true },
-  proxy_default_scheme: 'socks5', proxy_failure_threshold: 2, proxy_quarantine_seconds: 600, proxy_health_probe_ttl_seconds: 300, proxy_retry_count: 1,
-  camoufox: {
-    debug_mode: true, headless: true, pool_size: 2, max_contexts_per_browser: 3, context_start_interval_ms: 175,
-    startup_concurrency: 4, block_images: true, registration_timeout_seconds: 600,
-    context_close_timeout_seconds: 15, browser_recycle_timeout_seconds: 45,
-    browser_recycle_drain_timeout_seconds: 20, max_registrations_per_browser: 12,
-    browser_launch_attempts: 3, existing_account_login: true,
-  },
-  remail: { enabled: false, base_url: 'https://remail.aishop6.com', api_key: '', project_id: '', supply_policy: 'private_first', request_timeout_seconds: 20, catalog_cache_seconds: 60, order_sync_enabled: false, order_sync_interval_minutes: 30, auto_import_new_purchase_orders: false },
-}
+const defaultConfig: FreeConfig = defaultFreeConfig()
 
 const config = reactive<FreeConfig>(structuredClone(defaultConfig))
 const state = ref<FreeState>({ running: false, tasks: [], summary: {}, pool: {} })
@@ -54,16 +41,7 @@ function mergeConfig(value: FreeConfig) {
   Object.assign(config, value)
   // Strip removed legacy fields from old responses before they can be
   // persisted again by the save payload.
-  const draft = config as Record<string, unknown>
-  delete draft.roxybrowser
-  delete draft.roxy_circuit_failure_threshold
-  delete draft.roxy_circuit_recovery_seconds
-  delete draft.roxy_api_key
-  delete draft.roxy_workspace_id
-  const proxySelection = draft.proxy_selection
-  if (proxySelection && typeof proxySelection === 'object') {
-    delete (proxySelection as Record<string, unknown>).roxybrowser
-  }
+  stripLegacyFreeConfigDraft(config as unknown as Record<string, unknown>)
   Object.assign(config.protocol, value.protocol || {})
   Object.assign(config.camoufox, value.camoufox || {})
   if (!['protocol', 'camoufox'].includes(String(config.driver || '').trim().toLowerCase())) {
@@ -358,7 +336,6 @@ defineExpose({ save })
 .driver-options :deep(.el-radio) { display: grid; gap: 3px; min-height: 58px; height: auto; margin: 0; align-content: center; }
 .driver-options strong { font-size: 13px; }
 .driver-options small { color: var(--el-text-color-secondary); font-size: 11px; }
-.proxy-selection-grid { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(260px, 1fr) 150px; gap: 10px; align-items: end; margin-bottom: 4px; }
 .selection-summary { display: flex; flex-direction: column; min-height: 58px; justify-content: center; padding: 8px 12px; border: 1px solid var(--workspace-border); color: var(--el-text-color-secondary); }
 .selection-summary b { color: var(--el-text-color-primary); font-size: 19px; line-height: 22px; }
 .selection-summary small { font-size: 11px; }
@@ -378,7 +355,6 @@ defineExpose({ save })
 .proxy-check-incident span { color: var(--el-color-danger); font-size: 12px; font-weight: 650; }
 .proxy-check-incident code { color: var(--el-text-color-primary); font-size: 12px; }
 .proxy-check-incident small { grid-column: 1 / -1; min-width: 0; overflow: hidden; color: var(--el-text-color-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.table-subline { display: block; color: var(--el-text-color-secondary); font-size: 10px; line-height: 14px; }
 .free-settings-section :deep(.el-input-number), .free-settings-section :deep(.el-select) { width: 100%; }
 .free-settings-section :deep(.free-scale-number) { width: 132px; max-width: 100%; }
 .free-settings-section :deep(.el-form-item) { margin-bottom: 10px; }

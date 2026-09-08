@@ -14,11 +14,13 @@ function isRetryResolved(value: unknown): boolean {
   return value === true || String(value || '').trim().toLowerCase() === 'true'
 }
 
-export const terminalTaskStatuses = new Set([
+export const TASK_TERMINAL_STATUSES = new Set([
   'success', 'failed', 'stopped', 'stopped_before_start', 'cancelled', 'canceled', 'retryable_infra',
   'retryable_email', 'repair_pending', 'email_damaged', 'account_banned',
   'twofa_pending',
 ])
+
+export const terminalTaskStatuses = TASK_TERMINAL_STATUSES
 
 export const failedTaskStatuses = new Set([
   'failed', 'retryable_infra', 'retryable_email', 'repair_pending', 'email_damaged', 'account_banned',

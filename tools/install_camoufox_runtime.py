@@ -71,7 +71,8 @@ def main() -> int:
             cached = get_cached_versions("Official")
             if cached:
                 selected = cached[0]
-        except Exception:
+        except Exception as exc:
+            print(f"cache lookup failed, falling back to direct version: {exc}", file=sys.stderr)
             selected = None
         fetcher = CamoufoxFetcher(selected_version=selected or _direct_version())
         fetcher.install()

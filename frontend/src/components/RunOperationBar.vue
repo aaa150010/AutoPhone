@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { errorMessage } from '../utils/errorMessage'
 import { ElMessage } from 'element-plus'
+import { Check, CircleCheck, Download, Upload, VideoPause, VideoPlay } from '@element-plus/icons-vue'
 
 defineProps<{
   running: boolean

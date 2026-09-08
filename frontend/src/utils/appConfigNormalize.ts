@@ -168,7 +168,7 @@ export function normalizeOperationalSettings(config: Record<string, unknown>) {
   return config
 }
 
-export function stableValue(value: unknown): unknown {
+function stableValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stableValue)
   if (!value || typeof value !== 'object') return value
   const record = value as Record<string, unknown>

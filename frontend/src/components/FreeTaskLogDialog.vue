@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { errorMessage } from '../utils/errorMessage'
+import { freeDriverLabel } from '../utils/freeDriverLabel'
 import { ElMessage } from 'element-plus'
 import { Aim, ArrowLeft, ArrowRight, Bottom, CopyDocument, Refresh } from '@element-plus/icons-vue'
 import { getFreeLogs } from '../api/client'
@@ -49,12 +50,7 @@ let programmaticScroll = false
 let scrollResetFrame = 0
 
 const taskId = computed(() => String(props.task?.task_id || ''))
-const driverLabel = computed(() => {
-  const value = String(props.task?.driver || '').trim().toLowerCase()
-  if (value === 'protocol') return '全协议'
-  if (value === 'camoufox') return 'Camoufox'
-  return value ? '历史链路' : 'Free'
-})
+const driverLabel = computed(() => freeDriverLabel(props.task?.driver, 'Free'))
 const dialogTitle = computed(() => `${props.task?.email || 'Free 账号'} · ${driverLabel.value} 日志`)
 const filteredLogs = computed(() => filterFreeLogs(logs.value, levelFilter.value, nodeFilter.value))
 const visibleLogs = computed(() => filteredLogs.value.slice(windowStart.value, windowStart.value + FREE_LOG_WINDOW_SIZE))
