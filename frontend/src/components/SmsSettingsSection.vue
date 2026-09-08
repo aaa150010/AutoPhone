@@ -185,7 +185,7 @@ function statusesFor(provider: string) {
             />
             <el-popover placement="bottom-end" :width="240" trigger="click">
               <template #reference>
-                <el-tooltip content="平台高级设置" placement="top">
+                <el-tooltip content="平台高级设置" placement="top" :show-after="250">
                   <el-button text circle :aria-label="`${pool.label} 高级设置`">
                     <el-icon><Setting /></el-icon>
                   </el-button>

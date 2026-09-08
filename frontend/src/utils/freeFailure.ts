@@ -1,3 +1,9 @@
+/**
+ * Shared failure display helpers.
+ *
+ * Stable user-facing copy and ban/failure resolution predicates reused by the
+ * mailbox table, Free task displays and log center views.
+ */
 import type { TaskFailure } from '../types/api'
 
 /** Stable, user-facing copy for a terminal OpenAI account ban. */

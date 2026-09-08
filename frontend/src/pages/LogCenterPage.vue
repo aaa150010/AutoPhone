@@ -262,7 +262,7 @@ watch(() => props.locationKey, (value, previous) => {
       <div v-else class="table-wrap">
         <el-table class="incident-table" :data="incidents" v-loading="loading" height="100%" stripe border @selection-change="selectRows" size="small">
         <el-table-column type="selection" width="46" fixed="left" />
-        <el-table-column label="日志 ID" width="230" fixed="left"><template #default="{ row }"><div class="incident-id"><el-link type="primary" @click="openIncident(row)">{{ row.incident_id }}</el-link><el-tooltip content="复制日志 ID" placement="top"><el-button text size="small" :icon="CopyDocument" aria-label="复制日志 ID" @click="copyIncidentId(row)" /></el-tooltip></div></template></el-table-column>
+        <el-table-column label="日志 ID" width="230" fixed="left"><template #default="{ row }"><div class="incident-id"><el-link type="primary" @click="openIncident(row)">{{ row.incident_id }}</el-link><el-tooltip content="复制日志 ID" placement="top" :show-after="250"><el-button text size="small" :icon="CopyDocument" aria-label="复制日志 ID" @click="copyIncidentId(row)" /></el-tooltip></div></template></el-table-column>
         <el-table-column label="状态" width="96" align="center"><template #default="{ row }"><el-tag size="small" :type="incidentStatusType(row)">{{ incidentStatusLabel(row) }}</el-tag></template></el-table-column>
         <el-table-column prop="subject_display" label="账号" min-width="150" show-overflow-tooltip />
         <el-table-column label="链路" min-width="150" show-overflow-tooltip><template #default="{ row }">{{ chainLabel(row.chain) }} / {{ driverLabel(row.driver) }}</template></el-table-column>
@@ -270,7 +270,7 @@ watch(() => props.locationKey, (value, previous) => {
         <el-table-column label="首个失败节点" min-width="210" show-overflow-tooltip><template #default="{ row }"><span class="failure-node">{{ incidentNodeLabel(row) }}</span><code>{{ row.first_node_code || '' }}</code></template></el-table-column>
         <el-table-column prop="task_id" label="任务 ID" min-width="150" show-overflow-tooltip />
         <el-table-column label="发生时间" min-width="170"><template #default="{ row }">{{ formatTime(row.updated_at) }}</template></el-table-column>
-        <el-table-column label="操作" width="150" fixed="right"><template #default="{ row }"><div class="row-actions"><el-button text size="small" @click="copyGpt(row)">复制诊断</el-button><el-tooltip content="下载 JSON" placement="top"><el-button text size="small" :icon="Download" aria-label="下载 JSON" @click="downloadJson(row)" /></el-tooltip></div></template></el-table-column>
+        <el-table-column label="操作" width="150" fixed="right"><template #default="{ row }"><div class="row-actions"><el-button text size="small" @click="copyGpt(row)">复制诊断</el-button><el-tooltip content="下载 JSON" placement="top" :show-after="250"><el-button text size="small" :icon="Download" aria-label="下载 JSON" @click="downloadJson(row)" /></el-tooltip></div></template></el-table-column>
         <template #empty><el-empty :description="health.incidents ? '已连接诊断库，但当前筛选条件没有匹配记录' : '暂无诊断日志记录'" /></template>
         </el-table>
       </div>

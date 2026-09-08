@@ -221,12 +221,12 @@ defineExpose({ refresh })
       </el-select>
       <span class="follow-control"><el-switch v-model="autoFollow" size="small" @change="autoFollow && scrollToLatest()" />自动跟随</span>
       <el-button size="small" :icon="Aim" :disabled="firstErrorIndex < 0" @click="locateFirstError" aria-label="定位首个错误">定位首个错误</el-button>
-      <el-tooltip content="滚动到最新日志"><el-button circle size="small" :icon="Bottom" aria-label="滚动到最新日志" @click="scrollToLatest" /></el-tooltip>
+      <el-tooltip content="滚动到最新日志" placement="top" :show-after="250"><el-button circle size="small" :icon="Bottom" aria-label="滚动到最新日志" @click="scrollToLatest" /></el-tooltip>
       <span class="filtered-count">匹配 {{ filteredLogs.length }} / {{ logs.length }}</span>
       <span class="window-control">
-        <el-tooltip content="查看较早日志"><el-button circle size="small" :icon="ArrowLeft" :disabled="!hasPreviousWindow" aria-label="查看较早日志" @click="moveWindow(-1)" /></el-tooltip>
+        <el-tooltip content="查看较早日志" placement="top" :show-after="250"><el-button circle size="small" :icon="ArrowLeft" :disabled="!hasPreviousWindow" aria-label="查看较早日志" @click="moveWindow(-1)" /></el-tooltip>
         <small>{{ filteredLogs.length ? windowStart + 1 : 0 }}-{{ windowEnd }} / {{ filteredLogs.length }}</small>
-        <el-tooltip content="查看较新日志"><el-button circle size="small" :icon="ArrowRight" :disabled="!hasNextWindow" aria-label="查看较新日志" @click="moveWindow(1)" /></el-tooltip>
+        <el-tooltip content="查看较新日志" placement="top" :show-after="250"><el-button circle size="small" :icon="ArrowRight" :disabled="!hasNextWindow" aria-label="查看较新日志" @click="moveWindow(1)" /></el-tooltip>
       </span>
     </div>
     <div ref="logScroll" v-loading="loading" class="log-dialog-list" @scroll="handleScroll">

@@ -587,12 +587,12 @@ onMounted(async () => {
           <el-table-column label="邮箱" :min-width="poolColWidth('邮箱', 280)" show-overflow-tooltip>
             <template #default="{ row }">
               <div class="mailbox-account-cell">
-                <el-tooltip :content="`点击复制邮箱${row.email ? `：${row.email}` : ''}`" placement="top"><el-button link class="email-copy" :loading="loadingEmail.includes(row.row_id)" @click.stop="copyEmail(row)"><span>{{ row.email }}</span><el-icon v-if="!loadingEmail.includes(row.row_id)"><CopyDocument /></el-icon></el-button></el-tooltip>
+                <el-tooltip :content="`点击复制邮箱${row.email ? `：${row.email}` : ''}`" placement="top" :show-after="250"><el-button link class="email-copy" :loading="loadingEmail.includes(row.row_id)" @click.stop="copyEmail(row)"><span>{{ row.email }}</span><el-icon v-if="!loadingEmail.includes(row.row_id)"><CopyDocument /></el-icon></el-button></el-tooltip>
                 <span class="mailbox-subline">{{ mailboxDriverLabel(row) }}<template v-if="mailboxCreatedText(row)"> · {{ mailboxCreatedText(row) }}</template></span>
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="阶段" :min-width="poolColWidth('阶段', 150)" show-overflow-tooltip><template #default="{ row }"><el-tooltip :content="mailboxStageTooltip(row)" placement="top"><span class="mailbox-stage-cell"><el-tag size="small" effect="light" :type="mailboxStageType(row)">{{ mailboxStageLabel(row) }}</el-tag></span></el-tooltip></template></el-table-column>
+          <el-table-column label="阶段" :min-width="poolColWidth('阶段', 150)" show-overflow-tooltip><template #default="{ row }"><el-tooltip :content="mailboxStageTooltip(row)" placement="top" :show-after="250"><span class="mailbox-stage-cell"><el-tag size="small" effect="light" :type="mailboxStageType(row)">{{ mailboxStageLabel(row) }}</el-tag></span></el-tooltip></template></el-table-column>
           <el-table-column label="套餐" :width="poolColWidth('套餐', 96)" align="center" show-overflow-tooltip>
             <template #default="{ row }"><div class="mailbox-plan-cell"><el-tag size="small" :type="mailboxPlanTagType(row)" effect="plain">{{ mailboxPlanLabel(row) }}</el-tag><el-tag v-if="row.plus_trial_eligible && String(row.subscription_plan || row.plan_type || '').toLowerCase() !== 'free'" size="small" type="success" effect="plain" class="trial-tag">Plus 试用</el-tag></div></template>
           </el-table-column>
@@ -604,7 +604,7 @@ onMounted(async () => {
           </el-table-column>
           <el-table-column label="错误" :min-width="poolColWidth('错误', 320)">
             <template #default="{ row }">
-              <el-tooltip placement="top" :disabled="!mailboxFailureDetails(row).length">
+              <el-tooltip placement="top" :disabled="!mailboxFailureDetails(row).length" :show-after="250">
                 <template #content><div class="failure-tooltip"><span v-for="item in mailboxFailureDetails(row)" :key="item">{{ item }}</span></div></template>
                 <div class="failure-cell"><span class="failure-summary"><template v-if="isRetryResolved(row.retry_resolved)"><strong class="resolved-text">已由重试解决</strong></template><template v-else-if="mailboxIsAccountBanned(row)"><strong>{{ ACCOUNT_BANNED_DISPLAY_MESSAGE }}</strong></template><template v-else><strong v-if="mailboxFailureNode(row).label || mailboxFailureNode(row).code">{{ mailboxFailureNode(row).label || mailboxFailureNode(row).code }}<code v-if="mailboxFailureNode(row).showCode">{{ mailboxFailureNode(row).code }}</code></strong><span>{{ mailboxFailureCause(row) }}</span></template></span></div>
               </el-tooltip>

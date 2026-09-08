@@ -2,20 +2,11 @@ import { ref, type Ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ApiError, exportMailboxSource, exportMailboxSub2 } from '../api/client'
 import type { MailboxRow } from '../types/api'
+import { browserDownload } from '../utils/browserDownload'
 
 interface MailboxExportOptions {
   selectedRows: Ref<MailboxRow[]>
   refresh: () => Promise<void>
-}
-
-function download(content: BlobPart, type: string, filename: string) {
-  const blob = new Blob([content], { type })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  link.click()
-  URL.revokeObjectURL(url)
 }
 
 export function useMailboxExports(options: MailboxExportOptions) {
@@ -48,7 +39,7 @@ export function useMailboxExports(options: MailboxExportOptions) {
     exportingSub2.value = true
     try {
       const result = await exportMailboxSub2(bindings())
-      download(JSON.stringify(result.export, null, 2), 'application/json', result.filename || 'sub2api-export.json')
+      browserDownload(JSON.stringify(result.export, null, 2), 'application/json', result.filename || 'sub2api-export.json')
       const skipped = Number(result.skipped || 0)
       ElMessage.success(`已导出 ${Number(result.count || 0)} 条${skipped ? `，跳过 ${skipped} 条` : ''}`)
     } catch (error: any) {
@@ -67,7 +58,7 @@ export function useMailboxExports(options: MailboxExportOptions) {
     exportingSource.value = true
     try {
       const result = await exportMailboxSource(bindings())
-      download(result.content, 'text/plain;charset=utf-8', result.filename || 'mailboxes-original.txt')
+      browserDownload(result.content, 'text/plain;charset=utf-8', result.filename || 'mailboxes-original.txt')
       ElMessage.success(`已按原始格式导出 ${Number(result.count || 0)} 条`)
     } catch (error: any) {
       if (error instanceof ApiError && error.status === 409) await options.refresh()

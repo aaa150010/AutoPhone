@@ -395,7 +395,7 @@ async function disableConnectivityGuard() {
         <div class="run-toolbar-main">
           <el-button size="small" :icon="Setting" @click="emit('navigate', '/settings')" aria-label="运行配置">运行配置</el-button>
           <el-button size="small" :icon="Upload" @click="mailboxImportDialog?.open()" aria-label="导入邮箱">导入邮箱</el-button>
-          <el-tooltip v-if="controller.dirty.value" content="存在未保存配置，请先进入运行配置保存" placement="bottom">
+          <el-tooltip v-if="controller.dirty.value" content="存在未保存配置，请先进入运行配置保存" placement="bottom" :show-after="250">
             <span><el-button size="small" type="primary" :icon="VideoPlay" disabled aria-label="开始运行">开始运行</el-button></span>
           </el-tooltip>
           <el-button v-else size="small" type="primary" :icon="VideoPlay" :loading="controller.actions.starting" :disabled="controller.running.value || !controller.hasPool.value" @click="start" aria-label="开始运行">开始运行</el-button>
@@ -448,7 +448,7 @@ async function disableConnectivityGuard() {
             @counts="taskCounts = $event"
           />
         </WorkspacePanel>
-        <el-tooltip content="拖拽调整日志宽度，方向键微调" placement="top">
+        <el-tooltip content="拖拽调整日志宽度，方向键微调" placement="top" :show-after="250">
           <div class="log-resizer" role="separator" aria-label="调整运行日志宽度" aria-orientation="vertical" :aria-valuemin="MIN_RUN_LOG_PANEL_WIDTH" :aria-valuemax="MAX_RUN_LOG_PANEL_WIDTH" :aria-valuenow="logPanelWidth" tabindex="0" @pointerdown="startLogResize" @keydown="adjustLogPanelWidth" />
         </el-tooltip>
         <WorkspacePanel class="log-workspace" title="运行日志" :icon="Document" fill body-padding="none">

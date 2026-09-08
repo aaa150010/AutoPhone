@@ -91,7 +91,7 @@ function statusType(status?: SmsKeyStatus) {
   <div class="sms-key-editor">
     <div class="editor-title">
       <span>{{ title || 'API Key' }}</span>
-      <el-tooltip content="新增 SMS API Key" placement="top">
+      <el-tooltip content="新增 SMS API Key" placement="top" :show-after="250">
         <el-button text circle aria-label="新增 SMS API Key" @click="addRow">
           <el-icon><Plus /></el-icon>
         </el-button>
@@ -109,7 +109,7 @@ function statusType(status?: SmsKeyStatus) {
         <el-tag class="key-status" :type="statusType(statusAt(index))">
           {{ statusLabel(statusAt(index)) }}
         </el-tag>
-        <el-tooltip :content="rows.length === 1 ? '清空 SMS API Key' : '删除 SMS API Key'" placement="top">
+        <el-tooltip :content="rows.length === 1 ? '清空 SMS API Key' : '删除 SMS API Key'" placement="top" :show-after="250">
           <el-button text circle :aria-label="rows.length === 1 ? '清空 SMS API Key' : '删除 SMS API Key'" @click="removeRow(index)">
             <el-icon><Delete /></el-icon>
           </el-button>

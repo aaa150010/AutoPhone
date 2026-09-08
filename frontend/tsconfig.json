@@ -8,6 +8,8 @@
     "jsx": "preserve",
     "resolveJsonModule": true,
     "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
