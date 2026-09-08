@@ -8,22 +8,29 @@ import ContentEmptyState from './ContentEmptyState.vue'
 import FreeTaskLogDialog from './FreeTaskLogDialog.vue'
 import WorkspacePanel from './WorkspacePanel.vue'
 import StateDot from './StateDot.vue'
-import {
-  ACCOUNT_BANNED_DISPLAY_MESSAGE,
-  freeFailureCause,
-  freeFailureDetails,
-  freeFailureNodeIdentity,
-  isAccountBannedFailure,
-  isCurrentAccountBanned,
-  isRetryResolved,
-  selectCurrentFreeFailure,
-} from '../utils/freeFailure'
+import { ACCOUNT_BANNED_DISPLAY_MESSAGE, isRetryResolved } from '../utils/freeFailure'
+import { useRowClipboard } from '../composables/useRowClipboard'
 import { freeRowSecretLookup } from '../utils/freeSecretLookup'
 import { safeMailboxUrl } from '../utils/safeMailboxUrl'
-import { freeStageDetail, freeStageLabel, freeStageType } from '../utils/freeStage'
+import {
+  isHistoricalMailboxDriver,
+  liveStatusLabel,
+  liveStatusType,
+  mailboxCreatedText,
+  mailboxDriverLabel,
+  mailboxFailureCause,
+  mailboxFailureDetails,
+  mailboxFailureNode,
+  mailboxIsAccountBanned,
+  mailboxPlanLabel,
+  mailboxPlanTagType,
+  mailboxRowClass,
+  mailboxStageLabel,
+  mailboxStageTooltip,
+  mailboxStageType,
+} from '../utils/freeLiveDisplay'
 import { useColumnWidths } from '../composables/useColumnWidths'
 import { usePolling } from '../composables/usePolling'
-import { formatDateTime } from '../utils/datetime'
 
 const FAST_LIVE_CHECK_TIP = '用注册时保存的 Token，通过原绑定代理查询一次账号状态：正常 / Token 失效 / 已停用 / 被出口或安全策略拒绝。不重新登录、不收取邮件。'
 const DEEP_LIVE_CHECK_TIP = '通过原绑定代理完整重新登录确认账号状态：可能收取一封邮箱 OTP 验证码，并按需校验密码 / 2FA。成功后刷新 Token 并同步套餐与 Plus 资格。'
@@ -42,9 +49,9 @@ const driverFilter = ref('')
 const liveStatusFilter = ref('')
 const liveBusy = ref<'fast' | 'deep' | ''>('')
 const planBusy = ref('')
+const { loadingIds: loadingEmail, copyForRow: copyEmailRow } = useRowClipboard()
+const { loadingIds: loadingLatestCode, copyForRow: copyLatestCodeRow } = useRowClipboard()
 const loadingTotp = ref<string[]>([])
-const loadingEmail = ref<string[]>([])
-const loadingLatestCode = ref<string[]>([])
 const joinCurrentBatch = ref(false)
 const freeState = ref<FreeState>({ running: false, tasks: [], summary: {}, pool: {} })
 const runBusy = ref(false)
@@ -73,25 +80,6 @@ const metrics = computed(() => {
   return { total: rows.value.length, available: count('available'), running: count('running'), success: count('success'), failed: count('failed'), pending: count('twofa_pending'), rerun: count('pending_rerun'), live: live('live'), deactivated: live('deactivated'), checking: live('queued') + live('running') }
 })
 
-function isHistoricalDriver(row: FreeMailboxRow) {
-  const driver = String(row.driver || '').trim().toLowerCase()
-  return Boolean(driver) && driver !== 'protocol' && driver !== 'camoufox'
-}
-function mailboxDriverLabel(row: FreeMailboxRow) {
-  const driver = String(row.driver || '').trim().toLowerCase()
-  if (driver === 'camoufox') return 'Camoufox'
-  if (driver === 'protocol') return '全协议'
-  if (!driver) return '未运行'
-  return '历史链路'
-}
-function mailboxCreatedText(row: FreeMailboxRow) {
-  return formatDateTime(row.created_at)
-}
-function mailboxRowClass({ row }: { row: FreeMailboxRow }) {
-  return ['failed', 'partial_success'].includes(String(row?.status || '')) && !isRetryResolved(row?.retry_resolved)
-    ? 'is-danger-row'
-    : ''
-}
 
 function handleBulkCommand(command: string) {
   if (command === 'copy-mailbox') return void copyMailboxFormat('mailbox')
@@ -211,98 +199,28 @@ async function startLiveCheckAction(mode: 'fast' | 'deep', row: FreeMailboxRow) 
   await startLiveCheck(mode, [row])
 }
 
-function mailboxFailureCause(row: FreeMailboxRow) {
-  return freeFailureCause(mailboxFailure(row), { retryResolved: row.retry_resolved })
-}
 
-function mailboxFailureDetails(row: FreeMailboxRow) {
-  return freeFailureDetails(mailboxFailure(row), { includeNode: true })
-}
 
-function mailboxFailureNode(row: FreeMailboxRow) {
-  return freeFailureNodeIdentity(mailboxFailure(row))
-}
 
-function mailboxFailure(row: FreeMailboxRow) {
-  return selectCurrentFreeFailure(row.failure, row.live_check_failure, row.live_check_status)
-}
 
-function mailboxIsAccountBanned(row: FreeMailboxRow) {
-  if (isCurrentAccountBanned(row.status, row.failure, row.retry_resolved)) return true
-  const liveStatus = String(row.live_check_status || '').trim().toLowerCase()
-  // A completed registration can later be disabled during a live check. That
-  // is current account state, unlike a retained registration failure.
-  return ['deactivated', 'failed'].includes(liveStatus)
-    && isAccountBannedFailure(row.live_check_failure)
-}
 
-function liveStatusLabel(status = '') {
-  return ({ queued: '排队', running: '测活中', live: '正常', deactivated: '已停用', token_expired: 'Token 失效', free_live_proxy_blocked: '出口/反爬拒绝', free_live_session_rejected: 'Session 被拒绝', free_live_rate_limited: '触发限流', free_live_upstream_error: '上游异常', free_live_network_error: '网络异常', free_live_password_required: '需要真实密码', failed: '失败' } as Record<string, string>)[status] || '未测活'
-}
 
-function liveStatusType(status = '') {
-  return status === 'live' ? 'success' : status === 'deactivated' || status === 'failed' ? 'danger' : status === 'token_expired' || status === 'free_live_proxy_blocked' || status === 'free_live_session_rejected' || status === 'free_live_rate_limited' || status === 'free_live_upstream_error' || status === 'free_live_network_error' || status === 'free_live_password_required' ? 'warning' : 'info'
-}
 
-function planLabel(row: FreeMailboxRow) {
-  const plan = String(row.subscription_plan || row.plan_type || '').trim()
-  const normalized = plan.toLowerCase()
-  const status = String(row.plan_check_status || '').toLowerCase()
-  if (status === 'failed') return '查询失败'
-  if (['queued', 'running'].includes(status)) return '查询中'
-  if (!plan) return '未查询'
-  const hasPerk = Boolean(row.plus_trial_eligible) || normalized.includes('plus') || normalized.includes('pro') || normalized.includes('team')
-  return hasPerk ? '有优惠' : '无优惠'
-}
 
-function planTagType(row: FreeMailboxRow) {
-  const plan = String(row.subscription_plan || row.plan_type || '').toLowerCase()
-  const status = String(row.plan_check_status || '').toLowerCase()
-  if (status === 'failed') return 'danger'
-  if (['queued', 'running'].includes(status)) return 'warning'
-  if (!plan) return 'info'
-  const hasPerk = Boolean(row.plus_trial_eligible) || plan.includes('plus') || plan.includes('pro') || plan.includes('team')
-  return hasPerk ? 'success' : 'info'
-}
 
-function mailboxStageLabel(row: FreeMailboxRow) {
-  if (mailboxIsAccountBanned(row)) return ACCOUNT_BANNED_DISPLAY_MESSAGE
-  const remaining = Number(row.cooldown_remaining || 0)
-  if (remaining > 0) return `限流冷却 ${Math.ceil(remaining / 60)} 分钟`
-  return freeStageLabel(row.stage || row.status, '可用', row.status)
-}
 
-function mailboxStageType(row: FreeMailboxRow) {
-  if (mailboxIsAccountBanned(row)) return 'danger'
-  if (row.cooldown_remaining) return 'warning'
-  if (['live', 'available'].includes(String(row.live_check_status || '').toLowerCase())) return 'success'
-  return freeStageType(row.stage || row.status, row.status)
-}
 
-function mailboxStageTooltip(row: FreeMailboxRow) {
-  return freeStageDetail(row.stage || row.status, mailboxStageLabel(row), row.status)
-}
 
 async function copyEmail(row: FreeMailboxRow) {
   const rowId = String(row.row_id || '').trim()
-  if (!rowId || loadingEmail.value.includes(rowId)) return
-  if (!navigator.clipboard?.writeText) {
-    ElMessage.error('当前浏览器不支持安全剪贴板写入')
-    return
-  }
-  loadingEmail.value = [...loadingEmail.value, rowId]
-  try {
+  await copyEmailRow({
+    rowId,
     // Public mailbox rows intentionally expose only a masked address. Resolve
     // the raw address through the existing on-demand secret boundary.
-    const value = (await getFreeSecret('email', freeRowSecretLookup(row.row_id))).value
-    if (!value || !navigator.clipboard?.writeText) throw new Error('当前环境不支持复制')
-    await navigator.clipboard.writeText(value)
-    ElMessage.success('已复制邮箱')
-  } catch (error: any) {
-    ElMessage.error(error?.message || '邮箱复制失败')
-  } finally {
-    loadingEmail.value = loadingEmail.value.filter(id => id !== rowId)
-  }
+    produce: async () => String((await getFreeSecret('email', freeRowSecretLookup(row.row_id))).value || ''),
+    successMessage: '已复制邮箱',
+    errorMessage: '邮箱复制失败',
+  })
 }
 
 const polling = usePolling(refreshLiveState, () => (liveState.value.running || logDialogOpen.value ? 1200 : 5000))
@@ -503,30 +421,17 @@ async function copyLatestCode(row: FreeMailboxRow) {
     unavailableMailboxAction('该邮箱暂无取件 URL，无法提取验证码')
     return
   }
-  if (loadingLatestCode.value.includes(rowId)) return
-  if (!navigator.clipboard?.writeText) {
-    ElMessage.error('当前浏览器不支持安全剪贴板写入')
-    return
-  }
-  loadingLatestCode.value = [...loadingLatestCode.value, rowId]
-  try {
-    const result = await getFreeMailboxLatestCode(rowId)
-    const code = String(result.code || '').trim()
-    if (!code) {
-      ElMessage.info('未找到新的 OpenAI 邮箱验证码')
-      return
-    }
-    await navigator.clipboard.writeText(code)
-    ElMessage.success('验证码已复制')
-  } catch (error: any) {
-    ElMessage.error(error?.message || '提取 Free 邮箱验证码失败')
-  } finally {
-    loadingLatestCode.value = loadingLatestCode.value.filter(id => id !== rowId)
-  }
+  await copyLatestCodeRow({
+    rowId,
+    produce: async () => String((await getFreeMailboxLatestCode(rowId)).code || ''),
+    successMessage: '验证码已复制',
+    errorMessage: '提取 Free 邮箱验证码失败',
+    emptyMessage: '未找到新的 OpenAI 邮箱验证码',
+  })
 }
 
 async function retryTwofa(row: FreeMailboxRow) {
-  if (isHistoricalDriver(row) || row.twofa_status !== 'pending' || !row.row_id) return
+  if (isHistoricalMailboxDriver(row) || row.twofa_status !== 'pending' || !row.row_id) return
   try {
     await retryFreeTwofa(row.row_id)
     ElMessage.info('已重新加入 2FA 设置任务')
@@ -537,13 +442,13 @@ async function retryTwofa(row: FreeMailboxRow) {
 }
 
 async function retryMailboxTwofa(row: FreeMailboxRow) {
-  if (isHistoricalDriver(row)) return unavailableMailboxAction('历史链路邮箱不支持 2FA 重试')
+  if (isHistoricalMailboxDriver(row)) return unavailableMailboxAction('历史链路邮箱不支持 2FA 重试')
   if (row.twofa_status !== 'pending') return unavailableMailboxAction('该邮箱当前没有待重试的 2FA 节点')
   await retryTwofa(row)
 }
 
 async function retryPlan(row: FreeMailboxRow) {
-  if (isHistoricalDriver(row) || !row.row_id || !row.has_access_token || String(row.plan_check_status || '').toLowerCase() !== 'failed' || planBusy.value) return
+  if (isHistoricalMailboxDriver(row) || !row.row_id || !row.has_access_token || String(row.plan_check_status || '').toLowerCase() !== 'failed' || planBusy.value) return
   planBusy.value = row.row_id
   try {
     await startFreePlanCheck([row.row_id])
@@ -557,7 +462,7 @@ async function retryPlan(row: FreeMailboxRow) {
 }
 
 async function retryMailboxPlan(row: FreeMailboxRow) {
-  if (isHistoricalDriver(row)) return unavailableMailboxAction('历史链路邮箱不支持套餐重查')
+  if (isHistoricalMailboxDriver(row)) return unavailableMailboxAction('历史链路邮箱不支持套餐重查')
   if (!row.has_access_token) return unavailableMailboxAction('该邮箱暂无账号 Token，无法查询套餐')
   if (String(row.plan_check_status || '').toLowerCase() !== 'failed') return unavailableMailboxAction('该邮箱当前没有失败的套餐查询')
   await retryPlan(row)
@@ -686,7 +591,7 @@ onMounted(async () => {
           </el-table-column>
           <el-table-column label="阶段" :min-width="poolColWidth('阶段', 150)" show-overflow-tooltip><template #default="{ row }"><el-tooltip :content="mailboxStageTooltip(row)" placement="top"><span class="mailbox-stage-cell"><el-tag size="small" effect="light" :type="mailboxStageType(row)">{{ mailboxStageLabel(row) }}</el-tag></span></el-tooltip></template></el-table-column>
           <el-table-column label="套餐" :width="poolColWidth('套餐', 96)" align="center" show-overflow-tooltip>
-            <template #default="{ row }"><div class="mailbox-plan-cell"><el-tag size="small" :type="planTagType(row)" effect="plain">{{ planLabel(row) }}</el-tag><el-tag v-if="row.plus_trial_eligible && String(row.subscription_plan || row.plan_type || '').toLowerCase() !== 'free'" size="small" type="success" effect="plain" class="trial-tag">Plus 试用</el-tag></div></template>
+            <template #default="{ row }"><div class="mailbox-plan-cell"><el-tag size="small" :type="mailboxPlanTagType(row)" effect="plain">{{ mailboxPlanLabel(row) }}</el-tag><el-tag v-if="row.plus_trial_eligible && String(row.subscription_plan || row.plan_type || '').toLowerCase() !== 'free'" size="small" type="success" effect="plain" class="trial-tag">Plus 试用</el-tag></div></template>
           </el-table-column>
           <el-table-column label="账号测活" :min-width="poolColWidth('账号测活', 150)" show-overflow-tooltip>
             <template #default="{ row }"><div class="mailbox-live-cell"><el-tag size="small" :type="liveStatusType(row.live_check_status)">{{ liveStatusLabel(row.live_check_status) }}</el-tag><small v-if="row.live_check_mode">{{ row.live_check_mode === 'deep' ? '深度' : '快速' }}</small></div></template>
