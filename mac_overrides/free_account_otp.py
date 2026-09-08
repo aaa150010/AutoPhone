@@ -184,12 +184,14 @@ async def _await_account_otp_callback(
                 close()
                 return
             except Exception:
+                # Best-effort cleanup of a closeable wait handle.
                 pass
         cancel = getattr(value, "cancel", None)
         if callable(cancel):
             try:
                 cancel()
             except Exception:
+                # Best-effort cancellation must not mask the stop request.
                 pass
 
     result.add_done_callback(consume_exception)
@@ -319,6 +321,7 @@ async def _await_account_otp_callback(
                     if math.isfinite(numeric):
                         return numeric, paused, prompt, handoff, grace
                 except Exception:
+                    # A missing remaining-budget probe falls back to the coarse deadline.
                     pass
         if deadline_monotonic is None:
             return None, paused, prompt, handoff, grace
@@ -352,6 +355,7 @@ async def _await_account_otp_callback(
                         while int(getattr(current, "cancelling", lambda: 0)() or 0) > 0:
                             uncancel()
                     except Exception:
+                        # Uncancel bookkeeping must not break the OTP wait loop.
                         pass
                 continue
             except BaseException:

@@ -180,6 +180,7 @@ def _reference_get_headers(transport: Any, url: str, referer: str, base: Mapping
     try:
         path = str(urlsplit(str(url or "")).path or "").casefold()
     except Exception:
+        # An unparseable URL falls back to the full-string host check.
         pass
     if _host(url) == "chatgpt.com" and path.startswith(("/backend-api/", "/backend-anon/")):
         headers = _reference_json_headers(transport, base)
@@ -203,10 +204,12 @@ def prepare_reference_session(transport: Any, fingerprint: Mapping[str, Any] | N
     try:
         session.trust_env = False
     except Exception:
+        # Session hardening is best-effort; keep the transport usable.
         pass
     try:
         session.verify = True
     except Exception:
+        # Session hardening is best-effort; keep the transport usable.
         pass
     device_id = str(getattr(transport, "device_id", "") or "").strip()
     cookies = getattr(session, "cookies", None)
@@ -219,8 +222,10 @@ def prepare_reference_session(transport: Any, fingerprint: Mapping[str, Any] | N
                 try:
                     setter("oai-did", device_id)
                 except Exception:
+                    # Cookie header pinning is best-effort.
                     pass
             except Exception:
+                # Fallback cookie APIs may not exist on every session type.
                 pass
 
     # The recovered POST methods call ``self._headers`` directly.  Wrap that
@@ -236,6 +241,7 @@ def prepare_reference_session(transport: Any, fingerprint: Mapping[str, Any] | N
                 transport._headers = MethodType(wrapped_headers, transport)
                 setattr(transport, "_gptphone_reference_headers_wrapped", True)
             except Exception:
+                # Header wrapping is optional instrumentation on the transport.
                 pass
     if not getattr(session, "_gptphone_reference_get_wrapped", False):
         original_get = getattr(session, "get", None)
@@ -260,6 +266,7 @@ def prepare_reference_session(transport: Any, fingerprint: Mapping[str, Any] | N
                 session.get = wrapped_get
                 setattr(session, "_gptphone_reference_get_wrapped", True)
             except Exception:
+                # Request wrapping is optional instrumentation on the session.
                 pass
     return transport
 
@@ -273,8 +280,10 @@ def _emit(log: LogFn, message: str, level: str = "info", **fields: Any) -> None:
         try:
             log(message, level)
         except Exception:
+            # Log delivery must never break the bootstrap flow.
             pass
     except Exception:
+        # Log delivery must never break the bootstrap flow.
         pass
 
 
@@ -291,6 +300,7 @@ def _emit_timing_sample(
     try:
         timing(stage_code, code, elapsed_ms, outcome)
     except Exception:
+        # Timing telemetry must never alter the bootstrap outcome.
         pass
 
 
@@ -303,6 +313,7 @@ def _headers(transport: Any, url: str, referer: str = "") -> dict[str, str]:
             if isinstance(value, Mapping):
                 base = value
         except Exception:
+            # Payload shape probing is optional for context building.
             pass
     if base:
         return _reference_navigation_headers(transport, url, referer, base)
@@ -332,6 +343,7 @@ def _session(
     try:
         session.trust_env = False
     except Exception:
+        # Session hardening is best-effort; keep the transport usable.
         pass
     return session
 

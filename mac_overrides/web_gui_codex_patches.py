@@ -56,6 +56,7 @@ def real_transport_init(host,
         try:
             session.verify = True
         except Exception:
+            # Session hardening is best-effort; keep the transport usable.
             pass
     # Free's protocol state machine owns a fresh OAuth session and its single
     # controlled rebuild. Restoring a recovered Phase1 checkpoint here would
@@ -127,10 +128,12 @@ def real_new_session(host, self, impersonate="chrome"):
     try:
         session.verify = True
     except Exception:
+        # Session hardening is best-effort; keep the transport usable.
         pass
     try:
         session.trust_env = False
     except Exception:
+        # Session hardening is best-effort; keep the transport usable.
         pass
 
     # The registration proxy is explicit and remains fixed for this task.
@@ -140,6 +143,7 @@ def real_new_session(host, self, impersonate="chrome"):
         try:
             session.proxies = {"http": proxy, "https": proxy}
         except Exception:
+            # Proxy pinning is best-effort; keep the transport usable.
             pass
     return session
 

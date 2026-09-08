@@ -597,6 +597,7 @@ def build_free_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]:
                     "warn" if incident_id else "error",
                 )
         except Exception:
+            # Telemetry must not mask the Free route failure surfaced above.
             pass
         return scope.module.jsonify(payload), status
 
@@ -645,6 +646,7 @@ def build_free_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]:
                 try:
                     scope.store.save(dict(data))
                 except Exception:
+                    # A legacy plain-pool save failure must not block the Free config save.
                     pass
             mailbox_content = str(data.get("pool_content") or data.get("free_pool_content") or "")
             proxy_content = str(data.get("proxy_content") or data.get("free_proxy_pool_content") or "")

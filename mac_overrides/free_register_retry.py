@@ -486,17 +486,20 @@ class FreeRegisterRetryMixin:
                     try:
                         self.mailbox_leases.release(task_id=retry_id, reusable=True)
                     except Exception:
+                        # Lease release must not mask the original retry failure.
                         pass
                 if binding is not None:
                     try:
                         self.proxies.release(binding, owner=retry_id or batch_id)
                     except Exception:
+                        # Proxy release must not mask the original retry failure.
                         pass
                 self._retry_leases.pop(retry_key, None)
                 if reserved:
                     try:
                         self.pool.update(row_id, status="available", batch_id="", stage="", driver="", proxy="", proxy_masked="", proxy_fingerprint="", expected_exit_ip="", exit_ip="", proxy_id="", proxy_country="", proxy_group="")
                     except Exception:
+                        # Pool reset must not mask the original retry failure.
                         pass
                 if created_executor and not self._futures:
                     try:
@@ -504,6 +507,7 @@ class FreeRegisterRetryMixin:
                         if self._heartbeat_thread is not None and self._heartbeat_thread is not threading.current_thread():
                             self._heartbeat_thread.join(timeout=1)
                     except Exception:
+                        # Heartbeat shutdown must not mask the original retry failure.
                         pass
                     if self._executor is not None:
                         try:
@@ -513,6 +517,7 @@ class FreeRegisterRetryMixin:
                             # immediately after the exception.
                             self._executor.shutdown(wait=True, cancel_futures=True)
                         except Exception:
+                            # Executor shutdown must not mask the original retry failure.
                             pass
                     self._executor = None
                     self._heartbeat_thread = None

@@ -198,6 +198,7 @@ def _is_state_response(response: Any, ok: Callable[[Any], bool] | None = None) -
                 "warn",
             )
         except Exception:
+            # Telemetry must not mask the security-page handling surfaced above.
             pass
     status = _status(response)
     page_value = response.get("page") if isinstance(response, Mapping) else ""
@@ -1726,6 +1727,7 @@ def run_free_protocol_flow(
                 try:
                     close()
                 except Exception:
+                    # Best-effort transport close during session rebuild.
                     pass
             session = getattr(active, "session", None)
             session_close = getattr(session, "close", None)
@@ -1733,6 +1735,7 @@ def run_free_protocol_flow(
                 try:
                     session_close()
                 except Exception:
+                    # Best-effort session close during session rebuild.
                     pass
             provider = getattr(active, "sentinel_provider", None)
             reset = getattr(provider, "reset", None)

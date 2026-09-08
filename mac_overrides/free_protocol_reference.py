@@ -159,6 +159,7 @@ def copy_session_cookies(source: Any, target: Any) -> None:
             updater(source_cookies)
             return
         except Exception:
+            # Cookie updater probing falls back to the set() API below.
             pass
     setter = getattr(target_cookies, "set", None)
     if not callable(setter):
@@ -210,16 +211,19 @@ def prepare_reference_http_session(transport: Any) -> Any:
                 try:
                     close()
                 except Exception:
+                    # Best-effort session close must not break the rebuild.
                     pass
     if session is None:
         return transport
     try:
         session.trust_env = False
     except Exception:
+        # Session hardening is best-effort; keep the reference usable.
         pass
     try:
         session.verify = True
     except Exception:
+        # Session hardening is best-effort; keep the reference usable.
         pass
     old_proxies = getattr(current, "proxies", None)
     proxy = str(getattr(transport, "proxy", "") or "").strip()
@@ -229,12 +233,14 @@ def prepare_reference_http_session(transport: Any) -> Any:
         elif proxy:
             session.proxies = {"http": proxy, "https": proxy}
     except Exception:
+        # Proxy pinning is best-effort; the reference keeps its session.
         pass
     timeout = getattr(current, "timeout", None)
     if timeout is not None:
         try:
             session.timeout = timeout
         except Exception:
+            # Timeout reuse is optional on the cloned session.
             pass
     setattr(transport, "chatgpt_impersonate", REFERENCE_TLS_IMPERSONATE)
     setattr(transport, "_gptphone_tls_impersonate", REFERENCE_TLS_IMPERSONATE)

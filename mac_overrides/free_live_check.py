@@ -230,10 +230,12 @@ def _prepare_live_session(session: Any, device_id: str) -> Any:
     try:
         session.trust_env = False
     except Exception:
+        # Session hardening is best-effort; keep the check usable.
         pass
     try:
         session.verify = True
     except Exception:
+        # Session hardening is best-effort; keep the check usable.
         pass
     device = str(device_id or "").strip()
     cookies = getattr(session, "cookies", None)
@@ -246,8 +248,10 @@ def _prepare_live_session(session: Any, device_id: str) -> Any:
                 try:
                     setter("oai-did", device)
                 except Exception:
+                    # Cookie header pinning is best-effort.
                     pass
             except Exception:
+                # Fallback cookie APIs may not exist on every session type.
                 pass
     # Keep the task identity available to adapters that merge default headers.
     try:
@@ -255,6 +259,7 @@ def _prepare_live_session(session: Any, device_id: str) -> Any:
         if hasattr(current, "update") and device:
             current.update({"oai-device-id": device, "referer": f"{_LIVE_ORIGIN}/"})
     except Exception:
+        # Header pinning is best-effort; the check proceeds with defaults.
         pass
     return session
 
@@ -416,6 +421,7 @@ class FreeLiveCheckService:
                 if re.fullmatch(r"[0-9a-f]{32}", candidate):
                     return candidate
             except Exception:
+                # A malformed stored fingerprint falls back to hashing the value.
                 pass
         return fingerprint(value)
 
@@ -1231,6 +1237,7 @@ class FreeLiveCheckService:
                     try:
                         close()
                     except Exception:
+                        # Best-effort resource cleanup must not mask the live-check result.
                         pass
 
     @staticmethod

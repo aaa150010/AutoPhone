@@ -121,6 +121,7 @@ def _twofa_navigation_timeout_ms(
                 if math.isfinite(candidate):
                     grace_seconds = max(0.0, candidate)
             except Exception:
+                # A missing grace probe falls back to the boolean flag below.
                 pass
         if grace_seconds is None:
             # Older controllers expose only the boolean flag. Keep the
@@ -133,6 +134,7 @@ def _twofa_navigation_timeout_ms(
             timeout_ms = max(1_000, min(timeout_ms, int(float(controller_remaining()) * 1000)))
             controller_budget = True
         except Exception:
+            # A missing remaining-budget probe falls back to the coarse deadline.
             pass
     if deadline_monotonic is not None and not controller_budget and not paused:
         try:
@@ -324,6 +326,7 @@ async def browser_add_password(
             try:
                 stage_fn(str(code))
             except Exception:
+                # Stage callbacks are pure UI progress signals.
                 pass
 
     def failure(
@@ -674,6 +677,7 @@ async def browser_twofa(
             try:
                 stage_fn(str(code))
             except Exception:
+                # Stage callbacks are pure UI progress signals.
                 pass
 
     def failure(

@@ -95,6 +95,7 @@ def _response_page_type(module: Any, response: Any) -> str:
         if value:
             return str(value).strip().lower().replace("-", "_")
     except Exception:
+        # An unparseable page envelope falls back to the flat lookup below.
         pass
     return _response_value(response, "page_type", "pageType", "type").lower().replace("-", "_")
 
@@ -105,6 +106,7 @@ def _continue_url(module: Any, response: Any) -> str:
         if value:
             return str(value).strip()
     except Exception:
+        # An unparseable page envelope falls back to the flat lookup below.
         pass
     return _response_value(response, "continue_url", "continueUrl", "redirect_url", "url")
 
@@ -485,8 +487,10 @@ class FreeRebindService:
             try:
                 self.log_fn(sanitize_log_message(str(message)), level)
             except Exception:
+                # Log delivery must never break the rebind runner.
                 pass
         except Exception:
+            # Telemetry must not mask the failure already recorded above.
             pass
         return ""
 
@@ -521,6 +525,7 @@ class FreeRebindService:
                 if re.fullmatch(r"[0-9a-f]{32}", candidate):
                     return candidate
             except Exception:
+                # A malformed stored fingerprint falls back to hashing the value.
                 pass
         return fingerprint(value)
 
@@ -722,10 +727,12 @@ class FreeRebindService:
                 try:
                     self.pool.update(target.row_id, status="available", task_id="", error="")
                 except Exception:
+                    # Pool rollback must not mask the original task failure.
                     pass
                 try:
                     self._save_tasks()
                 except Exception:
+                    # Task persistence must not mask the original task failure.
                     pass
                 raise
             self._futures.add(future)
@@ -752,6 +759,7 @@ class FreeRebindService:
                     self.pool.update(target_row_id, status="failed", task_id=str(task.get("task_id") or ""), error="换绑任务未能重新排队")
                     self._save_tasks()
                 except Exception:
+                    # Failure bookkeeping must not mask the original task failure.
                     pass
                 raise
             self._futures.add(future)
@@ -840,6 +848,7 @@ class FreeRebindService:
                 try:
                     close()
                 except Exception:
+                    # Best-effort transport close during rebuild.
                     pass
 
     def _verify_totp_protocol(self, transport: Any, response: Any, totp_secret: str, *, stage_code: str) -> Any:
@@ -1077,6 +1086,7 @@ class FreeRebindService:
                     try:
                         close()
                     except Exception:
+                        # Best-effort transport close during rebuild.
                         pass
             self._close_transport(new_transport or transport)
 
@@ -1158,6 +1168,7 @@ class FreeRebindService:
                 try:
                     self.free_manager.proxies.release(fallback_binding, owner=task_id)
                 except Exception:
+                    # Fallback proxy release must not mask the original task failure.
                     pass
 
 

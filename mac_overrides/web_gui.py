@@ -387,6 +387,7 @@ def _set_stall_notifications_suspended(suspended):
         if callable(setter):
             setter(bool(suspended))
     except Exception:
+        # Stall-notification suspension is best-effort UI state.
         pass
 
 
@@ -400,6 +401,7 @@ def _submit_connectivity_email(payload):
         )
         _CONNECTIVITY_EMAILS.submit(notification)
     except Exception:
+        # Connectivity alerting must never break the calling flow.
         pass
 
 
@@ -728,6 +730,7 @@ def _record_task_segment(task_id, code, elapsed_seconds):
         if task_id:
             _TASK_PROGRESS.record_segment(task_id, code, elapsed_seconds)
     except Exception:
+        # Segment telemetry must never change the task outcome.
         pass
 
 
@@ -1538,6 +1541,7 @@ def _reserve_mailbox_batch(
                         getattr(entry, "source_row", "")
                     )
                 except Exception:
+                    # Priority consumption is optional bookkeeping for the reservation.
                     pass
 
     entries = _mailbox_priority_runtime_ext.reserve_available_batch(
@@ -2152,6 +2156,7 @@ def _write_local_config(data):
         try:
             phone_gate.configure(value.get("phone_submission_concurrency", 2))
         except Exception:
+            # Phone-gate configuration is best-effort at startup.
             pass
     connectivity = globals().get("_OPENAI_CONNECTIVITY")
     if connectivity is not None:
@@ -2170,6 +2175,7 @@ def _write_local_config(data):
                 _set_stall_notifications_suspended(False)
             connectivity.configure_proxy(value.get("proxy") or "")
         except Exception:
+            # Connectivity reconfiguration must not reject the saved settings.
             pass
     return value
 
@@ -2356,6 +2362,7 @@ def _task_exists(task_id):
         try:
             return any(str(item.get("task_id") or "") == normalized for item in free_manager.public_tasks())
         except Exception:
+            # A broken Free manager must not corrupt the plain-flow state check.
             pass
     return False
 

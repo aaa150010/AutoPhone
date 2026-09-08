@@ -604,6 +604,7 @@ class FreeProtocolMixin(
                         try:
                             __timing("free_email_identifier", "email_identifier_submit", int((_time.monotonic() - _started) * 1000), _outcome)
                         except Exception:
+                            # Timing telemetry must never alter the identifier submission.
                             pass
 
                 _timed_identifier._gptphone_timed = True
@@ -1024,6 +1025,7 @@ class FreeProtocolMixin(
                 try:
                     close()
                 except Exception:
+                    # Best-effort transport close during session rebuild.
                     pass
 
     def _plan_check(self, transport: Any, token: str) -> tuple[str, bool]:
@@ -1061,6 +1063,7 @@ class FreeProtocolMixin(
                 try:
                     data = response.json() if hasattr(response, "json") else {}
                 except Exception:
+                    # A response body is optional detail for the failure raised below.
                     pass
                 raise FreeRegisterError(
                     "free_plan_check", "查询 Free 套餐资格", f"套餐接口返回 HTTP {int(status)}",
@@ -1092,6 +1095,7 @@ class FreeProtocolMixin(
                 try:
                     eligibility_data = eligibility.json() if hasattr(eligibility, "json") else {}
                 except Exception:
+                    # A response body is optional detail for the failure raised below.
                     pass
                 raise FreeRegisterError(
                     "free_plan_check", "查询 Free 套餐资格", f"试用资格接口返回 HTTP {int(eligibility_status)}",
@@ -1159,8 +1163,10 @@ class FreeProtocolMixin(
                 try:
                     logger(message)
                 except Exception:
+                    # Telemetry must not mask the failure already recorded above.
                     pass
             except Exception:
+                # Telemetry must not mask the failure already recorded above.
                 pass
 
         time.sleep(2.0)

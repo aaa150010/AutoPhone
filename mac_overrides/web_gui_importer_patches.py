@@ -122,6 +122,7 @@ def patched_importer_start(host, self, settings):
                             "error",
                         )
                     except Exception:
+                        # Telemetry must not break the admission event forwarding.
                         pass
             formatted = host._performance_runtime_ext.format_task_admission_event(event)
             if formatted is None:
@@ -130,6 +131,7 @@ def patched_importer_start(host, self, settings):
             try:
                 self._log(message, level)
             except Exception:
+                # Log delivery must never break the caller emitting the event.
                 pass
 
         task_admission = host._adaptive_concurrency_ext.AdaptiveConcurrencyGate(
@@ -322,6 +324,7 @@ def patched_importer_run_one(
             try:
                 clear_challenge(transport)
             except Exception:
+                # Challenge cleanup must not mask the original stop reason.
                 pass
         if not host._SMS_TRANSPORT_REGISTRY.close_task(task_id):
             host._SMS_TRANSPORT_REGISTRY.close_task(task_id)
@@ -357,6 +360,7 @@ def patched_importer_stop(host, self):
             aggregate, _last_activity_at = host._notification_aggregate(self, context)
             context["service"].mark_manual_stop(context["run_id"], aggregate)
         except Exception:
+            # Manual-stop bookkeeping must not change the stop outcome.
             pass
     return host._importer_scheduler_ext.stop_bounded_importer(self)
 
@@ -458,6 +462,7 @@ def patched_importer_watch(host, self):
                     "info",
                 )
             except Exception:
+                # Telemetry must not mask the state transition surfaced above.
                 pass
         try:
             with self.lock:
@@ -477,6 +482,7 @@ def patched_importer_watch(host, self):
                         "warn",
                     )
         except Exception:
+            # Telemetry must not mask the notification failure above.
             pass
 
 
@@ -605,6 +611,7 @@ def patched_persist_result(host, self, settings, task_id, entry, result, *, erro
                     "error",
                 )
             except Exception:
+                # Telemetry must not mask the failure already recorded above.
                 pass
     terminal_text = " ".join(
         str(value or "")
@@ -642,6 +649,7 @@ def patched_retire_after_failure(host, self, settings, pool, entry, task_id, res
         try:
             pool.remove_entry(entry, reason="relogin_failed")
         except Exception:
+            # Pool cleanup must not mask the relogin failure surfaced above.
             pass
         public_result = host._runtime._public_result(result if isinstance(result, dict) else {})
         self._task_state(
@@ -654,6 +662,7 @@ def patched_retire_after_failure(host, self, settings, pool, entry, task_id, res
         try:
             self._log(f"{task_id} 无手机号重登失败: {safe_error}", "error")
         except Exception:
+            # Telemetry must not mask the relogin failure surfaced above.
             pass
         return None
     if host._is_auth_session_reset_failure(result, error):
@@ -689,6 +698,7 @@ def patched_retire_after_failure(host, self, settings, pool, entry, task_id, res
                 "error",
             )
         except Exception:
+            # Telemetry must not mask the relogin failure surfaced above.
             pass
         return None
 
@@ -768,6 +778,7 @@ def patched_retire_after_failure(host, self, settings, pool, entry, task_id, res
                 "error",
             )
     except Exception:
+        # A recovery failure here must not mask the original task error.
         pass
     return None
 
@@ -819,6 +830,7 @@ def patched_task_state(host, self, task_id: str, **values):
             if incident_id:
                 values["incident_id"] = incident_id
         except Exception:
+            # Incident enrichment must not change the task-state payload.
             pass
     result = host._ORIGINAL_TASK_STATE(self, task_id, **values)
     batch_manifest = host._RUN_BATCH_MANIFEST
@@ -835,6 +847,7 @@ def patched_task_state(host, self, task_id: str, **values):
                     "error",
                 )
             except Exception:
+                # Telemetry must not mask the failure already recorded above.
                 pass
     if status == "authorizing":
         host._TASK_CONTEXT.set(str(task_id or ""))
@@ -876,6 +889,7 @@ def patched_task_state(host, self, task_id: str, **values):
                     "warn",
                 )
             except Exception:
+                # Telemetry must not mask the stage progression surfaced above.
                 pass
         progress = host._TASK_PROGRESS.progress(task_id)
         admission = getattr(self, "task_admission", None)
@@ -887,6 +901,7 @@ def patched_task_state(host, self, task_id: str, **values):
                     try:
                         admission.report_account_banned(task_id)
                     except Exception:
+                        # Admission telemetry must not change the task failure path.
                         pass
                 detail = (
                     values.get("technical_error")

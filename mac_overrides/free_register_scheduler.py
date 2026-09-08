@@ -21,6 +21,7 @@ class FreeRegisterSchedulerMixin:
         try:
             self.pool.recover_reserved()
         except Exception:
+            # Startup recovery must not block the scheduler from starting.
             pass
         changed = False
         for task_id, task in list(self._tasks.items()):
@@ -45,6 +46,7 @@ class FreeRegisterSchedulerMixin:
             try:
                 self.pool.recover_interrupted(str(task.get("row_id") or ""), reusable=reusable, failure=failure)
             except Exception:
+                # Recovery bookkeeping must not mask the original task failure.
                 pass
             self._release_task_lease(task)
             self._finish_progress(task_id, "stopped" if reusable else "failed")
@@ -64,6 +66,7 @@ class FreeRegisterSchedulerMixin:
                     try:
                         self.task_store.save(self._tasks)
                     except Exception:
+                        # Task persistence must not mask the scheduling outcome.
                         pass
 
     def _switch_pre_profile_proxy(self, task: dict[str, Any], config: Mapping[str, Any]) -> bool:
@@ -102,6 +105,7 @@ class FreeRegisterSchedulerMixin:
             try:
                 self.proxies.release(replacement, owner=owner)
             except Exception:
+                # Proxy release must not mask the original admission failure.
                 pass
             return False
         updates = {
@@ -132,6 +136,7 @@ class FreeRegisterSchedulerMixin:
                     try:
                         self.task_store.save(self._tasks)
                     except Exception:
+                        # Task persistence must not mask the scheduling outcome.
                         pass
         task.update(updates)
         self.pool.update(

@@ -159,6 +159,7 @@ class FreeRegisterStartupMixin:
             try:
                 future.cancel()
             except Exception:
+                # Shutdown cleanup must not mask the original startup failure.
                 pass
         if executor is not None:
             try:
@@ -167,6 +168,7 @@ class FreeRegisterStartupMixin:
                 try:
                     executor.shutdown(wait=True)
                 except Exception:
+                    # Executor shutdown must not mask the original startup failure.
                     pass
             except Exception:
                 # The worker state and lease cleanup below remain authoritative
@@ -177,6 +179,7 @@ class FreeRegisterStartupMixin:
             try:
                 heartbeat_thread.join(timeout=5)
             except Exception:
+                # Heartbeat shutdown must not mask the original startup failure.
                 pass
 
         # A running worker may switch to a replacement proxy or confirm the
@@ -227,6 +230,7 @@ class FreeRegisterStartupMixin:
                             exit_ip="",
                         )
                     except Exception:
+                        # Startup cleanup must not mask the original failure being handled.
                         pass
 
         with self._lock:
@@ -454,18 +458,21 @@ class FreeRegisterStartupMixin:
                         try:
                             self.mailbox_leases.release(task_id=task_id, reusable=True)
                         except Exception:
+                            # Lease release must not mask the original startup failure.
                             pass
                 for index, binding in reversed(list(enumerate(leased_bindings))):
                     try:
                         owner = created_task_ids[index] if index < len(created_task_ids) else batch_id
                         self.proxies.release(binding, owner=owner)
                     except Exception:
+                        # Proxy release must not mask the original startup failure.
                         pass
                 if reserved:
                     for row in rows:
                         try:
                             self.pool.update(row.row_id, status="available", batch_id="", stage="", driver="", proxy="", proxy_masked="", proxy_fingerprint="", expected_exit_ip="", exit_ip="", proxy_id="", proxy_country="", proxy_group="")
                         except Exception:
+                            # Pool reset must not mask the original startup failure.
                             pass
                 for task_id in created_task_ids:
                     self._tasks.pop(task_id, None)
@@ -544,6 +551,7 @@ class FreeRegisterStartupMixin:
             try:
                 heartbeat_thread.join(timeout=2)
             except Exception:
+                # Heartbeat shutdown must not block the scheduler stop.
                 pass
         with self._lock:
             if not self._futures and self._executor is executor:

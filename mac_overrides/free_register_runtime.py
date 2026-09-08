@@ -242,6 +242,7 @@ class FreeRegisterManager(
             try:
                 self.mailbox_leases.recover()
             except Exception:
+                # Lease recovery must not block a new batch from starting.
                 pass
         self._batch_id = ""
         self._circuit_stop_requested = False
@@ -419,6 +420,7 @@ class FreeRegisterManager(
                 workflow="lifecycle",
             )
         except Exception:
+            # Lifecycle telemetry must not break manager shutdown.
             pass
 
     def _release_runtime_owner(self) -> None:
@@ -536,6 +538,7 @@ class FreeRegisterManager(
                     if driver:
                         payload["driver"] = driver
                 except Exception:
+                    # Driver enrichment must not break the log line.
                     pass
             try:
                 self.log_fn(sanitize_log_message(message), level, **payload)
@@ -546,8 +549,10 @@ class FreeRegisterManager(
                 try:
                     self.log_fn(sanitize_log_message(message), level)
                 except Exception:
+                    # Log delivery must never break the caller emitting the event.
                     pass
             except Exception:
+                # Log delivery must never break the caller emitting the event.
                 pass
 
     def _task_log(self, task_id: str, message: str, level: str = "info", **fields: Any) -> None:
@@ -564,6 +569,7 @@ class FreeRegisterManager(
                 fields.setdefault("subject_ref_fingerprint", diagnostic_store.fingerprint(email_text))
                 fields.setdefault("subject_display", masked_email)
             except Exception:
+                # Diagnostic enrichment must not change the logged message.
                 pass
         structured = re.match(r"^\[([^\]/]+)/([^\]/]+)(?:/([^\]]+))?\]\s*(.*)$", text)
         if structured:
@@ -1561,6 +1567,7 @@ class FreeRegisterManager(
             try:
                 self.pool.update(row_id, mailbox_otp_failures=consecutive)
             except Exception:
+                # Failure-count persistence must not mask the OTP outcome.
                 pass
             return
         try:

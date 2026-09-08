@@ -160,8 +160,10 @@ class FreeRegisterTimingMixin:
                 try:
                     self.progress.mark_execution_started(normalized)
                 except Exception:
+                    # Progress telemetry must not break band evaluation.
                     pass
             except Exception:
+                # Progress telemetry must not break band evaluation.
                 pass
         if changed and persist:
             self._save_tasks_safely("任务开始执行计时")
@@ -370,6 +372,7 @@ class FreeRegisterTimingMixin:
             try:
                 changed = bool(self.progress.set_stage(task_id, code))
             except Exception:
+                # Stage progress is best-effort UI state.
                 pass
         previous_code = ""
         previous_started = 0
@@ -559,6 +562,7 @@ class FreeRegisterProjectionMixin:
             try:
                 self.progress.finish(task_id)
             except Exception:
+                # Finish bookkeeping must not mask the task result.
                 pass
 
     def _public_task(self, task: Mapping[str, Any]) -> dict[str, Any]:
@@ -697,6 +701,7 @@ class FreeRegisterProjectionMixin:
                         if incident_id:
                             public["incident_id"] = incident_id
                 except Exception:
+                    # Diagnostic enrichment must not change the public payload.
                     pass
         # ``account`` is a legacy alias consumed by a few clients.  It must
         # follow the same masked representation and never reintroduce the
