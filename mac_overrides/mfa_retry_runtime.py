@@ -135,6 +135,42 @@ def verify_email_totp_with_one_window_retry(
     setattr(transport, "_gptphone_totp_secret", seed)
     setattr(transport, "_gptphone_totp_incorrect_retries", 0)
 
+    try:
+        return _verify_email_totp_with_one_window_retry(
+            transport,
+            verify_fn=verify_fn,
+            manual_fallback_fn=manual_fallback_fn,
+            session_invalid_fn=session_invalid_fn,
+            stop_event=stop_event,
+            clock=clock,
+            sleep_fn=sleep_fn,
+            log_fn=log_fn,
+        )
+    except BaseException:
+        # Mirror the chatgpt_totp retry patch: a raising verify_fn must not
+        # leave task-local TOTP state attached to the transport.
+        setattr(transport, "_gptphone_totp_flow", False)
+        setattr(transport, "_gptphone_totp_secret", "")
+        setattr(transport, "_gptphone_totp_incorrect_retries", 0)
+        try:
+            delattr(transport, "_chatgpt_totp_factor_id")
+        except AttributeError:
+            pass
+        raise
+
+
+def _verify_email_totp_with_one_window_retry(
+    transport: Any,
+    *,
+    verify_fn: Callable[[Any, str], Any],
+    manual_fallback_fn: Callable[[Any, Any], Any] | None,
+    session_invalid_fn: Callable[[Any], bool],
+    stop_event: Any = None,
+    clock: Callable[[], float] | None = None,
+    sleep_fn: Callable[[float], Any] | None = None,
+    log_fn: Callable[[str, str], Any] | None = None,
+) -> Any:
+    """Run the one-window retry flow after the four transport attrs are set."""
     response = verify_fn(transport, "")
     if response_error_code(response) != "incorrect_code" or session_invalid_fn(response):
         _clear_totp_retry_state(transport)

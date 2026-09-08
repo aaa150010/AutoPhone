@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 from collections.abc import Callable
 import errno
+import hashlib
 import inspect
 import os
 import select
@@ -29,6 +30,21 @@ except ImportError:  # pragma: no cover - Windows is not a supported runtime.
 KEY_SERVICE = "com.gptphone.phase1-checkpoint"
 DEFAULT_KEYCHAIN_TIMEOUT_SECONDS = 15.0
 _KEYCHAIN_POLL_SECONDS = 0.10
+# ``security`` exit code for errSecItemNotFound: the entry truly does not
+# exist yet and creating it is safe.
+_SEC_ITEM_NOT_FOUND = 44
+
+
+def _stderr_digest(stderr: Any) -> str:
+    """Return a short SHA digest of stderr without exposing its content.
+
+    ``security`` stderr can echo keychain names or lock state; the digest
+    keeps failures attributable without leaking sensitive fields.
+    """
+    raw = str(stderr or "").strip()
+    if not raw:
+        return ""
+    return f"sha256:{hashlib.sha256(raw.encode('utf-8', 'replace')).hexdigest()[:12]}"
 
 
 class CheckpointError(RuntimeError):
@@ -79,12 +95,13 @@ class SecurityKeyProvider:
     ) -> bytes:
         """Return the installation key, creating it in Keychain if needed.
 
+        Creation happens only when ``security find-generic-password`` reports
+        errSecItemNotFound (44). A locked or denied keychain raises instead of
+        running ``add-generic-password -U``, which would overwrite the stored
+        key and permanently orphan already-encrypted checkpoints.
         ``security add-generic-password -w`` asks for the new value twice when
-        the password is omitted from argv. The old implementation supplied
-        only one line, leaving the helper waiting forever for confirmation.
-        The default subprocess path is monitored in short intervals so a
-        manual stop can terminate it immediately; the key is written only to
-        the child's private pty and is never included in argv or diagnostics.
+        the password is omitted from argv; both responses go through the
+        child's private pty and are never included in argv or diagnostics.
         """
         timeout = self._timeout(timeout_seconds, self.timeout_seconds)
         self._check_stop(stop_event)
@@ -93,13 +110,32 @@ class SecurityKeyProvider:
             stop_event=stop_event,
             timeout_seconds=timeout,
         )
-        if getattr(find, "returncode", 1) == 0:
+        find_returncode = getattr(find, "returncode", 1)
+        if find_returncode == 0:
             try:
-                value = base64.urlsafe_b64decode(str(find.stdout or "").strip().encode("ascii"))
+                value = base64.urlsafe_b64decode(
+                    str(find.stdout or "").strip().encode("ascii")
+                )
                 if len(value) == 32:
                     return value
             except (ValueError, TypeError):
                 pass
+            # An existing entry that no longer decodes to a valid key must
+            # never be overwritten: ``-U`` would replace the stored secret
+            # and permanently orphan every checkpoint encrypted with it.
+            raise CheckpointError(
+                "Keychain 中已存在无法解析的 checkpoint 密钥，已阻止覆盖"
+            )
+        if find_returncode != _SEC_ITEM_NOT_FOUND:
+            # A locked or denied keychain (or any other failure) must not fall
+            # through to ``add-generic-password -U``, which overwrites the
+            # existing entry and breaks already-encrypted checkpoints.
+            digest = _stderr_digest(getattr(find, "stderr", None))
+            detail = f"（stderr 摘要 {digest}）" if digest else ""
+            raise KeychainUnavailable(
+                f"macOS Keychain 查询失败（returncode={find_returncode}），"
+                f"已阻止创建或覆盖 checkpoint 密钥{detail}"
+            )
         self._check_stop(stop_event)
         key = secrets.token_bytes(32)
         encoded = _b64(key)

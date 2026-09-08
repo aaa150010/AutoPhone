@@ -7,6 +7,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 import json
 import re
+import time
 from typing import Any
 
 
@@ -26,6 +27,33 @@ _UNKNOWN_PLANS = frozenset(
         "undefined",
         "unknown",
         "unavailable",
+    }
+)
+
+# Stable class names of third-party HTTP client network failures (requests,
+# urllib3, httpx, curl_cffi) that are safe to retry. Matching by name keeps
+# this module dependency-free; built-in TimeoutError/OSError are matched by
+# isinstance in ChatGptPlanGate._transient_exception.
+_TRANSIENT_EXCEPTION_NAMES = frozenset(
+    {
+        "ChunkedEncodingError",
+        "ConnectError",
+        "ConnectTimeout",
+        "ConnectionError",
+        "NewConnectionError",
+        "PoolTimeout",
+        "ProtocolError",
+        "ProxyError",
+        "ReadError",
+        "ReadTimeout",
+        "RequestsError",
+        "RetryError",
+        "SSLError",
+        "StreamError",
+        "Timeout",
+        "TimeoutError",
+        "WriteError",
+        "WriteTimeout",
     }
 )
 
@@ -333,54 +361,6 @@ class ChatGptPlanGate:
         )
         return token
 
-    def _cached_session(self, transport: Any) -> dict[str, Any]:
-        value = getattr(transport, "_gptphone_chatgpt_session", None)
-        return dict(value) if isinstance(value, Mapping) else {}
-
-    def _cached_token(self, transport: Any, session_data: Any) -> str:
-        return normalize_token(
-            getattr(transport, "_gptphone_chatgpt_access_token", "")
-            or access_token_from_session(session_data)
-        )
-
-    @staticmethod
-    def _token_from_mapping(value: Any) -> str:
-        if not isinstance(value, Mapping):
-            return ""
-        for key in (
-            "access_token", "accessToken", "oauth_token", "oauthToken",
-            "oauth_access_token", "session_token", "sessionToken",
-            "chatgpt_access_token", "chatgptAccessToken", "token",
-        ):
-            token = normalize_token(value.get(key))
-            if token:
-                return token
-        for key in ("tokens", "oauth_tokens", "session", "auth", "result"):
-            nested = value.get(key)
-            if isinstance(nested, Mapping):
-                token = ChatGptPlanGate._token_from_mapping(nested)
-                if token:
-                    return token
-        return ""
-
-    @classmethod
-    def _transport_token(cls, transport: Any) -> str:
-        """Read only already-captured task credentials; never request a new token here."""
-        for name in _TRANSPORT_TOKEN_ATTRS:
-            value = getattr(transport, name, "")
-            if not callable(value):
-                token = normalize_token(value)
-                if token:
-                    return token
-        for name in (
-            "_gptphone_last_response", "last_response", "last_result",
-            "exchange_data", "tokens", "oauth_tokens", "_oauth_tokens",
-        ):
-            token = cls._token_from_mapping(getattr(transport, name, None))
-            if token:
-                return token
-        return ""
-
     @staticmethod
     def _transient_status(status: int | None) -> bool:
         return status in {408, 409, 425, 429} or bool(status and status >= 500)
@@ -436,19 +416,6 @@ class ChatGptPlanGate:
             except Exception:
                 # Telemetry must not mask the summary already built above.
                 pass
-
-    @staticmethod
-    def _cached_session_status(transport: Any, session_data: Any) -> int | None:
-        status = _http_status(session_data)
-        if status is not None:
-            return status
-        try:
-            cached = int(
-                getattr(transport, "_gptphone_chatgpt_session_http_status", 0) or 0
-            )
-        except (TypeError, ValueError):
-            return None
-        return cached if 100 <= cached <= 599 else None
 
     def _accounts_check_headers(self, transport: Any, token: str) -> dict[str, str]:
         headers = {
@@ -576,9 +543,9 @@ class ChatGptPlanGate:
             self.invalidate_auth_session(transport, exc)
             raise self.chain_error(f"{exc.code}: {exc}") from exc
 
-        decision = self.evaluate_sms_binding(transport)
-        if not decision.allowed:
-            raise self.chain_error(decision.error_message())
+        # evaluate_sms_binding is an unconditional allow for ordinary SMS; the
+        # plan gate itself lives only in Free registration now.
+        self.evaluate_sms_binding(transport)
         self.set_stage("phone_acquiring")
         return context
 

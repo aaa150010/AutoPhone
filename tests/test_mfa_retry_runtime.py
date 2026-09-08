@@ -151,6 +151,27 @@ class MfaRetryRuntimeTests(unittest.TestCase):
         self.assertGreaterEqual(len(checks), 2)
         self.assertFalse(hasattr(transport, "_gptphone_totp_secret"))
 
+    def test_url_totp_verify_exception_clears_transport_state_and_reraises(self):
+        transport = SimpleNamespace()
+
+        def verify(_transport, _code):
+            raise RuntimeError("verify provider exploded")
+
+        with self.assertRaisesRegex(RuntimeError, "verify provider exploded"):
+            verify_email_totp_with_one_window_retry(
+                transport,
+                factor_id="factor-private",
+                secret="secret-private",
+                verify_fn=verify,
+                manual_fallback_fn=lambda *_args: self.fail("manual fallback must not run"),
+                session_invalid_fn=lambda _value: False,
+            )
+
+        self.assertFalse(transport._gptphone_totp_flow)
+        self.assertEqual(transport._gptphone_totp_secret, "")
+        self.assertEqual(transport._gptphone_totp_incorrect_retries, 0)
+        self.assertFalse(hasattr(transport, "_chatgpt_totp_factor_id"))
+
     def test_url_totp_second_incorrect_enters_manual_without_third_auto_retry(self):
         calls = []
         manual = []

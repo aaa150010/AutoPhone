@@ -748,12 +748,18 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             "",
         )
 
+    @unittest.skipUnless(
+        (
+            Path(__file__).resolve().parent.parent
+            / "engine" / "node_chain" / "real_sentinel_runner.js"
+        ).is_file(),
+        "engine runner script not present",
+    )
     def test_protocol_runner_resolution_prefers_start_command_engine_path(self):
         with patch.dict("os.environ", {"CODEX_NODE_RUNNER": ""}, clear=False):
             resolved = FreeProtocolMixin.resolve_node_runner({})
         expected = (Path(__file__).resolve().parent.parent / "engine" / "node_chain" / "real_sentinel_runner.js").resolve()
-        if expected.is_file():
-            self.assertEqual(Path(resolved), expected)
+        self.assertEqual(Path(resolved), expected)
 
     def test_proxy_preflight_probes_pasted_pool_without_consuming_mailboxes(self):
         manager = FreeRegisterManager(
