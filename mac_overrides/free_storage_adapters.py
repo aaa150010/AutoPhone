@@ -967,13 +967,6 @@ class SQLiteFreeProxyPool(_LegacyProxyPool):
         self.storage = storage or FreeSQLiteStore(self.data_dir)
         self.path = self.storage.path
 
-    @staticmethod
-    def _proxy_url_from_row(row: Mapping[str, Any]) -> str:
-        value = str(row.get("proxy") or "").strip()
-        if value:
-            return value
-        return ""
-
     def _load(self) -> list[dict[str, Any]]:
         output: list[dict[str, Any]] = []
         with self.storage._connection() as db:  # noqa: SLF001 - adapter boundary

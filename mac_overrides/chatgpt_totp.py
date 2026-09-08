@@ -16,6 +16,11 @@ from typing import Any, Callable, Iterator
 from urllib.parse import urlsplit
 
 try:
+    from .oauth_mfa_runtime import normalize_totp_secret as _normalize_totp_secret
+except ImportError:  # Loaded as a top-level override module by the Mac launcher.
+    from oauth_mfa_runtime import normalize_totp_secret as _normalize_totp_secret  # type: ignore[no-redef]
+
+try:
     from .mailbox_url_runtime import parse_mailbox_url_row
 except ImportError:  # Loaded as a top-level override module by the Mac launcher.
     from mailbox_url_runtime import parse_mailbox_url_row
@@ -79,27 +84,6 @@ _SENSITIVE_PROVIDER_CODE_MARKERS = (
     "authorization",
     "bearer",
 )
-
-
-def _normalize_totp_secret(secret: Any) -> str:
-    value = str(secret or "").strip()
-    if not value:
-        return ""
-    label = re.match(r"(?i)^(?:2fa|totp|secret|密钥)\s*[=:：]\s*(.+)$", value)
-    if label:
-        value = label.group(1).strip()
-    normalized = re.sub(r"[\s-]+", "", value).upper()
-    if not re.fullmatch(r"[A-Z2-7]+=*", normalized):
-        return ""
-    unpadded = normalized.rstrip("=")
-    if len(unpadded) < 8:
-        return ""
-    padded = unpadded + "=" * ((8 - len(unpadded) % 8) % 8)
-    try:
-        base64.b32decode(padded, casefold=True)
-    except (ValueError, TypeError):
-        return ""
-    return unpadded
 
 
 def _parse_chatgpt_totp_row(raw: Any) -> tuple[str, str, str, str] | None:

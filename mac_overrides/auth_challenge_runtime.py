@@ -17,6 +17,15 @@ try:
 except ImportError:  # Loaded as a top-level runtime override.
     from auth_page_type import normalize_page_type  # type: ignore[no-redef]
 
+try:
+    from .auth_request_runtime import PHONE_PAGE_TYPES as _SHARED_PHONE_PAGE_TYPES
+    from .auth_session_runtime import SESSION_INVALID_MARKERS
+except ImportError:  # Loaded as a top-level runtime override.
+    from auth_request_runtime import (  # type: ignore[no-redef]
+        PHONE_PAGE_TYPES as _SHARED_PHONE_PAGE_TYPES,
+    )
+    from auth_session_runtime import SESSION_INVALID_MARKERS  # type: ignore[no-redef]
+
 
 DYNAMIC_AUTH_CHALLENGES = "dynamic_auth_challenges"
 MAX_CHALLENGE_STEPS = 8
@@ -30,19 +39,7 @@ EMAIL_OTP_PAGE_TYPES = frozenset(
 TOTP_PAGE_TYPES = frozenset(
     {"mfa_otp", "mfa_challenge", "mfa_otp_verification", "totp", "totp_verification"}
 )
-PHONE_PAGE_TYPES = frozenset(
-    {
-        "add_phone",
-        "contact_verification",
-        "phone_number_collection",
-        "phone_otp",
-        "phone_otp_verification",
-        "phone_verification",
-        "phone_number_verification",
-        "sms_otp",
-        "sms_otp_verification",
-    }
-)
+PHONE_PAGE_TYPES = _SHARED_PHONE_PAGE_TYPES
 COMPLETE_PAGE_TYPES = frozenset(
     {
         "account_setup",
@@ -88,13 +85,7 @@ _SESSION_INVALID_CODES = frozenset(
         "session_expired",
     }
 )
-_SESSION_INVALID_MARKERS = (
-    "invalid authorization step",
-    "mfa_authorization_step_expired",
-    "oauth_session_invalid",
-    "sign-in session is no longer valid",
-    "session is no longer valid",
-)
+_SESSION_INVALID_MARKERS = SESSION_INVALID_MARKERS
 
 _RECOVERED_ALLOWED_AFTER = {
     "submit_email": PASSWORD_PAGE_TYPES | EMAIL_OTP_PAGE_TYPES | TOTP_PAGE_TYPES,

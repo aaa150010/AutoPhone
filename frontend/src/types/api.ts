@@ -688,14 +688,6 @@ export interface MailboxParserSampleHealth {
   path: string
 }
 
-export interface LatestCodeValue {
-  code: string
-  kind?: string
-  message?: string
-  remaining?: number
-  receivedAt: number
-}
-
 export interface ApiErrorPayload {
   ok?: false
   error?: string

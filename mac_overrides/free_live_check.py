@@ -642,25 +642,6 @@ class FreeLiveCheckService:
             group=str(context.get("proxy_group") or ""),
         )
 
-    def _observe_proxy(self, binding: ProxyBinding, config: Mapping[str, Any]) -> str:
-        try:
-            current = self.proxies.verify(
-                binding,
-                probe=self.proxy_probe,
-                probe_url=str(config.get("proxy_probe_url") or "https://chatgpt.com/"),
-            )
-        except Exception as exc:
-            code = proxy_error_code(exc)
-            raise FreeRegisterError(
-                code,
-                proxy_error_label(code),
-                safe_log_message(exc) or proxy_error_label(code),
-                retryable=bool(getattr(exc, "retryable", True)),
-                provider_status=getattr(exc, "provider_status", None),
-                error_code=str(getattr(exc, "error_code", "") or code),
-            ) from exc
-        return str(current)
-
     def _set_job(self, task_id: str, **values: Any) -> dict[str, Any]:
         with self._lock:
             job = self._jobs.get(task_id)

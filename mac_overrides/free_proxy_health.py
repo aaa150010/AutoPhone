@@ -6,7 +6,6 @@ import re
 from typing import Any
 
 
-_EXIT_VERIFICATION_NODES = frozenset()
 _NETWORK_EVIDENCE_NODES = frozenset({
     "free_proxy_binding",
     "free_proxy_preflight",
@@ -121,8 +120,6 @@ def is_proxy_health_failure(error: BaseException) -> bool:
     # errors are safe evidence for quarantining the selected proxy and moving
     # the untouched mailbox task to another pool entry.
     if node_code == "free_camoufox_launch" and bool(getattr(error, "proxy_retryable", False)):
-        return True
-    if node_code in _EXIT_VERIFICATION_NODES:
         return True
     if node_code not in _NETWORK_EVIDENCE_NODES:
         return False

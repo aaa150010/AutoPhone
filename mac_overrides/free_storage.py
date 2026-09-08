@@ -14,17 +14,6 @@ tasks to use one healthy proxy concurrently.
 
 from __future__ import annotations
 
-import copy
-import hashlib
-import json
-import os
-import sqlite3
-import threading
-import time
-from contextlib import contextmanager
-from pathlib import Path
-from typing import Any, Iterator, Mapping, Sequence
-from urllib.parse import urlsplit
 
 try:
     from .free_storage_common import (
