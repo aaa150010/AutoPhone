@@ -63,6 +63,7 @@ def append_imported_mailboxes(
         try:
             next_batch_priority.consume(row)
         except Exception:
+            # Priority consumption is optional bookkeeping for the append.
             pass
     context = notification_context_for(importer)
     if isinstance(context, dict):
@@ -110,6 +111,7 @@ def _release_failed_append(
             reason="current_batch_append_failed",
         )
     except Exception:
+        # A missing notification context must not break append handling.
         pass
 
 

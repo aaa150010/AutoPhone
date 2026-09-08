@@ -159,6 +159,7 @@ class MailboxImportMixin:
                     runtime.get("running") if isinstance(runtime, Mapping) else False
                 )
             except Exception:
+                # Runtime-shape probing must not break the import summary.
                 pass
 
         append_result: dict[str, Any] = {}

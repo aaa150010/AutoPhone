@@ -197,8 +197,10 @@ def _emit_twofa_reauth_observation(
                 "warn" if outcome in {"warn", "skipped"} else "info",
             )
         except Exception:
+            # Log delivery must never break the request it describes.
             pass
     except Exception:
+        # Log delivery must never break the request it describes.
         pass
 
 

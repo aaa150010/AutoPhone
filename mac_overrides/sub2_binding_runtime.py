@@ -109,6 +109,7 @@ def clear_successful_update_statuses(
         try:
             clear_sub2_status(remote_id)
         except Exception:
+            # Status cleanup must not break the binding refresh.
             pass
 
     clear_direct_status = getattr(direct_runtime, "clear_status", None)
@@ -119,12 +120,14 @@ def clear_successful_update_statuses(
             try:
                 clear_direct_status(account_id)
             except Exception:
+                # Status cleanup must not break the binding refresh.
                 pass
     mark_refreshed = getattr(direct_runtime, "mark_credentials_refreshed", None)
     if openai_id and callable(mark_refreshed):
         try:
             mark_refreshed(openai_id)
         except Exception:
+            # Refresh marking must not break the binding refresh.
             pass
     return targets
 

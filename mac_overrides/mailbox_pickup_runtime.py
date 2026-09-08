@@ -704,6 +704,7 @@ def _parse_html_messages(raw: str, source_url: str, start_order: int = 0) -> tup
     try:
         parser.feed(raw)
     except Exception:
+        # An unparsable body still yields the messages parsed so far.
         pass
     messages: list[MailboxMessage] = []
     detail_urls: list[str] = []

@@ -186,6 +186,7 @@ class FreeProtocolTwoFaMixin:
                             if isinstance(candidate, Mapping):
                                 headers.update({str(k): str(v) for k, v in candidate.items()})
                         except Exception:
+                            # Optional header hints must not break the 2FA flow.
                             pass
                     if navigate:
                         # Auth authorize/callback GETs are top-level document

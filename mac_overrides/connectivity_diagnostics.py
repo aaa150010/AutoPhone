@@ -127,6 +127,7 @@ def _probe_origin(
             try:
                 close()
             except Exception:
+                # Best-effort response close during diagnostics.
                 pass
 
 

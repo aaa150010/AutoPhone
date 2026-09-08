@@ -74,6 +74,7 @@ def is_known_state_response(
             if success(response):
                 return True
         except Exception:
+            # A failing predicate falls through to the status check below.
             pass
     status = response_status(response)
     if status is None or not 200 <= status < 300:

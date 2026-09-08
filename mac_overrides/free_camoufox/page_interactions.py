@@ -252,6 +252,7 @@ def _page_debug_trace(host, page: Any) -> host._DebugTrace:
     try:
         setattr(page, "_gptphone_debug_trace", trace)
     except Exception:
+        # Trace attachment is optional instrumentation on the page.
         pass
     # Playwright event callbacks are synchronous even for async pages. Keep
     # each callback tiny and sanitize before the event can enter the buffer.
@@ -1527,8 +1528,10 @@ async def _browser_signin_url(host, page: Any, email: str) -> str:
             try:
                 await wait_for_load_state("domcontentloaded")
             except Exception:
+                # A missing load-state event must not block the navigation.
                 pass
         except Exception:
+            # A missing load-state event must not block the navigation.
             pass
     script = """
     async ({email, deviceId}) => {
@@ -1973,12 +1976,14 @@ async def _await_otp_callback(
                 close()
                 return
             except Exception:
+                # Best-effort cleanup of a closeable wait handle.
                 pass
         cancel = getattr(value, "cancel", None)
         if callable(cancel):
             try:
                 cancel()
             except Exception:
+                # Best-effort cancellation must not break the OTP wait loop.
                 pass
 
     result.add_done_callback(consume_exception)
@@ -2110,6 +2115,7 @@ async def _await_otp_callback(
                         while int(getattr(current, "cancelling", lambda: 0)() or 0) > 0:
                             uncancel()
                     except Exception:
+                        # Uncancel bookkeeping must not break the OTP wait loop.
                         pass
                 continue
             except BaseException:

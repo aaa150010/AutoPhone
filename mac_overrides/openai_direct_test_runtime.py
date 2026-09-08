@@ -135,6 +135,7 @@ class _ManagedResponse:
             try:
                 self._session.close()
             except Exception:
+                # Session cleanup must not mask the request outcome.
                 pass
 
 
@@ -171,6 +172,7 @@ class CurlCffiDirectOpenAITransport:
             try:
                 session.close()
             except Exception:
+                # Session cleanup must not mask the original request failure.
                 pass
             raise DirectOpenAIRequestError("OpenAI 直连请求失败") from exc
 
@@ -625,6 +627,7 @@ class OpenAIDirectTestRuntime:
                             }
                         )
                     except Exception:
+                        # Per-row bookkeeping must not break the streaming read.
                         pass
 
             ready_rows = [

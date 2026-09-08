@@ -171,6 +171,7 @@ class MailboxUrlOtpProvider:
             }
             callback(self.task_id, payload)
         except Exception:
+            # Stop-notification failures must not break the wait loop.
             pass
 
     def _clear_verification_state(self) -> None:
@@ -179,6 +180,7 @@ class MailboxUrlOtpProvider:
             try:
                 callback(self.task_id, None)
             except Exception:
+                # Stop-notification failures must not break the wait loop.
                 pass
 
     @staticmethod
@@ -531,8 +533,10 @@ class MailboxUrlOtpProvider:
                 try:
                     self.log_fn(f"[人工邮箱验证码/{stage_code}] 已接收当前任务的人工验证码", "info")
                 except Exception:
+                    # Log delivery must never break the manual-code wait.
                     pass
             except Exception:
+                # Log delivery must never break the manual-code wait.
                 pass
 
     def diagnostic(self) -> dict[str, Any]:

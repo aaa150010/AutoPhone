@@ -557,6 +557,7 @@ def _close_response(response: Any) -> None:
         try:
             close()
         except Exception:
+            # Best-effort cleanup of a closeable wait handle.
             pass
 
 
@@ -731,6 +732,7 @@ class Sub2BatchService:
                     }
                 )
             except Exception:
+                # Snapshot bookkeeping must not break the SUB2 update.
                 pass
 
         for index, row in enumerate(normalized):

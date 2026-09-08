@@ -294,6 +294,7 @@ class NetworkToolsService:
             if any(prefix in candidate for prefix in ("vmess://", "vless://", "trojan://", "ss://", "http://", "https://")):
                 decoded = candidate
         except Exception:
+            # An undecodable line keeps its original text form.
             pass
         lines: list[str] = []
         for line in decoded.splitlines():
@@ -414,6 +415,7 @@ class NetworkToolsService:
                 try:
                     session.close()
                 except Exception:
+                    # Session cleanup must not mask the probe result.
                     pass
             runtime.stop()
 
@@ -439,6 +441,7 @@ class NetworkToolsService:
             try:
                 sock.close()
             except Exception:
+                # Socket cleanup must not mask the probe result.
                 pass
             if mode == "deep":
                 session = self._session_factory() if self._session_factory else self._default_session()
@@ -459,6 +462,7 @@ class NetworkToolsService:
                     try:
                         session.close()
                     except Exception:
+                        # Session cleanup must not mask the probe result.
                         pass
             result["ok"] = True
             with self._lock:

@@ -206,6 +206,7 @@ class FreeLogStore:
                 },
             })
         except Exception:
+            # A diagnostic failure must not mask the log write itself.
             pass
 
     @staticmethod
@@ -815,6 +816,7 @@ class FreeLogStore:
                             if not getattr(exc, "_diagnostic_store_noted", False):
                                 diagnostic_note("free_log_record", exc)
                         except Exception:
+                            # The record failure is already noted; note() must not mask it.
                             pass
             if self.legacy_projection:
                 rows.append(row)
@@ -878,6 +880,7 @@ class FreeLogStore:
                         try:
                             diagnostic_note("free_log_delete", exc)
                         except Exception:
+                            # The delete failure is already noted; note() must not mask it.
                             pass
         return deleted
 

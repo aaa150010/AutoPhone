@@ -68,6 +68,7 @@ def allocate_run_batch_id(context: Any, started_at: int, logs: Any = None) -> st
                     "warn",
                 )
             except Exception:
+                # Telemetry must not mask the allocation failure surfaced above.
                 pass
     return allocate_batch_id(started_at, existing_ids)
 

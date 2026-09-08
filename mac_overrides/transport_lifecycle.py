@@ -149,6 +149,7 @@ def _node_process_ownership(
             if callable(poll) and poll() is not None:
                 return True
         except Exception:
+            # Liveness probing falls back to the stale-transport verdict.
             pass
         return None
     return parent_pid == os.getpid()
@@ -204,6 +205,7 @@ def _remember_owned_node_processes(transport: Any) -> None:
         try:
             setattr(transport, _OWNED_NODE_BINDINGS_ATTRIBUTE, bindings)
         except Exception:
+            # Binding registration is optional transport metadata.
             pass
 
 
@@ -321,6 +323,7 @@ def close_transport(transport: Any) -> bool:
             if succeeded:
                 setattr(transport, "_gptphone_transport_closed", True)
         except Exception:
+            # Close marking must not mask the close result being returned.
             pass
         return changed
 
@@ -408,6 +411,7 @@ class TaskTransportRegistry:
         try:
             setattr(transport, "_gptphone_registered_task_id", key)
         except Exception:
+            # Registration is optional transport metadata.
             pass
 
     def get(self, task_id: Any) -> Any:

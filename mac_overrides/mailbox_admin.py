@@ -500,6 +500,7 @@ class MailboxAdminService(MailboxImportMixin, MailboxSourceLockMixin):
                 try:
                     poller.close()
                 except Exception:
+                    # Best-effort poller close must not mask the mailbox outcome.
                     pass
 
         if not code:

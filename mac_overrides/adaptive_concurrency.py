@@ -16,6 +16,7 @@ def _notify(observer: Any, value: dict[str, Any]) -> None:
     try:
         observer(dict(value))
     except Exception:
+        # Observer telemetry must never break gate acquisition.
         pass
 
 
@@ -254,6 +255,7 @@ class AdaptiveConcurrencyGate:
             try:
                 on_wait(waited)
             except Exception:
+                # Wait telemetry must never break gate acquisition.
                 pass
         try:
             yield

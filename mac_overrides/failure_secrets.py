@@ -19,6 +19,7 @@ def collect_failure_secrets(
             source_row = str(importer._source_row(entry) or "")
             values.extend(mailbox_admin.MailboxAdminService._row_secrets(source_row))
         except Exception:
+            # Secret collection is best-effort; masking continues below.
             pass
     for name in ("password", "totp_secret", "client_id", "refresh_token"):
         value = str(getattr(entry, name, "") or "") if entry is not None else ""
@@ -59,6 +60,7 @@ def collect_failure_secrets(
         try:
             values.extend(mailbox_admin.url_credential_secrets(proxy_row))
         except Exception:
+            # Secret collection is best-effort; masking continues below.
             pass
     return tuple(dict.fromkeys(str(item) for item in values if str(item or "")))
 

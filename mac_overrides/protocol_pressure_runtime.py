@@ -172,6 +172,7 @@ class ProtocolPressurePolicy:
                 immediate=bool(immediate),
             )
         except Exception:
+            # Pressure telemetry must never break the transport request.
             pass
 
 

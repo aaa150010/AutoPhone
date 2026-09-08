@@ -153,6 +153,7 @@ def _safe_page_value(value: Any) -> str:
                 path = re.split(r"[?#]", path, maxsplit=1)[0] or "/"
             return f"{parsed.scheme.lower()}://{host}{path}"[:500]
     except Exception:
+        # An unparseable URL keeps the generic unknown-page label.
         pass
     return "页面地址未知"
 
@@ -165,6 +166,7 @@ def mark_recycle_required(error: BaseException, reason: str = "") -> BaseExcepti
         if reason:
             setattr(error, "recycle_reason", str(reason)[:240])
     except Exception:
+        # Recycle-reason enrichment must not change the error object.
         pass
     return error
 

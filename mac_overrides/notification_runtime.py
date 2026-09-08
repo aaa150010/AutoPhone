@@ -453,6 +453,7 @@ class RunNotificationLifecycle:
                 try:
                     self.observe_resource_pressure(importer)
                 except Exception:
+                    # Pressure observation must not break the notification loop.
                     pass
             current = self.monotonic()
             if (
@@ -471,6 +472,7 @@ class RunNotificationLifecycle:
                             statuses,
                         )
                 except Exception:
+                    # SMS telemetry must not break the notification loop.
                     pass
             if current < notification_deadline:
                 continue
@@ -501,10 +503,12 @@ class RunNotificationLifecycle:
             try:
                 previous["stop_event"].set()
             except Exception:
+                # Stop-event cleanup is best-effort during rotation.
                 pass
             try:
                 previous["service"].close(wait=False)
             except Exception:
+                # Service close is best-effort during rotation.
                 pass
         now = int(self.clock())
         context = {
@@ -539,6 +543,7 @@ class RunNotificationLifecycle:
         try:
             context["service"].close(wait=False)
         except Exception:
+            # Service close must not mask the run cancellation being handled.
             pass
         if getattr(importer, "_gptphone_notification_context", None) is context:
             importer._gptphone_notification_context = None

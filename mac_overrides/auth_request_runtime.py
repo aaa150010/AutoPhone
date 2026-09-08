@@ -666,6 +666,7 @@ def invalidate_auth_session(
         try:
             clear_cookies()
         except Exception:
+            # Cookie cleanup must not mask the retry request below.
             pass
     sentinel = getattr(transport, "sentinel_provider", None)
     reset_sentinel = getattr(sentinel, "reset", None)
@@ -673,6 +674,7 @@ def invalidate_auth_session(
         try:
             reset_sentinel()
         except Exception:
+            # Sentinel reset must not mask the retry request below.
             pass
     if registry is not None and context.task_id:
         registry.invalidate(

@@ -628,6 +628,7 @@ class PublicStateRuntime:
                 if isinstance(candidate, dict):
                     guard_snapshot = copy.deepcopy(candidate)
             except Exception:
+                # A missing guard snapshot leaves the state field absent.
                 pass
         if guard_snapshot is not None:
             snapshot["sms_quality_optimization"] = guard_snapshot
@@ -650,6 +651,7 @@ class PublicStateRuntime:
                     concurrency["task"] = admission.snapshot()
                     task_capacity = concurrency["task"]
                 except Exception:
+                    # A missing admission snapshot leaves the state field absent.
                     pass
             if isinstance(task_capacity, dict):
                 task_capacity["waiting"] = sum(
@@ -701,6 +703,7 @@ class PublicStateRuntime:
                             )
                         concurrency["inflight"] = inflight_state
                 except Exception:
+                    # A missing inflight snapshot leaves the state field absent.
                     pass
             local_config = self.read_local_config()
             concurrency["protocol"] = self.protocol_gate_getter().snapshot(
@@ -724,6 +727,7 @@ class PublicStateRuntime:
                             candidate
                         )
                 except Exception:
+                    # A missing phone snapshot leaves the state field absent.
                     pass
             concurrency["phone"] = self.sms_phone_gate_getter().status()
             if callable(self.phone_binding_metrics_getter):
@@ -757,6 +761,7 @@ class PublicStateRuntime:
                         "metrics": metrics,
                     }
                 except Exception:
+                    # A missing metrics snapshot leaves the state field absent.
                     pass
             resources: dict[str, Any] = {}
             if callable(self.process_resource_snapshot_getter):
@@ -767,6 +772,7 @@ class PublicStateRuntime:
                     if isinstance(candidate, dict):
                         resources.update(copy.deepcopy(candidate))
                 except Exception:
+                    # A missing resource snapshot leaves the field absent.
                     pass
             if callable(self.transport_registry_getter):
                 try:
@@ -775,6 +781,7 @@ class PublicStateRuntime:
                     if isinstance(candidate, dict):
                         resources.update(copy.deepcopy(candidate))
                 except Exception:
+                    # A missing resource snapshot leaves the field absent.
                     pass
             if resources:
                 runtime["resources"] = resources

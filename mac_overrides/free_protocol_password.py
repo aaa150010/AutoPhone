@@ -176,6 +176,7 @@ class FreeProtocolPasswordMixin:
                     if isinstance(candidate, Mapping):
                         headers.update({str(key): str(value) for key, value in candidate.items()})
                 except Exception:
+                    # Optional header hints must not break the password flow.
                     pass
             if navigate:
                 try:

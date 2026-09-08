@@ -322,6 +322,7 @@ def call_with_transient_pre_auth_retry(
             try:
                 on_retry(error_code, next_attempt, attempt_limit, delay)
             except Exception:
+                # Retry callbacks must not alter the computed backoff.
                 pass
         if delay:
             sleep_fn(delay)

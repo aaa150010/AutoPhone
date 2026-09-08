@@ -431,23 +431,28 @@ class SecurityKeyProvider:
             if process.poll() is not None:
                 return
         except Exception:
+            # A lost process handle makes the terminate step a no-op.
             pass
         try:
             process.terminate()
         except Exception:
+            # Terminate failures fall through to the kill escalation below.
             pass
         try:
             process.wait(timeout=0.5)
             return
         except Exception:
+            # A missed wait falls through to the kill escalation below.
             pass
         try:
             process.kill()
         except Exception:
+            # Kill failures are tolerated; the helper process is transient.
             pass
         try:
             process.wait(timeout=0.5)
         except Exception:
+            # A missed wait leaves reaping to the OS reaper.
             pass
 
 

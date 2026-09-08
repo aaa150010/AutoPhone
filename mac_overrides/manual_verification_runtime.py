@@ -418,6 +418,7 @@ def wait_with_manual_fallback(
             try:
                 on_manual_opened(dict(prompt))
             except Exception:
+                # Prompt-open callbacks are telemetry for the manual flow.
                 pass
 
     def run_automatic() -> None:
@@ -490,6 +491,7 @@ def wait_with_manual_fallback(
                     try:
                         on_manual_selected()
                     except Exception:
+                        # Selection callbacks must not break the verification wait.
                         pass
                 return value
         with condition:
@@ -514,6 +516,7 @@ def wait_with_manual_fallback(
                             try:
                                 on_manual_selected()
                             except Exception:
+                                # Selection callbacks must not break the verification wait.
                                 pass
                         return waited
                     broker.cancel_task(task_id)
@@ -580,6 +583,7 @@ def wait_with_manual_fallback(
             try:
                 on_manual_selected()
             except Exception:
+                # Selection callbacks must not break the verification wait.
                 pass
         return value
     finally:

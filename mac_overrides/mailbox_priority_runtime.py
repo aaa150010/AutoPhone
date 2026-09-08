@@ -247,6 +247,7 @@ def reserve_available_batch(
             try:
                 on_reserve_failed(tuple(prepared), exc)
             except Exception:
+                # Reserve-failure callbacks must not replace the original error.
                 pass
         raise
     if not isinstance(selected, list) or len(selected) != count:
@@ -257,6 +258,7 @@ def reserve_available_batch(
                     mailbox_error_type("mailbox_pool_empty: no available mailbox"),
                 )
             except Exception:
+                # Telemetry must not mask the empty-pool error raised below.
                 pass
         raise mailbox_error_type("mailbox_pool_empty: no available mailbox")
     if callable(after_reserve):
@@ -291,6 +293,7 @@ def reserve_available_batch(
                 try:
                     on_reserve_failed(tuple(selected), exc)
                 except Exception:
+                    # Reserve-failure callbacks must not replace the original error.
                     pass
             raise
     return selected

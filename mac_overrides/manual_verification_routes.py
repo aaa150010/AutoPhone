@@ -123,6 +123,7 @@ def patch_flask_app(
                 if not task_exists(task_id):
                     return jsonify(ok=False, error_code="task_not_found", error="任务不存在"), 404
             except Exception:
+                # Task probing is optional validation before queueing.
                 pass
         requested_kind = normalize_input_kind(data.get("input_kind"))
         kind = requested_kind

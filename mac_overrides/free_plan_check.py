@@ -175,6 +175,7 @@ class FreePlanCheckService:
                 if re.fullmatch(r"[0-9a-f]{32}", candidate):
                     return candidate
             except Exception:
+                # A malformed stored fingerprint falls back to hashing the value.
                 pass
         return fingerprint(value)
 
@@ -239,8 +240,10 @@ class FreePlanCheckService:
                         level,
                     )
                 except Exception:
+                    # Log delivery must never break the plan check.
                     pass
             except Exception:
+                # Log delivery must never break the plan check.
                 pass
 
     def enqueue(self, row_ids: Sequence[str]) -> dict[str, Any]:

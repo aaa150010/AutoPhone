@@ -148,6 +148,7 @@ def _notify_observer(observer: Any, value: Any) -> None:
     try:
         observer(value)
     except Exception:
+        # Observer telemetry must never break gate acquisition.
         pass
 
 
@@ -705,11 +706,13 @@ class TransportProtocolCoordinator:
                 try:
                     reporter("oauth_session_invalid")
                 except Exception:
+                    # Stall reporting must never break the session refresh.
                     pass
             return
         try:
             reporter()
         except Exception:
+            # Stall reporting must never break the session refresh.
             pass
 
     @staticmethod
@@ -728,6 +731,7 @@ class TransportProtocolCoordinator:
             try:
                 resume()
             except Exception:
+                # Resume must not mask the original session failure.
                 pass
 
     def synchronize_connectivity_pause(
@@ -984,6 +988,7 @@ class TransportProtocolCoordinator:
                         proxy=route,
                     )
                 except Exception:
+                    # State recording must not mask the original failure being raised.
                     pass
                 raise
             try:
@@ -996,6 +1001,7 @@ class TransportProtocolCoordinator:
                     proxy=route,
                 )
             except Exception:
+                # Public-state enrichment must not change the guard result.
                 pass
             return value
 
@@ -1039,6 +1045,7 @@ class TransportProtocolCoordinator:
                         generation=generation,
                     )
                 except Exception:
+                    # State recording must not mask the original failure being raised.
                     pass
                 raise
             try:
@@ -1052,6 +1059,7 @@ class TransportProtocolCoordinator:
                     generation=generation,
                 )
             except Exception:
+                # Public-state enrichment must not change the guard result.
                 pass
             return value
 

@@ -281,11 +281,13 @@ class AuthSessionRegistry:
             try:
                 callback(*callback_args)
             except Exception:
+                # Callback failures must not break the session release path.
                 pass
         if callable(self._cancel_sms) and item.task_id:
             try:
                 self._cancel_sms(item.task_id, item.invalid_code)
             except Exception:
+                # SMS cancellation must not break the session release path.
                 pass
         return item
 

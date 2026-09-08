@@ -133,6 +133,7 @@ def query_openai_quotas(mailbox_admin: Any, payload: Any) -> dict[str, Any]:
         try:
             row_completed(dict(item))
         except Exception:
+            # A per-row update failure must not break the quota response.
             pass
 
     def persist(public_item: Mapping[str, Any], quota_account_id: str, quota: Mapping[str, Any]) -> dict[str, Any]:

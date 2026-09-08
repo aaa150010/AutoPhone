@@ -1196,6 +1196,7 @@ class FreeFailureRuntimeMixin:
                         outcome="storage_warning",
                     )
                 except Exception:
+                    # Storage telemetry must not change the write verdict.
                     pass
             return False
 

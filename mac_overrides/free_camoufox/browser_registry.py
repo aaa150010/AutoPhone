@@ -359,6 +359,7 @@ class CamoufoxBrowserPool:
                 try:
                     setattr(error, name, value)
                 except Exception:
+                    # Enrichment must not mask the original browser failure.
                     pass
         return True
 
@@ -404,6 +405,7 @@ class CamoufoxBrowserPool:
                         try:
                             await _host_mod()._close_context_safely(session.context, min(timeout, 5.0))
                         except Exception:
+                            # Context close must not mask the original shutdown reason.
                             pass
                         context_closed = True
                 bridge_error = ""
@@ -441,6 +443,7 @@ class CamoufoxBrowserPool:
                                     payload["bridge_cleanup_error"] = bridge_error
                                     _host_mod()._atomic_artifact_write(summary_path, payload)
                             except Exception:
+                                # Artifact bookkeeping must not break the debug retention.
                                 pass
                     # A retained context can postpone the normal
                     # max-registrations recycle. Once the final hold on an
@@ -594,8 +597,10 @@ class CamoufoxBrowserPool:
                 try:
                     future.cancel()
                 except Exception:
+                    # Watcher cancellation must not mask the pool shutdown.
                     pass
             except Exception:
+                # Watcher cancellation must not mask the pool shutdown.
                 pass
             return 0
         except Exception:
@@ -670,6 +675,7 @@ class CamoufoxBrowserPool:
                         payload["incident_id"] = normalized_incident
                         _host_mod()._atomic_artifact_write(summary_path, payload)
                 except Exception:
+                    # Artifact bookkeeping must not break the debug retention.
                     pass
         return True
 
@@ -894,6 +900,7 @@ class CamoufoxBrowserPool:
                 try:
                     await manager.__aexit__(type(exc), exc, exc.__traceback__)
                 except Exception:
+                    # Manager close must not mask the original browser failure.
                     pass
                 if attempt + 1 < attempts:
                     await asyncio.sleep(min(2 ** attempt, 5))
@@ -1860,8 +1867,10 @@ class CamoufoxBrowserPool:
                 try:
                     future.cancel()
                 except Exception:
+                    # Watcher cancellation must not mask the registration timeout.
                     pass
             except Exception:
+                # Telemetry must not mask the registration timeout raised below.
                 pass
             raise _host_mod().CamoufoxBrowserError("free_camoufox_browser", "Camoufox 注册页面", "浏览器注册超时", error_code="camoufox_registration_timeout") from exc
 
@@ -2414,6 +2423,7 @@ class CamoufoxRegistrationRunner:
         try:
             setattr(otp, "deadline_controller", deadline_controller)
         except Exception:
+            # Controller attachment is optional scheduling telemetry.
             pass
         try:
             stage(task_id, "free_password_enroll" if password_retry else "free_camoufox_signup")

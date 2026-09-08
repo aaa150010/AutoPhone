@@ -126,6 +126,7 @@ def _lock_directory() -> Path:
         try:
             return Path(_runtime_path("data", "locks"))
         except Exception:
+            # A missing runtime anchor falls back to the environment root.
             pass
     app_root = str(os.environ.get("CHATGPT_AR_APP_ROOT") or "").strip()
     return Path(app_root or Path.cwd()) / "data" / "locks"

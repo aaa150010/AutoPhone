@@ -49,8 +49,10 @@ def sanitize_debug_text(value: Any, limit: int = 800, *, mask_bare_numeric: bool
         try:
             return _redact_fallback(str(_sanitize_debug_text_impl(value, limit) or ""), limit)
         except Exception:
+            # Redaction falls back to the plain sanitizer below.
             pass
     except Exception:
+        # Redaction falls back to the plain sanitizer below.
         pass
     return _redact_fallback(str(value or ""), limit)
 
@@ -220,6 +222,7 @@ def page_debug_trace(page: Any) -> Any:
     try:
         setattr(page, "_gptphone_debug_trace", trace)
     except Exception:
+        # Trace attachment is optional instrumentation on the page.
         pass
     return trace
 

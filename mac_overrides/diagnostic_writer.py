@@ -364,6 +364,7 @@ class DiagnosticEventWriter:
                 try:
                     note("writer_record", exc)
                 except Exception:
+                    # The write failure is already recorded; note() must not mask it.
                     pass
             return ""
 

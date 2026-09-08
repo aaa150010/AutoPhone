@@ -83,6 +83,7 @@ def call_with_protocol_lease(
             try:
                 on_result(exc, False)
             except Exception:
+                # Error notification must not replace the original exception.
                 pass
         raise
     if callable(on_result):
@@ -90,6 +91,7 @@ def call_with_protocol_lease(
             succeeded = bool(success_fn(result)) if callable(success_fn) else False
             on_result(result, succeeded)
         except Exception:
+            # Result notification must not change the pipeline outcome.
             pass
     return result
 

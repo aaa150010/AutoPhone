@@ -79,6 +79,7 @@ def _json_response(transport: Any, response: Any) -> dict[str, Any]:
             if isinstance(value, Mapping):
                 return dict(value)
         except Exception:
+            # Payload shape probing falls back to the request below.
             pass
     try:
         payload = response.json()
@@ -178,6 +179,7 @@ def _timed(monotonic_fn, callback, stage_code: str, code: str, outcome: str = "s
     try:
         callback(stage_code, code, int((time.monotonic() - monotonic_fn) * 1000), outcome)
     except Exception:
+        # Timing telemetry must never alter the request outcome.
         pass
 
 

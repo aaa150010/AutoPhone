@@ -190,6 +190,7 @@ def cleanup_legacy_logs(
                     },
                 })
             except Exception:
+                # A diagnostic failure must not mask the migration result.
                 pass
         return result
 

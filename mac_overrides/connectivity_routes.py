@@ -115,6 +115,7 @@ def patch_openai_connectivity_guard_route(
                     try:
                         restore()
                     except Exception:
+                        # Protection rollback is best-effort; the error is reported below.
                         pass
                 logs.add("OpenAI 链路保护开关更新失败", "error")
                 return module.jsonify(explicit_failure_payload(

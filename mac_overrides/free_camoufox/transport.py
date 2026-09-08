@@ -75,6 +75,7 @@ def _safe_page_url(page: Any) -> str:
         from .url_safety import safe_url
         return str(safe_url(page) or "")[:500]
     except Exception:
+        # A missing page URL falls back to the event-safe probe below.
         pass
     try:
         parsed = urlsplit(raw)

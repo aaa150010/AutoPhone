@@ -28,6 +28,7 @@ def safe_url(page: Any) -> str:
         if parsed.scheme and parsed.hostname:
             return safe_event_url(parsed.geturl()) or "页面地址未知"
     except Exception:
+        # An unparseable URL keeps the generic unknown-page label.
         pass
     return "页面地址未知"
 

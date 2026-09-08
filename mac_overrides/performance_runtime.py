@@ -455,6 +455,7 @@ class InflightAdmissionGate:
             try:
                 self.on_rollback(dict(event))
             except Exception:
+                # Rollback telemetry must not change the pressure verdict.
                 pass
         return event
 

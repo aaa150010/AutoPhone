@@ -371,6 +371,7 @@ class CheckpointCoordinator:
             try:
                 self.public_update(task_id, value)
             except Exception:
+                # Public-state refresh must not break the checkpoint write.
                 pass
 
     def restore(self, transport: Any) -> dict[str, Any] | None:
@@ -416,6 +417,7 @@ class CheckpointCoordinator:
             try:
                 self.store.delete(identity["row_id"])
             except Exception:
+                # Store cleanup must not mask the checkpoint reset result.
                 pass
             return None
         if isinstance(config, dict):
@@ -469,6 +471,7 @@ class CheckpointCoordinator:
         try:
             self.store.delete(row_id)
         except Exception:
+            # Store cleanup must not mask the checkpoint reset result.
             pass
         self._public(_text(value.get("task_id")), None)
 

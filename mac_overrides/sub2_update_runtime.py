@@ -294,6 +294,7 @@ def update_existing_sub2_account(
             try:
                 put_snapshot(original_credentials, original_extra)
             except Exception:
+                # Snapshot persistence must not mask the update failure below.
                 pass
             try:
                 restored = dependencies.fetch_detail(
@@ -327,6 +328,7 @@ def update_existing_sub2_account(
                     rollback_level,
                 )
             except Exception:
+                # Snapshot rollback must not mask the update failure below.
                 pass
         if rollback_conflict:
             message = f"{message}；远端状态已被其他更新改变，未执行旧快照回滚"
@@ -342,6 +344,7 @@ def update_existing_sub2_account(
         try:
             log_fn("  [SUB2] 401/404 重跑正在更新原账号，不创建新账号", "info")
         except Exception:
+            # Log delivery must never break the credential update.
             pass
     try:
         response = put_snapshot(merged_credentials, merged_extra)

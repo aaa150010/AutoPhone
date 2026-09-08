@@ -525,6 +525,7 @@ def record_parser_failure(sample: Mapping[str, Any], responses: Sequence[Mapping
             })
             store.attach_incident(sample_id, incident_id)
         except Exception:
+            # Incident linkage must not mask the sample save result.
             pass
     return sample_id
 

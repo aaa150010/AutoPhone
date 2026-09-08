@@ -71,6 +71,7 @@ def test_openai_mailboxes(mailbox_admin: Any, payload: Any) -> dict[str, Any]:
             try:
                 row_completed(update)
             except Exception:
+                # A per-row update failure must not break the batch response.
                 pass
     requested = value.get("rows")
     if not isinstance(requested, Sequence) or isinstance(requested, (str, bytes)) or not requested:

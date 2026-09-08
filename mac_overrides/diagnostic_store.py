@@ -1136,6 +1136,7 @@ class DiagnosticStore:
             try:
                 setattr(exc, "_diagnostic_store_noted", True)
             except Exception:
+                # Marking the exception must not mask the write failure below.
                 pass
             self.note_write_failure("record", exc)
             raise
@@ -1172,6 +1173,7 @@ class DiagnosticStore:
                 try:
                     connection.close()
                 except Exception:
+                    # Best-effort connection close during store shutdown.
                     pass
 
     @staticmethod

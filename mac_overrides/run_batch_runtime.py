@@ -165,6 +165,7 @@ class RunBatchManifestStore:
         try:
             self.log_fn(_clean(message, 500), level)
         except Exception:
+            # Log delivery must never break the batch runner.
             pass
 
     def _rebuild_task_index_locked(self) -> None:

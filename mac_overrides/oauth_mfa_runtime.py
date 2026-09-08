@@ -144,6 +144,7 @@ def remember_provider_totp_secret(
     try:
         setattr(provider, "_gptphone_totp_expected", True)
     except Exception:
+        # Provider marking is best-effort flow metadata.
         pass
     secret = normalize_totp_secret(getattr(entry, "oauth_refresh_token", ""))
     task = provider_task_id(
@@ -171,11 +172,13 @@ def runtime_task_id(
         try:
             values.append(context_task_get())
         except Exception:
+            # Task-id probing falls back to the transport getter below.
             pass
     if transport is not None and callable(transport_task_id_get):
         try:
             values.append(transport_task_id_get(transport))
         except Exception:
+            # Task-id probing falls back to the context getter above.
             pass
     for value in values:
         normalized = str(value or "").strip()

@@ -426,6 +426,7 @@ class ChatGptPlanGate:
         try:
             setattr(transport, "_gptphone_plan_check_diagnostics", safe)
         except Exception:
+            # Diagnostic enrichment must not change the plan-check verdict.
             pass
         log_fn = getattr(transport, "log_fn", None)
         if callable(log_fn):
@@ -433,6 +434,7 @@ class ChatGptPlanGate:
                 summary = ", ".join(f"{key}={value}" for key, value in safe.items())
                 log_fn(f"[验证套餐等级/phone_plan_check] {summary}", "info")
             except Exception:
+                # Telemetry must not mask the summary already built above.
                 pass
 
     @staticmethod
@@ -537,6 +539,7 @@ class ChatGptPlanGate:
         try:
             setattr(transport, "_gptphone_plan_check_attempt_count", attempt)
         except Exception:
+            # Attempt bookkeeping must not change the plan-check verdict.
             pass
         return last
 

@@ -865,6 +865,7 @@ class RunNotificationCoordinator:
             try:
                 self._submit_fn(notification)
             except Exception:
+                # Submission telemetry must not break the notification run.
                 pass
         return tuple(notification.event for notification in notifications)
 

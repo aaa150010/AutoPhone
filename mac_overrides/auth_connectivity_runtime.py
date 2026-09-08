@@ -620,6 +620,7 @@ class OpenAIAuthConnectivityRuntime:
             try:
                 callback.function(callback.payload)
             except Exception:
+                # A failing connectivity callback must not break the chain.
                 pass
     def wait_until_available(
         self,
@@ -702,6 +703,7 @@ class OpenAIAuthConnectivityRuntime:
                 try:
                     close()
                 except Exception:
+                    # Best-effort transport close during recovery.
                     pass
 
     def _coerce_probe_result(self, origin: str, value: Any) -> ProbeResult:
