@@ -83,6 +83,64 @@ AUTH_SIGNIN_URL = "https://chatgpt.com/api/auth/signin/openai"
 AUTH_EMAIL_OTP_VALIDATE_URL = "https://auth.openai.com/api/accounts/email-otp/validate"
 AUTH_PASSWORD_ADD_URL = "https://auth.openai.com/api/accounts/password/add"
 
+# Fallback post-submit handoff allowance for legacy deadline controllers that
+# only expose the boolean grace flag (no ``manual_submission_grace_remaining``).
+MANUAL_SUBMISSION_GRACE_SECONDS = 30.0
+
+
+def _twofa_navigation_timeout_ms(
+    deadline_monotonic: float | None,
+    deadline_controller: Any,
+) -> int:
+    """Budget one 2FA navigation against the task deadline and grace flags."""
+    timeout_ms = 45_000
+    try:
+        controller_remaining = getattr(deadline_controller, "remaining", None)
+        controller_paused = getattr(deadline_controller, "is_paused", None)
+        controller_grace = getattr(deadline_controller, "manual_submission_grace_active", None)
+        controller_grace_remaining = getattr(
+            deadline_controller, "manual_submission_grace_remaining", None,
+        )
+    except Exception:
+        controller_remaining = controller_paused = None
+        controller_grace = controller_grace_remaining = None
+    controller_budget = False
+    try:
+        paused = bool(controller_paused()) if callable(controller_paused) else False
+    except Exception:
+        paused = False
+    try:
+        grace_active = bool(controller_grace()) if callable(controller_grace) else False
+    except Exception:
+        grace_active = False
+    if grace_active:
+        grace_seconds: float | None = None
+        if callable(controller_grace_remaining):
+            try:
+                candidate = float(controller_grace_remaining())
+                if math.isfinite(candidate):
+                    grace_seconds = max(0.0, candidate)
+            except Exception:
+                pass
+        if grace_seconds is None:
+            # Older controllers expose only the boolean flag. Keep the
+            # same finite handoff allowance for those adapters.
+            grace_seconds = MANUAL_SUBMISSION_GRACE_SECONDS
+        timeout_ms = max(1_000, min(timeout_ms, int(max(0.0, grace_seconds) * 1000)))
+        controller_budget = True
+    if callable(controller_remaining) and not paused and not controller_budget:
+        try:
+            timeout_ms = max(1_000, min(timeout_ms, int(float(controller_remaining()) * 1000)))
+            controller_budget = True
+        except Exception:
+            pass
+    if deadline_monotonic is not None and not controller_budget and not paused:
+        try:
+            timeout_ms = max(1_000, min(timeout_ms, int((float(deadline_monotonic) - time.monotonic()) * 1000)))
+        except (TypeError, ValueError, OverflowError):
+            pass
+    return timeout_ms
+
 
 async def browser_plan_details(
     page: Any,
@@ -726,52 +784,7 @@ async def browser_twofa(
         goto = getattr(page, "goto", None)
         if not callable(goto):
             raise failure(node_code, node_label, "浏览器页面不支持授权跳转")
-        timeout_ms = 45_000
-        try:
-            controller_remaining = getattr(deadline_controller, "remaining", None)
-            controller_paused = getattr(deadline_controller, "is_paused", None)
-            controller_grace = getattr(deadline_controller, "manual_submission_grace_active", None)
-            controller_grace_remaining = getattr(
-                deadline_controller, "manual_submission_grace_remaining", None,
-            )
-        except Exception:
-            controller_remaining = controller_paused = None
-            controller_grace = controller_grace_remaining = None
-        controller_budget = False
-        try:
-            paused = bool(controller_paused()) if callable(controller_paused) else False
-        except Exception:
-            paused = False
-        try:
-            grace_active = bool(controller_grace()) if callable(controller_grace) else False
-        except Exception:
-            grace_active = False
-        if grace_active:
-            grace_seconds: float | None = None
-            if callable(controller_grace_remaining):
-                try:
-                    candidate = float(controller_grace_remaining())
-                    if math.isfinite(candidate):
-                        grace_seconds = max(0.0, candidate)
-                except Exception:
-                    pass
-            if grace_seconds is None:
-                # Older controllers expose only the boolean flag. Keep the
-                # same finite handoff allowance for those adapters.
-                grace_seconds = MANUAL_SUBMISSION_GRACE_SECONDS
-            timeout_ms = max(1_000, min(timeout_ms, int(max(0.0, grace_seconds) * 1000)))
-            controller_budget = True
-        if callable(controller_remaining) and not paused and not controller_budget:
-            try:
-                timeout_ms = max(1_000, min(timeout_ms, int(float(controller_remaining()) * 1000)))
-                controller_budget = True
-            except Exception:
-                pass
-        if deadline_monotonic is not None and not controller_budget and not paused:
-            try:
-                timeout_ms = max(1_000, min(timeout_ms, int((float(deadline_monotonic) - time.monotonic()) * 1000)))
-            except (TypeError, ValueError, OverflowError):
-                pass
+        timeout_ms = _twofa_navigation_timeout_ms(deadline_monotonic, deadline_controller)
         try:
             return await goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
         except TypeError:
