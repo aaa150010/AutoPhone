@@ -983,169 +983,21 @@ def _run_once(
 ) -> dict[str, Any]:
     ok, page_type, continue_url, error_text, _session_invalid = _chain_helpers()
     context = _oauth_context(oauth_context)
-    oauth_url = context["url"]
-    pkce_context_complete = all(
-        context.get(key)
-        for key in ("url", "code_verifier", "state", "client_id", "redirect_uri")
+
+    response, prelude_used, mailbox_confirmed_for_submit = _establish_session_and_submit_email(
+        transport,
+        context=context,
+        email=email,
+        otp_provider=otp_provider,
+        task_id=task_id,
+        stage=stage,
+        log=log,
+        force_otp_snapshot=force_otp_snapshot,
+        stop_requested=stop_requested,
+        confirm_mailbox=confirm_mailbox,
+        abort_mailbox_confirmation=abort_mailbox_confirmation,
+        prelude=prelude,
     )
-
-    _stage(stage, task_id, "free_oauth_session")
-    _log(log, "创建全新 OAuth HTTP 会话并开始授权", "info")
-    # The authorize/continue request can itself dispatch the first email OTP.
-    # Capture the mailbox baseline before any request in this phase.
-    _reset_otp_request(otp_provider)
-    _prepare_otp(otp_provider, "free_email_otp_wait", force_snapshot=force_otp_snapshot)
-    mailbox_confirmed_for_submit = False
-
-    def confirm_mailbox_for_submission() -> None:
-        nonlocal mailbox_confirmed_for_submit
-        if mailbox_confirmed_for_submit or not callable(confirm_mailbox):
-            return
-        try:
-            confirmed = _invoke_mailbox_hook(
-                confirm_mailbox,
-                task_id=task_id,
-                email=email,
-                driver="protocol",
-                stage="free_email_identifier",
-            )
-        except FreeRegisterError:
-            raise
-        except Exception as exc:
-            raise FreeRegisterError(
-                "free_mailbox_lease",
-                "确认 Free 邮箱租约",
-                "提交邮箱前确认租约失败",
-                retryable=True,
-                error_code="free_mailbox_lease_confirm_failed",
-                diagnostic=f"callback={type(exc).__name__}",
-            ) from exc
-        if confirmed is False:
-            raise FreeRegisterError(
-                "free_mailbox_lease",
-                "确认 Free 邮箱租约",
-                "提交邮箱前邮箱租约已失效或被其他任务占用",
-                retryable=True,
-                error_code="free_mailbox_lease_conflict",
-            )
-        mailbox_confirmed_for_submit = True
-
-    def abort_if_transport_not_started() -> None:
-        if not mailbox_confirmed_for_submit or not callable(abort_mailbox_confirmation):
-            return
-        outcome = _invoke_mailbox_hook(
-            abort_mailbox_confirmation,
-            task_id=task_id,
-            email=email,
-            driver="protocol",
-            stage="free_email_identifier",
-            submission_definitely_not_started=True,
-        )
-        if outcome is False:
-            _log(log, "邮箱提交尚未开始，但租约确认未撤销；保守保留已确认状态", "warn")
-
-    # The maintained AutoRegister route starts with a NextAuth providers/CSRF
-    # session and follows its authorize redirect.  When that prelude returns
-    # a recognized page, feed it directly into this state machine so the
-    # mailbox identifier is not submitted a second time.  Generic login HTML
-    # remains a compatibility hint and falls back to the legacy pair below.
-    response: Any = None
-    prelude_used = False
-    if callable(prelude):
-        prelude_response = prelude(transport)
-        if _prelude_state_ready(prelude_response):
-            response = prelude_response
-            prelude_used = True
-            _log(
-                log,
-                f"AutoRegister OAuth 前置已返回页面（页面={_page_type_value(response) or '-'}），跳过重复邮箱提交",
-                "success",
-            )
-        elif prelude_response is not None:
-            _log(log, "AutoRegister OAuth 前置未返回可识别页面，回退兼容授权入口", "warn")
-
-    if not prelude_used:
-        if not pkce_context_complete:
-            raise FreeRegisterError(
-                "free_oauth_session",
-                "Free OAuth 会话",
-                "OAuth PKCE 上下文不完整，缺少授权地址、state、verifier、client_id 或 redirect_uri",
-                retryable=False,
-                error_code="free_oauth_context_incomplete",
-            )
-        start = _call_transport(
-            transport,
-            "initiate_oauth",
-            oauth_url,
-            flow="oauth_authorize",
-            stop_requested=stop_requested,
-            log=log,
-        )
-        trusted_start = _trusted_html_bootstrap(start, "initiate_oauth")
-        if not ok(start) and not trusted_start:
-            _raise_response(start, node="free_oauth_session", label="Free OAuth 会话", stage="free_oauth_session")
-        if _page_is_html(start):
-            if _is_security_challenge_response(start):
-                raise FreeRegisterError(
-                    "free_oauth_security_challenge",
-                    "等待 Free OAuth 安全验证",
-                    "OAuth 授权返回安全验证页面，已停止自动流程",
-                    retryable=False,
-                    error_code="free_oauth_security_challenge",
-                )
-            if not _trusted_oauth_bootstrap_location(start):
-                failure = FreeRegisterError(
-                    "free_oauth_session",
-                    "Free OAuth 会话",
-                    f"OAuth 授权返回无法识别的 HTML（{_response_detail(start)}）",
-                    error_code="oauth_bootstrap_html",
-                )
-                if _pre_auth_html_response(start, "free_oauth_session"):
-                    setattr(failure, "proxy_retryable", True)
-                raise failure
-            _log(log, "OAuth 授权返回受信任 Auth HTML 起始页，继续使用当前会话提交邮箱", "info")
-        _log(log, f"OAuth 会话建立成功（HTTP {_status(start) or '-'}，Content-Type {_content_type(start) or '-'}）", "success")
-
-        _stage(stage, task_id, "free_email_identifier")
-        confirm_mailbox_for_submission()
-        response = _call_transport(
-            transport,
-            "submit_email_identifier",
-            email,
-            stop_requested=stop_requested,
-            log=log,
-            on_not_started=abort_if_transport_not_started,
-        )
-        identifier_status = _status(response)
-        if identifier_status is None or not 200 <= int(identifier_status) < 300:
-            _raise_response(response, node="free_email_identifier", label="识别 Free 注册邮箱", stage="free_email_identifier")
-        current_page = str(page_type(response) or _page_type_value(response) or "").strip().casefold().replace("-", "_")
-        known_html_page = current_page in (_PASSWORD_PAGE_TYPES | _OTP_PAGE_TYPES | _PROFILE_PAGE_TYPES | _CALLBACK_READY_PAGE_TYPES)
-        if _page_is_html(response) and not known_html_page:
-            if _is_security_challenge_response(response):
-                raise FreeRegisterError(
-                    "free_oauth_security_challenge",
-                    "等待 Free OAuth 安全验证",
-                    "邮箱识别返回安全验证页面，已停止自动流程",
-                    retryable=False,
-                    error_code="free_oauth_security_challenge",
-                )
-            failure = FreeRegisterError(
-                "free_email_identifier",
-                "识别 Free 注册邮箱",
-                f"邮箱识别返回 HTML（{_response_detail(response)}），授权会话未建立",
-                error_code="oauth_bootstrap_html",
-            )
-            if _pre_auth_html_response(response, "free_email_identifier"):
-                setattr(failure, "proxy_retryable", True)
-            raise failure
-        _log(log, f"邮箱提交成功（页面={current_page or '-'}，continue={'yes' if _next_url(response) else 'no'}）", "info")
-    else:
-        # Prelude responses are already state-machine envelopes.  Keep the
-        # same terminal security-page handling as transport responses without
-        # issuing any duplicate identifier request.
-        _raise_security_page(response)
-
     # Keep advancing through the finite authorization state machine. Providers
     # can return another OTP/password envelope after a successful transition;
     # never jump straight to callback/token in that case.
@@ -1344,7 +1196,224 @@ def _run_once(
             error_code="free_page_transition_limit",
         )
 
-    current_page = page_type(response) or _page_type_value(response)
+    return _complete_callback_and_tokens(
+        transport,
+        response=response,
+        context=context,
+        email=email,
+        password=password,
+        task_id=task_id,
+        stage=stage,
+        log=log,
+        stop_requested=stop_requested,
+        prelude_used=prelude_used,
+        account_flow=account_flow,
+        profile_submitted=profile_submitted,
+        registration_password_used=registration_password_used,
+    )
+
+
+def _establish_session_and_submit_email(
+    transport: Any,
+    *,
+    context: dict[str, Any],
+    email: str,
+    otp_provider: Any,
+    task_id: str,
+    stage: Callable[[str, str], None],
+    log: Callable[..., Any] | None,
+    force_otp_snapshot: bool,
+    stop_requested: Callable[[], bool] | None,
+    confirm_mailbox: Callable[..., Any] | None,
+    abort_mailbox_confirmation: Callable[..., Any] | None,
+    prelude: Callable[..., Any] | None,
+) -> tuple[Any, bool, bool]:
+    """Establish the OAuth session and submit the mailbox identifier.
+
+    Returns ``(response, prelude_used, mailbox_confirmed_for_submit)``.
+    """
+    ok, page_type, continue_url, error_text, _session_invalid = _chain_helpers()
+    oauth_url = context["url"]
+    pkce_context_complete = all(
+        context.get(key)
+        for key in ("url", "code_verifier", "state", "client_id", "redirect_uri")
+    )
+    _stage(stage, task_id, "free_oauth_session")
+    _log(log, "创建全新 OAuth HTTP 会话并开始授权", "info")
+    # The authorize/continue request can itself dispatch the first email OTP.
+    # Capture the mailbox baseline before any request in this phase.
+    _reset_otp_request(otp_provider)
+    _prepare_otp(otp_provider, "free_email_otp_wait", force_snapshot=force_otp_snapshot)
+    mailbox_confirmed = {"value": False}
+
+    def confirm_mailbox_for_submission() -> None:
+        if mailbox_confirmed["value"] or not callable(confirm_mailbox):
+            return
+        try:
+            confirmed = _invoke_mailbox_hook(
+                confirm_mailbox,
+                task_id=task_id,
+                email=email,
+                driver="protocol",
+                stage="free_email_identifier",
+            )
+        except FreeRegisterError:
+            raise
+        except Exception as exc:
+            raise FreeRegisterError(
+                "free_mailbox_lease",
+                "确认 Free 邮箱租约",
+                "提交邮箱前确认租约失败",
+                retryable=True,
+                error_code="free_mailbox_lease_confirm_failed",
+                diagnostic=f"callback={type(exc).__name__}",
+            ) from exc
+        if confirmed is False:
+            raise FreeRegisterError(
+                "free_mailbox_lease",
+                "确认 Free 邮箱租约",
+                "提交邮箱前邮箱租约已失效或被其他任务占用",
+                retryable=True,
+                error_code="free_mailbox_lease_conflict",
+            )
+        mailbox_confirmed["value"] = True
+
+    def abort_if_transport_not_started() -> None:
+        if not mailbox_confirmed["value"] or not callable(abort_mailbox_confirmation):
+            return
+        outcome = _invoke_mailbox_hook(
+            abort_mailbox_confirmation,
+            task_id=task_id,
+            email=email,
+            driver="protocol",
+            stage="free_email_identifier",
+            submission_definitely_not_started=True,
+        )
+        if outcome is False:
+            _log(log, "邮箱提交尚未开始，但租约确认未撤销；保守保留已确认状态", "warn")
+
+
+    # The maintained AutoRegister route starts with a NextAuth providers/CSRF
+    # session and follows its authorize redirect.  When that prelude returns
+    # a recognized page, feed it directly into this state machine so the
+    # mailbox identifier is not submitted a second time.  Generic login HTML
+    # remains a compatibility hint and falls back to the legacy pair below.
+    response: Any = None
+    prelude_used = False
+    if callable(prelude):
+        prelude_response = prelude(transport)
+        if _prelude_state_ready(prelude_response):
+            response = prelude_response
+            prelude_used = True
+            _log(
+                log,
+                f"AutoRegister OAuth 前置已返回页面（页面={_page_type_value(response) or '-'}），跳过重复邮箱提交",
+                "success",
+            )
+        elif prelude_response is not None:
+            _log(log, "AutoRegister OAuth 前置未返回可识别页面，回退兼容授权入口", "warn")
+
+    if not prelude_used:
+        if not pkce_context_complete:
+            raise FreeRegisterError(
+                "free_oauth_session",
+                "Free OAuth 会话",
+                "OAuth PKCE 上下文不完整，缺少授权地址、state、verifier、client_id 或 redirect_uri",
+                retryable=False,
+                error_code="free_oauth_context_incomplete",
+            )
+        start = _call_transport(
+            transport,
+            "initiate_oauth",
+            oauth_url,
+            flow="oauth_authorize",
+            stop_requested=stop_requested,
+            log=log,
+        )
+        trusted_start = _trusted_html_bootstrap(start, "initiate_oauth")
+        if not ok(start) and not trusted_start:
+            _raise_response(start, node="free_oauth_session", label="Free OAuth 会话", stage="free_oauth_session")
+        if _page_is_html(start):
+            if _is_security_challenge_response(start):
+                raise FreeRegisterError(
+                    "free_oauth_security_challenge",
+                    "等待 Free OAuth 安全验证",
+                    "OAuth 授权返回安全验证页面，已停止自动流程",
+                    retryable=False,
+                    error_code="free_oauth_security_challenge",
+                )
+            if not _trusted_oauth_bootstrap_location(start):
+                failure = FreeRegisterError(
+                    "free_oauth_session",
+                    "Free OAuth 会话",
+                    f"OAuth 授权返回无法识别的 HTML（{_response_detail(start)}）",
+                    error_code="oauth_bootstrap_html",
+                )
+                if _pre_auth_html_response(start, "free_oauth_session"):
+                    setattr(failure, "proxy_retryable", True)
+                raise failure
+            _log(log, "OAuth 授权返回受信任 Auth HTML 起始页，继续使用当前会话提交邮箱", "info")
+        _log(log, f"OAuth 会话建立成功（HTTP {_status(start) or '-'}，Content-Type {_content_type(start) or '-'}）", "success")
+
+        _stage(stage, task_id, "free_email_identifier")
+        confirm_mailbox_for_submission()
+        response = _call_transport(
+            transport,
+            "submit_email_identifier",
+            email,
+            stop_requested=stop_requested,
+            log=log,
+            on_not_started=abort_if_transport_not_started,
+        )
+        identifier_status = _status(response)
+        if identifier_status is None or not 200 <= int(identifier_status) < 300:
+            _raise_response(response, node="free_email_identifier", label="识别 Free 注册邮箱", stage="free_email_identifier")
+        current_page = str(page_type(response) or _page_type_value(response) or "").strip().casefold().replace("-", "_")
+        known_html_page = current_page in (_PASSWORD_PAGE_TYPES | _OTP_PAGE_TYPES | _PROFILE_PAGE_TYPES | _CALLBACK_READY_PAGE_TYPES)
+        if _page_is_html(response) and not known_html_page:
+            if _is_security_challenge_response(response):
+                raise FreeRegisterError(
+                    "free_oauth_security_challenge",
+                    "等待 Free OAuth 安全验证",
+                    "邮箱识别返回安全验证页面，已停止自动流程",
+                    retryable=False,
+                    error_code="free_oauth_security_challenge",
+                )
+            failure = FreeRegisterError(
+                "free_email_identifier",
+                "识别 Free 注册邮箱",
+                f"邮箱识别返回 HTML（{_response_detail(response)}），授权会话未建立",
+                error_code="oauth_bootstrap_html",
+            )
+            if _pre_auth_html_response(response, "free_email_identifier"):
+                setattr(failure, "proxy_retryable", True)
+            raise failure
+        _log(log, f"邮箱提交成功（页面={current_page or '-'}，continue={'yes' if _next_url(response) else 'no'}）", "info")
+    else:
+        # Prelude responses are already state-machine envelopes.  Keep the
+        # same terminal security-page handling as transport responses without
+        # issuing any duplicate identifier request.
+        _raise_security_page(response)
+    return response, prelude_used, mailbox_confirmed["value"]
+
+
+def _complete_callback_and_tokens(
+    transport: Any,
+    *,
+    response: Any,
+    context: dict[str, Any],
+    email: str,
+    password: str,
+    task_id: str,
+    stage: Callable[[str, str], None],
+    log: Callable[..., Any] | None,
+    stop_requested: Callable[[], bool] | None,
+    prelude_used: bool,
+    account_flow: str,
+    profile_submitted: bool,
+    registration_password_used: bool,
+) -> dict[str, Any]:
+    """Complete the OAuth callback and exchange/capture the access token."""
     next_url = _next_url(response)
     if not next_url:
         raise FreeRegisterError(
