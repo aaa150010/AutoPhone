@@ -1245,19 +1245,6 @@ def legacy_wait_code(
                 fallback = final_runtime_baseline_fallback(provider)
             except MailboxUrlError:
                 fallback = None
-            if fallback is None:
-                # The recovered runtime's public fallback helper remains a
-                # compatibility seam for callers that replace it in tests or
-                # older integrations. It resolves to this same state for a
-                # provider created by the shared service.
-                try:
-                    from . import mailbox_url_runtime as legacy_runtime
-                except ImportError:
-                    import mailbox_url_runtime as legacy_runtime  # type: ignore[no-redef]
-                try:
-                    fallback = legacy_runtime.final_runtime_baseline_fallback(provider)
-                except Exception:
-                    fallback = None
             if fallback is None or not fallback.code:
                 log_runtime_diagnostic(provider, getattr(otp_provider, "log_fn", None))
                 raise

@@ -781,26 +781,17 @@ class MailboxUrlClient:
         return select_latest_code(self.scan(), include_existing=include_existing)
 
 
-try:
-    from .mailbox_request_runtime import (
-        MailboxRequestState,
-        begin_runtime_request,
-        configure_runtime_request,
-        finish_runtime_request,
-        final_runtime_baseline_fallback,
-        runtime_diagnostic,
-        runtime_snapshot,
-    )
-except ImportError:  # Loaded as a top-level runtime override.
-    from mailbox_request_runtime import (  # type: ignore[no-redef]
-        MailboxRequestState,
-        begin_runtime_request,
-        configure_runtime_request,
-        finish_runtime_request,
-        final_runtime_baseline_fallback,
-        runtime_diagnostic,
-        runtime_snapshot,
-    )
+def __getattr__(name: str) -> Any:
+    # Lazy re-export kept for compatibility: mailbox_request_runtime itself
+    # imports this module, so a top-level import would create a cycle.
+    if name == "MailboxRequestState":
+        try:
+            from .mailbox_request_runtime import MailboxRequestState
+        except ImportError:  # Loaded as a top-level runtime override.
+            from mailbox_request_runtime import MailboxRequestState  # type: ignore[no-redef]
+
+        return MailboxRequestState
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 __all__ = [
@@ -819,17 +810,11 @@ __all__ = [
     "MailboxUrlError",
     "TimingFn",
     "MailboxUrlRow",
-    "begin_runtime_request",
-    "configure_runtime_request",
     "decode_mail_body",
     "extract_openai_code",
-    "finish_runtime_request",
-    "final_runtime_baseline_fallback",
     "masked_mailbox_url_row",
     "parse_mailbox_payload",
     "parse_mailbox_url_row",
     "parse_received_timestamp",
-    "runtime_snapshot",
-    "runtime_diagnostic",
     "select_latest_code",
 ]

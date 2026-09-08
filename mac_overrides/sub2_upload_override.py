@@ -62,9 +62,7 @@ def upload_sub2_with_relogin_policy(
 
     dependencies = update_runtime.Sub2UpdateDependencies(
         get_admin_token=sub2_session.get_admin_token,
-        resolve_group=sub2_groups.resolve_sub2_group_id,
         fetch_detail=chatgpt_fields.fetch_sub2_account_detail,
-        assert_group=sub2_groups.assert_sub2_account_group,
         extract_fields=chatgpt_fields.extract_chatgpt_auth_fields,
         extra_from_item=chatgpt_fields.sub2_extra_from_item,
         identity_locations=identity_locations,

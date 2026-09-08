@@ -86,9 +86,7 @@ class Sub2ExistingAccountUpdateTests(unittest.TestCase):
 
         dependencies = Sub2UpdateDependencies(
             get_admin_token=lambda *_args, **_kwargs: "admin-token",
-            resolve_group=lambda *_args, **_kwargs: (7, "CHATGPT"),
             fetch_detail=fetch_detail,
-            assert_group=lambda *_args, **_kwargs: ([7], ["CHATGPT"]),
             extract_fields=extract_fields,
             extra_from_item=lambda item: {
                 "email": item.get("email") or EMAIL,
@@ -164,15 +162,7 @@ class Sub2ExistingAccountUpdateTests(unittest.TestCase):
             account_id=ACCOUNT_ID,
             upload_proxy="",
             log_fn=None,
-            dependencies=replace(
-                dependencies,
-                assert_group=lambda *_args, **_kwargs: (_ for _ in ()).throw(
-                    AssertionError("existing updates must not enforce the configured group")
-                ),
-                resolve_group=lambda *_args, **_kwargs: (_ for _ in ()).throw(
-                    AssertionError("existing updates must not resolve the configured group")
-                ),
-            ),
+            dependencies=dependencies,
         )
 
         self.assertTrue(result["ok"])

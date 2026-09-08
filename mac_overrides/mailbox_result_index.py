@@ -11,12 +11,10 @@ from typing import Any, Mapping
 
 try:
     from .mailbox_row_formats import email_from_row
-    from .mailbox_sub2_results import sub2_account_id_from_result
-    from .openai_quota_runtime import OpenAIQuotaError, credentials_from_result
+    from .mailbox_sub2_results import accept_sub2_result_document, fold_sub2_account
 except ImportError:  # Loaded as top-level runtime overrides by the Mac launcher.
     from mailbox_row_formats import email_from_row
-    from mailbox_sub2_results import sub2_account_id_from_result
-    from openai_quota_runtime import OpenAIQuotaError, credentials_from_result
+    from mailbox_sub2_results import accept_sub2_result_document, fold_sub2_account
 
 
 RESULT_INDEX_ROLLBACK_SECONDS = 5 * 60
@@ -66,24 +64,17 @@ def _build_indexes(entries: Mapping[Path, _CachedResult]) -> tuple[dict[str, dic
             data["_result_file"] = str(path.resolve())
             latest_results[email] = data
 
-        if str(data.get("status") or "").lower() not in {"success", "ok", "uploaded"}:
-            continue
-        account_id = sub2_account_id_from_result(data)
+        account_id = accept_sub2_result_document(data)
         if not account_id:
             continue
-        previous_account = latest_sub2.get(email)
-        if previous_account is not None and created < int(previous_account.get("created_at") or 0):
-            continue
-        try:
-            openai_account_id = credentials_from_result(data).account_id
-        except OpenAIQuotaError:
-            openai_account_id = ""
-        latest_sub2[email] = {
-            "account_id": account_id,
-            "openai_account_id": openai_account_id,
-            "created_at": created,
-            "result_file": str(path.resolve()),
-        }
+        fold_sub2_account(
+            latest_sub2,
+            email,
+            data,
+            account_id,
+            created,
+            str(path.resolve()),
+        )
     return latest_results, latest_sub2
 
 

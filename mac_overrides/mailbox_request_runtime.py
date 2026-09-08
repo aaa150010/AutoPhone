@@ -175,6 +175,12 @@ class MailboxRequestState:
 
 
 def _runtime_state(provider: Any) -> MailboxRequestState:
+    """Attach or reuse the request state on a recovered URL provider.
+
+    The service module drives the state through ``MailboxOtpService``; this
+    helper only serves direct callers of ``MailboxRequestState`` and keeps the
+    historic ``_generic_mailbox_state`` attachment point intact.
+    """
     state = getattr(provider, "_generic_mailbox_state", None)
     if isinstance(state, MailboxRequestState):
         return state
@@ -188,63 +194,4 @@ def _runtime_state(provider: Any) -> MailboxRequestState:
     return state
 
 
-def runtime_snapshot(provider: Any) -> MailboxSelection:
-    return _runtime_state(provider).snapshot()
-
-
-def begin_runtime_request(provider: Any) -> None:
-    _runtime_state(provider).begin_request()
-
-
-def configure_runtime_request(provider: Any, *, max_poll_attempts: int) -> None:
-    _runtime_state(provider).configure_request(max_poll_attempts=max_poll_attempts)
-
-
-def final_runtime_baseline_fallback(provider: Any) -> MailboxSelection:
-    return _runtime_state(provider).final_baseline_fallback()
-
-
-def finish_runtime_request(provider: Any) -> None:
-    state = getattr(provider, "_generic_mailbox_state", None)
-    if isinstance(state, MailboxRequestState):
-        state.finish_request()
-
-
-def runtime_diagnostic(provider: Any) -> dict[str, Any]:
-    state = getattr(provider, "_generic_mailbox_state", None)
-    if not isinstance(state, MailboxRequestState) or state.last_selection is None:
-        return {}
-    diagnostics = state.last_selection.scan.diagnostics
-    return {
-        "reason": state.last_selection.reason,
-        "baseline_fallback_attempts": int(state.baseline_fallback_attempts),
-        "baseline_fallback_age_seconds": state.baseline_fallback_age_seconds,
-        "baseline_fallback_poll": state.baseline_fallback_poll,
-        "max_poll_attempts": int(state.max_poll_attempts),
-        "listing_messages": diagnostics.listing_messages,
-        "detail_links": diagnostics.detail_links,
-        "detail_refreshed": diagnostics.detail_refreshed,
-        "detail_refresh_pending": max(
-            diagnostics.detail_links - diagnostics.detail_refreshed,
-            0,
-        ),
-        "detail_errors": diagnostics.detail_errors,
-        "refresh_error_code": diagnostics.refresh_error_code,
-        "refresh_http_status": diagnostics.refresh_http_status,
-        "openai_messages": diagnostics.openai_messages,
-        "code_messages": diagnostics.code_messages,
-        "otp_context_messages": diagnostics.otp_context_messages,
-        "explicit_code_messages": diagnostics.explicit_code_messages,
-        "bare_code_messages": diagnostics.bare_code_messages,
-    }
-
-
-__all__ = [
-    "MailboxRequestState",
-    "begin_runtime_request",
-    "configure_runtime_request",
-    "finish_runtime_request",
-    "final_runtime_baseline_fallback",
-    "runtime_diagnostic",
-    "runtime_snapshot",
-]
+__all__ = ["MailboxRequestState"]

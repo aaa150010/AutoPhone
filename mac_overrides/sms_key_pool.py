@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-import re
 import threading
 import time
 from typing import Any, Callable

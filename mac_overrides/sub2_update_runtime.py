@@ -20,9 +20,7 @@ IDENTITY_KEYS = (
 @dataclass(frozen=True)
 class Sub2UpdateDependencies:
     get_admin_token: Callable[..., str]
-    resolve_group: Callable[..., tuple[int, str]]
     fetch_detail: Callable[..., Mapping[str, Any]]
-    assert_group: Callable[..., tuple[list[int], list[str]]]
     extract_fields: Callable[..., Mapping[str, Any]]
     extra_from_item: Callable[[Mapping[str, Any]], Mapping[str, Any]]
     identity_locations: Callable[[Mapping[str, Any]], tuple[str, str]]

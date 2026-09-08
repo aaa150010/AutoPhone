@@ -313,7 +313,13 @@ class MailboxAdminService(MailboxImportMixin, MailboxSourceLockMixin):
             row = lines[target - 1]
         return row, email_from_row(row)
 
-    def reveal_password(self, row_id: Any, line_no: Any) -> dict[str, Any]:
+    def _reveal_row(self, row_id: Any, line_no: Any) -> tuple[str, dict[str, Any] | None]:
+        """Locate and validate the pool row targeted by a reveal request.
+
+        Returns the verified raw row with ``None`` failure payload, or an empty
+        row with a stale-row failure payload when the line binding no longer
+        matches ``row_id``.
+        """
         expected_row_id = str(row_id or "").strip()
         try:
             target = int(line_no)
@@ -323,94 +329,64 @@ class MailboxAdminService(MailboxImportMixin, MailboxSourceLockMixin):
         with self._lock:
             lines = self._read_pool_lines()
             if target <= 0 or target > len(lines):
-                return {
+                return None, {
                     "ok": False,
                     "code": "mailbox_row_stale",
                     "error": "邮箱列表已变化，请刷新后重试",
                 }
             row = lines[target - 1]
             if not hmac.compare_digest(expected_row_id, row_id_from_source(row)):
-                return {
+                return "", {
                     "ok": False,
                     "code": "mailbox_row_stale",
                     "error": "邮箱列表已变化，请刷新后重试",
                 }
-            password = password_from_row(row)
-            if not password:
-                return {
-                    "ok": False,
-                    "code": "mailbox_password_missing",
-                    "error": "这一行没有可复制的密码",
-                }
-            return {"ok": True, "password": password}
+        return row, None
+
+    def reveal_password(self, row_id: Any, line_no: Any) -> dict[str, Any]:
+        row, failure = self._reveal_row(row_id, line_no)
+        if failure is not None:
+            return failure
+        password = password_from_row(row)
+        if not password:
+            return {
+                "ok": False,
+                "code": "mailbox_password_missing",
+                "error": "这一行没有可复制的密码",
+            }
+        return {"ok": True, "password": password}
 
     def reveal_totp(self, row_id: Any, line_no: Any) -> dict[str, Any]:
-        expected_row_id = str(row_id or "").strip()
-        try:
-            target = int(line_no)
-        except (TypeError, ValueError):
-            target = 0
-
-        with self._lock:
-            lines = self._read_pool_lines()
-            if target <= 0 or target > len(lines):
-                return {
-                    "ok": False,
-                    "code": "mailbox_row_stale",
-                    "error": "邮箱列表已变化，请刷新后重试",
-                }
-            row = lines[target - 1]
-            if not hmac.compare_digest(expected_row_id, row_id_from_source(row)):
-                return {
-                    "ok": False,
-                    "code": "mailbox_row_stale",
-                    "error": "邮箱列表已变化，请刷新后重试",
-                }
-            secret = totp_secret_from_row(row)
-            if not secret:
-                return {
-                    "ok": False,
-                    "code": "mailbox_totp_missing",
-                    "error": "这一行没有可复制的临时 2FA 验证码",
-                }
-            now = self.now_fn()
+        row, failure = self._reveal_row(row_id, line_no)
+        if failure is not None:
+            return failure
+        secret = totp_secret_from_row(row)
+        if not secret:
             return {
-                "ok": True,
-                "kind": "totp",
-                "code": generate_totp_code(secret, now=now),
-                "remaining": 30 - (int(now) % 30),
+                "ok": False,
+                "code": "mailbox_totp_missing",
+                "error": "这一行没有可复制的临时 2FA 验证码",
             }
+        now = self.now_fn()
+        return {
+            "ok": True,
+            "kind": "totp",
+            "code": generate_totp_code(secret, now=now),
+            "remaining": 30 - (int(now) % 30),
+        }
 
     def reveal_mailbox_url(self, row_id: Any, line_no: Any) -> dict[str, Any]:
-        expected_row_id = str(row_id or "").strip()
-        try:
-            target = int(line_no)
-        except (TypeError, ValueError):
-            target = 0
-
-        with self._lock:
-            lines = self._read_pool_lines()
-            if target <= 0 or target > len(lines):
-                return {
-                    "ok": False,
-                    "code": "mailbox_row_stale",
-                    "error": "邮箱列表已变化，请刷新后重试",
-                }
-            row = lines[target - 1]
-            if not hmac.compare_digest(expected_row_id, row_id_from_source(row)):
-                return {
-                    "ok": False,
-                    "code": "mailbox_row_stale",
-                    "error": "邮箱列表已变化，请刷新后重试",
-                }
-            mailbox_url = mailbox_url_from_row(row)
-            if not mailbox_url:
-                return {
-                    "ok": False,
-                    "code": "mailbox_url_missing",
-                    "error": "这一行没有取件 URL",
-                }
-            return {"ok": True, "mailbox_url": mailbox_url}
+        row, failure = self._reveal_row(row_id, line_no)
+        if failure is not None:
+            return failure
+        mailbox_url = mailbox_url_from_row(row)
+        if not mailbox_url:
+            return {
+                "ok": False,
+                "code": "mailbox_url_missing",
+                "error": "这一行没有取件 URL",
+            }
+        return {"ok": True, "mailbox_url": mailbox_url}
 
     def latest_code(self, payload: Any) -> dict[str, Any]:
         value = payload if isinstance(payload, Mapping) else {}

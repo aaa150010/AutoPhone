@@ -14,10 +14,52 @@ except ImportError:  # Loaded as top-level override modules by the Mac launcher.
     from openai_quota_runtime import OpenAIQuotaError, credentials_from_result
 
 
+SUCCESS_RESULT_STATUSES = frozenset({"success", "ok", "uploaded"})
+
+
 def sub2_account_id_from_result(result: Any) -> str:
     value = result if isinstance(result, Mapping) else {}
     payload = value.get("result") if isinstance(value.get("result"), Mapping) else {}
     return str(payload.get("sub2api_account_id") or value.get("sub2api_account_id") or "").strip()
+
+
+def accept_sub2_result_document(data: Mapping[str, Any]) -> str:
+    """Return the SUB2 account id when the document qualifies, else ``""``.
+
+    Shared success/identity gate used by both the standalone scanner and the
+    incremental result index so their "latest binding" decisions stay aligned.
+    """
+    if str(data.get("status") or "").lower() not in SUCCESS_RESULT_STATUSES:
+        return ""
+    return sub2_account_id_from_result(data)
+
+
+def fold_sub2_account(
+    latest: dict[str, dict[str, Any]],
+    email: str,
+    data: Mapping[str, Any],
+    account_id: str,
+    created: int,
+    result_file: str,
+) -> None:
+    """Fold one qualifying document into ``latest`` (in-place, index semantics).
+
+    Ties on ``created_at`` keep the later document, matching the incremental
+    index's ``created >= previous`` acceptance rule.
+    """
+    previous = latest.get(email)
+    if previous is not None and created < int(previous.get("created_at") or 0):
+        return
+    try:
+        openai_account_id = credentials_from_result(data).account_id
+    except OpenAIQuotaError:
+        openai_account_id = ""
+    latest[email] = {
+        "account_id": account_id,
+        "openai_account_id": openai_account_id,
+        "created_at": created,
+        "result_file": result_file,
+    }
 
 
 def latest_sub2_accounts_by_email(results_dir: str | Path) -> dict[str, dict[str, Any]]:
@@ -33,9 +75,7 @@ def latest_sub2_accounts_by_email(results_dir: str | Path) -> dict[str, dict[str
         except Exception:
             continue
         data = value if isinstance(value, dict) else {}
-        if str(data.get("status") or "").lower() not in {"success", "ok", "uploaded"}:
-            continue
-        account_id = sub2_account_id_from_result(data)
+        account_id = accept_sub2_result_document(data)
         email = email_from_row(data.get("email") or data.get("source_row") or "")
         if not email or not account_id:
             continue
@@ -47,19 +87,14 @@ def latest_sub2_accounts_by_email(results_dir: str | Path) -> dict[str, dict[str
             created = int(data.get("created_at") or data.get("updated_at") or fallback_created)
         except (TypeError, ValueError):
             created = int(fallback_created)
-        previous = latest.get(email)
-        if previous is None or created >= int(previous.get("created_at") or 0):
-            try:
-                openai_account_id = credentials_from_result(data).account_id
-            except OpenAIQuotaError:
-                openai_account_id = ""
-            latest[email] = {
-                "account_id": account_id,
-                "openai_account_id": openai_account_id,
-                "created_at": created,
-                "result_file": str(path.resolve()),
-            }
+        fold_sub2_account(latest, email, data, account_id, created, str(path.resolve()))
     return latest
 
 
-__all__ = ["latest_sub2_accounts_by_email", "sub2_account_id_from_result"]
+__all__ = [
+    "SUCCESS_RESULT_STATUSES",
+    "accept_sub2_result_document",
+    "fold_sub2_account",
+    "latest_sub2_accounts_by_email",
+    "sub2_account_id_from_result",
+]

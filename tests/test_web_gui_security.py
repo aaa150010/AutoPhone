@@ -934,7 +934,9 @@ class WebGuiSecurityTests(unittest.TestCase):
     def test_email_timeout_uses_final_baseline_fallback(self):
         module = self.module
         original_wait_code = module._ORIGINAL_URL_MAILBOX_WAIT_CODE
-        original_final_fallback = module._mailbox_url_runtime_ext.final_runtime_baseline_fallback
+        original_final_fallback = (
+            module._mailbox_otp_service_ext.final_runtime_baseline_fallback
+        )
         provider = SimpleNamespace(mailbox_url="https://mail.example.test/messages/test")
         otp_provider = SimpleNamespace(
             timeout=90,
@@ -949,14 +951,14 @@ class WebGuiSecurityTests(unittest.TestCase):
                     "mailbox_code_timeout: attempts=18/30: mailbox still returns baseline code"
                 )
             )
-            module._mailbox_url_runtime_ext.final_runtime_baseline_fallback = (
+            module._mailbox_otp_service_ext.final_runtime_baseline_fallback = (
                 lambda _provider: SimpleNamespace(code="682672")
             )
 
             code = module._url_mailbox_wait_code(otp_provider, "user@example.test")
         finally:
             module._ORIGINAL_URL_MAILBOX_WAIT_CODE = original_wait_code
-            module._mailbox_url_runtime_ext.final_runtime_baseline_fallback = original_final_fallback
+            module._mailbox_otp_service_ext.final_runtime_baseline_fallback = original_final_fallback
 
         self.assertEqual(code, "682672")
         self.assertTrue(otp_provider._chatgpt_email_otp_verified)

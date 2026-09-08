@@ -100,7 +100,6 @@ class SmsCostHistoryIndex:
         self.lock = threading.RLock()
         self._reconcile_lock = threading.Lock()
         self._results_dir: Path | None = None
-        self._directory_signature: tuple[int, int] | None = None
         self._generation = 0
         self._initialized = False
         self._signatures: dict[Path, tuple[int, int]] = {}
@@ -130,14 +129,6 @@ class SmsCostHistoryIndex:
 
     def _configured_results_dir(self) -> Path:
         return resolve_results_dir(self._settings(), self.data_dir)
-
-    @staticmethod
-    def _dir_signature(root: Path) -> tuple[int, int] | None:
-        try:
-            stat = root.stat()
-        except OSError:
-            return None
-        return stat.st_mtime_ns, stat.st_ctime_ns
 
     @staticmethod
     def _file_signature(path: Path) -> tuple[int, int] | None:
@@ -209,7 +200,6 @@ class SmsCostHistoryIndex:
 
     def _clear(self, root: Path) -> None:
         self._results_dir = root
-        self._directory_signature = None
         self._generation += 1
         self._initialized = False
         self._signatures.clear()
@@ -257,7 +247,6 @@ class SmsCostHistoryIndex:
             scanned[path] = signature
             if baseline.get(path) != signature:
                 changed[path] = self._read_result(path, signature)
-        directory_signature = self._dir_signature(root)
         applied_changes = 0
         with self.lock:
             if generation != self._generation or root != self._results_dir:
@@ -273,7 +262,6 @@ class SmsCostHistoryIndex:
                     self._replace_file(path, None)
                     self._signatures.pop(path, None)
                     applied_changes += 1
-            self._directory_signature = directory_signature
             self._initialized = True
             self._publish_snapshot()
         return applied_changes
@@ -289,7 +277,6 @@ class SmsCostHistoryIndex:
                 return
         signature = self._file_signature(target)
         contribution = self._read_result(target, signature) if signature is not None else None
-        directory_signature = self._dir_signature(target.parent)
         with self.lock:
             if target.parent != self._results_dir:
                 return
@@ -298,7 +285,6 @@ class SmsCostHistoryIndex:
                 self._signatures.pop(target, None)
             else:
                 self._signatures[target] = signature
-            self._directory_signature = directory_signature
             self._publish_snapshot()
 
     def _start_worker(self) -> None:

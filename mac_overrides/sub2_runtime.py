@@ -949,15 +949,6 @@ def _export_clean(value: Any) -> str:
     return str(value or "").strip()
 
 
-def _export_safe_int(value: Any, default: int = 0) -> int:
-    if isinstance(value, bool):
-        return default
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
-
-
 def _export_value_sources(value: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     sources: list[Mapping[str, Any]] = [value]
     for key in ("credentials", "tokens"):
