@@ -4,8 +4,11 @@ import type { ScrollbarInstance } from 'element-plus'
 import { CircleCheckFilled } from '@element-plus/icons-vue'
 import ContentEmptyState from './ContentEmptyState.vue'
 
+/** A run-log row as delivered by the runtime state API. */
+type RunLogEntry = string | { time?: string; level?: string; type?: string; message?: string; text?: string }
+
 const props = defineProps<{
-  logs: readonly any[]
+  logs: readonly RunLogEntry[]
   autoScroll?: boolean
 }>()
 
@@ -15,9 +18,10 @@ const sub2UploadSuccessPattern = /^T\d{3}-[0-9a-f]{6} 成功上传 SUB2: (?:<ema
 const renderedLogs = computed(() => {
   const occurrences = new Map<string, number>()
   return (props.logs || []).map((log) => {
-    const time = String(log?.time || '')
-    const level = String(log?.type || log?.level || '')
-    const message = String(log?.message || log?.text || log || '')
+    const entry = typeof log === 'string' ? { message: log } : log
+    const time = String(entry?.time || '')
+    const level = String(entry?.type || entry?.level || '')
+    const message = String(entry?.message || entry?.text || entry || '')
     const baseKey = `${time}\u0000${level}\u0000${message}`
     const occurrence = occurrences.get(baseKey) || 0
     occurrences.set(baseKey, occurrence + 1)
