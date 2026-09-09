@@ -479,6 +479,8 @@ onMounted(async () => {
             </el-radio-group>
             <label class="quick-run-field"><span>注册数量</span><el-input-number v-model="quickTargetCount" class="quick-run-number" :min="1" :max="200" controls-position="right" :disabled="running || Boolean(busy)" @update:model-value="markQuickRunDirty"  size="small" /></label>
             <label class="quick-run-field"><span>并发</span><el-input-number v-model="quickConcurrency" class="quick-run-number" :min="1" :max="16" controls-position="right" :disabled="running || Boolean(busy)" @update:model-value="markQuickRunDirty"  size="small" /></label>
+            <label class="quick-run-field quick-run-switch"><span>密码设置</span><el-switch v-model="config.auto_set_password" :disabled="running || Boolean(busy)" size="small" aria-label="注册后补设账号密码" @update:model-value="markQuickRunDirty" /></label>
+            <label class="quick-run-field quick-run-switch"><span>2FA</span><el-switch v-model="config.auto_set_2fa" :disabled="running || Boolean(busy)" size="small" aria-label="注册后设置 2FA" @update:model-value="markQuickRunDirty" /></label>
             <span class="muted task-start-meta">可用邮箱 {{ Number(state.pool?.available || 0) }} · 代理 {{ Number(state.pool?.proxies || 0) }}</span>
             <el-button size="small" :icon="CircleCheck" :loading="busy === 'preflight'" :disabled="running" @click="preflight" aria-label="预检">预检</el-button>
             <el-button size="small" type="primary" :icon="VideoPlay" :loading="busy === 'start'" :disabled="running || !Number(state.pool?.available || 0)" @click="start" aria-label="开始注册">开始注册</el-button>
@@ -594,6 +596,7 @@ onMounted(async () => {
 .task-start-bar { min-height: 32px; }
 .task-start-bar .task-start-meta { margin-right: auto; }
 .quick-run-field { display: inline-flex; align-items: center; gap: 8px; color: var(--el-text-color-regular); font-size: 14px; white-space: nowrap; }
+.quick-run-field.quick-run-switch span { font-size: 12px; color: var(--el-text-color-secondary); }
 .driver-inline-radio { flex: 0 0 auto; white-space: nowrap; }
 .driver-inline-radio :deep(.el-radio-button__inner) { padding: 5px 12px; font-size: 12px; }
 /* Keep numeric controls compact while preserving Element Plus' native
