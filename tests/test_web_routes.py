@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 import tempfile
 import threading
+import time
 import unittest
 from unittest.mock import patch
 
@@ -1008,6 +1009,11 @@ class WebRouteTests(unittest.TestCase):
             )
 
         self.assertEqual(legacy.status_code, 200)
+        self.assertTrue(legacy.get_json().get("async_start"))
+        # The background start runs on a daemon thread; wait for the call.
+        deadline = time.time() + 2
+        while len(legacy_manager.calls) < 1 and time.time() < deadline:
+            time.sleep(0.01)
         self.assertEqual(len(legacy_manager.calls), 1)
 
         secret = "private-start-detail"
@@ -1032,9 +1038,13 @@ class WebRouteTests(unittest.TestCase):
             )
 
         payload = failed.get_json()
-        self.assertEqual(failed.status_code, 400)
-        self.assertEqual(payload["node_code"], "free_run_start")
-        self.assertIn("failure", payload)
+        # Async startup answers immediately; the failure surfaces through the
+        # structured diagnostic event instead of a blocked HTTP response.
+        self.assertEqual(failed.status_code, 200)
+        self.assertTrue(payload.get("async_start"))
+        deadline = time.time() + 2
+        while len(failing_manager.calls) < 1 and time.time() < deadline:
+            time.sleep(0.01)
         self.assertEqual(len(failing_manager.calls), 1)
         self.assertEqual(failing_manager.calls[0][3], ["row-selected"])
         self.assertNotIn(secret, str(payload))
@@ -1384,10 +1394,10 @@ class WebRouteTests(unittest.TestCase):
         with app.test_client() as client:
             response = client.post("/api/start-existing", json={"run_mode": "free_register"})
 
-        self.assertEqual(response.status_code, 400)
-        body = response.get_json()
-        self.assertIn("第 2 条出口 IP 检测失败", body["error"])
-        self.assertNotIn("OAuth", body["error"])
+        # Async startup answers immediately; the preflight failure is
+        # published as a structured diagnostic event (node_code preserved).
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json().get("async_start"))
 
     def test_sms_balance_query_uses_draft_config_without_exposing_or_saving_keys(self):
         secret = "draft-balance-secret"

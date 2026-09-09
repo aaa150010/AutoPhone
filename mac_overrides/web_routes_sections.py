@@ -49,6 +49,12 @@ try:
     from .free_register_common import FIXED_PASSWORD as _FREE_FIXED_PASSWORD, safe_log_message as _safe_free_message
     from .free_failure_runtime import canonical_failure as _canonical_free_failure, exception_to_failure as _free_exception_to_failure
     from .diagnostic_writer import DiagnosticEventWriter, LogContext
+    from .diagnostic_writer_async import AsyncDiagnosticWriter as _AsyncDiagnosticWriter
+    from .free_register_start_async import (
+        FreeStartAsyncCoordinator,
+        FreeStartInProgressError,
+    )
+    from .free_register_common import FreeRegisterError as _FreeRegisterRouteError
     from .free_config_routes import FreeControlRouteController
     from .free_pool_routes import (
         FreePoolRouteController,
@@ -59,6 +65,12 @@ except ImportError:
     from free_register_common import FIXED_PASSWORD as _FREE_FIXED_PASSWORD, safe_log_message as _safe_free_message  # type: ignore[no-redef]
     from free_failure_runtime import canonical_failure as _canonical_free_failure, exception_to_failure as _free_exception_to_failure  # type: ignore[no-redef]
     from diagnostic_writer import DiagnosticEventWriter, LogContext  # type: ignore[no-redef]
+    from diagnostic_writer_async import AsyncDiagnosticWriter as _AsyncDiagnosticWriter  # type: ignore[no-redef]
+    from free_register_start_async import (  # type: ignore[no-redef]
+        FreeStartAsyncCoordinator,
+        FreeStartInProgressError,
+    )
+    from free_register_common import FreeRegisterError as _FreeRegisterRouteError  # type: ignore[no-redef]
     from free_config_routes import FreeControlRouteController  # type: ignore[no-redef]
     from free_pool_routes import (  # type: ignore[no-redef]
         FreePoolRouteController,
@@ -511,6 +523,14 @@ def build_core_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]:
 def build_free_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]:
     """Build the Free registration control, pool, and status views."""
     free_request_lock = threading.Lock()
+    # Async startup coordinator: one background slot owns the heavy section of
+    # ``/api/free/start`` so the HTTP click returns immediately.
+    _start_coordinator: FreeStartAsyncCoordinator | None = None
+    def free_start_coordinator() -> FreeStartAsyncCoordinator:
+        nonlocal _start_coordinator
+        if _start_coordinator is None:
+            _start_coordinator = FreeStartAsyncCoordinator(scope.free_manager)
+        return _start_coordinator
     # Route-level failures use the same structured writer as workers.  Keep a
     # bound instance in the closure so this path cannot accidentally bypass
     # field allowlists by calling ``DiagnosticStore.record`` directly.
@@ -523,6 +543,27 @@ def build_free_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]:
             )
         except Exception:
             free_route_diagnostic_writer = None
+
+    def publish_start_failure_event(failure: Mapping[str, Any]) -> None:
+        """Surface an async startup failure as a structured diagnostic event."""
+        writer = free_route_diagnostic_writer
+        if writer is None:
+            return
+        try:
+            writer.record({
+                "level": "error",
+                "outcome": "error",
+                "chain": "free",
+                "workflow": "route",
+                "driver": "free",
+                "node_code": failure.get("node_code") or "free_run_start",
+                "node_label": failure.get("node_label") or "启动 Free 注册",
+                "message": failure.get("public_message") or "启动 Free 注册失败",
+                "failure": failure,
+            })
+        except Exception:
+            # Diagnostic publication must not mask the original start failure.
+            pass
 
     def free_state():
         return scope.free_manager.public_state() if scope.free_manager is not None else {"running": False, "tasks": [], "summary": {}}
@@ -703,8 +744,10 @@ def build_free_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]:
                 "pool_content": mailbox_content if scope.free_config_store is None else "",
                 "proxy_content": proxy_content if scope.free_config_store is None else "",
             }
+            row_ids: list[str] = []
             if isinstance(data.get("row_ids"), list) and data.get("row_ids"):
-                start_kwargs["row_ids"] = [str(value or "") for value in data.get("row_ids")]
+                row_ids = [str(value or "") for value in data.get("row_ids")]
+                start_kwargs["row_ids"] = row_ids
             start_callback = scope.free_manager.start
             accepts_start = signature_accepts_call(start_callback, config, **start_kwargs)
             if accepts_start is False:
@@ -713,8 +756,27 @@ def build_free_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]:
                 if "row_ids" not in start_kwargs or signature_accepts_call(start_callback, config, **legacy_kwargs) is not True:
                     raise TypeError("Free 启动器签名不兼容")
                 start_kwargs = legacy_kwargs
-            result = start_callback(config, **start_kwargs)
-            return scope.module.jsonify(ok=True, batch_id=result.get("batch_id"), batch={"batch_id": result.get("batch_id"), "members": result.get("tasks") or []}, state=free_state())
+            # The heavy section (protocol preflight, full-pool account evidence
+            # scan, proxy binding, executor creation) runs on the async
+            # coordinator so the click returns in about a second. Startup
+            # failures surface as structured diagnostic events and in the
+            # state payload instead of blocking this request.
+            coordinator = free_start_coordinator()
+            try:
+                result = coordinator.start_in_background(
+                    config,
+                    pool_content=start_kwargs["pool_content"],
+                    proxy_content=start_kwargs["proxy_content"],
+                    row_ids=row_ids,
+                    on_error=publish_start_failure_event,
+                )
+            except FreeStartInProgressError:
+                busy = _FreeRegisterRouteError(
+                    "free_run_start", "启动 Free 注册", "上一次启动仍在准备中，请稍候", retryable=False,
+                    error_code="free_start_in_progress",
+                )
+                return free_failure_response(busy, default_code="free_run_start", default_label="启动 Free 注册")
+            return scope.module.jsonify(ok=True, async_start=True, batch_id=result.get("batch_id"), batch={"batch_id": result.get("batch_id"), "members": result.get("tasks") or []}, state=free_state())
         except Exception as exc:
             return free_failure_response(exc, default_code="free_run_start", default_label="启动 Free 注册")
         finally:

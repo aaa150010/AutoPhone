@@ -135,6 +135,106 @@ class FreeRegisterRetryMixin:
             candidates.append(result if isinstance(result, Mapping) else None)
         return self._has_existing_account_result(*candidates)
 
+    def _registration_account_exists_bulk(self, row_ids) -> set[str]:
+        """Return row ids whose durable/in-memory evidence shows an account.
+
+        One bulk results query replaces the per-row reads used by
+        ``_registration_account_exists`` during startup. The error contract
+        matches the single-row reader: an unreadable result store stops the
+        batch instead of risking a duplicate registration.
+        """
+        targets = [str(value or "").strip() for value in row_ids if str(value or "").strip()]
+        if not targets:
+            return set()
+        bulk_reader = getattr(self.pool, "results_bulk", None)
+        durable_rows: dict[str, Mapping[str, Any]] = {}
+        if callable(bulk_reader):
+            try:
+                durable_rows = bulk_reader(targets)
+            except Exception as exc:
+                raise FreeRegisterError(
+                    "free_result_store",
+                    "读取 Free 账号结果",
+                    "Free 账号结果暂时无法确认，为避免重复注册已停止本次操作",
+                    retryable=True,
+                    error_code="free_result_read_failed",
+                    action_hint="检查 Free 结果文件和数据目录权限后重试",
+                    provider_code=type(exc).__name__,
+                ) from exc
+            # The bulk reader returns only rows that carry a payload. Rows
+            # absent from it are still valid "no account" answers, but a
+            # store that cannot currently be read must stop the batch, so
+            # probe readability once through the single-row reader.
+            try:
+                self.pool.result_with_status(targets[0])
+            except FreeRegisterError:
+                raise
+            except Exception as exc:
+                raise FreeRegisterError(
+                    "free_result_store",
+                    "读取 Free 账号结果",
+                    "Free 账号结果暂时无法确认，为避免重复注册已停止本次操作",
+                    retryable=True,
+                    error_code="free_result_read_failed",
+                    action_hint="检查 Free 结果文件和数据目录权限后重试",
+                    provider_code=type(exc).__name__,
+                ) from exc
+        else:
+            for row_id in targets:
+                readable_probe = getattr(self.pool, "result_with_status", None)
+                if callable(readable_probe):
+                    try:
+                        durable, readable = readable_probe(row_id)
+                    except Exception as exc:
+                        raise FreeRegisterError(
+                            "free_result_store",
+                            "读取 Free 账号结果",
+                            "Free 账号结果暂时无法确认，为避免重复注册已停止本次操作",
+                            retryable=True,
+                            error_code="free_result_read_failed",
+                            action_hint="检查 Free 结果文件和数据目录权限后重试",
+                            provider_code=type(exc).__name__,
+                        ) from exc
+                    if not readable:
+                        raise FreeRegisterError(
+                            "free_result_store",
+                            "读取 Free 账号结果",
+                            "Free 账号结果暂时无法确认，为避免重复注册已停止本次操作",
+                            retryable=True,
+                            error_code="free_result_read_failed",
+                            action_hint="检查 Free 结果文件和数据目录权限后重试",
+                        )
+                else:
+                    try:
+                        durable = self.pool.result(row_id)
+                    except Exception as exc:
+                        raise FreeRegisterError(
+                            "free_result_store",
+                            "读取 Free 账号结果",
+                            "Free 账号结果暂时无法确认，为避免重复注册已停止本次操作",
+                            retryable=True,
+                            error_code="free_result_read_failed",
+                            action_hint="检查 Free 结果文件和数据目录权限后重试",
+                            provider_code=type(exc).__name__,
+                        ) from exc
+                if isinstance(durable, Mapping):
+                    durable_rows[row_id] = durable
+        in_memory: dict[str, list[Mapping[str, Any]]] = {}
+        for task in self._tasks.values():
+            key = str(task.get("row_id") or "")
+            if key in set(targets):
+                in_memory.setdefault(key, []).append(task)
+                result = task.get("result")
+                if isinstance(result, Mapping):
+                    in_memory[key].append(result)
+        existing: set[str] = set()
+        for row_id in targets:
+            candidates: list[Mapping[str, Any] | None] = [durable_rows.get(row_id)]
+            candidates.extend(in_memory.get(row_id, []))
+            if self._has_existing_account_result(*candidates):
+                existing.add(row_id)
+        return existing
+
     def _enqueue_retry(
         self,
         original: Mapping[str, Any],

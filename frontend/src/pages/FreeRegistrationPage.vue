@@ -209,7 +209,14 @@ async function start() {
     quickConcurrency.value = submittedConfig.concurrency
     quickRunDirty.value = false
     state.value = result.state || state.value
-    ElMessage.success('Free 注册已启动')
+    if (result.async_start) {
+      // 启动请求已受理，批次在后台准备中；立即进入 1s 快速轮询，
+      // 任务渐进上线后 running 状态自然出现。
+      scheduleRefresh()
+      ElMessage.success('启动已受理，批次正在后台准备，任务将陆续上线')
+    } else {
+      ElMessage.success('Free 注册已启动')
+    }
   } catch (error) {
     ElMessage.error(errorMessage(error) || 'Free 注册启动失败')
   } finally {

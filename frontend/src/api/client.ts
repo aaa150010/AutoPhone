@@ -123,7 +123,7 @@ export const preflightFree = (config?: Partial<FreeConfig> & { proxy_content?: s
   incident_id?: string
   failure?: TaskFailure | null
 }>('/api/free/preflight', config || {})
-export const startFree = (config?: Partial<FreeConfig> & { proxy_content?: string; row_ids?: string[] }) => api<{ ok: true; batch_id: string; batch?: { batch_id: string; members?: string[] }; state: FreeState }>('/api/free/start', config || {})
+export const startFree = (config?: Partial<FreeConfig> & { proxy_content?: string; row_ids?: string[] }) => api<{ ok: true; batch_id: string; async_start?: boolean; batch?: { batch_id: string; members?: string[] }; state: FreeState }>('/api/free/start', config || {})
 export const rerunFreeTask = (taskId: string) => api<{ ok: true; batch_id: string; task?: FreeTaskRow; batch?: { batch_id: string; members?: string[] }; state: FreeState }>('/api/free/rerun', { task_id: taskId })
 export const stopFree = () => api<{ ok: true; state: FreeState }>('/api/free/stop', {})
 export const getFreeLogs = (taskId = '') => api<{ ok: true; task_id?: string; logs: FreeLogEntry[] }>(`/api/free/logs${taskId ? `?task_id=${encodeURIComponent(taskId)}` : ''}`)

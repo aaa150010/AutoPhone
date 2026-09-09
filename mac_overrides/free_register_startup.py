@@ -316,11 +316,9 @@ class FreeRegisterStartupMixin:
             # proxy lease.  This keeps the guard effective for both explicit
             # selections and automatic pool dispatch.
             available_rows = self.pool.available(10_000)
-            protected_rows = [
-                row for row in available_rows
-                if self._registration_account_exists(row.row_id)
-            ]
-            protected_ids = {row.row_id for row in protected_rows}
+            protected_ids = self._registration_account_exists_bulk(
+                row.row_id for row in available_rows
+            )
             registration_rows = [
                 row for row in available_rows
                 if row.row_id not in protected_ids
@@ -368,7 +366,7 @@ class FreeRegisterStartupMixin:
             else:
                 rows = registration_rows[:target_count]
             if not rows:
-                if protected_rows and not requested_row_ids:
+                if protected_ids and not requested_row_ids:
                     raise FreeRegisterError(
                         "free_run_account_result_exists",
                         "启动 Free 注册",
