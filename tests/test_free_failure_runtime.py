@@ -35,6 +35,12 @@ class FreeFailureRuntimeTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
+    def _drain_diagnostic_writer(self, store) -> None:
+        """Flush the facade's async diagnostic queue before store reads."""
+        flush = getattr(getattr(store, "diagnostic_writer", None), "flush", None)
+        if callable(flush):
+            flush(2.0)
+
     def test_password_status_normalizes_success_markers_from_legacy_results(self) -> None:
         for value in (
             {"password_status": "success"},
@@ -458,6 +464,7 @@ class FreeFailureRuntimeTests(unittest.TestCase):
             },
         )
 
+        self._drain_diagnostic_writer(store)
         rows = diagnostic_store.search({"task_id": "free-twofa-observation"})
         self.assertEqual(len(rows), 1)
         incident = diagnostic_store.incident(rows[0]["incident_id"])

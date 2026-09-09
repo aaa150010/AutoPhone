@@ -15,6 +15,7 @@ try:
     from .free_failure_runtime import sanitize_failure_text, sanitize_log_message, sanitize_safe_page
     from .free_register_common import FREE_STAGE_LABELS, atomic_write, fingerprint, safe_log_message
     from .diagnostic_writer import DiagnosticEventWriter, LogContext
+    from .diagnostic_writer_async import AsyncDiagnosticWriter
 except ImportError:
     from free_failure_runtime import sanitize_failure_text, sanitize_log_message, sanitize_safe_page  # type: ignore[no-redef]
     from free_register_common import (  # type: ignore[no-redef]
@@ -24,6 +25,19 @@ except ImportError:
         safe_log_message,
     )
     from diagnostic_writer import DiagnosticEventWriter, LogContext  # type: ignore[no-redef]
+    from diagnostic_writer_async import AsyncDiagnosticWriter  # type: ignore[no-redef]
+
+
+def _build_async_diagnostic_writer(diagnostic_store: Any, *, context: LogContext) -> Any:
+    """Prefer the async batched writer; fall back to the sync writer when the
+    runtime module is unavailable (recovery installs without the new file)."""
+    try:
+        return AsyncDiagnosticWriter(
+            diagnostic_store,
+            context=context,
+        )
+    except Exception:
+        return DiagnosticEventWriter(diagnostic_store, context=context)
 
 
 _CANONICAL_INCIDENT_RE = re.compile(
@@ -131,7 +145,11 @@ class FreeLogStore:
         self.strict_diagnostic_reads = bool(strict_diagnostic_reads)
         self.diagnostic_writer = diagnostic_writer
         if self.diagnostic_writer is None and diagnostic_store is not None:
-            self.diagnostic_writer = DiagnosticEventWriter(
+            # Production assembly routes events through the async batched
+            # writer so registration workers never block on the store's
+            # per-event SQLite transaction. Test doubles injected via
+            # ``diagnostic_writer`` keep their synchronous semantics.
+            self.diagnostic_writer = _build_async_diagnostic_writer(
                 diagnostic_store,
                 context=LogContext(chain="free", workflow="register", driver="free"),
             )
@@ -834,6 +852,17 @@ class FreeLogStore:
         workflow: str | None = None,
         driver: str | None = None,
     ) -> list[dict[str, Any]]:
+        # Reads must observe events written through the async batched writer:
+        # drain its queue first so a snapshot taken right after a log call
+        # still sees the new rows.
+        flush = getattr(self.diagnostic_writer, "flush", None)
+        if callable(flush) and getattr(self.diagnostic_writer, "_queue", None) is not None:
+            try:
+                flush(2.0)
+            except Exception:
+                # A drained-late snapshot degrades to the accepted <1s
+                # visibility delay; it must never break the read path.
+                pass
         with self._lock:
             normalized = str(task_id or "").strip()
             if not self.legacy_projection:

@@ -42,6 +42,11 @@ class FreeManagerDiagnosticsIntegrationTests(unittest.TestCase):
             node_label="进入 Free",
         )
         self.assertFalse((free_root / "logs.json").exists())
+        # The facade writes through the async batched writer; drain before
+        # reading the store synchronously.
+        flush = getattr(manager.log_store.diagnostic_writer, "flush", None)
+        if callable(flush):
+            flush(2.0)
         events = diagnostics.search({"task_id": "free-manager-task"})
         self.assertEqual(len(events), 1)
         self.assertEqual(

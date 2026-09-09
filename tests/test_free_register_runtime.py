@@ -75,6 +75,13 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
+    def _drain_diagnostic_writer(self, manager) -> None:
+        """Flush the facade's async diagnostic queue before store reads."""
+        flush = getattr(getattr(manager, "log_store", None), "diagnostic_writer", None)
+        flush = getattr(flush, "flush", None)
+        if callable(flush):
+            flush(2.0)
+
     def test_free_adapter_substep_timing_is_aggregated_and_safe(self):
         logs = []
         manager = FreeRegisterManager(
@@ -168,6 +175,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             "[free-driver-scope/Free 入口/free_entry] 开始",
             "info",
         )
+        self._drain_diagnostic_writer(manager)
 
         rows = diagnostics.search({"task_id": "free-driver-scope"})
         self.assertEqual(len(rows), 1)
@@ -1374,6 +1382,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
 
         self.assertEqual(manager._tasks[task["task_id"]]["cleanup_status"], "released")
         self.assertEqual(len(manager._tasks[task["task_id"]]["proxy_attempts"]), 1)
+        self._drain_diagnostic_writer(manager)
         incidents = diagnostic_store.search({"node_code": "free_task_store"})
         self.assertGreaterEqual(len(incidents), 1)
 
@@ -2138,6 +2147,7 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         manager = FreeRegisterManager(self.data_dir, diagnostic_store=diagnostic_store)
         with patch.object(manager.task_store, "save", side_effect=OSError("private path")):
             self.assertFalse(manager._save_tasks_safely("任务进入运行状态"))
+        self._drain_diagnostic_writer(manager)
 
         incidents = diagnostic_store.search({"node_code": "free_task_store"})
         self.assertEqual(len(incidents), 1)
@@ -2188,6 +2198,52 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertFalse(first.is_alive())
         self.assertFalse(second.is_alive())
         self.assertEqual([item["ordered-save"]["status"] for item in snapshots], ["old", "new"])
+
+    def test_dirty_only_save_persists_single_task_and_keeps_batch_semantics(self):
+        """Per-task callbacks write one row; batch events still save everything."""
+        manager = FreeRegisterManager(self.data_dir)
+        manager._tasks["dirty-a"] = {"task_id": "dirty-a", "status": "queued"}
+        manager._tasks["dirty-b"] = {"task_id": "dirty-b", "status": "queued"}
+        snapshots = []
+        with patch.object(
+            manager.task_store, "save",
+            side_effect=lambda snapshot: snapshots.append(copy.deepcopy(snapshot)),
+        ):
+            manager._save_task("dirty-a", status="running")
+            self.assertEqual(list(snapshots[-1]), ["dirty-a"])
+            self.assertEqual(manager._task_dirty, set())
+            # A row absent from the dirty set never reaches the store: the
+            # dirty-only save with an unknown id performs no save call at all.
+            calls_after_single = len(snapshots)
+            manager._mark_task_dirty("missing-row")
+            manager._save_tasks_safely("脏集空快照", only_dirty=True)
+            self.assertEqual(len(snapshots), calls_after_single)
+            # Batch-level events keep the full snapshot and clear nothing.
+            manager._mark_task_dirty("dirty-b")
+            manager._save_tasks_safely("批次事件")
+            self.assertEqual(len(snapshots[-1]), 2)
+        # The patched store never wrote; a real save through the same dirty
+        # path must still persist the changed row durably.
+        manager2 = FreeRegisterManager(self.data_dir)
+        manager2._tasks["dirty-a"] = {"task_id": "dirty-a", "status": "queued"}
+        manager2._save_task("dirty-a", status="running")
+        self.assertEqual(manager2.task_store.load()["dirty-a"]["status"], "running")
+
+    def test_dirty_only_empty_snapshot_skips_store_but_full_empty_snapshot_prunes(self):
+        """An empty dirty save touches nothing; an empty batch save can prune."""
+        manager = FreeRegisterManager(self.data_dir)
+        manager._tasks["prune-me"] = {
+            "task_id": "prune-me", "status": "stopped", "cleanup_status": "released",
+        }
+        manager.task_store.save(copy.deepcopy(manager._tasks))
+        self.assertIn("prune-me", manager.task_store.load())
+        manager._tasks.pop("prune-me")
+        with patch.object(manager.task_store, "save", wraps=manager.task_store.save) as spy:
+            manager._save_tasks_safely("脏集空快照", only_dirty=True)
+            self.assertEqual(spy.call_count, 0)
+            manager._save_tasks_safely("批次回滚空快照")
+            self.assertEqual(spy.call_count, 1)
+        self.assertEqual(manager.task_store.load(), {})
 
     def test_free_start_honors_explicit_target_count_and_auto_zero(self):
         pool = FreeMailboxPool(self.data_dir)

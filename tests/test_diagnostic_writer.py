@@ -199,6 +199,11 @@ class DiagnosticEventWriterTests(unittest.TestCase):
             subject_kind="email",
             subject_ref="subject-ref@example.com",
         )
+        # The facade now writes through the async batched writer; drain it
+        # before reading the store synchronously.
+        flush = getattr(logs.diagnostic_writer, "flush", None)
+        if callable(flush):
+            flush(2.0)
 
         incidents = self.store.search({"task_id": "free-subject-ref"})
         self.assertEqual(len(incidents), 1)

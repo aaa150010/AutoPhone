@@ -462,6 +462,16 @@ class FreeRegisterPreflightMixin:
                 })
             except Exception:
                 incident_id = ""
+        # Preflight is a one-shot admin action whose API response embeds the
+        # incident id and whose UI reads diagnostics right away; drain the
+        # async queue so the incident is durable before returning.
+        flush = getattr(writer, "flush", None)
+        if incident_id and callable(flush):
+            try:
+                flush(2.0)
+            except Exception:
+                # A late drain only delays visibility; never fail preflight.
+                pass
         if incident_id:
             result["incident_id"] = incident_id
             for row in failed_rows:

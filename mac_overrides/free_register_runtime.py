@@ -229,6 +229,10 @@ class FreeRegisterManager(
         self._free_notification = FreeBatchNotificationAdapter(notification_config_getter) if callable(notification_config_getter) else None
         self._lock = threading.RLock()
         self._stop = threading.Event()
+        # Task ids whose in-memory state changed since the last snapshot save.
+        # Single-task callbacks persist only these rows; batch-level events
+        # still request a full snapshot.
+        self._task_dirty: set[str] = set()
         self._executor: PriorityExecutor | None = None
         self._futures: set[Future[Any]] = set()
         # Keep the driver on each Future so terminal cleanup never follows the
@@ -638,7 +642,8 @@ class FreeRegisterManager(
             if changed:
                 task["updated_at"] = int(time.time())
         if changed:
-            self._save_tasks_safely("邮箱验证码等待状态更新")
+            self._mark_task_dirty(task_id)
+            self._save_tasks_safely("邮箱验证码等待状态更新", only_dirty=True)
 
     def _save_task(self, task_id: str, **values: Any) -> None:
         changed = False
@@ -653,15 +658,30 @@ class FreeRegisterManager(
             task["updated_at"] = int(time.time())
             changed = True
         if changed:
-            self._save_tasks_safely("任务字段更新")
+            self._mark_task_dirty(task_id)
+            self._save_tasks_safely("任务字段更新", only_dirty=True)
 
-    def _save_tasks_safely(self, context: str = "Free 任务状态") -> bool:
+    def _mark_task_dirty(self, task_id: str) -> None:
+        """Record one task id for the next dirty-only snapshot save."""
+        with self._lock:
+            self._task_dirty.add(str(task_id or ""))
+
+    def _save_tasks_safely(
+        self,
+        context: str = "Free 任务状态",
+        *,
+        only_dirty: bool = False,
+    ) -> bool:
         """Persist task state without allowing storage outages to strand workers.
 
         Worker completion callbacks run outside the request that created the
         task.  A transient disk/serialization error must therefore be
         observable, but it must not prevent Future bookkeeping and executor
         cleanup from running.
+        ``only_dirty`` limits the snapshot to task ids registered through
+        ``_mark_task_dirty`` so per-task callbacks stop rewriting the whole
+        batch; batch-level events (start/rollback/delete) keep saving the
+        complete snapshot.
         """
         # A worker from a superseded manager may still unwind after a
         # controlled reload. Never let its in-memory snapshot overwrite the
@@ -676,8 +696,21 @@ class FreeRegisterManager(
                 # same manager critical section. Otherwise a delayed older
                 # snapshot can finish after a newer worker state and roll the
                 # persisted task table backwards.
-                snapshot = copy.deepcopy(self._tasks)
-                self.task_store.save(snapshot)
+                if only_dirty and self._task_dirty:
+                    dirty_ids = set(self._task_dirty)
+                    self._task_dirty.clear()
+                    snapshot = {
+                        task_id: copy.deepcopy(task)
+                        for task_id, task in self._tasks.items()
+                        if task_id in dirty_ids
+                    }
+                else:
+                    snapshot = copy.deepcopy(self._tasks)
+                # An empty full snapshot still reaches the store: the SQLite
+                # adapter derives its terminal-row pruning from ids missing
+                # from the snapshot, which rollback relies on.
+                if snapshot or not only_dirty:
+                    self.task_store.save(snapshot)
                 # SQLite adapters advance a durable revision on every write.
                 # Copy the returned CAS metadata back into the manager's
                 # in-memory map so the next callback does not repeatedly write
@@ -1829,7 +1862,8 @@ class FreeRegisterManager(
             # Publish the running transition before invoking transport code.
             # A storage outage is diagnosed by the safe helper but does not
             # strand the worker or suppress its normal finally/lease cleanup.
-            self._save_tasks_safely("任务进入运行状态")
+            self._mark_task_dirty(task_id)
+            self._save_tasks_safely("任务进入运行状态", only_dirty=True)
         task_config = dict(config)
         task_config["driver"] = snapshot_driver
         if self.manual_broker is not None:
