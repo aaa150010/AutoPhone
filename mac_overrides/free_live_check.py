@@ -5,6 +5,7 @@ from __future__ import annotations
 from concurrent.futures import Future, ThreadPoolExecutor
 import copy
 import re
+import sys
 import secrets
 import threading
 import time
@@ -94,6 +95,14 @@ def _live_transport_context(proxy: str, target_url: str, error: BaseException | 
 _LIVE_ACCOUNT_PATH = "/backend-api/accounts/check/v4-2023-04-27"
 _LIVE_ELIGIBILITY_PATH = "/backend-api/aip/first-party/eligibility"
 _LIVE_ORIGIN = "https://chatgpt.com"
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort session hardening."""
+    try:
+        print(f"[free_live_check/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
+
 _LIVE_SECURITY_MARKERS = (
     "cloudflare",
     "turnstile",
@@ -229,14 +238,14 @@ def _prepare_live_session(session: Any, device_id: str) -> Any:
     """Apply task-scoped device cookies and environment isolation to a session."""
     try:
         session.trust_env = False
-    except Exception:
+    except Exception as exc:
         # Session hardening is best-effort; keep the check usable.
-        pass
+        _note_stderr("session_trust_env", exc)
     try:
         session.verify = True
-    except Exception:
+    except Exception as exc:
         # Session hardening is best-effort; keep the check usable.
-        pass
+        _note_stderr("session_verify", exc)
     device = str(device_id or "").strip()
     cookies = getattr(session, "cookies", None)
     setter = getattr(cookies, "set", None)
@@ -247,20 +256,20 @@ def _prepare_live_session(session: Any, device_id: str) -> Any:
             except TypeError:
                 try:
                     setter("oai-did", device)
-                except Exception:
+                except Exception as exc:
                     # Cookie header pinning is best-effort.
-                    pass
-            except Exception:
+                    _note_stderr("cookie_set_compat", exc)
+            except Exception as exc:
                 # Fallback cookie APIs may not exist on every session type.
-                pass
+                _note_stderr("cookie_set", exc)
     # Keep the task identity available to adapters that merge default headers.
     try:
         current = getattr(session, "headers", None)
         if hasattr(current, "update") and device:
             current.update({"oai-device-id": device, "referer": f"{_LIVE_ORIGIN}/"})
-    except Exception:
+    except Exception as exc:
         # Header pinning is best-effort; the check proceeds with defaults.
-        pass
+        _note_stderr("header_pinning", exc)
     return session
 
 
@@ -337,6 +346,14 @@ def _failure(exc: BaseException, *, default_code: str, default_label: str) -> di
 
 
 class FreeLiveCheckService:
+
+    def _note_quiet(self, where: str, exc: BaseException) -> None:
+        """Record a swallowed live-check persistence/cleanup fallback on stderr."""
+        try:
+            print(f"[free_live_check/{where}] {type(exc).__name__}", file=sys.stderr)
+        except Exception:
+            return
+
     """Persistent Free-only liveness queue with fixed-proxy enforcement."""
 
     def __init__(
@@ -420,9 +437,9 @@ class FreeLiveCheckService:
                 candidate = str(fingerprint_fn(value) or "").strip().lower()
                 if re.fullmatch(r"[0-9a-f]{32}", candidate):
                     return candidate
-            except Exception:
+            except Exception as exc:
                 # A malformed stored fingerprint falls back to hashing the value.
-                pass
+                self._note_quiet("stored_fingerprint_probe", exc)
         return fingerprint(value)
 
     def _save_jobs(self) -> None:
@@ -681,10 +698,10 @@ class FreeLiveCheckService:
             # partial_success row after a successful plan refresh.
             try:
                 self.pool.update(row_id, status="success", stage="free_live_result", error="", failure=None)
-            except Exception:
+            except Exception as exc:
                 # Result persistence remains authoritative if a legacy/test
                 # pool does not expose the optional status update API.
-                pass
+                self._note_quiet("pool_status_update", exc)
             task_id = str(current.get("task_id") or "")
             if task_id and self.task_store is not None:
                 try:
@@ -695,10 +712,10 @@ class FreeLiveCheckService:
                         task.pop("failure", None)
                         task["result"] = copy.deepcopy(current)
                         self.task_store.save(tasks)
-                except Exception:
+                except Exception as exc:
                     # Keep the result file and mailbox row authoritative when
                     # reading legacy task snapshots is not possible.
-                    pass
+                    self._note_quiet("partial_task_flip", exc)
         return current
 
     def _worker(self, task_id: str) -> None:
@@ -1217,9 +1234,9 @@ class FreeLiveCheckService:
                 if callable(close):
                     try:
                         close()
-                    except Exception:
+                    except Exception as exc:
                         # Best-effort resource cleanup must not mask the live-check result.
-                        pass
+                        self._note_quiet("resource_close", exc)
 
     @staticmethod
     def _deactivated_result(http_status: Any = None) -> dict[str, Any]:
