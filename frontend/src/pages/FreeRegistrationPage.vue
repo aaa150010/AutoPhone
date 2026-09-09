@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { errorMessage } from '../utils/errorMessage'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, CircleCheck, CircleClose, CopyDocument, Delete, Document, Key, Link, Lock, MoreFilled, Refresh, RefreshLeft, RefreshRight, Setting, Tickets, VideoPause, VideoPlay, Warning } from '@element-plus/icons-vue'
@@ -86,6 +86,8 @@ const visibleTasks = computed(() => (state.value.tasks || []).slice().sort((a, b
   const ordinalOrder = Number(a.ordinal || 0) - Number(b.ordinal || 0)
   return ordinalOrder || String(a.task_id || '').localeCompare(String(b.task_id || ''))
 }))
+const taskPage = ref(1)
+const taskPageSize = ref(50)
 const filteredTasks = computed(() => {
   const query = taskSearch.value.trim().toLowerCase()
   return visibleTasks.value.filter(task => {
@@ -94,6 +96,11 @@ const filteredTasks = computed(() => {
       && (taskStatusFilter.value === 'all' || (taskStatusFilter.value === 'active' ? ['queued', 'running'].includes(task.status || '') : task.status === taskStatusFilter.value && !isRetryResolved(task.retry_resolved)))
       && (!taskDriverFilter.value || task.driver === taskDriverFilter.value)
   })
+})
+const pagedTasks = computed(() => filteredTasks.value.slice((taskPage.value - 1) * taskPageSize.value, taskPage.value * taskPageSize.value))
+watch(() => [filteredTasks.value.length, taskSearch.value, taskStatusFilter.value, taskDriverFilter.value], () => {
+  const maxPage = Math.max(1, Math.ceil(filteredTasks.value.length / taskPageSize.value))
+  if (taskPage.value > maxPage) taskPage.value = maxPage
 })
 const taskCounts = computed(() => {
   const count = (status: string) => visibleTasks.value.filter(task => task.status === status && !isRetryResolved(task.retry_resolved)).length
@@ -498,7 +505,7 @@ onMounted(async () => {
               <el-button size="small" :icon="Refresh" @click="refresh" aria-label="刷新任务">刷新任务</el-button>
             </div>
           </div>
-          <el-table ref="taskTable" :data="filteredTasks" row-key="task_id" height="100%" size="small" border :row-class-name="taskRowClass" @header-dragend="(newWidth: number, oldWidth: number, column: DragColumn) => onTaskHeaderDragend(newWidth, oldWidth, column)" @selection-change="handleTaskSelection">
+          <el-table ref="taskTable" v-loading="loading" :data="pagedTasks" row-key="task_id" height="100%" size="small" border :row-class-name="taskRowClass" @header-dragend="(newWidth: number, oldWidth: number, column: DragColumn) => onTaskHeaderDragend(newWidth, oldWidth, column)" @selection-change="handleTaskSelection">
             <el-table-column type="selection" width="42" reserve-selection />
             <el-table-column label="账号" :min-width="taskColWidth('账号', 280)" show-overflow-tooltip>
               <template #default="{ row }">
@@ -545,6 +552,16 @@ onMounted(async () => {
             </el-table-column>
             <template #empty><ContentEmptyState /></template>
           </el-table>
+          <el-pagination
+            v-model:current-page="taskPage"
+            v-model:page-size="taskPageSize"
+            class="task-pager"
+            size="small"
+            background
+            layout="total, sizes, prev, pager, next"
+            :page-sizes="[25, 50, 100]"
+            :total="filteredTasks.length"
+          />
         </div>
       </WorkspacePanel>
     </div>
@@ -557,7 +574,8 @@ onMounted(async () => {
 .muted { color: var(--el-text-color-secondary); font-size: 12px; }
 .task-view { min-width: 0; min-height: 0; height: 100%; }
 .task-view :deep(.workspace-panel) { height: 100%; }
-.task-panel { display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: var(--workspace-gap); height: 100%; min-height: 0; padding: 10px; }
+.task-panel { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; gap: var(--workspace-gap); height: 100%; min-height: 0; padding: 10px; }
+.task-pager { justify-content: flex-end; }
 .task-start-bar, .task-filter-row { display: flex; align-items: center; gap: var(--workspace-gap); min-width: 0; }
 .task-start-bar { min-height: 32px; }
 .task-start-bar .task-start-meta { margin-right: auto; }

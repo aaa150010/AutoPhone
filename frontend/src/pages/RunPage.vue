@@ -427,6 +427,7 @@ async function disableConnectivityGuard() {
           </div>
           <TaskResultsPanel
             :tasks="tasks as RuntimeTask[]"
+            :loading="controller.initializing.value"
             :opening-mailbox-urls="openingMailboxUrlTaskIds"
             :loading-mailbox-passwords="loadingMailboxPasswordTaskIds"
             :loading-mailbox-totps="loadingMailboxTotpTaskIds"

@@ -36,6 +36,7 @@ export function createAppController() {
   const form = reactive<Record<string, any>>(defaultForm())
   const dirty = ref(false)
   const initialized = ref(false)
+  const initializing = ref(false)
   const secretsLoaded = ref(false)
   const actions = reactive({
     saving: false,
@@ -158,21 +159,26 @@ export function createAppController() {
 
   async function initialize() {
     if (initialized.value) return
-    const [stateResult, localResult] = await Promise.all([getState(), getLocalConfig()])
-    syncState(stateResult)
-    const merged = mergeConfig(defaultForm(), state.value.settings || {}, localResult.config || {})
-            delete merged.free_target_count
-    delete merged.free_concurrency
-    delete merged.free_proxy_probe_url
-    delete merged.free_proxy_pool_content
-    delete merged.free_register_password
-    delete merged.free_pool_content
-    normalizeOperationalSettings(merged)
-    Object.assign(form, merged)
-    syncLegacySmsFields(form)
-    form.email_notification = normalizeEmailNotificationDraft(form.email_notification)
-    markClean()
-    initialized.value = true
+    initializing.value = true
+    try {
+      const [stateResult, localResult] = await Promise.all([getState(), getLocalConfig()])
+      syncState(stateResult)
+      const merged = mergeConfig(defaultForm(), state.value.settings || {}, localResult.config || {})
+              delete merged.free_target_count
+      delete merged.free_concurrency
+      delete merged.free_proxy_probe_url
+      delete merged.free_proxy_pool_content
+      delete merged.free_register_password
+      delete merged.free_pool_content
+      normalizeOperationalSettings(merged)
+      Object.assign(form, merged)
+      syncLegacySmsFields(form)
+      form.email_notification = normalizeEmailNotificationDraft(form.email_notification)
+      markClean()
+      initialized.value = true
+    } finally {
+      initializing.value = false
+    }
   }
 
   async function loadSecret(target: () => unknown, assign: (value: unknown) => void, id: string) {
@@ -404,6 +410,7 @@ export function createAppController() {
     form,
     dirty: readonly(dirty),
     initialized: readonly(initialized),
+    initializing: readonly(initializing),
     actions,
     runtime,
     running,

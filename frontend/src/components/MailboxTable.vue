@@ -40,6 +40,7 @@ type DragColumn = { label?: string; noLabelText?: string }
 
 const props = defineProps<{
   rows: MailboxRow[]
+  loading: boolean
   loadingPasswords: string[]
   loadingTotp: string[]
   loadingQuotas: string[]
@@ -96,6 +97,7 @@ defineExpose({ clearSelection })
 <template>
   <el-table
     ref="tableRef"
+    v-loading="loading"
     class="mailbox-table"
     :data="rows"
     row-key="row_id"

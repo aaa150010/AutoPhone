@@ -63,6 +63,13 @@ const chainOptions = [
   { label: '网络', value: 'network' },
 ]
 const filteredCount = computed(() => incidents.value.length)
+const incidentPage = ref(1)
+const incidentPageSize = ref(50)
+const pagedIncidents = computed(() => incidents.value.slice((incidentPage.value - 1) * incidentPageSize.value, incidentPage.value * incidentPageSize.value))
+watch(filteredCount, () => {
+  const maxPage = Math.max(1, Math.ceil(filteredCount.value / incidentPageSize.value))
+  if (incidentPage.value > maxPage) incidentPage.value = maxPage
+})
 
 function outcomeLabel(value: unknown, status?: unknown) {
   if (String(status || '').toLowerCase() === 'open' && !['error', 'failed', 'failure'].includes(String(value || '').toLowerCase())) return '运行中'
@@ -259,7 +266,7 @@ watch(() => props.locationKey, (value, previous) => {
       </template>
       <el-alert v-if="searchError" class="search-error" type="error" :closable="false" show-icon :title="searchError" />
       <div v-else class="table-wrap">
-        <el-table class="incident-table" :data="incidents" v-loading="loading" height="100%" stripe border @selection-change="selectRows" size="small">
+        <el-table class="incident-table" :data="pagedIncidents" v-loading="loading" height="100%" stripe border @selection-change="selectRows" size="small">
         <el-table-column type="selection" width="46" fixed="left" />
         <el-table-column label="日志 ID" width="230" fixed="left"><template #default="{ row }"><div class="incident-id"><el-link type="primary" @click="openIncident(row)">{{ row.incident_id }}</el-link><el-tooltip content="复制日志 ID" placement="top" :show-after="250"><el-button text size="small" :icon="CopyDocument" aria-label="复制日志 ID" @click="copyIncidentId(row)" /></el-tooltip></div></template></el-table-column>
         <el-table-column label="状态" width="96" align="center"><template #default="{ row }"><el-tag size="small" :type="incidentStatusType(row)">{{ incidentStatusLabel(row) }}</el-tag></template></el-table-column>
@@ -272,6 +279,16 @@ watch(() => props.locationKey, (value, previous) => {
         <el-table-column label="操作" width="150" fixed="right"><template #default="{ row }"><div class="row-actions"><el-button text size="small" @click="copyGpt(row)">复制诊断</el-button><el-tooltip content="下载 JSON" placement="top" :show-after="250"><el-button text size="small" :icon="Download" aria-label="下载 JSON" @click="downloadJson(row)" /></el-tooltip></div></template></el-table-column>
         <template #empty><el-empty :description="health.incidents ? '已连接诊断库，但当前筛选条件没有匹配记录' : '暂无诊断日志记录'" /></template>
         </el-table>
+        <el-pagination
+          v-model:current-page="incidentPage"
+          v-model:page-size="incidentPageSize"
+          class="incident-pager"
+          size="small"
+          background
+          layout="total, sizes, prev, pager, next"
+          :page-sizes="[25, 50, 100]"
+          :total="incidents.length"
+        />
       </div>
     </WorkspacePanel>
     <el-drawer v-model="detailOpen" :title="detail ? `日志详情 · ${detail.incident_id}` : '日志详情'" size="720px" destroy-on-close>
@@ -301,7 +318,8 @@ watch(() => props.locationKey, (value, previous) => {
 .search-count { margin-left: auto; color: var(--el-text-color-secondary); font-size: 12px; }
 .result-panel { min-height: 0; }
 .result-panel :deep(.search-error) { flex: 0 0 auto; margin: 8px 10px 0; }
-.table-wrap { width: 100%; height: 100%; min-height: 0; padding: 10px; }
+.table-wrap { display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 2px; width: 100%; height: 100%; min-height: 0; padding: 10px; }
+.incident-pager { justify-content: flex-end; }
 .incident-table { width: 100%; min-height: 0; }
 .incident-id { gap: 4px; white-space: nowrap; }.incident-id .el-link { white-space: nowrap; }.failure-node { color: var(--el-color-danger); }.failure-node + code { margin-left: 5px; color: var(--el-text-color-secondary); font-size: 10px; }
 .detail-actions { margin-bottom: 14px; }.detail-summary { margin-bottom: 18px; }.detail-section { margin-top: 18px; }.detail-section h3 { margin: 0 0 7px; font-size: 14px; }.event-row { gap: 8px; flex-wrap: wrap; }.event-row span { color: var(--el-text-color-secondary); font-size: 12px; }.detail-section code { color: var(--el-text-color-secondary); font-size: 11px; }.detail-section p { margin: 5px 0 0; color: var(--el-text-color-regular); font-size: 12px; line-height: 18px; }

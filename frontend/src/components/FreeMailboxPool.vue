@@ -43,7 +43,7 @@ const loading = ref(false)
 const importOpen = ref(false)
 const mailboxText = ref('')
 const currentPage = ref(1)
-const pageSize = ref(100)
+const pageSize = ref(50)
 const tableRef = ref<{ clearSelection: () => void } | null>(null)
 const search = ref('')
 const statusFilter = ref('')
@@ -565,6 +565,7 @@ onMounted(async () => {
         </div>
         <el-table
           ref="tableRef"
+          v-loading="loading"
           :data="pageRows"
           row-key="row_id"
           stripe
@@ -624,7 +625,7 @@ onMounted(async () => {
           </el-table-column>
           <template #empty><ContentEmptyState /></template>
         </el-table>
-        <el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" background layout="total, sizes, prev, pager, next" :page-sizes="[25, 50, 100]" :total="filteredRows.length" />
+        <el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" size="small" background layout="total, sizes, prev, pager, next" :page-sizes="[25, 50, 100]" :total="filteredRows.length" />
       </div>
     </WorkspacePanel>
 

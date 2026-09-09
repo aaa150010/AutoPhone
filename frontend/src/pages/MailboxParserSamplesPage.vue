@@ -181,7 +181,7 @@ onMounted(() => { void load() })
         <el-table-column label="操作" width="90" fixed="right"><template #default="{ row }"><el-button text size="small" :icon="View" @click="openDetail(row)">查看</el-button></template></el-table-column>
         <template #empty><el-empty description="暂无未识别邮箱响应" /></template>
       </el-table>
-      <div class="pagination"><el-pagination v-model:current-page="page" background :total="total" layout="total, prev, pager, next" @current-change="load" /></div>
+      <div class="pagination"><el-pagination v-model:current-page="page" size="small" background :total="total" layout="total, prev, pager, next" @current-change="load" /></div>
     </WorkspacePanel>
     <el-drawer v-model="detailOpen" :title="detail ? `解析样本 · ${detail.sample_id}` : '解析样本'" size="720px" destroy-on-close>
       <template v-if="detail">

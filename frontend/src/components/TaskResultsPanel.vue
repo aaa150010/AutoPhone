@@ -27,13 +27,14 @@ type DragColumn = { label?: string; noLabelText?: string }
 
 const props = withDefaults(defineProps<{
   tasks: RuntimeTask[]
+  loading?: boolean
   openingMailboxUrls?: readonly string[]
   loadingMailboxPasswords?: readonly string[]
   loadingMailboxTotps?: readonly string[]
   loadingMailboxLatestCodes?: readonly string[]
   loadingAccountEmails?: readonly string[]
   activeView?: 'pending' | 'running' | 'all'
-}>(), { openingMailboxUrls: () => [], loadingMailboxPasswords: () => [], loadingMailboxTotps: () => [], loadingMailboxLatestCodes: () => [], loadingAccountEmails: () => [], activeView: 'pending' })
+}>(), { loading: false, openingMailboxUrls: () => [], loadingMailboxPasswords: () => [], loadingMailboxTotps: () => [], loadingMailboxLatestCodes: () => [], loadingAccountEmails: () => [], activeView: 'pending' })
 const emit = defineEmits<{
   copyAccount: [RuntimeTask]
   mailboxPassword: [RuntimeTask]
@@ -77,6 +78,13 @@ const runningTasks = computed(() => runningTaskRows(props.tasks, acceptedVerific
 const visibleTasks = computed(() => props.activeView === 'pending'
   ? pendingTasks.value
   : props.activeView === 'running' ? runningTasks.value : props.tasks)
+const runPage = ref(1)
+const runPageSize = ref(50)
+watch(() => [visibleTasks.value.length, props.activeView], () => {
+  const maxPage = Math.max(1, Math.ceil(visibleTasks.value.length / runPageSize.value))
+  if (runPage.value > maxPage) runPage.value = maxPage
+})
+const pagedTasks = computed(() => visibleTasks.value.slice((runPage.value - 1) * runPageSize.value, runPage.value * runPageSize.value))
 const selectedTask = computed(() => props.tasks.find(row => taskRowKey(row) === selectedTaskKey.value) || null)
 const visibleFreeTasks = computed(() => visibleTasks.value.filter(task => task.run_mode === 'free_register'))
 
@@ -186,7 +194,7 @@ function handleRowAction(command: string, row: RuntimeTask) {
       <el-button size="small" :disabled="!selectedFreeTasks.some(row => row.result?.has_access_token)" @click="emitFreeSecret('token', selectedFreeTasks)">复制选中 Token</el-button>
       <el-button size="small" :disabled="!selectedFreeTasks.some(row => row.result?.has_credential)" @click="emitFreeSecret('credential', selectedFreeTasks)">复制选中凭据</el-button>
     </div>
-    <el-table class="task-table" :data="visibleTasks" :row-key="taskRowKey" stripe height="100%" border @header-dragend="(newWidth: number, oldWidth: number, column: DragColumn) => onRunHeaderDragend(newWidth, oldWidth, column)" @selection-change="selectFreeTasks" size="small">
+    <el-table v-loading="props.loading" class="task-table" :data="pagedTasks" :row-key="taskRowKey" stripe height="100%" border @header-dragend="(newWidth: number, oldWidth: number, column: DragColumn) => onRunHeaderDragend(newWidth, oldWidth, column)" @selection-change="selectFreeTasks" size="small">
       <el-table-column type="selection" width="42" reserve-selection />
       <el-table-column label="邮箱" :min-width="runColWidth('邮箱', 180)">
         <template #default="{ row }">
@@ -209,12 +217,23 @@ function handleRowAction(command: string, row: RuntimeTask) {
       <el-table-column label="操作" :width="runColWidth('操作', 62)" fixed="right" align="center"><template #default="{ row }"><el-dropdown trigger="click" @command="(command: string) => handleRowAction(command, row)"><el-button link class="row-action-button" aria-label="打开任务操作菜单" title="打开任务操作菜单"><el-icon><MoreFilled /></el-icon></el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="details"><el-icon><Document /></el-icon>查看任务详情</el-dropdown-item><el-dropdown-item command="mailbox_url"><el-icon><Link /></el-icon>打开取件网页</el-dropdown-item><el-dropdown-item command="latest_code"><el-icon><Tickets /></el-icon>提取并复制最新验证码</el-dropdown-item><el-dropdown-item command="token"><el-icon><Key /></el-icon>复制账号 Token</el-dropdown-item><el-dropdown-item command="incident"><el-icon><Warning /></el-icon>打开故障日志</el-dropdown-item></el-dropdown-menu></template></el-dropdown></template></el-table-column>
       <template #empty><ContentEmptyState /></template>
     </el-table>
+    <el-pagination
+      v-model:current-page="runPage"
+      v-model:page-size="runPageSize"
+      class="task-pager"
+      size="small"
+      background
+      layout="total, sizes, prev, pager, next"
+      :page-sizes="[25, 50, 100]"
+      :total="visibleTasks.length"
+    />
   </div>
   <TaskDetailsDrawer v-model="detailsOpen" :task="selectedTask" :now-seconds="nowSeconds" @diagnostic="emit('diagnostic', $event)" @copy-diagnostic-id="emit('copyDiagnosticId', $event)" />
 </template>
 
 <style scoped>
 .task-results { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; }
+.task-pager { flex: 0 0 auto; justify-content: flex-end; padding: 2px 6px; border-top: 1px solid var(--workspace-border); }
 .free-actions { display: flex; align-items: center; gap: 6px; min-height: 42px; padding: 0 10px; border-bottom: 1px solid var(--workspace-border); color: var(--el-text-color-secondary); font-size: 12px; }
 .task-table { width: 100%; flex: 1; min-height: 0; }
 .task-table :deep(.el-table__cell) { padding-top: 4px; padding-bottom: 4px; }

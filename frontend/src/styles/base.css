@@ -62,7 +62,10 @@ body { overflow: hidden; background: var(--workspace-page); font-size: 13px; }
 
 .el-card { border-radius: var(--workspace-radius); }
 .el-form-item { margin-bottom: 12px; }
-.el-form-item__label { color: #5c6878; font-size: 12px; line-height: 20px !important; font-weight: 600; }
+/* Keep the label text vertically centered inside its fixed-height box:
+   Element Plus sizes labels with per-size line-heights (32/24px); forcing a
+   smaller line-height shifts the text to the top of the box. */
+.el-form-item__label { color: #5c6878; font-size: 12px; font-weight: 600; }
 .el-divider { margin: 16px 0; }
 .el-button { border-radius: 6px; font-size: 13px; letter-spacing: 0; font-weight: 550; }
 .el-button--primary { box-shadow: 0 1px 2px rgb(242 106 33 / 0.18); }

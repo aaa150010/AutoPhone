@@ -58,10 +58,11 @@ const quotaFilter = ref('all')
 const searchText = ref('')
 const selectedRows = ref<MailboxRow[]>([])
 const mailboxTable = ref<{ clearSelection: () => void } | null>(null)
+const loading = ref(false)
 const loadingPasswords = ref<string[]>([])
 const loadingTotp = ref<string[]>([])
 const currentPage = ref(1)
-const pageSize = ref(100)
+const pageSize = ref(50)
 const mutating = ref(false)
 const reloginStarting = ref(false)
 const uploadingWebsite = ref(false)
@@ -251,11 +252,15 @@ watch(() => mailboxBatch.operation.value?.status, (status) => {
 async function refresh() {
   if (mutating.value) return
   const ticket = refreshGuard.begin()
+  const showLoading = !data.value.rows.length
+  if (showLoading) loading.value = true
   try {
     const result = await getMailboxes()
     if (!mutating.value && refreshGuard.accepts(ticket)) applyMailboxPayload(result)
   } catch (error) {
     if (refreshGuard.accepts(ticket)) ElMessage.error(errorMessage(error) || '邮箱列表刷新失败')
+  } finally {
+    if (showLoading) loading.value = false
   }
 }
 
@@ -551,6 +556,7 @@ onUnmounted(() => {
         <MailboxTable
           ref="mailboxTable"
           :rows="pageRows"
+          :loading="loading"
           :loading-passwords="loadingPasswords"
           :loading-totp="loadingTotp"
           :loading-quotas="retryingQuotaRows"
@@ -573,6 +579,7 @@ onUnmounted(() => {
           v-model:current-page="currentPage"
           v-model:page-size="pageSize"
           class="pager"
+          size="small"
           background
           layout="total, sizes, prev, pager, next"
           :page-sizes="[25, 50, 100]"
