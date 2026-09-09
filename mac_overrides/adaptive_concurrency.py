@@ -10,10 +10,11 @@ import time
 from typing import Any
 
 try:
-    from .concurrency_gate import GATE_WAIT_TIMEOUT_SECONDS as _GATE_WAIT_SECONDS, stop_event_is_set as _stop_event_is_set
+    from .concurrency_gate import GATE_WAIT_TIMEOUT_SECONDS as _GATE_WAIT_SECONDS, gate_wait_slice as _gate_wait_slice, stop_event_is_set as _stop_event_is_set
 except ImportError:  # Loaded as a top-level runtime override.
     from concurrency_gate import (  # type: ignore[no-redef]
         GATE_WAIT_TIMEOUT_SECONDS as _GATE_WAIT_SECONDS,
+        gate_wait_slice as _gate_wait_slice,
         stop_event_is_set as _stop_event_is_set,
     )
 
@@ -230,11 +231,7 @@ class AdaptiveConcurrencyGate:
                             registered_waiter = False
                             acquired = True
                         else:
-                            self.condition.wait(
-                                timeout=min(_GATE_WAIT_SECONDS, pause_remaining)
-                                if pause_remaining
-                                else _GATE_WAIT_SECONDS
-                            )
+                            self.condition.wait(timeout=_gate_wait_slice(pause_remaining))
                 if event is not None:
                     _notify(self.on_change, event)
                 if stopped:

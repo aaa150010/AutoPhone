@@ -10,11 +10,13 @@ from typing import Any, Callable, Iterator, Mapping
 
 try:
     from .concurrency_gate import (
+        GATE_WAIT_MAX_SECONDS as _GATE_WAIT_MAX_SECONDS,
         GATE_WAIT_TIMEOUT_SECONDS as _GATE_WAIT_SECONDS,
         stop_event_is_set as _stop_event_is_set,
     )
 except ImportError:  # Loaded as a top-level runtime override.
     from concurrency_gate import (  # type: ignore[no-redef]
+        GATE_WAIT_MAX_SECONDS as _GATE_WAIT_MAX_SECONDS,
         GATE_WAIT_TIMEOUT_SECONDS as _GATE_WAIT_SECONDS,
         stop_event_is_set as _stop_event_is_set,
     )
@@ -319,7 +321,9 @@ class InflightAdmissionGate:
                         registered_waiter = False
                         acquired = True
                     else:
-                        self.condition.wait(timeout=_GATE_WAIT_SECONDS)
+                        # Inflight has no time-driven predicate; a coarse slice
+                        # is enough because release/suspend/resume notify.
+                        self.condition.wait(timeout=_GATE_WAIT_MAX_SECONDS)
         except BaseException:
             if registered_waiter:
                 with self.condition:

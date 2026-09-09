@@ -13,10 +13,11 @@ import time
 from typing import Any, Callable, Iterator
 
 try:
-    from .concurrency_gate import GATE_WAIT_TIMEOUT_SECONDS as _GATE_WAIT_SECONDS, stop_event_is_set as _stop_event_is_set
+    from .concurrency_gate import GATE_WAIT_TIMEOUT_SECONDS as _GATE_WAIT_SECONDS, gate_wait_slice as _gate_wait_slice, stop_event_is_set as _stop_event_is_set
 except ImportError:  # Loaded as a top-level runtime override.
     from concurrency_gate import (  # type: ignore[no-redef]
         GATE_WAIT_TIMEOUT_SECONDS as _GATE_WAIT_SECONDS,
+        gate_wait_slice as _gate_wait_slice,
         stop_event_is_set as _stop_event_is_set,
     )
 
@@ -445,9 +446,7 @@ class ProxyProtocolGate:
                                 state.last_started_at = now
                                 acquired = True
                                 break
-                            self.condition.wait(
-                                timeout=min(_GATE_WAIT_SECONDS, launch_wait) if launch_wait else _GATE_WAIT_SECONDS
-                            )
+                            self.condition.wait(timeout=_gate_wait_slice(launch_wait))
                     finally:
                         state.waiting = max(0, state.waiting - 1)
             finally:
