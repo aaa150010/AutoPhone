@@ -15,6 +15,7 @@ import re
 from pathlib import Path
 import secrets
 import threading
+import sys
 import time
 from typing import Any, Callable, Mapping, Sequence
 
@@ -57,6 +58,14 @@ except ImportError:  # pragma: no cover - recovery import
 ACTIVE_STATUSES = frozenset({"queued", "running"})
 PLAN_STAGE = "free_plan_check"
 PLAN_LABEL = "查询 Free 套餐资格"
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[free_plan_check/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 class FreePlanCheckError(FreeRegisterError):
@@ -174,9 +183,9 @@ class FreePlanCheckService:
                 candidate = str(fingerprint_fn(value) or "").strip().lower()
                 if re.fullmatch(r"[0-9a-f]{32}", candidate):
                     return candidate
-            except Exception:
+            except Exception as exc:
                 # A malformed stored fingerprint falls back to hashing the value.
-                pass
+                _note_stderr("L177", exc)
         return fingerprint(value)
 
     def _public(self, job: Mapping[str, Any]) -> dict[str, Any]:
@@ -239,12 +248,12 @@ class FreePlanCheckService:
                         f"[{task_id}/{PLAN_LABEL}/{PLAN_STAGE}] {message}",
                         level,
                     )
-                except Exception:
+                except Exception as exc:
                     # Log delivery must never break the plan check.
-                    pass
-            except Exception:
+                    _note_stderr("L242", exc)
+            except Exception as exc:
                 # Log delivery must never break the plan check.
-                pass
+                _note_stderr("L245", exc)
 
     def enqueue(self, row_ids: Sequence[str]) -> dict[str, Any]:
         requested = list(dict.fromkeys(str(value or "").strip().lower() for value in row_ids if str(value or "").strip()))

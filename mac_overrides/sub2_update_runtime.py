@@ -7,6 +7,15 @@ from typing import Any, Callable, Mapping
 import urllib.parse
 
 
+import sys
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[sub2_update_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
+
+
 IDENTITY_KEYS = (
     "chatgpt_account_id",
     "account_id",
@@ -291,9 +300,9 @@ def update_existing_sub2_account(
             rollback_attempted = True
             try:
                 put_snapshot(original_credentials, original_extra)
-            except Exception:
+            except Exception as exc:
                 # Snapshot persistence must not mask the update failure below.
-                pass
+                _note_stderr("L294", exc)
             try:
                 restored = dependencies.fetch_detail(
                     base,
@@ -325,9 +334,9 @@ def update_existing_sub2_account(
                     rollback_message,
                     rollback_level,
                 )
-            except Exception:
+            except Exception as exc:
                 # Snapshot rollback must not mask the update failure below.
-                pass
+                _note_stderr("L328", exc)
         if rollback_conflict:
             message = f"{message}；远端状态已被其他更新改变，未执行旧快照回滚"
         elif not preserved:
@@ -341,9 +350,9 @@ def update_existing_sub2_account(
     if log_fn is not None:
         try:
             log_fn("  [SUB2] 401/404 重跑正在更新原账号，不创建新账号", "info")
-        except Exception:
+        except Exception as exc:
             # Log delivery must never break the credential update.
-            pass
+            _note_stderr("L344", exc)
     try:
         response = put_snapshot(merged_credentials, merged_extra)
     except Exception:

@@ -7,6 +7,15 @@ import hashlib
 from typing import Any
 
 
+import sys
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[sub2_binding_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
+
+
 _RERUN_CODES = frozenset({401, 404})
 _RERUN_KINDS = frozenset({"unauthorized", "not_found"})
 
@@ -108,9 +117,9 @@ def clear_successful_update_statuses(
     if remote_id and callable(clear_sub2_status):
         try:
             clear_sub2_status(remote_id)
-        except Exception:
+        except Exception as exc:
             # Status cleanup must not break the binding refresh.
-            pass
+            _note_stderr("L111", exc)
 
     clear_direct_status = getattr(direct_runtime, "clear_status", None)
     if callable(clear_direct_status):
@@ -119,16 +128,16 @@ def clear_successful_update_statuses(
                 continue
             try:
                 clear_direct_status(account_id)
-            except Exception:
+            except Exception as exc:
                 # Status cleanup must not break the binding refresh.
-                pass
+                _note_stderr("L122", exc)
     mark_refreshed = getattr(direct_runtime, "mark_credentials_refreshed", None)
     if openai_id and callable(mark_refreshed):
         try:
             mark_refreshed(openai_id)
-        except Exception:
+        except Exception as exc:
             # Refresh marking must not break the binding refresh.
-            pass
+            _note_stderr("L129", exc)
     return targets
 
 

@@ -11,6 +11,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import threading
+import sys
 import time
 from typing import Any
 import uuid
@@ -79,6 +80,14 @@ except ImportError:
     )
 
 _SHA256_HEX_CHARACTERS = frozenset("0123456789abcdef")
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[web_routes_sections/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 def _remail_public_text(value: Any, limit: int) -> str | None:
@@ -561,9 +570,9 @@ def build_free_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]:
                 "message": failure.get("public_message") or "启动 Free 注册失败",
                 "failure": failure,
             })
-        except Exception:
+        except Exception as exc:
             # Diagnostic publication must not mask the original start failure.
-            pass
+            _note_stderr("L564", exc)
 
     def free_state():
         return scope.free_manager.public_state() if scope.free_manager is not None else {"running": False, "tasks": [], "summary": {}}
@@ -672,9 +681,9 @@ def build_free_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]:
                     + (f" incident_id={incident_id}" if incident_id else ""),
                     "warn" if incident_id else "error",
                 )
-        except Exception:
+        except Exception as exc:
             # Telemetry must not mask the Free route failure surfaced above.
-            pass
+            _note_stderr("L675", exc)
         return scope.module.jsonify(payload), status
 
     free_control_routes = FreeControlRouteController(
@@ -721,9 +730,9 @@ def build_free_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]:
                 # have the old stub store; production never takes this branch.
                 try:
                     scope.store.save(dict(data))
-                except Exception:
+                except Exception as exc:
                     # A legacy plain-pool save failure must not block the Free config save.
-                    pass
+                    _note_stderr("L724", exc)
             mailbox_content = str(data.get("pool_content") or data.get("free_pool_content") or "")
             proxy_content = str(data.get("proxy_content") or data.get("free_proxy_pool_content") or "")
             proxy_country = str(data.get("proxy_country") or data.get("country") or "").strip().upper() or None

@@ -134,6 +134,14 @@ _MAX_PAGE_TRANSITIONS = 8
 _PRE_AUTH_PROXY_RETRY_NODES = frozenset({"free_oauth_session", "free_email_identifier"})
 
 
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[free_protocol_flow/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
+
+
 def _chain_helpers() -> tuple[Callable[..., Any], ...]:
     """Load recovered response helpers lazily so unit tests need no runtime artifacts."""
     try:
@@ -197,9 +205,9 @@ def _is_state_response(response: Any, ok: Callable[[Any], bool] | None = None) -
                 f"（{type(exc).__name__}）",
                 "warn",
             )
-        except Exception:
+        except Exception as log_exc:
             # Telemetry must not mask the security-page handling surfaced above.
-            pass
+            _note_stderr("state_classifier_log", log_exc)
     status = _status(response)
     page_value = response.get("page") if isinstance(response, Mapping) else ""
     explicit_page = page_value.get("type") if isinstance(page_value, Mapping) else page_value
@@ -1726,17 +1734,17 @@ def run_free_protocol_flow(
             if callable(close):
                 try:
                     close()
-                except Exception:
+                except Exception as close_exc:
                     # Best-effort transport close during session rebuild.
-                    pass
+                    _note_stderr("session_rebuild_close", close_exc)
             session = getattr(active, "session", None)
             session_close = getattr(session, "close", None)
             if callable(session_close):
                 try:
                     session_close()
-                except Exception:
+                except Exception as close_exc:
                     # Best-effort session close during session rebuild.
-                    pass
+                    _note_stderr("session_rebuild_provider_close", close_exc)
             provider = getattr(active, "sentinel_provider", None)
             reset = getattr(provider, "reset", None)
             if callable(reset):

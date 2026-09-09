@@ -16,6 +16,7 @@ from pathlib import Path
 import re
 from threading import RLock
 import time
+import sys
 from typing import Any, Callable, Iterable, Mapping, Protocol, Sequence
 import uuid
 
@@ -69,6 +70,14 @@ DEACTIVATED_WORKSPACE_KIND = "deactivated_workspace"
 _DIRECT_TEST_TRANSIENT_KINDS = frozenset(
     {"network_error", "remote_disconnected", "timeout", "upstream_error"}
 )
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[openai_direct_test_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 def _enabled(value: Any, default: bool = True) -> bool:
@@ -134,9 +143,9 @@ class _ManagedResponse:
         finally:
             try:
                 self._session.close()
-            except Exception:
+            except Exception as exc:
                 # Session cleanup must not mask the request outcome.
-                pass
+                _note_stderr("L137", exc)
 
 
 class CurlCffiDirectOpenAITransport:
@@ -171,9 +180,9 @@ class CurlCffiDirectOpenAITransport:
         except Exception as exc:
             try:
                 session.close()
-            except Exception:
+            except Exception as exc:
                 # Session cleanup must not mask the original request failure.
-                pass
+                _note_stderr("L174", exc)
             raise DirectOpenAIRequestError("OpenAI 直连请求失败") from exc
 
 
@@ -626,9 +635,9 @@ class OpenAIDirectTestRuntime:
                                 "sub2_status": status.public(),
                             }
                         )
-                    except Exception:
+                    except Exception as exc:
                         # Per-row bookkeeping must not break the streaming read.
-                        pass
+                        _note_stderr("L629", exc)
 
             ready_rows = [
                 (index, row)

@@ -6,6 +6,7 @@ import base64
 from collections.abc import Mapping
 from dataclasses import dataclass
 import threading
+import sys
 import re
 from typing import Any, Callable
 from urllib.parse import urljoin, urlsplit
@@ -26,6 +27,14 @@ _MFA_PATH_PREFIXES = (
     "/2fa",
     "/totp",
 )
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[oauth_mfa_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 def _response_is_mfa(response: Any, page_type_get: Callable[[Any], Any]) -> bool:
@@ -143,9 +152,9 @@ def remember_provider_totp_secret(
         return False
     try:
         setattr(provider, "_gptphone_totp_expected", True)
-    except Exception:
+    except Exception as exc:
         # Provider marking is best-effort flow metadata.
-        pass
+        _note_stderr("L146", exc)
     secret = normalize_totp_secret(getattr(entry, "oauth_refresh_token", ""))
     task = provider_task_id(
         provider,
@@ -171,15 +180,15 @@ def runtime_task_id(
     if callable(context_task_get):
         try:
             values.append(context_task_get())
-        except Exception:
+        except Exception as exc:
             # Task-id probing falls back to the transport getter below.
-            pass
+            _note_stderr("L174", exc)
     if transport is not None and callable(transport_task_id_get):
         try:
             values.append(transport_task_id_get(transport))
-        except Exception:
+        except Exception as exc:
             # Task-id probing falls back to the context getter above.
-            pass
+            _note_stderr("L180", exc)
     for value in values:
         normalized = str(value or "").strip()
         if normalized:

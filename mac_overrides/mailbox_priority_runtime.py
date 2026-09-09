@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import threading
+import sys
 import time
 from typing import Any
 import uuid
@@ -17,6 +18,14 @@ import uuid
 STORE_VERSION = 1
 LEASE_OWNER_FIELD = "lease_owner_batch_id"
 _SAFE_BATCH_ID = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[mailbox_priority_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 def _fingerprint(value: Any) -> str:
@@ -246,9 +255,9 @@ def reserve_available_batch(
         if prepared and callable(on_reserve_failed):
             try:
                 on_reserve_failed(tuple(prepared), exc)
-            except Exception:
+            except Exception as exc:
                 # Reserve-failure callbacks must not replace the original error.
-                pass
+                _note_stderr("L249", exc)
         raise
     if not isinstance(selected, list) or len(selected) != count:
         if prepared and callable(on_reserve_failed):
@@ -257,9 +266,9 @@ def reserve_available_batch(
                     tuple(prepared),
                     mailbox_error_type("mailbox_pool_empty: no available mailbox"),
                 )
-            except Exception:
+            except Exception as exc:
                 # Telemetry must not mask the empty-pool error raised below.
-                pass
+                _note_stderr("L260", exc)
         raise mailbox_error_type("mailbox_pool_empty: no available mailbox")
     if callable(after_reserve):
         try:
@@ -292,9 +301,9 @@ def reserve_available_batch(
             if rollback_complete and callable(on_reserve_failed):
                 try:
                     on_reserve_failed(tuple(selected), exc)
-                except Exception:
+                except Exception as exc:
                     # Reserve-failure callbacks must not replace the original error.
-                    pass
+                    _note_stderr("L295", exc)
             raise
     return selected
 
