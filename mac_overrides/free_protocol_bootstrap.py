@@ -7,6 +7,7 @@ shape observed in AutoRegister before the mailbox is consumed.
 
 from __future__ import annotations
 
+import sys
 import time
 from html import unescape
 import re
@@ -65,6 +66,14 @@ _REFERENCE_NAV_ACCEPT = (
     "application/signed-exchange;v=b3;q=0.7"
 )
 _REFERENCE_DOMAINS = ("chatgpt.com", "auth.openai.com", "sentinel.openai.com")
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort transport hardening."""
+    try:
+        print(f"[free_protocol_bootstrap/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 def _reference_fingerprint(transport: Any) -> Mapping[str, Any]:
@@ -179,9 +188,9 @@ def _reference_get_headers(transport: Any, url: str, referer: str, base: Mapping
     path = ""
     try:
         path = str(urlsplit(str(url or "")).path or "").casefold()
-    except Exception:
+    except Exception as exc:
         # An unparseable URL falls back to the full-string host check.
-        pass
+        _note_stderr("url_path_parse", exc)
     if _host(url) == "chatgpt.com" and path.startswith(("/backend-api/", "/backend-anon/")):
         headers = _reference_json_headers(transport, base)
         if referer:
@@ -203,14 +212,14 @@ def prepare_reference_session(transport: Any, fingerprint: Mapping[str, Any] | N
         return transport
     try:
         session.trust_env = False
-    except Exception:
+    except Exception as exc:
         # Session hardening is best-effort; keep the transport usable.
-        pass
+        _note_stderr("session_trust_env", exc)
     try:
         session.verify = True
-    except Exception:
+    except Exception as exc:
         # Session hardening is best-effort; keep the transport usable.
-        pass
+        _note_stderr("session_verify", exc)
     device_id = str(getattr(transport, "device_id", "") or "").strip()
     cookies = getattr(session, "cookies", None)
     setter = getattr(cookies, "set", None)
@@ -221,12 +230,12 @@ def prepare_reference_session(transport: Any, fingerprint: Mapping[str, Any] | N
             except TypeError:
                 try:
                     setter("oai-did", device_id)
-                except Exception:
+                except Exception as exc:
                     # Cookie header pinning is best-effort.
-                    pass
-            except Exception:
+                    _note_stderr("cookie_set_compat", exc)
+            except Exception as exc:
                 # Fallback cookie APIs may not exist on every session type.
-                pass
+                _note_stderr("cookie_set", exc)
 
     # The recovered POST methods call ``self._headers`` directly.  Wrap that
     # bound method once so Sentinel JSON requests use the same UA/locale as the
@@ -240,9 +249,9 @@ def prepare_reference_session(transport: Any, fingerprint: Mapping[str, Any] | N
             try:
                 transport._headers = MethodType(wrapped_headers, transport)
                 setattr(transport, "_gptphone_reference_headers_wrapped", True)
-            except Exception:
+            except Exception as exc:
                 # Header wrapping is optional instrumentation on the transport.
-                pass
+                _note_stderr("reference_headers_wrap", exc)
     if not getattr(session, "_gptphone_reference_get_wrapped", False):
         original_get = getattr(session, "get", None)
         if callable(original_get):
@@ -265,9 +274,9 @@ def prepare_reference_session(transport: Any, fingerprint: Mapping[str, Any] | N
             try:
                 session.get = wrapped_get
                 setattr(session, "_gptphone_reference_get_wrapped", True)
-            except Exception:
+            except Exception as exc:
                 # Request wrapping is optional instrumentation on the session.
-                pass
+                _note_stderr("reference_get_wrap", exc)
     return transport
 
 
@@ -279,12 +288,12 @@ def _emit(log: LogFn, message: str, level: str = "info", **fields: Any) -> None:
     except TypeError:
         try:
             log(message, level)
-        except Exception:
+        except Exception as exc:
             # Log delivery must never break the bootstrap flow.
-            pass
-    except Exception:
+            _note_stderr("bootstrap_log_compat", exc)
+    except Exception as exc:
         # Log delivery must never break the bootstrap flow.
-        pass
+        _note_stderr("bootstrap_log", exc)
 
 
 def _emit_timing_sample(
@@ -299,9 +308,9 @@ def _emit_timing_sample(
         return
     try:
         timing(stage_code, code, elapsed_ms, outcome)
-    except Exception:
+    except Exception as exc:
         # Timing telemetry must never alter the bootstrap outcome.
-        pass
+        _note_stderr("bootstrap_timing", exc)
 
 
 def _headers(transport: Any, url: str, referer: str = "") -> dict[str, str]:
@@ -312,9 +321,9 @@ def _headers(transport: Any, url: str, referer: str = "") -> dict[str, str]:
             value = maker(url, referer)
             if isinstance(value, Mapping):
                 base = value
-        except Exception:
+        except Exception as exc:
             # Payload shape probing is optional for context building.
-            pass
+            _note_stderr("payload_shape_probe", exc)
     if base:
         return _reference_navigation_headers(transport, url, referer, base)
     return _reference_navigation_headers(
@@ -342,9 +351,9 @@ def _session(
     # stale HTTP(S)_PROXY/ALL_PROXY value from the desktop process.
     try:
         session.trust_env = False
-    except Exception:
+    except Exception as exc:
         # Session hardening is best-effort; keep the transport usable.
-        pass
+        _note_stderr("session_trust_env", exc)
     return session
 
 
