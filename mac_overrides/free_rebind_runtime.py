@@ -13,6 +13,7 @@ import inspect
 import json
 from pathlib import Path
 import re
+import sys
 import secrets
 import threading
 import time
@@ -74,6 +75,14 @@ BEGIN_PATH = "/backend-api/accounts/change_email/begin"
 VERIFY_PATH = "/backend-api/accounts/change_email/verify"
 
 
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note when the rebind logger itself failed."""
+    try:
+        print(f"[free_rebind/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
+
+
 def _status(response: Any) -> int | None:
     raw = response.get("_status") if isinstance(response, Mapping) else getattr(response, "status_code", None)
     try:
@@ -111,9 +120,9 @@ def _response_page_type(module: Any, response: Any) -> str:
         value = module._page_type(response)
         if value:
             return str(value).strip().lower().replace("-", "_")
-    except Exception:
+    except Exception as exc:
         # An unparseable page envelope falls back to the flat lookup below.
-        pass
+        _note_stderr("response_page_type", exc)
     return _response_value(response, "page_type", "pageType", "type").lower().replace("-", "_")
 
 
@@ -122,9 +131,9 @@ def _continue_url(module: Any, response: Any) -> str:
         value = module._continue_url(response)
         if value:
             return str(value).strip()
-    except Exception:
+    except Exception as exc:
         # An unparseable page envelope falls back to the flat lookup below.
-        pass
+        _note_stderr("continue_url", exc)
     return _response_value(response, "continue_url", "continueUrl", "redirect_url", "url")
 
 
@@ -245,10 +254,10 @@ class FreeRebindService:
         if writer is not None and callable(getattr(writer, "bind", None)):
             try:
                 writer = writer.bind(chain="free", workflow="rebind", driver="protocol")
-            except Exception:
+            except TypeError as exc:
                 # A third-party writer may expose ``bind`` with a narrower
                 # signature.  It is still safe to use it as-is below.
-                pass
+                _note_stderr("writer_bind_signature", exc)
         if writer is None and self.diagnostic_store is not None:
             writer = DiagnosticEventWriter(
                 self.diagnostic_store,
@@ -461,11 +470,11 @@ class FreeRebindService:
                     if should_bind:
                         try:
                             self._save_tasks()
-                        except Exception:
+                        except Exception as exc:
                             # The event is already durable; inability to enrich
                             # the task projection must not turn a successful
                             # diagnostic write into a workflow failure.
-                            pass
+                            _note_stderr("incident_task_enrich", exc)
                 return incident_id
             except Exception:
                 # Diagnostics are best effort by design; the writer records
@@ -503,12 +512,12 @@ class FreeRebindService:
         except TypeError:
             try:
                 self.log_fn(sanitize_log_message(str(message)), level)
-            except Exception:
+            except Exception as exc:
                 # Log delivery must never break the rebind runner.
-                pass
-        except Exception:
+                _note_stderr("rebind_log_compat", exc)
+        except Exception as exc:
             # Telemetry must not mask the failure already recorded above.
-            pass
+            _note_stderr("rebind_log", exc)
         return ""
 
     def _diagnostic_subject_fields(self, email: Any) -> dict[str, str]:
@@ -541,9 +550,9 @@ class FreeRebindService:
                 candidate = str(fingerprint_fn(value) or "").strip().lower()
                 if re.fullmatch(r"[0-9a-f]{32}", candidate):
                     return candidate
-            except Exception:
+            except Exception as exc:
                 # A malformed stored fingerprint falls back to hashing the value.
-                pass
+                _note_stderr("stored_fingerprint_probe", exc)
         return fingerprint(value)
 
     def _set_task(self, task_id: str, **values: Any) -> dict[str, Any]:
@@ -760,14 +769,14 @@ class FreeRebindService:
                 self._tasks.pop(task_id, None)
                 try:
                     self.pool.update(target.row_id, status="available", task_id="", error="")
-                except Exception:
+                except Exception as exc:
                     # Pool rollback must not mask the original task failure.
-                    pass
+                    _note_stderr("rerun_pool_rollback", exc)
                 try:
                     self._save_tasks()
-                except Exception:
+                except Exception as exc:
                     # Task persistence must not mask the original task failure.
-                    pass
+                    _note_stderr("rerun_task_persist", exc)
                 raise
             self._futures.add(future)
             future.add_done_callback(self._future_done)
@@ -792,9 +801,9 @@ class FreeRebindService:
                 try:
                     self.pool.update(target_row_id, status="failed", task_id=str(task.get("task_id") or ""), error="换绑任务未能重新排队")
                     self._save_tasks()
-                except Exception:
+                except Exception as exc:
                     # Failure bookkeeping must not mask the original task failure.
-                    pass
+                    _note_stderr("rerun_failure_bookkeeping", exc)
                 raise
             self._futures.add(future)
             future.add_done_callback(self._future_done)
@@ -881,9 +890,9 @@ class FreeRebindService:
             if callable(close):
                 try:
                     close()
-                except Exception:
+                except Exception as exc:
                     # Best-effort transport close during rebuild.
-                    pass
+                    _note_stderr("transport_close_rebuild", exc)
 
     def _verify_totp_protocol(self, transport: Any, response: Any, totp_secret: str, *, stage_code: str) -> Any:
         """Verify TOTP through Auth's MFA challenge endpoints.
@@ -1125,9 +1134,9 @@ class FreeRebindService:
                 if callable(close):
                     try:
                         close()
-                    except Exception:
+                    except Exception as exc:
                         # Best-effort transport close during rebuild.
-                        pass
+                        _note_stderr("transport_close", exc)
             self._close_transport(new_transport or transport)
 
     def _worker(self, task_id: str) -> None:
@@ -1207,9 +1216,9 @@ class FreeRebindService:
             if fallback_binding is not None:
                 try:
                     self.free_manager.proxies.release(fallback_binding, owner=task_id)
-                except Exception:
+                except Exception as exc:
                     # Fallback proxy release must not mask the original task failure.
-                    pass
+                    _note_stderr("fallback_proxy_release", exc)
 
 
 __all__ = ["ACTIVE_REBIND_STATUSES", "REBIND_STAGE_LABELS", "FreeRebindService"]
