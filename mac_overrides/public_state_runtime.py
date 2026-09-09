@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import sys
 import json
 import math
 import re
@@ -143,6 +144,14 @@ def _public_openai_connectivity(value: Any) -> dict[str, Any]:
 
 
 class PublicStateRuntime:
+
+    def _note_quiet(self, where: str, exc: BaseException) -> None:
+        """Record a swallowed public-state snapshot fallback on stderr."""
+        try:
+            print(f"[public_state_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
+        except Exception:
+            return
+
     """Build public API snapshots without retaining recovered runtime globals."""
 
     def __init__(
@@ -627,9 +636,9 @@ class PublicStateRuntime:
                 candidate = snapshot_fn()
                 if isinstance(candidate, dict):
                     guard_snapshot = copy.deepcopy(candidate)
-            except Exception:
+            except Exception as exc:
                 # A missing guard snapshot leaves the state field absent.
-                pass
+                self._note_quiet("guard_snapshot", exc)
         if guard_snapshot is not None:
             snapshot["sms_quality_optimization"] = guard_snapshot
         runtime = snapshot.get("runtime")
@@ -650,9 +659,9 @@ class PublicStateRuntime:
                 try:
                     concurrency["task"] = admission.snapshot()
                     task_capacity = concurrency["task"]
-                except Exception:
+                except Exception as exc:
                     # A missing admission snapshot leaves the state field absent.
-                    pass
+                    self._note_quiet("admission_snapshot", exc)
             if isinstance(task_capacity, dict):
                 task_capacity["waiting"] = sum(
                     1
@@ -702,9 +711,9 @@ class PublicStateRuntime:
                                 ),
                             )
                         concurrency["inflight"] = inflight_state
-                except Exception:
+                except Exception as exc:
                     # A missing inflight snapshot leaves the state field absent.
-                    pass
+                    self._note_quiet("inflight_snapshot", exc)
             local_config = self.read_local_config()
             concurrency["protocol"] = self.protocol_gate_getter().snapshot(
                 local_config.get("proxy")
@@ -726,9 +735,9 @@ class PublicStateRuntime:
                         connectivity["openai_auth"] = _public_openai_connectivity(
                             candidate
                         )
-                except Exception:
+                except Exception as exc:
                     # A missing connectivity snapshot leaves the state field absent.
-                    pass
+                    self._note_quiet("connectivity_snapshot", exc)
             concurrency["phone"] = self.sms_phone_gate_getter().status()
             if callable(self.phone_binding_metrics_getter):
                 try:
@@ -760,9 +769,9 @@ class PublicStateRuntime:
                         "enabled": enabled,
                         "metrics": metrics,
                     }
-                except Exception:
+                except Exception as exc:
                     # A missing metrics snapshot leaves the state field absent.
-                    pass
+                    self._note_quiet("metrics_snapshot", exc)
             resources: dict[str, Any] = {}
             if callable(self.process_resource_snapshot_getter):
                 try:
@@ -771,18 +780,18 @@ class PublicStateRuntime:
                     candidate = public() if callable(public) else observed
                     if isinstance(candidate, dict):
                         resources.update(copy.deepcopy(candidate))
-                except Exception:
+                except Exception as exc:
                     # A missing resource snapshot leaves the field absent.
-                    pass
+                    self._note_quiet("resources_snapshot", exc)
             if callable(self.transport_registry_getter):
                 try:
                     registry = self.transport_registry_getter()
                     candidate = registry.snapshot() if registry is not None else {}
                     if isinstance(candidate, dict):
                         resources.update(copy.deepcopy(candidate))
-                except Exception:
+                except Exception as exc:
                     # A missing resource snapshot leaves the field absent.
-                    pass
+                    self._note_quiet("resources_snapshot", exc)
             if resources:
                 runtime["resources"] = resources
             mailbox_pool = self.mailbox_pool_summary()

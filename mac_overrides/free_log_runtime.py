@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import sqlite3
+import sys
 import threading
 import re
 from typing import Any, Mapping
@@ -26,6 +27,14 @@ except ImportError:
     )
     from diagnostic_writer import DiagnosticEventWriter, LogContext  # type: ignore[no-redef]
     from diagnostic_writer_async import AsyncDiagnosticWriter  # type: ignore[no-redef]
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note when the diagnostic note channel itself fails."""
+    try:
+        print(f"[free_log_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 def _build_async_diagnostic_writer(diagnostic_store: Any, *, context: LogContext) -> Any:
@@ -223,9 +232,9 @@ class FreeLogStore:
                     "transport_error_code": str(error_type or "unknown")[:80],
                 },
             })
-        except Exception:
+        except Exception as exc:
             # A diagnostic failure must not mask the log write itself.
-            pass
+            _note_stderr("legacy_diagnostic_note", exc)
 
     @staticmethod
     def _number(value: Any, *, maximum: int = 1_000_000) -> int | None:
@@ -833,9 +842,9 @@ class FreeLogStore:
                         try:
                             if not getattr(exc, "_diagnostic_store_noted", False):
                                 diagnostic_note("free_log_record", exc)
-                        except Exception:
+                        except Exception as note_exc:
                             # The record failure is already noted; note() must not mask it.
-                            pass
+                            _note_stderr("record_note", note_exc)
             if self.legacy_projection:
                 rows.append(row)
                 atomic_write(self.path, rows[-self.limit:])
@@ -859,7 +868,7 @@ class FreeLogStore:
         if callable(flush) and getattr(self.diagnostic_writer, "_queue", None) is not None:
             try:
                 flush(2.0)
-            except Exception:
+            except Exception as exc:
                 # A drained-late snapshot degrades to the accepted <1s
                 # visibility delay; it must never break the read path.
                 pass
@@ -908,9 +917,9 @@ class FreeLogStore:
                     if callable(diagnostic_note):
                         try:
                             diagnostic_note("free_log_delete", exc)
-                        except Exception:
+                        except Exception as note_exc:
                             # The delete failure is already noted; note() must not mask it.
-                            pass
+                            _note_stderr("delete_note", note_exc)
         return deleted
 
     def clear(self) -> None:
