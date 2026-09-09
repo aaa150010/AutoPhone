@@ -9,7 +9,16 @@ from __future__ import annotations
 
 import copy
 import threading
+import sys
 import uuid
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note when even the patch's own logger fails."""
+    try:
+        print(f"[web_gui_importer_patches/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 def patched_importer_start(host, self, settings):
@@ -121,18 +130,18 @@ def patched_importer_start(host, self, settings):
                             f"协议门与实际并发可能脱节（{type(exc).__name__}）",
                             "error",
                         )
-                    except Exception:
+                    except Exception as exc:
                         # Telemetry must not break the admission event forwarding.
-                        pass
+                        _note_stderr("admission_event_forward", exc)
             formatted = host._performance_runtime_ext.format_task_admission_event(event)
             if formatted is None:
                 return
             message, level = formatted
             try:
                 self._log(message, level)
-            except Exception:
+            except Exception as exc:
                 # Log delivery must never break the caller emitting the event.
-                pass
+                _note_stderr("watcher_log", exc)
 
         task_admission = host._adaptive_concurrency_ext.AdaptiveConcurrencyGate(
             task_limit,
@@ -323,9 +332,9 @@ def patched_importer_run_one(
         if callable(clear_challenge) and transport is not None:
             try:
                 clear_challenge(transport)
-            except Exception:
+            except Exception as exc:
                 # Challenge cleanup must not mask the original stop reason.
-                pass
+                _note_stderr("challenge_cleanup", exc)
         if not host._SMS_TRANSPORT_REGISTRY.close_task(task_id):
             # Transports whose deferred cleanup did not finish are retained in
             # the registry's pending set; one immediate retry flushes them
@@ -362,9 +371,9 @@ def patched_importer_stop(host, self):
         try:
             aggregate, _last_activity_at = host._notification_aggregate(self, context)
             context["service"].mark_manual_stop(context["run_id"], aggregate)
-        except Exception:
+        except Exception as exc:
             # Manual-stop bookkeeping must not change the stop outcome.
-            pass
+            _note_stderr("manual_stop_bookkeeping", exc)
     if host._CURRENT_TASK_ADMISSION is not None or host._CURRENT_INFLIGHT_GATE is not None:
         # A finished or stopped run must not leave its staged gates reachable:
         # protocol pressure reports and connectivity resumes would otherwise
@@ -470,9 +479,9 @@ def patched_importer_watch(host, self):
                     f"累计排队 {capacity.get('total_wait_seconds', 0)} 秒",
                     "info",
                 )
-            except Exception:
+            except Exception as exc:
                 # Telemetry must not mask the state transition surfaced above.
-                pass
+                _note_stderr("state_transition_log", exc)
         try:
             with self.lock:
                 active_task_ids = set(getattr(self, "active_task_ids", set()) or ())
@@ -490,9 +499,9 @@ def patched_importer_watch(host, self):
                         f"仍有 {pending} 个 Transport 等待下次安全重试",
                         "warn",
                     )
-        except Exception:
+        except Exception as exc:
             # Telemetry must not mask the notification failure above.
-            pass
+            _note_stderr("inflight_notification", exc)
 
 
 def patched_pre_auth_session_retryable(host, result):
@@ -619,9 +628,9 @@ def patched_persist_result(host, self, settings, task_id, entry, result, *, erro
                     f"（{type(exc).__name__}）",
                     "error",
                 )
-            except Exception:
+            except Exception as exc:
                 # Telemetry must not mask the failure already recorded above.
-                pass
+                _note_stderr("manifest_persist_log", exc)
     terminal_text = " ".join(
         str(value or "")
         for value in (
@@ -657,9 +666,9 @@ def patched_retire_after_failure(host, self, settings, pool, entry, task_id, res
         )
         try:
             pool.remove_entry(entry, reason="relogin_failed")
-        except Exception:
+        except Exception as exc:
             # Pool cleanup must not mask the relogin failure surfaced above.
-            pass
+            _note_stderr("relogin_pool_remove", exc)
         public_result = host._runtime._public_result(result if isinstance(result, dict) else {})
         self._task_state(
             task_id,
@@ -670,9 +679,9 @@ def patched_retire_after_failure(host, self, settings, pool, entry, task_id, res
         )
         try:
             self._log(f"{task_id} 无手机号重登失败: {safe_error}", "error")
-        except Exception:
+        except Exception as exc:
             # Telemetry must not mask the relogin failure surfaced above.
-            pass
+            _note_stderr("relogin_log", exc)
         return None
     if host._is_auth_session_reset_failure(result, error):
         if isinstance(result, dict):
@@ -706,9 +715,9 @@ def patched_retire_after_failure(host, self, settings, pool, entry, task_id, res
                 f"{task_id} [验证邮箱密码/email_password] {host._PASSWORD_DAMAGED_MESSAGE}",
                 "error",
             )
-        except Exception:
+        except Exception as exc:
             # Telemetry must not mask the damaged-password failure above.
-            pass
+            _note_stderr("damaged_password_log", exc)
         return None
 
     if not host._runtime_policy_ext.is_account_banned_failure(result, error):
@@ -786,9 +795,9 @@ def patched_retire_after_failure(host, self, settings, pool, entry, task_id, res
                 f"邮箱池移除失败：{detail}；已标记损坏",
                 "error",
             )
-    except Exception:
+    except Exception as exc:
         # A recovery failure here must not mask the original task error.
-        pass
+        _note_stderr("mailbox_recover", exc)
     return None
 
 
@@ -838,9 +847,9 @@ def patched_task_state(host, self, task_id: str, **values):
             })
             if incident_id:
                 values["incident_id"] = incident_id
-        except Exception:
+        except Exception as exc:
             # Incident enrichment must not change the task-state payload.
-            pass
+            _note_stderr("incident_enrich", exc)
     result = host._ORIGINAL_TASK_STATE(self, task_id, **values)
     batch_manifest = host._RUN_BATCH_MANIFEST
     if batch_manifest is not None and status:
@@ -855,9 +864,9 @@ def patched_task_state(host, self, task_id: str, **values):
                     f"（{type(exc).__name__}）",
                     "error",
                 )
-            except Exception:
+            except Exception as exc:
                 # Telemetry must not mask the failure already recorded above.
-                pass
+                _note_stderr("manifest_persist_log", exc)
     if status == "authorizing":
         host._TASK_CONTEXT.set(str(task_id or ""))
     host._TASK_PROGRESS.observe_task_state(task_id, status)
@@ -897,9 +906,9 @@ def patched_task_state(host, self, task_id: str, **values):
                     f"成功率 {metrics.get('success_rate', 0):.2%}",
                     "warn",
                 )
-            except Exception:
+            except Exception as exc:
                 # Telemetry must not mask the stage progression surfaced above.
-                pass
+                _note_stderr("stage_progression_log", exc)
         progress = host._TASK_PROGRESS.progress(task_id)
         admission = getattr(self, "task_admission", None)
         if admission is not None:
@@ -909,9 +918,9 @@ def patched_task_state(host, self, task_id: str, **values):
                 if status == "account_banned" and host._is_fast_account_banned_progress(progress):
                     try:
                         admission.report_account_banned(task_id)
-                    except Exception:
+                    except Exception as exc:
                         # Admission telemetry must not change the task failure path.
-                        pass
+                        _note_stderr("admission_report_banned", exc)
                 detail = (
                     values.get("technical_error")
                     or values.get("error")
