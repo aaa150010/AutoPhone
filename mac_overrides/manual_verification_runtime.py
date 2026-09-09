@@ -7,6 +7,7 @@ from collections.abc import Mapping
 import re
 import threading
 import time
+import sys
 from typing import Any, Callable
 
 
@@ -52,6 +53,14 @@ class _PromptTombstone:
     generation: int
     reason: str
     expires_at: float
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed manual-flow callbacks."""
+    try:
+        print(f"[manual_verification/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 def normalize_input_kind(value: Any) -> str:
@@ -389,10 +398,10 @@ def wait_with_manual_fallback(
         automatic_unmatched_notified = True
         try:
             on_automatic_unmatched(reason)
-        except Exception:
+        except Exception as exc:
             # Parser-sample persistence is diagnostic-only and must never
             # prevent a task from accepting a valid manual code.
-            pass
+            self._note_quiet("automatic_unmatched", exc)
 
     def notify_manual_opened(prompt: Mapping[str, Any]) -> None:
         """Notify the owner once for each concrete broker prompt.
@@ -417,9 +426,9 @@ def wait_with_manual_fallback(
         if on_manual_opened is not None:
             try:
                 on_manual_opened(dict(prompt))
-            except Exception:
+            except Exception as exc:
                 # Prompt-open callbacks are telemetry for the manual flow.
-                pass
+                self._note_quiet("manual_opened", exc)
 
     def run_automatic() -> None:
         try:
