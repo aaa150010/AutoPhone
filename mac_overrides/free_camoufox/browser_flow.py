@@ -54,6 +54,15 @@ except ImportError:  # pragma: no cover - top-level recovery import
         RegistrationDeadline,
     )
 
+# Poll cadence for the page-state machine. Tighter than the historic 1s waits
+# so a finished navigation is observed roughly half a wait earlier; the stuck
+# counters and step limits below are scaled to keep wall-clock semantics.
+_STATE_POLL_SECONDS = 0.5
+_SUBMIT_POLL_SECONDS = 1.0
+# seen[state] guard fires after >4 consecutive polls at the historic 1s cadence
+# (~5s); with a 0.5s cadence the same wall-clock budget needs >8 polls.
+_STATE_STUCK_POLLS = 8
+
 
 
 
@@ -938,7 +947,7 @@ async def _browser_flow(
         # The about-you endpoint can legitimately take close to a minute to
         # finish. Keep a bounded guard, but do not turn that reference-flow
         # wait into an early page-state failure.
-        if step_count > max(120, timeout + 30):
+        if step_count > max(240, (timeout + 30) * 2):
             raise host.CamoufoxBrowserError(
                 "free_camoufox_page_state", "等待 Camoufox 页面状态",
                 "注册状态机超出最大推进步数", error_code="camoufox_page_state_limit",
@@ -995,7 +1004,7 @@ async def _browser_flow(
         seen[state] = seen.get(state, 0) + 1
         if (
             state not in {"signup_password", "login_password", "otp", "otp_wait", "email_verification", "profile", "security"}
-            and seen[state] > 4
+            and seen[state] > _STATE_STUCK_POLLS
         ):
             now = time.monotonic()
             # React navigation can briefly expose an unclassified shell after
@@ -1004,7 +1013,7 @@ async def _browser_flow(
             # DOM polls (about two seconds) can misclassify an asynchronous
             # navigation as a stuck registration.
             if state in {"entry", "unknown"} and entry_submitted and now < entry_transition_observe_deadline:
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(_STATE_POLL_SECONDS)
                 continue
             if state in {"entry", "unknown"} and entry_submitted:
                 # A navigation can complete immediately after the polling
@@ -1042,7 +1051,7 @@ async def _browser_flow(
                         time.monotonic() + 12.0,
                     )
                     seen.clear()
-                    await asyncio.sleep(1.0)
+                    await asyncio.sleep(_STATE_POLL_SECONDS)
                     continue
                 log("Camoufox 登录壳未重新显示邮箱表单，准备同源 signin 兜底", "warn")
             if state == "entry" and entry_submitted and not entry_signin_fallback_used and not auth_phase_locked:
@@ -1126,7 +1135,7 @@ async def _browser_flow(
                     time.monotonic() + 12.0,
                 )
                 seen.clear()
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(_STATE_POLL_SECONDS)
                 continue
             if (
                 state == "entry" and entry_submitted
@@ -1174,7 +1183,7 @@ async def _browser_flow(
                         time.monotonic() + 12.0,
                     )
                 seen.clear()
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(_STATE_POLL_SECONDS)
                 continue
             error_text = await host._auth_error_text(page)
             close_profile_timing("unexpected_state")
@@ -1212,7 +1221,7 @@ async def _browser_flow(
                     )
                     if reopened:
                         log("Camoufox 登录壳已重新打开邮箱表单", "warn")
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(_STATE_POLL_SECONDS)
             continue
 
         if state == "login_password":
@@ -1233,7 +1242,7 @@ async def _browser_flow(
                     if await host._click_passwordless_login_switch(page):
                         log("已有账号登录未保存密码，已切换为邮箱验证码登录", "warn")
                         seen.clear()
-                        await asyncio.sleep(1.0)
+                        await asyncio.sleep(_STATE_POLL_SECONDS)
                         continue
                 raise host.CamoufoxBrowserError(
                     "free_existing_login", "已有 Free 账号登录",
@@ -1266,7 +1275,7 @@ async def _browser_flow(
                     await host._submit_existing_login_password(page, saved_password)
                     login_password_submit_retried = True
                     log("已有账号登录密码页未跳转，已使用同一密码重试提交", "warn")
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(_STATE_POLL_SECONDS)
             continue
 
         if state == "email_verification":
@@ -1286,7 +1295,7 @@ async def _browser_flow(
                 if await host._click_first(page, EMAIL_SUBMIT_SELECTORS, timeout=3):
                     log("邮箱验证页未跳转，已重试点击继续", "warn")
                 email_verification_retried = True
-            await asyncio.sleep(2.0)
+            await asyncio.sleep(_SUBMIT_POLL_SECONDS)
             continue
 
         if state == "signup_password":
@@ -1316,7 +1325,7 @@ async def _browser_flow(
                             await host._submit_visible_form(page, selector)
                     password_submit_retried = True
                     log("注册密码页未跳转，已使用同一密码重试提交", "warn")
-                await asyncio.sleep(2.0)
+                await asyncio.sleep(_SUBMIT_POLL_SECONDS)
                 continue
             selector = await host._wait_for_any_selector(page, PASSWORD_SELECTORS, timeout=15)
             if not selector or not await host._fill_input_like_user(page, selector, password):
@@ -1328,7 +1337,7 @@ async def _browser_flow(
                 await host._submit_visible_form(page, selector)
             password_used = True
             password_submitted_at = time.monotonic()
-            await asyncio.sleep(2.0)
+            await asyncio.sleep(_SUBMIT_POLL_SECONDS)
             continue
 
         if state in {"otp", "otp_wait"}:
@@ -1386,7 +1395,7 @@ async def _browser_flow(
                 otp_submitted_at = time.monotonic()
                 otp_submitted_stage = stage_code
                 otp_transition_recorded = False
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(_STATE_POLL_SECONDS)
                 continue
             elapsed = time.monotonic() - otp_submitted_at
             if elapsed >= 60:
@@ -1417,7 +1426,7 @@ async def _browser_flow(
                 otp_submitted_stage = ""
                 otp_resend_used = True
                 continue
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(_STATE_POLL_SECONDS)
             continue
 
         if state == "profile":
@@ -1535,13 +1544,13 @@ async def _browser_flow(
                     log("Camoufox 资料页提交后 60 秒未跳转，允许重新填写重试", "warn")
                 else:
                     await host._confirm_birthday(page, log, timeout=0.5)
-                    await asyncio.sleep(1.0)
+                    await asyncio.sleep(_STATE_POLL_SECONDS)
                     continue
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(_STATE_POLL_SECONDS)
             continue
 
         if state == "oauth_callback":
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(_STATE_POLL_SECONDS)
             continue
 
         if state == "external_auth":
@@ -1580,7 +1589,7 @@ async def _browser_flow(
                 retryable=not entry_submitted, error_code="camoufox_auth_page_error",
                 safe_page=host._safe_url(page), page_type=state,
             )
-        await asyncio.sleep(1.0)
+        await asyncio.sleep(_STATE_POLL_SECONDS)
 
     # If the global deadline expires while the about-you request is still
     # pending, close any open timing intervals before returning the failure.

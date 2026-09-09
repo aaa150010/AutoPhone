@@ -538,9 +538,10 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         self.assertEqual(profile_events["profile_async_submit_wait"][3], "success")
         self.assertEqual(profile_events["profile_home_state_wait"][3], "success")
         # The callback-to-home interval starts where async-submit ends; it must
-        # not repeat the full profile-submit duration.
-        self.assertEqual(profile_events["profile_async_submit_wait"][2], 1000)
-        self.assertEqual(profile_events["profile_home_state_wait"][2], 1000)
+        # not repeat the full profile-submit duration. Assert one state-poll
+        # wait per interval instead of a hard-coded millisecond cadence.
+        self.assertEqual(profile_events["profile_async_submit_wait"][2], 500)
+        self.assertEqual(profile_events["profile_home_state_wait"][2], 500)
 
     def test_birthday_confirmation_returns_quickly_when_no_modal_is_mounted(self):
         class Locator:
@@ -1779,14 +1780,36 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         )
         page = _EntryPage()
         otp_mark_sent = Mock()
-        states = ("entry",) * 14 + ("email_verification", "security")
+        # Cadence-independent choreography keyed off the goto call count: the
+        # first goto opens the registration entry; the second is the
+        # same-origin signin fallback whose timeout the post-entry wait must
+        # survive. The wait then observes email_verification and the next
+        # main-loop read sees the security challenge.
+        goto_calls = {"n": 0}
+
+        async def goto_effect(*_args, **_kwargs):
+            goto_calls["n"] += 1
+            if goto_calls["n"] >= 2:
+                raise timeout_error
+            return None
+
+        async def state_effect(_page):
+            if goto_calls["n"] < 2:
+                return "entry"
+            if not state_effect.post_wait_seen:
+                state_effect.post_wait_seen = True
+                return "email_verification"
+            return "security"
+
+        state_effect.post_wait_seen = False
+
         with (
             patch.object(runtime.time, "monotonic", side_effect=lambda: Clock.now),
             patch.object(runtime.asyncio, "sleep", side_effect=fast_sleep),
             patch.object(
                 runtime,
                 "_goto_with_retry",
-                new=AsyncMock(side_effect=(None, timeout_error)),
+                new=AsyncMock(side_effect=goto_effect),
             ) as goto,
             patch.object(
                 runtime,
@@ -1798,7 +1821,7 @@ class CamoufoxRuntimeTests(unittest.TestCase):
             patch.object(runtime, "_submit_visible_form", new=AsyncMock(return_value=True)),
             patch.object(runtime, "_click_exact_button_text", new=AsyncMock(return_value="continue")),
             patch.object(runtime, "_browser_signin_url", new=AsyncMock(return_value="https://auth.openai.com/authorize/test")) as signin,
-            patch.object(runtime, "_page_state", new=AsyncMock(side_effect=states)),
+            patch.object(runtime, "_page_state", new=AsyncMock(side_effect=state_effect)),
             patch.object(runtime, "_auth_error_text", new=AsyncMock(return_value="")),
             patch.object(runtime, "_wait_challenge_then_stop", new=AsyncMock(side_effect=challenge)) as stop,
         ):
@@ -1847,7 +1870,9 @@ class CamoufoxRuntimeTests(unittest.TestCase):
             page_type="navigation",
         )
         page = _EntryPage()
-        states = ("entry",) * 40
+        # The entry shell never moves; supply enough states for the bounded
+        # observe windows and both recoveries regardless of poll cadence.
+        states = ("entry",) * 200
         with (
             patch.object(runtime.time, "monotonic", side_effect=lambda: Clock.now),
             patch.object(runtime.asyncio, "sleep", side_effect=fast_sleep),
