@@ -365,6 +365,12 @@ def patched_importer_stop(host, self):
         except Exception:
             # Manual-stop bookkeeping must not change the stop outcome.
             pass
+    if host._CURRENT_TASK_ADMISSION is not None or host._CURRENT_INFLIGHT_GATE is not None:
+        # A finished or stopped run must not leave its staged gates reachable:
+        # protocol pressure reports and connectivity resumes would otherwise
+        # target a stale run's admission/inflight gates.
+        host._CURRENT_TASK_ADMISSION = None
+        host._CURRENT_INFLIGHT_GATE = None
     return host._importer_scheduler_ext.stop_bounded_importer(self)
 
 

@@ -124,6 +124,7 @@ class RunBatchManifestStore:
         recover_pending: bool = True,
         log_fn: Callable[[str, str], None] | None = None,
         lease_releaser: Callable[..., Any] | None = None,
+        finalize_callback: Callable[[str], Any] | None = None,
     ) -> None:
         self.data_dir = Path(data_dir).expanduser().resolve()
         self.manifest_path = (
@@ -134,6 +135,7 @@ class RunBatchManifestStore:
         self.now = now
         self.log_fn = log_fn
         self.lease_releaser = lease_releaser
+        self.finalize_callback = finalize_callback
         self._lock = threading.RLock()
         self._store = self._load()
         self._task_index: dict[str, str] = {}
@@ -677,6 +679,12 @@ class RunBatchManifestStore:
             f"补写缺失 {missing} 项",
             level,
         )
+        if callable(self.finalize_callback):
+            try:
+                self.finalize_callback(str(public["batch_id"]))
+            except Exception:
+                # Run-finished hooks must never change the reconcile outcome.
+                pass
         return public
 
     def recover(self) -> None:

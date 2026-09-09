@@ -2208,6 +2208,12 @@ _RUN_BATCH_MANIFEST = _run_batch_runtime_ext.RunBatchManifestStore(
     _RUNTIME_DATA_DIR,
     recover_pending=True,
     lease_releaser=_release_recovered_batch_leases,
+    # A finished batch must retire its staged gates: protocol pressure reports
+    # and connectivity resumes would otherwise target a stale run's gates.
+    finalize_callback=lambda _batch_id: (
+        globals().__setitem__("_CURRENT_TASK_ADMISSION", None),
+        globals().__setitem__("_CURRENT_INFLIGHT_GATE", None),
+    ),
 )
 _FREE_REGISTER = _free_register_runtime_ext.FreeRegisterManager(
     _FREE_DATA_DIR,
