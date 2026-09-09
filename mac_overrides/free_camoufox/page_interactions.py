@@ -212,6 +212,22 @@ async def _screenshot_safety_check(host, page: Any) -> tuple[bool, str]:
     return True, ""
 
 
+def _note_quiet(page: Any, where: str, exc: BaseException) -> None:
+    """Record a swallowed best-effort failure into the page debug trace.
+
+    These failures never change flow semantics (optional instrumentation,
+    fallback paths, cleanup); the trace entry keeps them observable when a
+    nearby operation does fail and the artifacts are inspected.
+    """
+    try:
+        trace = getattr(page, "_gptphone_debug_trace", None)
+        if isinstance(trace, _DebugTrace):
+            trace.add("quiet_failure", where=str(where or "")[:60], error=type(exc).__name__)
+    except Exception:
+        # Even the quiet note must not break the surrounding best-effort path.
+        return
+
+
 class _DebugTrace:
     """Small, credential-free page event ring buffer."""
 
@@ -253,9 +269,10 @@ def _page_debug_trace(host, page: Any) -> host._DebugTrace:
     trace = host._DebugTrace()
     try:
         setattr(page, "_gptphone_debug_trace", trace)
-    except Exception:
-        # Trace attachment is optional instrumentation on the page.
-        pass
+    except Exception as exc:
+        # Trace attachment is optional instrumentation on the page; keep the
+        # returned trace working even when the page object rejects attributes.
+        _note_quiet(page, "trace_attach", exc)
     # Playwright event callbacks are synchronous even for async pages. Keep
     # each callback tiny and sanitize before the event can enter the buffer.
     on = getattr(page, "on", None)
@@ -949,10 +966,10 @@ async def _submit_visible_form(host, page: Any, selector: str) -> bool | None:
             )
             if dispatched:
                 return True
-        except Exception:
+        except Exception as exc:
             # Fall through to the locator path so recovered adapters without
             # a usable DOM evaluation surface retain the old behavior.
-            pass
+            _note_quiet(page, "email_submit_dispatch", exc)
     action_started = False
     try:
         locator = page.locator(selector).first
@@ -1034,11 +1051,11 @@ def _record_email_submit_action_failure(host, page: Any, action: str, exc: BaseE
     }
     try:
         setattr(page, "_gptphone_email_submit_action_failure", evidence)
-    except Exception:
+    except Exception as exc:
         # Some lightweight or recovered page adapters do not permit custom
         # attributes. The uncertain outcome remains safe; it simply has less
         # local evidence.
-        pass
+        _note_quiet(page, "email_submit_evidence", exc)
 
 
 async def _email_submit_uncertain_diagnostic(
@@ -1529,12 +1546,12 @@ async def _browser_signin_url(host, page: Any, email: str) -> str:
         except TypeError:
             try:
                 await wait_for_load_state("domcontentloaded")
-            except Exception:
+            except Exception as exc:
                 # A missing load-state event must not block the navigation.
-                pass
-        except Exception:
+                _note_quiet(page, "load_state_compat", exc)
+        except Exception as exc:
             # A missing load-state event must not block the navigation.
-            pass
+            _note_quiet(page, "load_state", exc)
     script = """
     async ({email, deviceId}) => {
       try {
@@ -1989,16 +2006,16 @@ async def _await_otp_callback(
             try:
                 close()
                 return
-            except Exception:
+            except Exception as exc:
                 # Best-effort cleanup of a closeable wait handle.
-                pass
+                _note_quiet(page, "wait_handle_close", exc)
         cancel = getattr(value, "cancel", None)
         if callable(cancel):
             try:
                 cancel()
-            except Exception:
+            except Exception as exc:
                 # Best-effort cancellation must not break the OTP wait loop.
-                pass
+                _note_quiet(page, "wait_handle_cancel", exc)
 
     result.add_done_callback(consume_exception)
 
@@ -2128,9 +2145,9 @@ async def _await_otp_callback(
                     try:
                         while int(getattr(current, "cancelling", lambda: 0)() or 0) > 0:
                             uncancel()
-                    except Exception:
+                    except Exception as exc:
                         # Uncancel bookkeeping must not break the OTP wait loop.
-                        pass
+                        _note_quiet(page, "task_uncancel", exc)
                 continue
             except BaseException:
                 return
