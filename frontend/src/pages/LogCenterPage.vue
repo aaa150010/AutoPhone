@@ -227,6 +227,7 @@ onMounted(() => {
   void loadFromLocation(props.locationKey || '/logs')
   void refreshHealth()
   refreshTimer = window.setInterval(() => {
+    if (document.hidden) return
     if (!loading.value) void runSearch()
     if (!healthLoading.value) void refreshHealth()
   }, 15000)

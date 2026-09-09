@@ -382,13 +382,25 @@ export function createAppController() {
   }
 
   async function poll() {
+    if (document.hidden) {
+      // Park the loop while the dashboard is invisible; visibility resumes it.
+      pollTimer = window.setTimeout(poll, 1500)
+      return
+    }
     await refresh()
     if (pollingStopped) return
     pollTimer = window.setTimeout(poll, running.value ? 700 : 1500)
   }
 
+  function handleVisibilityChange() {
+    if (pollingStopped || document.hidden || !initialized.value) return
+    window.clearTimeout(pollTimer)
+    void poll()
+  }
+
   async function startPolling() {
     pollingStopped = false
+    document.addEventListener('visibilitychange', handleVisibilityChange)
     while (!pollingStopped && !initialized.value) {
       try {
         await initialize()
@@ -403,6 +415,7 @@ export function createAppController() {
   function stopPolling() {
     pollingStopped = true
     window.clearTimeout(pollTimer)
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
     runtimeNotificationObserver.dispose()
   }
 

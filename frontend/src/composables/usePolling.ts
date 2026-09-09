@@ -4,7 +4,9 @@ The loop re-awaits ``tick`` before scheduling the next round, so a slow
 refresh never overlaps itself.  The delay is recomputed each round through
 ``delayMs`` so callers can poll faster while a batch is running.  ``stop``
 clears the pending timer and makes every scheduled round a no-op; it is safe
-to call multiple times.
+to call multiple times.  While ``document.hidden`` is true the loop pauses
+instead of firing invisible requests and resumes one round after visibility
+returns.
 */
 import { getCurrentInstance, onUnmounted } from 'vue'
 
@@ -23,23 +25,36 @@ export function usePolling(
   let stopped = false
 
   async function loop() {
-    if (stopped) return
+    if (stopped || document.hidden) return
     await tick()
     if (stopped) return
     timer = window.setTimeout(loop, Math.max(0, delayMs()))
   }
 
-  function schedule() {
-    if (stopped) return
+  function scheduleRound() {
     window.clearTimeout(timer)
     timer = window.setTimeout(loop, Math.max(0, delayMs()))
+  }
+
+  function handleVisibility() {
+    if (stopped || document.hidden) return
+    // Catch up immediately once the page is visible again.
+    void loop()
+  }
+
+  function schedule() {
+    if (stopped) return
+    scheduleRound()
   }
 
   function stop() {
     stopped = true
     window.clearTimeout(timer)
     timer = 0
+    document.removeEventListener('visibilitychange', handleVisibility)
   }
+
+  document.addEventListener('visibilitychange', handleVisibility)
 
   if (getCurrentInstance()) {
     onUnmounted(stop)
