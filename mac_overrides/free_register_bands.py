@@ -565,7 +565,13 @@ class FreeRegisterProjectionMixin:
                 # Finish bookkeeping must not mask the task result.
                 pass
 
-    def _public_task(self, task: Mapping[str, Any]) -> dict[str, Any]:
+    def _public_task(
+        self,
+        task: Mapping[str, Any],
+        durable_results: Mapping[str, Mapping[str, Any]] | None = None,
+        mailbox_index: Mapping[str, Any] | None = None,
+        task_incidents: Mapping[str, str] | None = None,
+    ) -> dict[str, Any]:
         result = task.get("result") if isinstance(task.get("result"), Mapping) else {}
         # The task journal and mailbox result file are persisted separately.
         # A continuation can finish after the original task snapshot was
@@ -573,10 +579,12 @@ class FreeRegisterProjectionMixin:
         # result as a fill/override source for the public capability view.
         row_id = str(task.get("row_id") or "").strip()
         if row_id:
-            try:
-                durable_result = self.pool.result(row_id)
-            except Exception:
-                durable_result = {}
+            durable_result = dict((durable_results or {}).get(row_id) or {})
+            if not durable_result:
+                try:
+                    durable_result = self.pool.result(row_id)
+                except Exception:
+                    durable_result = {}
             if isinstance(durable_result, Mapping) and durable_result:
                 result = merge_account_result_fields(result, durable_result)
         if result:
@@ -587,11 +595,13 @@ class FreeRegisterProjectionMixin:
         # or reveal endpoint keyed by ``row_id``.
         private_email = str(task.get("email") or "").strip()
         if not private_email and row_id:
-            try:
-                mailbox = self.pool.entry(row_id)
-                private_email = str(getattr(mailbox, "email", "") or "").strip() if mailbox is not None else ""
-            except Exception:
-                private_email = ""
+            mailbox = (mailbox_index or {}).get(row_id)
+            if mailbox is None:
+                try:
+                    mailbox = self.pool.entry(row_id)
+                except Exception:
+                    mailbox = None
+            private_email = str(getattr(mailbox, "email", "") or "").strip() if mailbox is not None else ""
         email_masked = sanitize_public_email(private_email)
         subject_fingerprint = ""
         diagnostic_store = getattr(getattr(self, "log_store", None), "diagnostic_store", None)
@@ -689,31 +699,35 @@ class FreeRegisterProjectionMixin:
                 public.pop("mailbox_verification", None)
         if not public.get("incident_id"):
             diagnostic_store = getattr(getattr(self, "log_store", None), "diagnostic_store", None)
-            if diagnostic_store is not None:
+            task_key = str(task.get("task_id") or "")
+            incident_id = str((task_incidents or {}).get(task_key) or "")
+            if not incident_id and diagnostic_store is not None:
                 try:
                     matches = diagnostic_store.search({
-                        "task_id": str(task.get("task_id") or ""),
+                        "task_id": task_key,
                         "first_node_code": "mailbox_parser_unmatched",
                         "limit": 1,
                     })
                     if matches:
                         incident_id = sanitize_public_identifier(matches[0].get("incident_id"), limit=160)
-                        if incident_id:
-                            public["incident_id"] = incident_id
                 except Exception:
                     # Diagnostic enrichment must not change the public payload.
                     pass
+            if incident_id:
+                public["incident_id"] = sanitize_public_identifier(incident_id, limit=160)
         # ``account`` is a legacy alias consumed by a few clients.  It must
         # follow the same masked representation and never reintroduce the
         # private address.
         public["account"] = email_masked
         mailbox_url = str(task.get("mailbox_url") or "").strip()
-        if not mailbox_url and task.get("row_id"):
-            try:
-                mailbox = self.pool.entry(str(task.get("row_id") or ""))
-                mailbox_url = str(getattr(mailbox, "mailbox_url", "") or "").strip() if mailbox is not None else ""
-            except Exception:
-                mailbox_url = ""
+        if not mailbox_url and row_id:
+            mailbox = (mailbox_index or {}).get(row_id)
+            if mailbox is None:
+                try:
+                    mailbox = self.pool.entry(str(row_id))
+                except Exception:
+                    mailbox = None
+            mailbox_url = str(getattr(mailbox, "mailbox_url", "") or "").strip() if mailbox is not None else ""
         # Expose only availability; the credential-bearing URL is revealed by
         # the dedicated endpoint after an explicit user action.
         public["has_mailbox_url"] = bool(mailbox_url)
@@ -838,6 +852,19 @@ class FreeRegisterProjectionMixin:
                 public["error"] = failure["public_message"]
         return public
 
+    def _bulk_task_incidents(self, task_ids_with_missing: list[str]) -> dict[str, str]:
+        """Resolve one newest mailbox-parser incident per task in a single query."""
+        diagnostic_store = getattr(getattr(self, "log_store", None), "diagnostic_store", None)
+        batch_reader = getattr(diagnostic_store, "search_task_nodes", None)
+        if callable(batch_reader):
+            try:
+                matches = batch_reader(task_ids_with_missing, "mailbox_parser_unmatched")
+                if isinstance(matches, Mapping):
+                    return dict(matches)
+            except Exception:
+                pass
+        return {}
+
     def public_tasks(self) -> list[dict[str, Any]]:
         with self._lock:
             tasks = sorted(
@@ -859,7 +886,53 @@ class FreeRegisterProjectionMixin:
                     sanitize_public_identifier(item.get("task_id"), limit=160),
                 ),
             )
-            return [self._public_task(task) for task in tasks]
+            # Durable results and mailbox rows are resolved in bulk so each
+            # state read stays at two storage queries instead of two per task.
+            row_ids = [str(task.get("row_id") or "").strip() for task in tasks]
+            row_ids = [row_id for row_id in row_ids if row_id]
+            durable_results = self._bulk_durable_results(row_ids)
+            mailbox_index = self._bulk_mailbox_index(row_ids)
+            missing_incident_ids = [
+                str(task.get("task_id") or "")
+                for task in tasks
+                if not str(task.get("incident_id") or "").strip()
+            ]
+            task_incidents = self._bulk_task_incidents(missing_incident_ids) if missing_incident_ids else {}
+            return [
+                self._public_task(task, durable_results, mailbox_index, task_incidents)
+                for task in tasks
+            ]
+
+    def _bulk_durable_results(self, row_ids: Sequence[str]) -> dict[str, Mapping[str, Any]]:
+        bulk_reader = getattr(self.pool, "results_bulk", None)
+        if callable(bulk_reader):
+            try:
+                bulk = bulk_reader(row_ids)
+                if isinstance(bulk, Mapping):
+                    return bulk
+            except Exception:
+                pass
+        # Compatibility fallback for pool facades without the bulk reader.
+        results: dict[str, Mapping[str, Any]] = {}
+        for row_id in row_ids:
+            try:
+                result = self.pool.result(row_id)
+            except Exception:
+                result = {}
+            if isinstance(result, Mapping) and result:
+                results[row_id] = result
+        return results
+
+    def _bulk_mailbox_index(self, row_ids: Sequence[str]) -> dict[str, Any]:
+        index_reader = getattr(self.pool, "mailbox_index", None)
+        if callable(index_reader):
+            try:
+                index = index_reader()
+                if isinstance(index, Mapping):
+                    return index
+            except Exception:
+                pass
+        return {}
 
     def public_logs(self, task_id: str = "") -> list[dict[str, Any]]:
         driver = ""
@@ -1080,6 +1153,9 @@ class FreeRegisterProjectionMixin:
         return result
 
     def _available_count(self) -> int:
+        counter = getattr(self.pool, "available_count", None)
+        if callable(counter):
+            return max(0, int(counter()))
         return len(self.pool.available(10_000))
 
     def _camoufox_state_config(self, config: Mapping[str, Any] | None = None) -> dict[str, Any]:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import sqlite3
 import time
 from pathlib import Path
@@ -145,6 +146,48 @@ class SQLiteFreeMailboxPool(_LegacyMailboxPool):
     def entry(self, row_id: str) -> FreeMailbox | None:
         target = str(row_id or "").strip()
         return next((item for item in self.entries() if item.row_id == target), None)
+
+    def mailbox_index(self) -> dict[str, FreeMailbox]:
+        """Return every pool entry keyed by ``row_id`` in one storage read.
+
+        ``entry`` rebuilds the whole ordered pool per call, so state
+        projections that previously resolved mailboxes one-by-one paid a full
+        pool scan per task.  This bulk variant keeps a single scan.
+        """
+        return {item.row_id: item for item in self.entries()}
+
+    def results_bulk(self, row_ids: Sequence[str]) -> dict[str, dict[str, Any]]:
+        """Return durable account results for ``row_ids`` in one query."""
+        unique: list[str] = []
+        seen: set[str] = set()
+        for row_id in row_ids:
+            target = str(row_id or "").strip()
+            if target and target not in seen:
+                seen.add(target)
+                unique.append(target)
+        if not unique:
+            return {}
+        placeholders = ",".join("?" for _ in unique)
+        with self.storage._connection() as db:
+            rows = db.execute(
+                f"SELECT row_id,payload,private_payload FROM results WHERE row_id IN ({placeholders})",
+                unique,
+            ).fetchall()
+        bulk: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            # ``result`` returns the merged public/private payload; keep the
+            # bulk reader byte-identical so capability markers survive.
+            try:
+                payload = dict(json.loads(str(row["payload"] or "{}")))
+            except (TypeError, ValueError):
+                payload = {}
+            try:
+                payload.update(json.loads(str(row["private_payload"] or "{}")))
+            except (TypeError, ValueError):
+                pass
+            if payload:
+                bulk[str(row["row_id"] or "")] = copy.deepcopy(payload)
+        return bulk
 
     def import_text_with_stats(self, content: str) -> tuple[int, int]:
         incoming = self._parse_content(content)
@@ -293,6 +336,39 @@ class SQLiteFreeMailboxPool(_LegacyMailboxPool):
             )
         selected.sort(key=lambda item: (item[0], item[1], item[2].line_no, item[2].row_id))
         return [item[2] for item in selected[: max(0, int(count))]]
+
+    def available_count(self) -> int:
+        """Count dispatchable rows without materializing or sorting entries.
+
+        ``state`` polls only need this number; ``available(10_000)`` would
+        additionally build and sort a full entry list per request.
+        Expiry handling matches ``available``: an expired Remail row that is
+        still marked active is flipped to unavailable (without scanning it
+        into the count).
+        """
+        now = time.time()
+        expired_batch: list[tuple[str, dict[str, Any]]] = []
+        total = 0
+        for row in self.storage.list_mailboxes(limit=10_000):
+            payload = row.get("payload") if isinstance(row.get("payload"), Mapping) else {}
+            if str(payload.get("source") or "").strip().lower() == "remail" and remail_order_expired(payload, now=now):
+                if str(row.get("status") or "available") in _ACTIVE_MAILBOX_STATUSES:
+                    expired_batch.append((str(row.get("row_id") or ""), {"remail_expired": True, "error": "Remail 订单已过期"}))
+                continue
+            if str(row.get("status") or "available") != "available":
+                continue
+            if _stored_bool(payload.get("lease_confirmed")):
+                continue
+            try:
+                cooldown = float(payload.get("cooldown_until") or 0)
+            except (TypeError, ValueError):
+                cooldown = 0
+            if cooldown > now:
+                continue
+            total += 1
+        for row_id, patch in expired_batch:
+            self.storage.update_mailbox(row_id, status="unavailable", payload_patch=patch)
+        return total
 
     def reserve(self, rows: Sequence[FreeMailbox], batch_id: str) -> None:
         # Validate and update the complete selection in one SQLite

@@ -40,6 +40,49 @@ def _search_bound(value: Any, *, end_of_day: bool = False) -> str:
 class DiagnosticExportMixin:
     """Mixin providing incident search and redacted export for ``DiagnosticStore``."""
 
+    def search_task_nodes(self, task_ids: Sequence[str], node_code: str) -> dict[str, str]:
+        """Return ``task_id -> incident_id`` for the newest matching incident.
+
+        State projections previously re-ran ``search`` per task to enrich
+        missing incident ids; this batch variant answers all tasks with one
+        indexed query instead.
+        """
+        normalized_node = _safe_text(node_code, 180)
+        unique_ids: list[str] = []
+        seen: set[str] = set()
+        for task_id in task_ids:
+            value = _safe_text(task_id, 180)
+            if value and value not in seen:
+                seen.add(value)
+                unique_ids.append(value)
+        if not normalized_node or not unique_ids:
+            return {}
+        placeholders = ",".join("?" for _ in unique_ids)
+        with self._lock, self._connection() as db:
+            rows = db.execute(
+                f"""
+                SELECT i.task_id, i.incident_id
+                FROM diagnostic_incidents i
+                JOIN (
+                    SELECT task_id, MAX(created_at) AS latest_created, MAX(updated_at) AS latest_updated
+                    FROM diagnostic_incidents
+                    WHERE task_id IN ({placeholders}) AND first_node_code=?
+                    GROUP BY task_id
+                ) latest
+                  ON i.task_id=latest.task_id
+                 AND i.created_at=latest.latest_created
+                 AND i.updated_at=latest.latest_updated
+                """,
+                [*unique_ids, normalized_node],
+            ).fetchall()
+        matches: dict[str, str] = {}
+        for row in rows:
+            incident_id = _safe_text(row["incident_id"], 80).upper()
+            task_id = _safe_text(row["task_id"], 180)
+            if incident_id and task_id:
+                matches.setdefault(task_id, incident_id)
+        return matches
+
     def search(self, query: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
         query = query or {}
         clauses: list[str] = []
