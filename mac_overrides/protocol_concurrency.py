@@ -12,6 +12,14 @@ import time
 from typing import Any, Callable, Iterator
 
 try:
+    from .concurrency_gate import GATE_WAIT_TIMEOUT_SECONDS as _GATE_WAIT_SECONDS, stop_event_is_set as _stop_event_is_set
+except ImportError:  # Loaded as a top-level runtime override.
+    from concurrency_gate import (  # type: ignore[no-redef]
+        GATE_WAIT_TIMEOUT_SECONDS as _GATE_WAIT_SECONDS,
+        stop_event_is_set as _stop_event_is_set,
+    )
+
+try:
     from .protocol_pressure_runtime import ProtocolPressurePolicy
 except ImportError:  # Loaded as a top-level runtime override.
     from protocol_pressure_runtime import ProtocolPressurePolicy  # type: ignore[no-redef]
@@ -355,15 +363,6 @@ class ProxyProtocolGate:
             self.condition.notify_all()
             return state.limit
 
-    @staticmethod
-    def _stopped(stop_event: Any) -> bool:
-        if stop_event is None:
-            return False
-        checker = getattr(stop_event, "is_set", None)
-        if callable(checker):
-            return bool(checker())
-        return bool(stop_event()) if callable(stop_event) else bool(stop_event)
-
     def wake_all(self) -> None:
         with self.condition:
             self.condition.notify_all()
@@ -382,13 +381,13 @@ class ProxyProtocolGate:
                 state.waiting += 1
                 try:
                     while True:
-                        if self._stopped(stop_event):
+                        if _stop_event_is_set(stop_event):
                             raise RuntimeError("task_stopped")
                         self._clear_expired_pause_locked(state, float(self.now_fn()))
                         if not state.paused:
                             return key
                         blocked = True
-                        self.condition.wait(timeout=0.25)
+                        self.condition.wait(timeout=_GATE_WAIT_SECONDS)
                 finally:
                     state.waiting = max(0, state.waiting - 1)
         finally:
@@ -414,7 +413,7 @@ class ProxyProtocolGate:
                     state.waiting += 1
                     try:
                         while True:
-                            if self._stopped(stop_event):
+                            if _stop_event_is_set(stop_event):
                                 raise RuntimeError("task_stopped")
                             now = float(self.now_fn())
                             self._clear_expired_pause_locked(state, now)
@@ -438,7 +437,7 @@ class ProxyProtocolGate:
                                 acquired = True
                                 break
                             self.condition.wait(
-                                timeout=min(0.25, launch_wait) if launch_wait else 0.25
+                                timeout=min(_GATE_WAIT_SECONDS, launch_wait) if launch_wait else _GATE_WAIT_SECONDS
                             )
                     finally:
                         state.waiting = max(0, state.waiting - 1)

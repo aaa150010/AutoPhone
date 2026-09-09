@@ -10,10 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-__all__ = [
-    "classify_network_error_kind",
-    "stop_event_is_set",
-]
+__all__ = ["classify_network_error_kind"]
 
 
 # Marker tables ordered from most specific to most generic. Each entry is
@@ -128,13 +125,3 @@ def classify_network_error_kind(value: Any) -> str | None:
     if "timeout" in text or "timed out" in text:
         return "connect_timeout"
     return None
-
-
-def stop_event_is_set(stop_event: Any) -> bool:
-    """Shared stop-event predicate for gate loops and wait helpers."""
-    if stop_event is None:
-        return False
-    checker = getattr(stop_event, "is_set", None)
-    if callable(checker):
-        return bool(checker())
-    return bool(stop_event()) if callable(stop_event) else bool(stop_event)

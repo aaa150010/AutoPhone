@@ -9,6 +9,17 @@ import threading
 from typing import Any, Callable, Iterator, Mapping
 
 try:
+    from .concurrency_gate import (
+        GATE_WAIT_TIMEOUT_SECONDS as _GATE_WAIT_SECONDS,
+        stop_event_is_set as _stop_event_is_set,
+    )
+except ImportError:  # Loaded as a top-level runtime override.
+    from concurrency_gate import (  # type: ignore[no-redef]
+        GATE_WAIT_TIMEOUT_SECONDS as _GATE_WAIT_SECONDS,
+        stop_event_is_set as _stop_event_is_set,
+    )
+
+try:
     from .sms_provider_runtime import (
         legacy_sms_provider_keys,
         normalize_sms_provider_pools,
@@ -270,15 +281,6 @@ class InflightAdmissionGate:
         self._stopped = False
         self._samples: deque[dict[str, Any]] = deque(maxlen=self.window_size)
 
-    @staticmethod
-    def _event_is_set(stop_event: Any) -> bool:
-        if stop_event is None:
-            return False
-        checker = getattr(stop_event, "is_set", None)
-        if callable(checker):
-            return bool(checker())
-        return bool(stop_event()) if callable(stop_event) else bool(stop_event)
-
     def snapshot(self) -> dict[str, Any]:
         """Return the complete credential-free public state for this batch."""
         with self.condition:
@@ -307,7 +309,7 @@ class InflightAdmissionGate:
         try:
             while not acquired:
                 with self.condition:
-                    if self._stopped or self._event_is_set(stop_event):
+                    if self._stopped or _stop_event_is_set(stop_event):
                         self.waiting = max(0, self.waiting - 1)
                         registered_waiter = False
                         raise RuntimeError("task_stopped")
@@ -317,7 +319,7 @@ class InflightAdmissionGate:
                         registered_waiter = False
                         acquired = True
                     else:
-                        self.condition.wait(timeout=0.25)
+                        self.condition.wait(timeout=_GATE_WAIT_SECONDS)
         except BaseException:
             if registered_waiter:
                 with self.condition:

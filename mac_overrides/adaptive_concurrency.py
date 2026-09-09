@@ -9,6 +9,14 @@ import threading
 import time
 from typing import Any
 
+try:
+    from .concurrency_gate import GATE_WAIT_TIMEOUT_SECONDS as _GATE_WAIT_SECONDS, stop_event_is_set as _stop_event_is_set
+except ImportError:  # Loaded as a top-level runtime override.
+    from concurrency_gate import (  # type: ignore[no-redef]
+        GATE_WAIT_TIMEOUT_SECONDS as _GATE_WAIT_SECONDS,
+        stop_event_is_set as _stop_event_is_set,
+    )
+
 
 def _notify(observer: Any, value: dict[str, Any]) -> None:
     if not callable(observer):
@@ -103,15 +111,6 @@ class AdaptiveConcurrencyGate:
         self.success_count = 0
         self.failure_count = 0
         self.total_wait_seconds = 0.0
-
-    @staticmethod
-    def _stopped(stop_event: Any) -> bool:
-        if stop_event is None:
-            return False
-        checker = getattr(stop_event, "is_set", None)
-        if callable(checker):
-            return bool(checker())
-        return bool(stop_event()) if callable(stop_event) else bool(stop_event)
 
     def _prune_pressure_locked(self, now: float) -> None:
         self.pressure_events = [
@@ -213,7 +212,7 @@ class AdaptiveConcurrencyGate:
                 with self.condition:
                     now = float(self.now_fn())
                     event = self._expire_burst_locked(now)
-                    if self._stopped(stop_event):
+                    if _stop_event_is_set(stop_event):
                         pending_consumed = self._consume_pending_locked(
                             registered_pending,
                         )
@@ -232,9 +231,9 @@ class AdaptiveConcurrencyGate:
                             acquired = True
                         else:
                             self.condition.wait(
-                                timeout=min(0.25, pause_remaining)
+                                timeout=min(_GATE_WAIT_SECONDS, pause_remaining)
                                 if pause_remaining
-                                else 0.25
+                                else _GATE_WAIT_SECONDS
                             )
                 if event is not None:
                     _notify(self.on_change, event)

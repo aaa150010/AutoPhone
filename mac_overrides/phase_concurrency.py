@@ -7,6 +7,14 @@ import threading
 import time
 from typing import Any, Callable
 
+try:
+    from .concurrency_gate import GATE_WAIT_TIMEOUT_SECONDS as _GATE_WAIT_SECONDS, stop_event_is_set as _stop_event_is_set
+except ImportError:  # Loaded as a top-level runtime override.
+    from concurrency_gate import (  # type: ignore[no-redef]
+        GATE_WAIT_TIMEOUT_SECONDS as _GATE_WAIT_SECONDS,
+        stop_event_is_set as _stop_event_is_set,
+    )
+
 
 class AdjustablePhaseGate:
     """Match the recovered phase-gate contract while allowing bounded updates."""
@@ -31,15 +39,6 @@ class AdjustablePhaseGate:
         self.pause_until = 0.0
         self.last_reason = "configured_baseline"
 
-    @staticmethod
-    def _stopped(stop_event: Any) -> bool:
-        if stop_event is None:
-            return False
-        checker = getattr(stop_event, "is_set", None)
-        if callable(checker):
-            return bool(checker())
-        return bool(stop_event()) if callable(stop_event) else bool(stop_event)
-
     def acquire(self, stop_event: Any = None) -> None:
         registered_waiter = True
         with self.condition:
@@ -47,7 +46,7 @@ class AdjustablePhaseGate:
         try:
             while True:
                 with self.condition:
-                    if self._stopped(stop_event):
+                    if _stop_event_is_set(stop_event):
                         raise RuntimeError("task_stopped")
                     now = float(self.now_fn())
                     pause_remaining = max(0.0, self.pause_until - now)
@@ -57,9 +56,9 @@ class AdjustablePhaseGate:
                         registered_waiter = False
                         return
                     self.condition.wait(
-                        timeout=min(0.25, pause_remaining)
+                        timeout=min(_GATE_WAIT_SECONDS, pause_remaining)
                         if pause_remaining
-                        else 0.25
+                        else _GATE_WAIT_SECONDS
                     )
         except BaseException:
             if registered_waiter:
