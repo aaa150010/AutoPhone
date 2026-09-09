@@ -2966,5 +2966,41 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertEqual(summary["proxy_switches"], 1)
 
 
+class TaskStoreDirtySaveTests(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory(prefix="gptphone-free-taskstore-")
+        self.data_dir = Path(self.temp_dir.name)
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_dirty_partial_save_never_prunes_omitted_terminal_rows(self) -> None:
+        """A dirty-only save must not delete rows absent from the snapshot.
+
+        Pruning on partial snapshots deleted untouched terminal rows and the
+        next full save re-created them with a fresh created_at, which reset
+        task ordering in the log center.
+        """
+        adapters = build_free_storage_adapters(self.data_dir / "free_register_partial")
+        old = 1700000000
+        adapters.tasks.save({
+            "keep-a": {"task_id": "keep-a", "created_at": old, "updated_at": old, "status": "success"},
+            "keep-b": {"task_id": "keep-b", "created_at": old, "updated_at": old, "status": "failed"},
+        })
+        adapters.tasks.save(
+            {"keep-a": {"task_id": "keep-a", "created_at": old, "updated_at": old + 1, "status": "success"}},
+            partial_snapshot=True,
+        )
+        loaded = adapters.tasks.load()
+        self.assertEqual(sorted(loaded), ["keep-a", "keep-b"])
+        self.assertEqual(loaded["keep-b"]["created_at"], old)
+        # A complete snapshot that omits a row still prunes it (rollback
+        # semantics unchanged).
+        adapters.tasks.save({
+            "keep-a": {"task_id": "keep-a", "created_at": old, "updated_at": old + 2, "status": "success"},
+        })
+        self.assertEqual(sorted(adapters.tasks.load()), ["keep-a"])
+
+
 if __name__ == "__main__":
     unittest.main()

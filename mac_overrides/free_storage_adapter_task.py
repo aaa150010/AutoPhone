@@ -147,7 +147,7 @@ class SQLiteFreeTaskStore(_LegacyTaskStoreBase):
             self._remember_revision(task_id, saved)
             return
 
-    def save(self, tasks: Mapping[str, Mapping[str, Any]]) -> None:
+    def save(self, tasks: Mapping[str, Mapping[str, Any]], *, partial_snapshot: bool = False) -> None:
         known_before = dict(self._known_task_revisions)
         incoming_ids: set[str] = set()
         for key, value in tasks.items():
@@ -160,7 +160,13 @@ class SQLiteFreeTaskStore(_LegacyTaskStoreBase):
             self._save_one(task_id, value)
         # Preserve the legacy explicit-delete behavior for rows this adapter
         # actually observed, while preventing a stale snapshot from deleting
-        # terminal rows created or advanced by another process.
+        # terminal rows created or advanced by another process. A partial
+        # (dirty-only) snapshot deliberately omits untouched rows, so pruning
+        # is skipped entirely — otherwise every dirty save would delete the
+        # omitted terminal rows and the next full save would re-create them
+        # with a fresh created_at, scrambling task ordering.
+        if partial_snapshot:
+            return
         stale_revisions = {
             task_id: revision
             for task_id, revision in known_before.items()

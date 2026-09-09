@@ -5,6 +5,7 @@ from __future__ import annotations
 import atexit
 from concurrent.futures import Future
 import copy
+import inspect
 import os
 from pathlib import Path
 import re
@@ -666,6 +667,16 @@ class FreeRegisterManager(
         with self._lock:
             self._task_dirty.add(str(task_id or ""))
 
+    def _task_save_kwargs(self) -> tuple[str, ...]:
+        """Return the keyword arguments the task store's ``save`` accepts."""
+        try:
+            parameter_names = {
+                name for name in inspect.signature(self.task_store.save).parameters
+            }
+        except (TypeError, ValueError):
+            return ()
+        return tuple(parameter_names)
+
     def _save_tasks_safely(
         self,
         context: str = "Free 任务状态",
@@ -708,9 +719,17 @@ class FreeRegisterManager(
                     snapshot = copy.deepcopy(self._tasks)
                 # An empty full snapshot still reaches the store: the SQLite
                 # adapter derives its terminal-row pruning from ids missing
-                # from the snapshot, which rollback relies on.
+                # from the snapshot, which rollback relies on. A dirty-only
+                # save is a partial snapshot and must never prune omitted
+                # rows — pruning there deletes untouched terminal rows and
+                # the next full save re-creates them with fresh created_at,
+                # scrambling the task ordering.
                 if snapshot or not only_dirty:
-                    self.task_store.save(snapshot)
+                    save = getattr(self.task_store, "save", None)
+                    if only_dirty and "partial_snapshot" in self._task_save_kwargs():
+                        save(snapshot, partial_snapshot=True)
+                    else:
+                        save(snapshot)
                 # SQLite adapters advance a durable revision on every write.
                 # Copy the returned CAS metadata back into the manager's
                 # in-memory map so the next callback does not repeatedly write
