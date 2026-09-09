@@ -18,6 +18,16 @@ _MAX_WORKER_CAPACITY = 12
 _QUEUE_NODE = "[排队等待/queue_waiting]"
 
 
+def _note_failure(importer: Any, label: str, cause: str, error: BaseException) -> None:
+    """Best-effort scheduler telemetry: log only the exception type."""
+    try:
+        importer._log(f"[{label}] {cause}（{type(error).__name__}）", "error")
+    except Exception:
+        # There is no remaining diagnostic sink when the importer's own logger
+        # is unavailable; cleanup semantics must stay unchanged.
+        return
+
+
 def _bounded_int(value: Any, default: int, minimum: int, maximum: int) -> int:
     try:
         parsed = int(value)
@@ -69,9 +79,10 @@ class ObservedPhaseGate:
             if callable(self.on_wait):
                 try:
                     self.on_wait(max(0.0, float(self.now_fn()) - started))
-                except Exception:
-                    # Wait-time observation must not alter admission outcome.
-                    pass
+                except Exception as exc:
+                    # Wait-time observation must not alter admission outcome;
+                    # the observer has no side channel beyond the callback.
+                    _note_failure(self, "phase_gate", "阶段等待观察回调失败", exc)
 
     def release(self) -> None:
         self.gate.release()
@@ -170,24 +181,28 @@ def _startup_cleanup(
     for future in futures:
         try:
             was_cancelled = future.cancel()
-        except Exception:
+        except Exception as exc:
             cleanup_failures += 1
+            _note_failure(importer, _QUEUE_NODE, "启动失败清理：等待任务取消失败", exc)
         else:
             if was_cancelled and admission_tracks_pending:
                 try:
                     task_admission.discard_pending()
-                except Exception:
+                except Exception as exc:
                     cleanup_failures += 1
+                    _note_failure(importer, _QUEUE_NODE, "启动失败清理：待定配额释放失败", exc)
     if executor is not None:
         try:
             executor.shutdown(wait=True, cancel_futures=True)
-        except Exception:
+        except Exception as exc:
             cleanup_failures += 1
+            _note_failure(importer, _QUEUE_NODE, "启动失败清理：执行器关闭失败", exc)
     if admission_tracks_pending:
         try:
             task_admission.clear_pending()
-        except Exception:
+        except Exception as exc:
             cleanup_failures += 1
+            _note_failure(importer, _QUEUE_NODE, "启动失败清理：待定配额清空失败", exc)
     cleanup_diagnostics: list[str] = []
     for task_id, _ordinal, entry, restore_on_cancel in reserved:
         if not restore_on_cancel:
@@ -208,15 +223,15 @@ def _startup_cleanup(
     for diagnostic in cleanup_diagnostics:
         try:
             importer._log(diagnostic, "error")
-        except Exception:
+        except Exception as exc:
             # Telemetry must not mask the original startup failure.
-            pass
+            _note_failure(importer, _QUEUE_NODE, "清理诊断写入失败", exc)
     try:
         if cleanup_failures:
             importer._log(f"启动失败清理有 {cleanup_failures} 项未完成", "error")
-    except Exception:
+    except Exception as exc:
         # Telemetry must not mask the original startup failure.
-        pass
+        _note_failure(importer, _QUEUE_NODE, "清理汇总写入失败", exc)
     finally:
         importer.executor = None
         importer.futures = []
@@ -241,9 +256,9 @@ def _startup_cleanup(
                     f"（{type(exc).__name__}）",
                     "error",
                 )
-            except Exception:
+            except Exception as log_exc:
                 # Telemetry must not mask the reconcile failure above.
-                pass
+                _note_failure(importer, _QUEUE_NODE, "对账失败日志写入失败", log_exc)
     elif (
         batch_manifest is not None
         and batch_id
@@ -259,9 +274,9 @@ def _startup_cleanup(
                     f"（{type(exc).__name__}）",
                     "error",
                 )
-            except Exception:
+            except Exception as log_exc:
                 # Telemetry must not mask the rollback failure above.
-                pass
+                _note_failure(importer, _QUEUE_NODE, "回滚失败日志写入失败", log_exc)
 
 
 def start_bounded_importer(
@@ -445,9 +460,9 @@ def start_bounded_importer(
                     f"[运行批次对账/run_batch_manifest] {method} 更新失败（{type(exc).__name__}）",
                     "error",
                 )
-            except Exception:
+            except Exception as log_exc:
                 # Telemetry must not mask the manifest failure surfaced above.
-                pass
+                _note_failure(importer, _QUEUE_NODE, "对账更新日志写入失败", log_exc)
 
     def finish_before_admission(
         entry: Any,
@@ -491,16 +506,16 @@ def start_bounded_importer(
                     f"{task_id} {_QUEUE_NODE} 任务终态写入失败（{type(exc).__name__}）",
                     "error",
                 )
-            except Exception:
+            except Exception as log_exc:
                 # Telemetry must not mask the terminal-state write failure.
-                pass
+                _note_failure(importer, _QUEUE_NODE, "终态写入日志失败", log_exc)
 
         if restore_error:
             try:
                 importer._log(f"{task_id} {error}", "error")
-            except Exception:
+            except Exception as log_exc:
                 # Telemetry must not change the recorded restore outcome.
-                pass
+                _note_failure(importer, _QUEUE_NODE, "归还失败日志写入失败", log_exc)
         if stopped:
             with importer.lock:
                 importer.cancelled_waiting += 1
@@ -533,9 +548,9 @@ def start_bounded_importer(
                 with importer.lock:
                     task = copy.deepcopy(importer.tasks.get(task_id) or {})
                 observer(task.get("status"), task.get("result"))
-            except Exception:
+            except Exception as exc:
                 # Rollback telemetry must never change task outcome semantics.
-                pass
+                _note_failure(importer, _QUEUE_NODE, "执行中结果上报失败", exc)
 
         def run_admitted() -> None:
             nonlocal business_started
@@ -543,9 +558,9 @@ def start_bounded_importer(
                 if callable(on_task_started):
                     try:
                         on_task_started(task_id, 0.0)
-                    except Exception:
+                    except Exception as exc:
                         # Start-notification telemetry must not skip the task.
-                        pass
+                        _note_failure(importer, _QUEUE_NODE, "任务启动通知失败", exc)
                 record_batch("mark_started", task_id)
                 business_started = True
                 importer._run_one(task_settings, ordinal, entry, task_id)
@@ -561,9 +576,9 @@ def start_bounded_importer(
                 if callable(on_task_started):
                     try:
                         on_task_started(task_id, wait_seconds)
-                    except Exception:
+                    except Exception as exc:
                         # Start-notification telemetry must not skip the task.
-                        pass
+                        _note_failure(importer, _QUEUE_NODE, "任务启动通知失败", exc)
                 record_batch("mark_started", task_id)
                 business_started = True
                 importer._run_one(task_settings, ordinal, entry, task_id)
@@ -800,18 +815,18 @@ def start_bounded_importer(
                             if callable(discard_pending):
                                 try:
                                     discard_pending(len(appended_specs))
-                                except Exception:
+                                except Exception as exc:
                                     # Cleanup after a failed append must not mask
                                     # the original submission error.
-                                    pass
+                                    _note_failure(importer, _QUEUE_NODE, "追加失败清理：待定配额释放失败", exc)
                         staged_gate.set()
                         for future, _entry, _task_id in staged_futures:
                             try:
                                 future.cancel()
-                            except Exception:
+                            except Exception as exc:
                                 # Cleanup after a failed append must not mask
                                 # the original submission error.
-                                pass
+                                _note_failure(importer, _QUEUE_NODE, "追加失败清理：等待任务取消失败", exc)
                         for task_id in created_task_ids:
                             importer.tasks.pop(task_id, None)
                         raise
@@ -845,7 +860,7 @@ def start_bounded_importer(
                         except Exception:
                             # Worker failures are already recorded on the task
                             # state; the watcher must keep draining the queue.
-                            pass
+                            continue
                     importer._watch()
                 finally:
                     if batch_manifest is not None and batch_id:
@@ -864,10 +879,10 @@ def start_bounded_importer(
                                     f"（{type(exc).__name__}）",
                                     "error",
                                 )
-                            except Exception:
+                            except Exception as log_exc:
                                 # Telemetry must not mask the reconcile failure
                                 # already surfaced above.
-                                pass
+                                _note_failure(importer, _QUEUE_NODE, "结束对账日志写入失败", log_exc)
 
             watcher = thread_factory(
                 target=watch_and_reconcile,
@@ -936,9 +951,9 @@ def _log_startup_summary(
                 "仅预留本批目标邮箱，验证码通过后立即释放，号码/SUB2 保持并发"
             )
         importer._log(message, "success")
-    except Exception:
+    except Exception as exc:
         # The banner is pure telemetry; scheduling has already succeeded.
-        pass
+        _note_failure(importer, "导入任务启动", "启动摘要写入失败", exc)
 
 
 def stop_bounded_importer(importer: Any) -> None:
@@ -948,9 +963,9 @@ def stop_bounded_importer(importer: Any) -> None:
     if task_admission is not None:
         try:
             task_admission.wake_all()
-        except Exception:
+        except Exception as exc:
             # Wake failures must not prevent the remaining stop cleanup.
-            pass
+            _note_failure(importer, _QUEUE_NODE, "停止唤醒任务准入失败", exc)
     inflight_gate = getattr(importer, "inflight_gate", None)
     if inflight_gate is not None:
         try:
@@ -959,14 +974,15 @@ def stop_bounded_importer(importer: Any) -> None:
                 stop()
             else:
                 inflight_gate.wake_all()
-        except Exception:
+        except Exception as exc:
             # Wake failures must not prevent the remaining stop cleanup.
-            pass
+            _note_failure(importer, _QUEUE_NODE, "停止唤醒执行中门控失败", exc)
     cleanup_failures = 0
     try:
         importer.manual_codes.cancel_all()
-    except Exception:
+    except Exception as exc:
         cleanup_failures += 1
+        _note_failure(importer, _QUEUE_NODE, "停止清理：手动验证码取消失败", exc)
     with importer.lock:
         futures = list(importer.futures)
         executor = importer.executor
@@ -980,8 +996,9 @@ def stop_bounded_importer(importer: Any) -> None:
     for future in futures:
         try:
             was_cancelled = future.cancel()
-        except Exception:
+        except Exception as exc:
             cleanup_failures += 1
+            _note_failure(importer, _QUEUE_NODE, "停止清理：等待任务取消失败", exc)
             continue
         if not was_cancelled:
             continue
@@ -990,8 +1007,9 @@ def stop_bounded_importer(importer: Any) -> None:
             if callable(discard_pending):
                 try:
                     discard_pending()
-                except Exception:
+                except Exception as exc:
                     cleanup_failures += 1
+                    _note_failure(importer, _QUEUE_NODE, "停止清理：待定配额释放失败", exc)
         assignment = assignments.get(future)
         if assignment is None:
             continue
@@ -1020,8 +1038,9 @@ def stop_bounded_importer(importer: Any) -> None:
             batch_manifest = getattr(importer, "_gptphone_batch_manifest", None)
             if batch_manifest is not None:
                 batch_manifest.observe_task(task_id, "failed" if restore_error else "stopped")
-        except Exception:
+        except Exception as exc:
             cleanup_failures += 1
+            _note_failure(importer, _QUEUE_NODE, f"停止清理：{task_id} 终态写入失败", exc)
         cancelled += 1
 
     with importer.lock:
@@ -1029,8 +1048,9 @@ def stop_bounded_importer(importer: Any) -> None:
     if executor is not None:
         try:
             executor.shutdown(wait=False, cancel_futures=True)
-        except Exception:
+        except Exception as exc:
             cleanup_failures += 1
+            _note_failure(importer, _QUEUE_NODE, "停止清理：执行器关闭失败", exc)
     try:
         importer._log(
             f"已停止：取消 {cancelled} 个等待任务，正在运行任务已请求中断并执行邮箱清理",
@@ -1038,9 +1058,9 @@ def stop_bounded_importer(importer: Any) -> None:
         )
         if cleanup_failures:
             importer._log(f"停止清理有 {cleanup_failures} 项未完成", "error")
-    except Exception:
+    except Exception as exc:
         # The stop summary is pure telemetry; all cleanup already ran.
-        pass
+        _note_failure(importer, _QUEUE_NODE, "停止汇总写入失败", exc)
 
 
 __all__ = [
