@@ -7,6 +7,7 @@ from collections.abc import Callable
 import errno
 import hashlib
 import inspect
+import sys
 import os
 import select
 import secrets
@@ -61,6 +62,14 @@ class KeychainUnavailable(CheckpointDisabled):
 
 class KeychainOperationStopped(CheckpointDisabled):
     """The current task stopped while a Keychain helper was running."""
+
+
+def _note_process(where: str, exc: BaseException) -> None:
+    """Progress note for the terminate/kill escalation chain (no output sink)."""
+    try:
+        print(f"[keychain_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 def _b64(value: bytes) -> str:
@@ -466,30 +475,30 @@ class SecurityKeyProvider:
         try:
             if process.poll() is not None:
                 return
-        except Exception:
+        except Exception as probe_exc:
             # A lost process handle makes the terminate step a no-op.
-            pass
+            _note_process("terminate_probe", probe_exc)
         try:
             process.terminate()
-        except Exception:
+        except Exception as term_exc:
             # Terminate failures fall through to the kill escalation below.
-            pass
+            _note_process("terminate", term_exc)
         try:
             process.wait(timeout=0.5)
             return
-        except Exception:
+        except Exception as wait_exc:
             # A missed wait falls through to the kill escalation below.
-            pass
+            _note_process("terminate_wait", wait_exc)
         try:
             process.kill()
-        except Exception:
+        except Exception as kill_exc:
             # Kill failures are tolerated; the helper process is transient.
-            pass
+            _note_process("kill", kill_exc)
         try:
             process.wait(timeout=0.5)
-        except Exception:
+        except Exception as reap_exc:
             # A missed wait leaves reaping to the OS reaper.
-            pass
+            _note_process("kill_wait", reap_exc)
 
 
 __all__ = [

@@ -14,6 +14,7 @@ import copy
 from concurrent.futures import Future
 import secrets
 import threading
+import sys
 import time
 from typing import Any, Mapping, Sequence
 
@@ -122,6 +123,17 @@ class FreeRegisterStartupMixin:
                     self._release_runtime_owner()
             raise
 
+    def _note_startup_quiet(self, where: str, exc: BaseException) -> None:
+        """Record a swallowed startup/shutdown cleanup failure on stderr.
+
+        Cleanup must never mask the surrounding business failure; the note
+        keeps the swallowed exception observable during incident review.
+        """
+        try:
+            print(f"[free_register_startup/{where}] {type(exc).__name__}", file=sys.stderr)
+        except Exception:
+            return
+
     def _rollback_failed_startup(self) -> None:
         """Drain a batch whose executor/heartbeat could not be assembled.
 
@@ -159,19 +171,19 @@ class FreeRegisterStartupMixin:
         for future in futures:
             try:
                 future.cancel()
-            except Exception:
+            except Exception as exc:
                 # Shutdown cleanup must not mask the original startup failure.
-                pass
+                self._note_startup_quiet("startup_future_cancel", exc)
         if executor is not None:
             try:
                 executor.shutdown(wait=True, cancel_futures=True)
             except TypeError:
                 try:
                     executor.shutdown(wait=True)
-                except Exception:
+                except Exception as exc:
                     # Executor shutdown must not mask the original startup failure.
-                    pass
-            except Exception:
+                    self._note_startup_quiet("startup_executor_shutdown_compat", exc)
+            except Exception as exc:
                 # The worker state and lease cleanup below remain authoritative
                 # even when an injected/third-party executor cannot shut down
                 # cleanly.
@@ -179,9 +191,9 @@ class FreeRegisterStartupMixin:
         if heartbeat_thread is not None and heartbeat_thread is not threading.current_thread():
             try:
                 heartbeat_thread.join(timeout=5)
-            except Exception:
+            except Exception as exc:
                 # Heartbeat shutdown must not mask the original startup failure.
-                pass
+                self._note_startup_quiet("startup_heartbeat_join", exc)
 
         # A running worker may switch to a replacement proxy or confirm the
         # mailbox while the executor drains.  Refresh the task snapshots after
@@ -230,9 +242,9 @@ class FreeRegisterStartupMixin:
                             registration_ip="",
                             exit_ip="",
                         )
-                    except Exception:
+                    except Exception as exc:
                         # Startup cleanup must not mask the original failure being handled.
-                        pass
+                        self._note_startup_quiet("startup_row_checkpoint", exc)
 
         with self._lock:
             # Mark rows terminal for one save before removing them.  The
@@ -456,23 +468,23 @@ class FreeRegisterStartupMixin:
                     for task_id in reversed(leased_mailboxes):
                         try:
                             self.mailbox_leases.release(task_id=task_id, reusable=True)
-                        except Exception:
+                        except Exception as exc:
                             # Lease release must not mask the original startup failure.
-                            pass
+                            self._note_startup_quiet("startup_lease_release", exc)
                 for index, binding in reversed(list(enumerate(leased_bindings))):
                     try:
                         owner = created_task_ids[index] if index < len(created_task_ids) else batch_id
                         self.proxies.release(binding, owner=owner)
-                    except Exception:
+                    except Exception as exc:
                         # Proxy release must not mask the original startup failure.
-                        pass
+                        self._note_startup_quiet("startup_proxy_release", exc)
                 if reserved:
                     for row in rows:
                         try:
                             self.pool.update(row.row_id, status="available", batch_id="", stage="", driver="", proxy="", proxy_masked="", proxy_fingerprint="", expected_exit_ip="", exit_ip="", proxy_id="", proxy_country="", proxy_group="")
-                        except Exception:
+                        except Exception as exc:
                             # Pool reset must not mask the original startup failure.
-                            pass
+                            self._note_startup_quiet("startup_pool_reset", exc)
                 for task_id in created_task_ids:
                     self._tasks.pop(task_id, None)
                 self._save_tasks_safely("启动失败回滚")
@@ -542,16 +554,16 @@ class FreeRegisterStartupMixin:
         if executor is not None:
             try:
                 executor.shutdown(wait=True, cancel_futures=False)
-            except Exception:
+            except Exception as exc:
                 # The worker result and task state are already durable; a
                 # best-effort shutdown failure must not strand the manager.
-                pass
+                self._note_startup_quiet("stop_executor_shutdown", exc)
         if heartbeat_thread is not None and heartbeat_thread is not threading.current_thread():
             try:
                 heartbeat_thread.join(timeout=2)
-            except Exception:
+            except Exception as exc:
                 # Heartbeat shutdown must not block the scheduler stop.
-                pass
+                self._note_startup_quiet("stop_heartbeat_join", exc)
         with self._lock:
             if not self._futures and self._executor is executor:
                 completed_batch_id = str(self._batch_id or "")
@@ -583,10 +595,10 @@ class FreeRegisterStartupMixin:
                         if str(task.get("batch_id") or "") == completed_batch_id
                     ]
                 self._free_notification.submit(batch_tasks, batch_id=completed_batch_id)
-            except Exception:
+            except Exception as exc:
                 # Notification delivery is advisory and must never affect the
                 # persisted registration result or retry queue.
-                pass
+                self._note_startup_quiet("batch_notification", exc)
 
 
 __all__ = [
