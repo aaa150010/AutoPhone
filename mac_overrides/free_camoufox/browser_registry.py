@@ -2401,10 +2401,11 @@ class CamoufoxRegistrationRunner:
                 existing_password = str(candidate).strip()
                 break
         if twofa_retry and not existing_password:
-            raise _host_mod().FreeRegisterError(
-                "free_existing_login", "已有 Free 账号登录",
-                "已有账号登录缺少已保存密码，拒绝使用固定注册密码",
-                retryable=False, error_code="free_existing_login_password_missing",
+            # Passwordless accounts never save a credential. Falling back to
+            # the mailbox verification-code login inside the browser flow is
+            # the supported continuation, so do not reject here anymore.
+            log(
+                "已有账号未保存密码，将尝试邮箱验证码登录", "warn",
             )
         browser_config = dict(config.get("camoufox") or {})
         if self.debug_artifact_dir:

@@ -41,7 +41,7 @@ Free 代理池是两条链路共用的单一 `healthy_random` 池：不按国家
 
 ### 3.3 注册主流程与密码/2FA
 
-- 新注册默认优先走 passwordless 邮箱 OTP；只有实际进入并提交注册密码页时才使用配置中的注册密码（默认 `Aa150010150010`）并保存密码。已有账号登录、2FA 重试和换绑必须使用已保存的真实密码。
+- 新注册默认优先走 passwordless 邮箱 OTP；只有实际进入并提交注册密码页时才使用配置中的注册密码（默认 `Aa150010150010`）并保存密码。已有账号登录、2FA 重试和换绑优先使用已保存的真实密码；无保存密码的 passwordless 账号（Camoufox 链路）在登录密码页改走邮箱验证码登录，登录成功后按 `auto_set_password`/`auto_set_2fa` 配置补设密码与 2FA；换绑仍必须使用已保存的真实密码和已启用 TOTP。
 - 注册密码和 2FA 是两个独立的可选分支，四种开关组合都必须可运行；密码分支不得为了前置判断查询 `mfa_info`，只有实际进入 2FA 分支时才读取 MFA 状态。判断账号是否有密码以真实 `password_status=enabled` 为准，`password_set_after_registration` 仅表示本次是否执行过补设操作。
 - Session、2FA、套餐/Plus 和结构化错误使用统一业务结果契约，但协议 HTTP 与 Camoufox async page 只在 transport adapter 层保持差异。
 - Cloudflare、人机验证和安全挑战只记录并停止，禁止自动绕过。Session 失效、网络临时错误和业务限流必须按 AutoRegister 的重试边界处理；不得把业务 429 当成可重复提交信号。

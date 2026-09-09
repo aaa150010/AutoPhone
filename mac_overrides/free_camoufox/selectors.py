@@ -56,6 +56,7 @@ PASSWORDLESS_SELECTORS = (
     "a[href*='passwordless']", "button:has-text('email code')",
     "button:has-text('Email code')", "button:has-text('Use email')",
     "a:has-text('Use email')", "button:has-text('邮箱验证码')",
+    "button:has-text('verification code')", "a:has-text('verification code')",
 )
 LOGIN_PASSWORD_SUBMIT_SELECTORS = (
     "button[type='submit']", "input[type='submit']",

@@ -944,6 +944,14 @@ async def _submit_existing_login_password(
         password=password,
     )
 
+async def _click_passwordless_login_switch(
+    page,
+) -> bool:
+    return await _camoufox_page._click_passwordless_login_switch(
+        _host_module(),
+        page=page,
+    )
+
 def _stop_requested(
     value,
 ) -> bool:

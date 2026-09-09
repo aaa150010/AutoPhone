@@ -43,6 +43,7 @@ try:
         LOGIN_PASSWORD_SUBMIT_SELECTORS,
         NAME_SELECTORS,
         OTP_SELECTORS,
+        PASSWORDLESS_SELECTORS,
         PASSWORD_SELECTORS,
     )
 except ImportError:  # pragma: no cover - top-level recovery import
@@ -53,6 +54,7 @@ except ImportError:  # pragma: no cover - top-level recovery import
         LOGIN_PASSWORD_SUBMIT_SELECTORS,
         NAME_SELECTORS,
         OTP_SELECTORS,
+        PASSWORDLESS_SELECTORS,
         PASSWORD_SELECTORS,
     )
 
@@ -1814,6 +1816,18 @@ async def _submit_existing_login_password(host, page: Any, password: str) -> boo
     # use the freshly resolved input as the final, same-form fallback.
     fresh_selector = await host._find_visible_selector(page, LOGIN_PASSWORD_SELECTORS)
     return bool(fresh_selector and await host._submit_visible_form(page, fresh_selector))
+
+
+async def _click_passwordless_login_switch(host, page: Any) -> bool:
+    """Switch a login-password page to the verification-code login path.
+
+    Passwordless accounts never stored a credential, so the login-password
+    form cannot be submitted. Click the page's one-time-code entry (link or
+    button) once; the main loop then continues through the OTP stage.
+    """
+    if await host._click_first(page, PASSWORDLESS_SELECTORS, timeout=6):
+        return True
+    return False
 
 
 def _stop_requested(host, value: Any) -> bool:

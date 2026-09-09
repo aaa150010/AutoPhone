@@ -759,16 +759,176 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         self.assertEqual(transition[0], "free_existing_login_otp")
         self.assertEqual(transition[3], "success")
 
-    def test_existing_login_requires_saved_password_before_browser_progress(self):
-        with self.assertRaises(runtime.CamoufoxBrowserError) as raised:
-            asyncio.run(
+    def test_existing_login_home_sets_password_when_configured(self):
+        """A code-login account adds a password after login when configured."""
+        clock = [0.0]
+
+        async def fake_sleep(seconds):
+            clock[0] += float(seconds or 0.0)
+
+        add_password = AsyncMock(return_value={
+            "password_status": "enabled",
+            "password_set_after_registration": True,
+            "password": "configured-password",
+        })
+        with (
+            patch.object(runtime.time, "monotonic", side_effect=lambda: clock[0]),
+            patch.object(runtime.asyncio, "sleep", side_effect=fake_sleep),
+            patch.object(runtime, "_goto_with_retry", new=AsyncMock()),
+            patch.object(runtime, "_wait_for_any_selector", new=AsyncMock(return_value="input")),
+            patch.object(runtime, "_submit_email_form_stable", new=AsyncMock(return_value={
+                "ok": True, "reason": "form_request_submit", "form_present": True,
+                "input_selector": "input", "submit_selector": "submit",
+            })),
+            patch.object(runtime, "_submit_visible_form", new=AsyncMock(return_value=True)),
+            patch.object(
+                runtime, "_page_state",
+                new=AsyncMock(side_effect=("login_password", "otp", "otp", "otp", "home")),
+            ),
+            patch.object(runtime, "_find_visible_selector", new=AsyncMock(return_value="otp-input")),
+            patch.object(runtime, "_fill_input_like_user", new=AsyncMock(return_value=True)),
+            patch.object(runtime, "_click_first", new=AsyncMock(return_value=True)),
+            patch.object(runtime, "browser_session", new=AsyncMock(return_value={"accessToken": "token"})),
+            patch.object(runtime, "browser_plan_details", new=AsyncMock(return_value={})),
+            patch.object(runtime, "browser_add_password", new=add_password) as add_mock,
+            patch.object(runtime, "finalize_registration_result", side_effect=lambda result, **_kwargs: result),
+        ):
+            result = asyncio.run(
                 runtime._browser_flow(
-                    _FakePage(), email="user@example.test", password="",
-                    force_existing_login=True, otp_callback=lambda: "123456",
-                    config={"registration_timeout_seconds": 60},
-                    log=lambda *_args: None,
+                    _FakePage(), email="user@example.test", password="configured-password",
+                    force_existing_login=True,
+                    otp_callback=lambda stage: "123456",
+                    config={"registration_timeout_seconds": 60, "auto_set_2fa": False, "auto_set_password": True},
+                    log=lambda *_args: None, otp_prepare=Mock(), otp_mark_sent=Mock(),
                 )
             )
+
+        add_mock.assert_awaited_once()
+        self.assertEqual(result["password_status"], "enabled")
+        self.assertTrue(result["password_set_after_registration"])
+
+    def test_existing_login_home_keeps_password_disabled_without_config(self):
+        """Without auto_set_password a code-login account stays passwordless."""
+        clock = [0.0]
+
+        async def fake_sleep(seconds):
+            clock[0] += float(seconds or 0.0)
+
+        with (
+            patch.object(runtime.time, "monotonic", side_effect=lambda: clock[0]),
+            patch.object(runtime.asyncio, "sleep", side_effect=fake_sleep),
+            patch.object(runtime, "_goto_with_retry", new=AsyncMock()),
+            patch.object(runtime, "_wait_for_any_selector", new=AsyncMock(return_value="input")),
+            patch.object(runtime, "_submit_email_form_stable", new=AsyncMock(return_value={
+                "ok": True, "reason": "form_request_submit", "form_present": True,
+                "input_selector": "input", "submit_selector": "submit",
+            })),
+            patch.object(runtime, "_submit_visible_form", new=AsyncMock(return_value=True)),
+            patch.object(
+                runtime, "_page_state",
+                new=AsyncMock(side_effect=("login_password", "otp", "otp", "otp", "home")),
+            ),
+            patch.object(runtime, "_find_visible_selector", new=AsyncMock(return_value="otp-input")),
+            patch.object(runtime, "_fill_input_like_user", new=AsyncMock(return_value=True)),
+            patch.object(runtime, "_click_first", new=AsyncMock(return_value=True)),
+            patch.object(runtime, "browser_session", new=AsyncMock(return_value={"accessToken": "token"})),
+            patch.object(runtime, "browser_plan_details", new=AsyncMock(return_value={})),
+            patch.object(runtime, "browser_add_password", new=AsyncMock()) as add_mock,
+            patch.object(runtime, "finalize_registration_result", side_effect=lambda result, **_kwargs: result),
+        ):
+            result = asyncio.run(
+                runtime._browser_flow(
+                    _FakePage(), email="user@example.test", password="configured-password",
+                    force_existing_login=True,
+                    otp_callback=lambda stage: "123456",
+                    config={"registration_timeout_seconds": 60, "auto_set_2fa": False, "auto_set_password": False},
+                    log=lambda *_args: None, otp_prepare=Mock(), otp_mark_sent=Mock(),
+                )
+            )
+
+        add_mock.assert_not_awaited()
+        self.assertEqual(result["password_status"], "disabled")
+
+    def test_existing_login_without_saved_password_switches_to_code_login(self):
+        clock = [0.0]
+        callback_stages = []
+        events = []
+
+        async def fake_sleep(seconds):
+            clock[0] += float(seconds or 0.0)
+
+        with (
+            patch.object(runtime.time, "monotonic", side_effect=lambda: clock[0]),
+            patch.object(runtime.asyncio, "sleep", side_effect=fake_sleep),
+            patch.object(runtime, "_goto_with_retry", new=AsyncMock()),
+            patch.object(runtime, "_wait_for_any_selector", new=AsyncMock(return_value="input")),
+            patch.object(runtime, "_submit_email_form_stable", new=AsyncMock(return_value={
+                "ok": True, "reason": "form_request_submit", "form_present": True,
+                "input_selector": "input", "submit_selector": "submit",
+            })),
+            patch.object(runtime, "_submit_visible_form", new=AsyncMock(return_value=True)),
+            patch.object(
+                runtime, "_page_state",
+                new=AsyncMock(side_effect=("login_password", "otp", "otp", "otp", "home")),
+            ),
+            patch.object(runtime, "_find_visible_selector", new=AsyncMock(return_value="otp-input")),
+            patch.object(runtime, "_fill_input_like_user", new=AsyncMock(return_value=True)),
+            patch.object(runtime, "_click_first", new=AsyncMock(return_value=True)) as click_first,
+            patch.object(runtime, "browser_session", new=AsyncMock(return_value={"accessToken": "token"})),
+            patch.object(runtime, "browser_plan_details", new=AsyncMock(return_value={})),
+            patch.object(runtime, "finalize_registration_result", side_effect=lambda result, **_kwargs: result),
+        ):
+            result = asyncio.run(
+                runtime._browser_flow(
+                    _FakePage(), email="user@example.test", password="password",
+                    force_existing_login=True,
+                    otp_callback=lambda stage: callback_stages.append(stage) or "123456",
+                    config={"registration_timeout_seconds": 60, "auto_set_2fa": False},
+                    log=lambda *_args: None, otp_prepare=Mock(), otp_mark_sent=Mock(),
+                    timing_fn=lambda *event: events.append(event),
+                )
+            )
+
+        self.assertEqual(result["account_flow"], "existing_login")
+        self.assertEqual(callback_stages, ["free_existing_login_otp"])
+        self.assertEqual(click_first.await_count, 2)
+        transition = next(event for event in events if event[1] == "otp_submit_transition")
+        self.assertEqual(transition[0], "free_existing_login_otp")
+        self.assertEqual(transition[3], "success")
+
+    def test_existing_login_without_code_login_entry_stops_with_missing_password(self):
+        """A missing verification-code entry still terminates the login safely."""
+        clock = [0.0]
+
+        async def fake_sleep(seconds):
+            clock[0] += float(seconds or 0.0)
+
+        with (
+            patch.object(runtime.time, "monotonic", side_effect=lambda: clock[0]),
+            patch.object(runtime.asyncio, "sleep", side_effect=fake_sleep),
+            patch.object(runtime, "_goto_with_retry", new=AsyncMock()),
+            patch.object(runtime, "_wait_for_any_selector", new=AsyncMock(return_value="input")),
+            patch.object(runtime, "_submit_email_form_stable", new=AsyncMock(return_value={
+                "ok": True, "reason": "form_request_submit", "form_present": True,
+                "input_selector": "input", "submit_selector": "submit",
+            })),
+            patch.object(runtime, "_submit_visible_form", new=AsyncMock(return_value=True)),
+            patch.object(runtime, "_page_state", new=AsyncMock(return_value="login_password")),
+            patch.object(runtime, "_click_first", new=AsyncMock(return_value=False)),
+            patch.object(runtime, "_snapshot", new=AsyncMock(return_value={
+                "url": "https://auth.openai.com/log-in/password", "title": "Log in", "body": "",
+            })),
+        ):
+            with self.assertRaises(runtime.CamoufoxBrowserError) as raised:
+                asyncio.run(
+                    runtime._browser_flow(
+                        _FakePage(), email="user@example.test", password="password",
+                        force_existing_login=True, otp_callback=lambda: "123456",
+                        config={"registration_timeout_seconds": 60, "auto_set_2fa": False},
+                        log=lambda *_args: None, otp_prepare=Mock(), otp_mark_sent=Mock(),
+                    )
+                )
+
         self.assertEqual(raised.exception.error_code, "free_existing_login_password_missing")
         self.assertFalse(raised.exception.retryable)
 
@@ -1498,7 +1658,7 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         submit_email.assert_awaited_once()
         signin.assert_not_awaited()
 
-    def test_entry_recovery_uses_form_then_signin_once_and_preserves_timeout(self):
+    def test_entry_recovery_uses_form_signin_then_full_reload_before_timeout(self):
         class Clock:
             now = 0.0
 
@@ -1516,7 +1676,8 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         with (
             patch.object(runtime.time, "monotonic", side_effect=lambda: Clock.now),
             patch.object(runtime.asyncio, "sleep", side_effect=fast_sleep),
-            patch.object(runtime, "_goto_with_retry", new=AsyncMock()),
+            patch.object(runtime, "_goto_with_retry", new=AsyncMock()) as goto,
+            patch.object(runtime, "_wait_for_entry_hydration", new=AsyncMock()),
             patch.object(runtime, "_click_visible_submit", new=AsyncMock(return_value=False)),
             patch.object(runtime, "_submit_visible_form", new=AsyncMock(return_value=True)) as submit,
             patch.object(
@@ -1556,13 +1717,21 @@ class CamoufoxRuntimeTests(unittest.TestCase):
 
         self.assertEqual(raised.exception.error_code, "camoufox_entry_transition_timeout")
         self.assertFalse(raised.exception.retryable)
-        self.assertEqual(stable.await_count, 2)
+        # One initial submission + form recovery + same-origin signin + the
+        # final full-reload submission, then the bounded transition expires.
+        self.assertEqual(stable.await_count, 3)
+        self.assertEqual(signin.await_count, 1)
+        reload_calls = [
+            call for call in goto.await_args_list
+            if call.args and call.args[1] == "https://chatgpt.com/auth/login"
+        ]
+        self.assertEqual(len(reload_calls), 2)
         self.assertLessEqual(Clock.now, 46.0)
         self.assertEqual(submit.await_args_list[0].args[1], "input[type='email']")
         signin.assert_awaited_once_with(page, "user@example.test")
         self.assertIn('"phase": "entry"', raised.exception.diagnostic)
         self.assertIn('"submitted": true', raised.exception.diagnostic)
-        self.assertIn('"recovery": "same_origin_signin"', raised.exception.diagnostic)
+        self.assertIn('"recovery": "full_reload_signin"', raised.exception.diagnostic)
         self.assertIn('"form_present": true', raised.exception.diagnostic)
         self.assertNotIn("user@example.test", raised.exception.diagnostic)
         self.assertIn("<邮箱>", raised.exception.diagnostic)
@@ -3763,7 +3932,8 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         self.assertEqual(result["password_status"], "enabled")
         self.assertEqual(result["access_token"], "access-token")
 
-    def test_runner_rejects_twofa_retry_without_saved_password(self):
+    def test_runner_twofa_retry_without_saved_password_falls_back_to_code_login(self):
+        """A passwordless 2FA retry reaches the browser instead of being rejected."""
         mailbox = Mock()
         pool = Mock()
         task = {
@@ -3772,14 +3942,30 @@ class CamoufoxRuntimeTests(unittest.TestCase):
             "result": {"twofa_status": "pending"},
         }
         config = {"driver": "camoufox", "email_code_timeout": 90, "camoufox": self._config()}
+        logs = []
         with (
             patch.object(runtime, "build_free_mailbox_otp_provider", return_value=mailbox),
-            patch.object(runtime, "_pool_for", return_value=pool),
+            patch.object(runtime, "_pool_for", return_value=pool) as pool_for,
+            patch.object(
+                runtime, "configured_free_password", return_value="configured-password",
+            ),
         ):
-            with self.assertRaises(runtime.FreeRegisterError) as raised:
-                runtime.CamoufoxRegistrationRunner()(task, config, threading.Event(), Mock(), Mock(), twofa_retry=True)
-        self.assertEqual(raised.exception.error_code, "free_existing_login_password_missing")
-        pool.register.assert_not_called()
+            pool.register = Mock(return_value={
+                "access_token": "token", "twofa_status": "enabled",
+                "account_flow": "existing_login",
+            })
+            result = dict(runtime.CamoufoxRegistrationRunner()(
+                task, config, threading.Event(), Mock(),
+                lambda *args, **_kwargs: logs.append(args[0] if args else ""),
+                twofa_retry=True,
+            ))
+        pool_for.assert_called_once()
+        pool.register.assert_called_once()
+        self.assertEqual(result["twofa_status"], "enabled")
+        self.assertTrue(
+            any("验证码登录" in str(entry) for entry in logs),
+            logs,
+        )
 
     def test_shared_plan_parser_preserves_non_success_http_status(self):
         details = free_account_service.plan_details_from_payloads(

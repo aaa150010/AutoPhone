@@ -154,6 +154,7 @@ async def _browser_flow(
     login_password_submitted = False
     login_password_submitted_at = 0.0
     login_password_submit_retried = False
+    passwordless_login_switch_used = False
     email_verification_started_at = 0.0
     email_verification_retried = False
     profile_submitted = False
@@ -171,6 +172,7 @@ async def _browser_flow(
     entry_transition_recorded = False
     entry_retry_used = False
     entry_signin_fallback_used = False
+    entry_reload_recovery_used = False
     entry_recovery = "none"
     entry_form_present = False
     entry_submit_selector = ""
@@ -186,15 +188,8 @@ async def _browser_flow(
     step_count = 0
     entry_otp_stage = "free_existing_login_otp" if force_existing_login else "free_email_otp_wait"
 
-    # A 2FA retry is unambiguously an existing-account login. Reject it before
-    # navigation so a missing saved credential cannot consume an OTP or leave a
-    # headed debug window open for an impossible flow.
-    if force_existing_login and not str(existing_password or "").strip():
-        raise host.CamoufoxBrowserError(
-            "free_existing_login", "已有 Free 账号登录",
-            "已有账号登录缺少已保存密码，拒绝使用固定注册密码",
-            retryable=False, error_code="free_existing_login_password_missing",
-        )
+    # A missing saved credential no longer aborts a 2FA retry: passwordless
+    # accounts continue through the mailbox verification-code login below.
 
     def timing_mark(stage_code: str, code: str, started: float, outcome: str = "success") -> None:
         host.emit_timing(
@@ -396,7 +391,7 @@ async def _browser_flow(
             )
             profile_home_state_recorded = True
 
-    async def submit_entry_email(selector: str, *, recovery: bool = False) -> dict[str, Any]:
+    async def submit_entry_email(selector: str, *, recovery: bool = False, recovery_tag: str = "") -> dict[str, Any]:
         nonlocal entry_form_present, entry_submit_selector, entry_recovery
         nonlocal mailbox_confirmation_abortable
         result = await host._submit_email_form_stable(page, email)
@@ -483,7 +478,7 @@ async def _browser_flow(
                 mailbox_confirmation_abortable = False
             if not clicked:
                 entry_submit_selector = host.clean(fallback_input_selector, 120)
-            entry_recovery = "form_resubmit" if recovery else entry_recovery
+            entry_recovery = recovery_tag or ("form_resubmit" if recovery else entry_recovery)
             log(
                 "Camoufox 邮箱表单已提交"
                 f"（mode={host.clean(result.get('reason'), 80)}，"
@@ -536,7 +531,7 @@ async def _browser_flow(
             )
         mailbox_confirmation_abortable = False
         entry_submit_selector = host.clean(selector, 120)
-        entry_recovery = "form_resubmit" if recovery else entry_recovery
+        entry_recovery = recovery_tag or ("form_resubmit" if recovery else entry_recovery)
         fallback = {
             "ok": True,
             "reason": "input_enter_submit",
@@ -646,7 +641,14 @@ async def _browser_flow(
                 "password_set_after_registration": False,
                 "password": password,
             })
-        elif account_flow == "signup" and host._runtime_bool(config.get("auto_set_password"), False):
+        elif account_flow == "existing_login" and login_password_submitted:
+            # Authentication just succeeded with the saved credential, so the
+            # password exists even though this session never created it.
+            result.update({
+                "password_status": "enabled",
+                "password_set_after_registration": False,
+            })
+        elif host._runtime_bool(config.get("auto_set_password"), False):
             try:
                 password_result = await host.browser_add_password(
                     page,
@@ -1126,6 +1128,54 @@ async def _browser_flow(
                 seen.clear()
                 await asyncio.sleep(1.0)
                 continue
+            if (
+                state == "entry" and entry_submitted
+                and entry_retry_used and entry_signin_fallback_used
+                and not entry_reload_recovery_used
+                and not auth_phase_locked
+            ):
+                # Both bounded recoveries failed while the shell stayed on the
+                # email entry. One full reload of the login page with a final
+                # mailbox submission is the last bounded attempt before the
+                # terminal transition timeout.
+                entry_reload_recovery_used = True
+                entry_recovery = "full_reload_signin"
+                await prepare_otp(entry_otp_stage, notify_stage=False)
+                log("Camoufox 登录壳仍未推进，整页重载登录页做最后一次邮箱提交", "warn")
+                remaining = max(0.0, entry_transition_deadline - time.monotonic())
+                if remaining <= 0.0:
+                    continue
+                try:
+                    await host._goto_with_retry(
+                        page, CHATGPT_LOGIN_URL,
+                        timeout_ms=min(timeout * 1000, 90_000, max(15_000, int(remaining * 1000))),
+                        proxy_retryable=False, log=log,
+                        accept_usable_entry=False,
+                    )
+                except host.CamoufoxBrowserError as exc:
+                    if not host._is_navigation_timeout_failure(exc):
+                        raise
+                    # A slow reload can still land a usable shell right after
+                    # the dispatch timeout; fall through to the selector wait.
+                await host._wait_for_entry_hydration(page)
+                remaining = max(0.0, entry_transition_deadline - time.monotonic())
+                selector = (
+                    await host._wait_for_any_selector(
+                        page, EMAIL_SELECTORS, timeout=min(8.0, remaining),
+                    )
+                    if remaining >= 0.1 else None
+                )
+                if selector:
+                    await submit_entry_email(
+                        selector, recovery=True, recovery_tag="full_reload_signin",
+                    )
+                    entry_transition_observe_deadline = min(
+                        entry_transition_deadline,
+                        time.monotonic() + 12.0,
+                    )
+                seen.clear()
+                await asyncio.sleep(1.0)
+                continue
             error_text = await host._auth_error_text(page)
             close_profile_timing("unexpected_state")
             raise host.CamoufoxBrowserError(
@@ -1175,9 +1225,19 @@ async def _browser_flow(
             account_flow = "existing_login"
             saved_password = str(existing_password or "").strip()
             if not saved_password:
+                # Passwordless accounts have no credential to submit. Switch
+                # to the login page's verification-code action once; the main
+                # loop then continues through the existing_login OTP stage.
+                if not passwordless_login_switch_used:
+                    passwordless_login_switch_used = True
+                    if await host._click_passwordless_login_switch(page):
+                        log("已有账号登录未保存密码，已切换为邮箱验证码登录", "warn")
+                        seen.clear()
+                        await asyncio.sleep(1.0)
+                        continue
                 raise host.CamoufoxBrowserError(
                     "free_existing_login", "已有 Free 账号登录",
-                    "已有账号登录缺少已保存密码，拒绝使用固定注册密码",
+                    "已有账号登录缺少已保存密码且未提供验证码登录入口",
                     retryable=False, error_code="free_existing_login_password_missing",
                     safe_page=host._safe_url(page), page_type="login_password",
                 )
