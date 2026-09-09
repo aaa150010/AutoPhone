@@ -585,30 +585,30 @@ class FreeRegisterRetryMixin:
                 if mailbox_lease_acquired and self.mailbox_leases is not None:
                     try:
                         self.mailbox_leases.release(task_id=retry_id, reusable=True)
-                    except Exception:
+                    except Exception as exc:
                         # Lease release must not mask the original retry failure.
-                        pass
+                        self._note_quiet("retry_lease_release", exc)
                 if binding is not None:
                     try:
                         self.proxies.release(binding, owner=retry_id or batch_id)
-                    except Exception:
+                    except Exception as exc:
                         # Proxy release must not mask the original retry failure.
-                        pass
+                        self._note_quiet("retry_proxy_release", exc)
                 self._retry_leases.pop(retry_key, None)
                 if reserved:
                     try:
                         self.pool.update(row_id, status="available", batch_id="", stage="", driver="", proxy="", proxy_masked="", proxy_fingerprint="", expected_exit_ip="", exit_ip="", proxy_id="", proxy_country="", proxy_group="")
-                    except Exception:
+                    except Exception as exc:
                         # Pool reset must not mask the original retry failure.
-                        pass
+                        self._note_quiet("retry_pool_reset", exc)
                 if created_executor and not self._futures:
                     try:
                         self._heartbeat_stop.set()
                         if self._heartbeat_thread is not None and self._heartbeat_thread is not threading.current_thread():
                             self._heartbeat_thread.join(timeout=1)
-                    except Exception:
+                    except Exception as exc:
                         # Heartbeat shutdown must not mask the original retry failure.
-                        pass
+                        self._note_quiet("retry_heartbeat_join", exc)
                     if self._executor is not None:
                         try:
                             # No worker was submitted on this rollback path;
@@ -616,9 +616,9 @@ class FreeRegisterRetryMixin:
                             # can safely tear down a temporary data directory
                             # immediately after the exception.
                             self._executor.shutdown(wait=True, cancel_futures=True)
-                        except Exception:
+                        except Exception as exc:
                             # Executor shutdown must not mask the original retry failure.
-                            pass
+                            self._note_quiet("retry_executor_shutdown", exc)
                     self._executor = None
                     self._heartbeat_thread = None
                     self._batch_id = previous_batch_id

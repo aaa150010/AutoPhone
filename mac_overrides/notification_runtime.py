@@ -452,9 +452,9 @@ class RunNotificationLifecycle:
             if callable(self.observe_resource_pressure):
                 try:
                     self.observe_resource_pressure(importer)
-                except Exception:
+                except Exception as exc:
                     # Pressure observation must not break the notification loop.
-                    pass
+                    self._note_quiet("resource_pressure", exc)
             current = self.monotonic()
             if (
                 current >= balance_deadline
@@ -471,9 +471,9 @@ class RunNotificationLifecycle:
                             aggregate,
                             statuses,
                         )
-                except Exception:
+                except Exception as exc:
                     # SMS telemetry must not break the notification loop.
-                    pass
+                    self._note_quiet("sms_balance_observe", exc)
             if current < notification_deadline:
                 continue
             notification_deadline = current + 10.0
@@ -502,14 +502,14 @@ class RunNotificationLifecycle:
             # thread polling an obsolete importer forever.
             try:
                 previous["stop_event"].set()
-            except Exception:
+            except Exception as exc:
                 # Stop-event cleanup is best-effort during rotation.
-                pass
+                self._note_quiet("rotate_stop_event", exc)
             try:
                 previous["service"].close(wait=False)
-            except Exception:
+            except Exception as exc:
                 # Service close is best-effort during rotation.
-                pass
+                self._note_quiet("rotate_service_close", exc)
         now = int(self.clock())
         context = {
             "run_id": str(values.get("batch_id") or self.run_id_factory()),
@@ -542,9 +542,9 @@ class RunNotificationLifecycle:
         context["stop_event"].set()
         try:
             context["service"].close(wait=False)
-        except Exception:
+        except Exception as exc:
             # Service close must not mask the run cancellation being handled.
-            pass
+            self._note_quiet("cancel_service_close", exc)
         if getattr(importer, "_gptphone_notification_context", None) is context:
             importer._gptphone_notification_context = None
         with self._lock:

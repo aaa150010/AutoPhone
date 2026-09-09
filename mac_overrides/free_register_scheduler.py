@@ -18,9 +18,9 @@ class FreeRegisterSchedulerMixin:
         """Reconcile persisted active work after an unclean process exit."""
         try:
             self.pool.recover_reserved()
-        except Exception:
+        except Exception as exc:
             # Startup recovery must not block the scheduler from starting.
-            pass
+            self._note_quiet("recover_reserved", exc)
         changed = False
         for task_id, task in list(self._tasks.items()):
             previous = str(task.get("status") or "")
@@ -43,9 +43,9 @@ class FreeRegisterSchedulerMixin:
             )
             try:
                 self.pool.recover_interrupted(str(task.get("row_id") or ""), reusable=reusable, failure=failure)
-            except Exception:
+            except Exception as exc:
                 # Recovery bookkeeping must not mask the original task failure.
-                pass
+                self._note_quiet("recover_interrupted", exc)
             self._release_task_lease(task)
             self._finish_progress(task_id, "stopped" if reusable else "failed")
             changed = True
@@ -63,9 +63,9 @@ class FreeRegisterSchedulerMixin:
                 else:
                     try:
                         self.task_store.save(self._tasks)
-                    except Exception:
+                    except Exception as exc:
                         # Task persistence must not mask the scheduling outcome.
-                        pass
+                        self._note_quiet("recovery_task_persist", exc)
 
     def _switch_pre_profile_proxy(self, task: dict[str, Any], config: Mapping[str, Any]) -> bool:
         """Replace a failed pre-profile proxy while the account is still uncommitted."""
@@ -99,12 +99,13 @@ class FreeRegisterSchedulerMixin:
         try:
             self.proxies.lease(replacement, owner=owner, batch_id=str(task.get("batch_id") or ""), task_id=task_id)
             self.proxies.release(previous, owner=owner)
-        except Exception:
+        except Exception as bind_exc:
             try:
                 self.proxies.release(replacement, owner=owner)
-            except Exception:
+            except Exception as release_exc:
                 # Proxy release must not mask the original admission failure.
-                pass
+                self._note_quiet("proxy_switch_release", release_exc)
+            self._note_quiet("proxy_switch_bind", bind_exc)
             return False
         updates = {
             "proxy": replacement.proxy, "proxy_id": replacement.proxy_id,
@@ -133,9 +134,9 @@ class FreeRegisterSchedulerMixin:
                 else:
                     try:
                         self.task_store.save(self._tasks)
-                    except Exception:
+                    except Exception as exc:
                         # Task persistence must not mask the scheduling outcome.
-                        pass
+                        self._note_quiet("proxy_switch_persist", exc)
         task.update(updates)
         self.pool.update(
             str(task.get("row_id") or ""), status="running", proxy=replacement.proxy,
