@@ -20,6 +20,14 @@ except ImportError:  # pragma: no cover - top-level recovery import
     from free_register_common import FreeRegisterError, clean  # type: ignore[no-redef]
 
 
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort OTP wait cleanup."""
+    try:
+        print(f"[free_account_otp/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
+
+
 def _otp_stop_requested(value: Any) -> bool:
     """Read an OTP stop signal without assuming an Event/callback shape."""
     if value is None:
@@ -170,6 +178,8 @@ async def _await_account_otp_callback(
     def consume_exception(future: asyncio.Future[Any]) -> None:
         if not future.cancelled():
             try:
+                # Consume the exception so asyncio does not log
+                # "exception was never retrieved"; CancelledError included.
                 future.exception()
             except BaseException:
                 pass
@@ -183,16 +193,16 @@ async def _await_account_otp_callback(
             try:
                 close()
                 return
-            except Exception:
+            except Exception as exc:
                 # Best-effort cleanup of a closeable wait handle.
-                pass
+                _note_stderr("wait_handle_close", exc)
         cancel = getattr(value, "cancel", None)
         if callable(cancel):
             try:
                 cancel()
-            except Exception:
+            except Exception as exc:
                 # Best-effort cancellation must not mask the stop request.
-                pass
+                _note_stderr("wait_handle_cancel", exc)
 
     result.add_done_callback(consume_exception)
 
@@ -320,9 +330,9 @@ async def _await_account_otp_callback(
                     numeric = float(remaining_value)
                     if math.isfinite(numeric):
                         return numeric, paused, prompt, handoff, grace
-                except Exception:
+                except Exception as exc:
                     # A missing remaining-budget probe falls back to the coarse deadline.
-                    pass
+                    _note_stderr("budget_probe", exc)
         if deadline_monotonic is None:
             return None, paused, prompt, handoff, grace
         try:
@@ -354,9 +364,9 @@ async def _await_account_otp_callback(
                     try:
                         while int(getattr(current, "cancelling", lambda: 0)() or 0) > 0:
                             uncancel()
-                    except Exception:
+                    except Exception as exc:
                         # Uncancel bookkeeping must not break the OTP wait loop.
-                        pass
+                        _note_stderr("task_uncancel", exc)
                 continue
             except BaseException:
                 return
@@ -384,6 +394,8 @@ async def _await_account_otp_callback(
             try:
                 discard_awaitable(result.result())
             except BaseException:
+                # result.result() may raise CancelledError during teardown;
+                # discard already closed what it could.
                 pass
             end_once()
             return
