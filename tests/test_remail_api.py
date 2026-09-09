@@ -4,7 +4,7 @@ import json
 import unittest
 from urllib.parse import parse_qs, urlsplit
 
-from mac_overrides.remail_api import RemailClient, remail_order_suffix, remail_order_value
+from mac_overrides.remail_api import RemailApiError, RemailClient, remail_order_suffix, remail_order_value
 
 
 class _Response:
@@ -69,6 +69,87 @@ class RemailApiTests(unittest.TestCase):
         self.assertEqual(remail_order_suffix("gmail_variant"), "gmail_variant")
         self.assertEqual(remail_order_suffix("domain"), "domain")
         self.assertEqual(remail_order_suffix(""), "")
+
+    def test_default_path_uses_persistent_session_without_host_proxy(self):
+        sessions = []
+
+        class _FakeResponse:
+            status_code = 200
+            url = "https://remail.aishop6.com/v1/pickup?email=x"
+            reason = "OK"
+            headers = {}
+            content = b"{}"
+
+        class _FakeSession:
+            def __init__(self):
+                self.trust_env = True
+                self.calls = []
+                sessions.append(self)
+
+            def request(self, method, url, **kwargs):
+                self.calls.append((method, url, kwargs))
+                return _FakeResponse()
+
+        def factory():
+            return _FakeSession()
+
+        client = RemailClient(api_key="rk-test", session_factory=factory)
+        client.pickup("user@outlook.com", "token-1")
+        client.pickup("user@outlook.com", "token-1")
+
+        self.assertEqual(len(sessions), 1)
+        self.assertFalse(sessions[0].trust_env)
+        self.assertEqual(len(sessions[0].calls), 2)
+        method, url, kwargs = sessions[0].calls[0]
+        self.assertEqual(method, "GET")
+        self.assertIn("email=user%40outlook.com", url)
+        self.assertEqual(kwargs["headers"]["Accept"], "application/json")
+        self.assertTrue(kwargs["allow_redirects"])
+
+    def test_session_http_error_keeps_pickup_error_mapping(self):
+        class _FakeResponse:
+            status_code = 410
+            url = "https://remail.aishop6.com/v1/pickup"
+            reason = "Gone"
+            headers = {}
+            content = b""
+
+        class _FakeSession:
+            def request(self, method, url, **kwargs):
+                return _FakeResponse()
+
+        client = RemailClient(api_key="rk-test", session_factory=_FakeSession)
+        with self.assertRaises(RemailApiError) as raised:
+            client.pickup("user@outlook.com", "token")
+        # A >=400 status surfaces as HTTPError inside the opener, matching
+        # the historic urlopen mapping for pickup reads.
+        self.assertEqual(raised.exception.code, "remail_pickup_http_error")
+        self.assertEqual(raised.exception.status, 410)
+
+    def test_session_network_error_keeps_pickup_network_code(self):
+        import requests as _requests
+
+        class _FakeSession:
+            def request(self, method, url, **kwargs):
+                raise _requests.ConnectionError("boom")
+
+        client = RemailClient(api_key="rk-test", session_factory=_FakeSession)
+        with self.assertRaises(RemailApiError) as raised:
+            client.pickup("user@outlook.com", "token")
+        self.assertEqual(raised.exception.code, "remail_pickup_network")
+        self.assertEqual(raised.exception.status, 0)
+
+    def test_custom_opener_path_still_takes_precedence(self):
+        requests_seen = []
+
+        def opener(request, timeout):
+            requests_seen.append(request)
+            return _Response({"items": []})
+
+        client = RemailClient(api_key="rk-test", opener=opener, session_factory=lambda: (_ for _ in ()).throw(AssertionError("session must not be created")))
+        client.orders()
+
+        self.assertEqual(len(requests_seen), 1)
 
 
 if __name__ == "__main__":

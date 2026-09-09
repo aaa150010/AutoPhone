@@ -1,6 +1,7 @@
 """Small, credential-safe client for the Remail Open API."""
 from __future__ import annotations
 
+import io
 import json
 import uuid
 from dataclasses import dataclass
@@ -15,6 +16,35 @@ class RemailApiError(RuntimeError):
     def __init__(self, code: str, message: str, *, status: int = 0, request_id: str = "") -> None:
         self.code, self.status, self.request_id = str(code), int(status or 0), str(request_id or "")
         super().__init__(str(message)[:300])
+
+
+def _default_session_factory() -> Any:
+    """Create the persistent OTP-poll session without host proxy variables."""
+    from requests import Session
+
+    session = Session()
+    session.trust_env = False
+    return session
+
+
+class _SessionResponse:
+    """urllib-opener-compatible response backed by a requests.Response."""
+
+    def __init__(self, response: Any) -> None:
+        self._response = response
+        self.status = int(getattr(response, "status_code", 0) or 0)
+
+    def read(self) -> bytes:
+        return bytes(getattr(self._response, "content", b"") or b"")
+
+    def __enter__(self) -> "_SessionResponse":
+        return self
+
+    def __exit__(self, *_args: Any) -> bool:
+        close = getattr(self._response, "close", None)
+        if callable(close):
+            close()
+        return False
 
 
 _REMAIL_EXPIRY_KEYS = frozenset({
@@ -121,6 +151,73 @@ class RemailClient:
     api_key: str = ""
     timeout: float = 20.0
     opener: Any = urlopen
+    session_factory: Any = _default_session_factory
+
+    def __post_init__(self) -> None:
+        # A frozen dataclass cannot reassign fields; the persistent session
+        # lives in this lazily-created cache slot instead.
+        object.__setattr__(self, "_session_cache", None)
+
+    def _session_opener(self):
+        """Return a keep-alive opener bound to one persistent session.
+
+        OTP polling fires the same pickup URL once per poll interval, so a
+        persistent connection removes a full TCP+TLS handshake from every
+        round. ``trust_env=False`` keeps inherited HTTP_PROXY/HTTPS_PROXY/
+        ALL_PROXY variables out of mailbox IO, matching MailboxHttpTransport.
+        """
+        cached = getattr(self, "_session_cache", None)
+        if cached is None:
+            cached = self.session_factory() if callable(self.session_factory) else None
+            if cached is not None and hasattr(cached, "trust_env"):
+                # Defensive: an injected factory may skip its own hygiene.
+                cached.trust_env = False
+            object.__setattr__(self, "_session_cache", cached)
+        session = cached
+
+        client = self
+
+        class _SessionOpener:
+            def open(self, request: Request, timeout: float) -> "_SessionResponse":
+                import requests as _requests
+
+                method = str(getattr(request, "get_method", lambda: "GET")() or "GET").upper()
+                data = getattr(request, "data", None)
+                try:
+                    response = session.request(
+                        method,
+                        request.full_url,
+                        data=data,
+                        headers=dict(getattr(request, "headers", {}) or {}),
+                        timeout=max(1.0, float(timeout)),
+                        allow_redirects=True,
+                    )
+                except _requests.HTTPError as exc:
+                    raise HTTPError(
+                        exc.request.url if exc.request is not None else request.full_url,
+                        int(getattr(exc.response, "status_code", 0) or 0),
+                        str(getattr(exc.response, "reason", "") or ""),
+                        getattr(exc.response, "headers", None),
+                        io.BytesIO(bytes(getattr(exc.response, "content", b"") or b"")),
+                    ) from exc
+                except _requests.RequestException as exc:
+                    raise OSError(f"remail session request failed: {type(exc).__name__}") from exc
+                if response.status_code >= 400:
+                    raise HTTPError(
+                        response.url or request.full_url,
+                        int(response.status_code),
+                        str(getattr(response, "reason", "") or ""),
+                        response.headers,
+                        io.BytesIO(bytes(response.content or b"")),
+                    )
+                return _SessionResponse(response)
+
+        return _SessionOpener()
+
+    def _dispatch(self, request: Request, timeout: float) -> Any:
+        if self.opener is not urlopen:
+            return self.opener(request, timeout)
+        return self._session_opener().open(request, timeout)
 
     def _request(self, method: str, path: str, *, query: Mapping[str, Any] | None = None, body: Any = None, idempotency_key: str = "") -> Any:
         key = str(self.api_key or "").strip()
@@ -140,7 +237,7 @@ class RemailClient:
             **({"Idempotency-Key": str(idempotency_key)} if idempotency_key else {}),
         })
         try:
-            with self.opener(request, timeout=max(1.0, float(self.timeout))) as response:
+            with self._dispatch(request, timeout=max(1.0, float(self.timeout))) as response:
                 status = int(getattr(response, "status", 200) or 200)
                 raw = response.read()
         except HTTPError as exc:
@@ -218,7 +315,7 @@ class RemailClient:
             "Referer": self.base_url.rstrip("/") + "/docs",
         })
         try:
-            with self.opener(request, timeout=max(1.0, float(self.timeout))) as response:
+            with self._dispatch(request, timeout=max(1.0, float(self.timeout))) as response:
                 status = int(getattr(response, "status", 200) or 200)
                 value = json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
