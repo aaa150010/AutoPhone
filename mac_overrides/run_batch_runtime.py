@@ -525,6 +525,11 @@ class RunBatchManifestStore:
         with self._lock:
             batch = self._batch_for_task_locked(task_id)
             member = self._member_locked(batch, task_id)
+            # Terminal states are final; a late transition observer must not
+            # rewrite a settled member (e.g. mark_persisted after success).
+            if member.get("status") in _TERMINAL_STATUSES:
+                return
+            changed = member.get("status") != normalized
             member["status"] = normalized
             if normalized not in {"planned", "queued"}:
                 member["started_at"] = member.get("started_at") or now
@@ -532,7 +537,10 @@ class RunBatchManifestStore:
                 member["terminal_at"] = member.get("terminal_at") or now
             batch["updated_at"] = now
             self._refresh_counts_locked(batch)
-            self._save_locked()
+            # Each save is a full-document rewrite plus fsync; skip repeats
+            # when the transition carries no new state.
+            if changed or member.get("started_at") == now or member.get("terminal_at") == now:
+                self._save_locked()
 
     def mark_persisted(self, batch_id: Any, task_id: Any, status: Any) -> None:
         normalized = _clean(status, 64).lower() or "failed"
@@ -540,6 +548,9 @@ class RunBatchManifestStore:
         with self._lock:
             batch = self._batch_locked(batch_id)
             member = self._member_locked(batch, task_id)
+            if member.get("persisted_at"):
+                # Idempotent: the first persistence record is authoritative.
+                return
             member["status"] = normalized
             member["terminal_at"] = member.get("terminal_at") or now
             member["persisted_at"] = member.get("persisted_at") or now
