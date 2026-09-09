@@ -99,6 +99,8 @@ def _safe_page_url(page: Any) -> str:
 
 @dataclass(frozen=True, slots=True)
 class TransportOperation:
+    """Operation result value object kept for the recovered runtime contract."""
+
     operation: str
     selector: str = ""
     ok: bool = False

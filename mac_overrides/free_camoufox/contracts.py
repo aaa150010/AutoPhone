@@ -277,7 +277,7 @@ class CamoufoxRegistrationResult:
 
         return {
             "driver": self.driver,
-            "email": _mask_email(self.email),
+            "email": _display_email(self.email),
             "success": self.success,
             "state": self.state.value,
             "error_code": self.error_code,
@@ -285,7 +285,7 @@ class CamoufoxRegistrationResult:
         }
 
 
-def _mask_email(value: Any) -> str:
+def _display_email(value: Any) -> str:
     """Display projection keeps the full mailbox address for the local GUI."""
     text = str(value or "")
     local, separator, domain = text.partition("@")
