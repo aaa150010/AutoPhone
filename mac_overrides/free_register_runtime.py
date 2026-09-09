@@ -12,6 +12,7 @@ import re
 import secrets
 import threading
 import time
+import sys
 from typing import Any, Callable, Mapping, Sequence
 from urllib.parse import urlsplit
 
@@ -246,9 +247,9 @@ class FreeRegisterManager(
             # proxy health or ordinary registration state.
             try:
                 self.mailbox_leases.recover()
-            except Exception:
+            except Exception as exc:
                 # Lease recovery must not block a new batch from starting.
-                pass
+                self._note_quiet("lease_recover", exc)
         self._batch_id = ""
         self._circuit_stop_requested = False
         self._user_stop_requested = False
@@ -309,6 +310,14 @@ class FreeRegisterManager(
 
     def _plan_config(self) -> Mapping[str, Any]:
         """Return the normalized Free settings used by post-registration calls."""
+
+    def _note_quiet(self, where: str, exc: BaseException) -> None:
+        """Record a swallowed manager cleanup/telemetry fallback on stderr."""
+        try:
+            print(f"[free_register_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
+        except Exception:
+            return
+
         if callable(self.config_provider):
             try:
                 value = self.config_provider()
@@ -424,9 +433,9 @@ class FreeRegisterManager(
                 error_code="free_manager_epoch_mismatch",
                 workflow="lifecycle",
             )
-        except Exception:
+        except Exception as exc:
             # Lifecycle telemetry must not break manager shutdown.
-            pass
+            self._note_quiet("lifecycle_telemetry", exc)
 
     def _release_runtime_owner(self) -> None:
         storage = self._owner_storage()
@@ -437,10 +446,10 @@ class FreeRegisterManager(
         self._manager_owner_acquired = False
         try:
             storage.release_manager_owner(owner_id, epoch)
-        except Exception:
+        except Exception as exc:
             # Process exit/cleanup is best effort; a dead PID and TTL let the
             # next manager reclaim the fence even if this write fails.
-            pass
+            self._note_quiet("manager_owner_release", exc)
 
     def _reconcile_account_results_from_history(self) -> int:
         """Restore missing private result fields from immutable task history.
@@ -542,9 +551,9 @@ class FreeRegisterManager(
                     driver = str(task.get("driver") or "").strip() if isinstance(task, Mapping) else ""
                     if driver:
                         payload["driver"] = driver
-                except Exception:
+                except Exception as exc:
                     # Driver enrichment must not break the log line.
-                    pass
+                    self._note_quiet("log_driver_enrich", exc)
             try:
                 self.log_fn(sanitize_log_message(message), level, **payload)
             except TypeError:
@@ -553,12 +562,12 @@ class FreeRegisterManager(
                 # FreeLogStore receives the structured fields above.
                 try:
                     self.log_fn(sanitize_log_message(message), level)
-                except Exception:
+                except Exception as exc:
                     # Log delivery must never break the caller emitting the event.
-                    pass
-            except Exception:
+                    self._note_quiet("log_fn_compat", exc)
+            except Exception as exc:
                 # Log delivery must never break the caller emitting the event.
-                pass
+                self._note_quiet("log_fn", exc)
 
     def _task_log(self, task_id: str, message: str, level: str = "info", **fields: Any) -> None:
         text = str(message or "")
@@ -573,9 +582,9 @@ class FreeRegisterManager(
                 fields.setdefault("subject_kind", "email")
                 fields.setdefault("subject_ref_fingerprint", diagnostic_store.fingerprint(email_text))
                 fields.setdefault("subject_display", masked_email)
-            except Exception:
+            except Exception as exc:
                 # Diagnostic enrichment must not change the logged message.
-                pass
+                self._note_quiet("log_subject_enrich", exc)
         structured = re.match(r"^\[([^\]/]+)/([^\]/]+)(?:/([^\]]+))?\]\s*(.*)$", text)
         if structured:
             first, second, third, detail = structured.groups()
@@ -1590,9 +1599,9 @@ class FreeRegisterManager(
         if consecutive < self._MAILBOX_DEGRADE_THRESHOLD:
             try:
                 self.pool.update(row_id, mailbox_otp_failures=consecutive)
-            except Exception:
+            except Exception as exc:
                 # Failure-count persistence must not mask the OTP outcome.
-                pass
+                self._note_quiet("otp_failure_persist", exc)
             return
         try:
             self.pool.update(

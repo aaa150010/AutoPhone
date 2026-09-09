@@ -44,6 +44,14 @@ REFERENCE_LOCALES: dict[str, dict[str, Any]] = {
 }
 
 
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort transport probing."""
+    try:
+        print(f"[free_protocol_reference/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
+
+
 def reference_flow_enabled(config: Mapping[str, Any]) -> bool:
     return str(config.get("flow_profile") or REFERENCE_FLOW_PROFILE).strip().lower() != "legacy"
 
@@ -158,9 +166,9 @@ def copy_session_cookies(source: Any, target: Any) -> None:
         try:
             updater(source_cookies)
             return
-        except Exception:
+        except Exception as exc:
             # Cookie updater probing falls back to the set() API below.
-            pass
+            _note_stderr("cookie_updater_probe", exc)
     setter = getattr(target_cookies, "set", None)
     if not callable(setter):
         return
@@ -210,21 +218,21 @@ def prepare_reference_http_session(transport: Any) -> Any:
             if callable(close):
                 try:
                     close()
-                except Exception:
+                except Exception as exc:
                     # Best-effort session close must not break the rebuild.
-                    pass
+                    _note_stderr("session_close", exc)
     if session is None:
         return transport
     try:
         session.trust_env = False
-    except Exception:
+    except Exception as exc:
         # Session hardening is best-effort; keep the reference usable.
-        pass
+        _note_stderr("session_trust_env", exc)
     try:
         session.verify = True
-    except Exception:
+    except Exception as exc:
         # Session hardening is best-effort; keep the reference usable.
-        pass
+        _note_stderr("session_verify", exc)
     old_proxies = getattr(current, "proxies", None)
     proxy = str(getattr(transport, "proxy", "") or "").strip()
     try:
@@ -232,16 +240,16 @@ def prepare_reference_http_session(transport: Any) -> Any:
             session.proxies = dict(old_proxies)
         elif proxy:
             session.proxies = {"http": proxy, "https": proxy}
-    except Exception:
+    except Exception as exc:
         # Proxy pinning is best-effort; the reference keeps its session.
-        pass
+        _note_stderr("proxy_pinning", exc)
     timeout = getattr(current, "timeout", None)
     if timeout is not None:
         try:
             session.timeout = timeout
-        except Exception:
+        except Exception as exc:
             # Timeout reuse is optional on the cloned session.
-            pass
+            _note_stderr("timeout_reuse", exc)
     setattr(transport, "chatgpt_impersonate", REFERENCE_TLS_IMPERSONATE)
     setattr(transport, "_gptphone_tls_impersonate", REFERENCE_TLS_IMPERSONATE)
     return transport
