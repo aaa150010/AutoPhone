@@ -947,6 +947,65 @@ class FreeProtocolRuntimeTests(unittest.TestCase):
         )
         self.assertEqual(result, {"twofa_status": "enabled"})
 
+    def test_confirm_mfa_enabled_returns_immediately_when_confirmed(self):
+        reads = []
+
+        class Session:
+            def get(self, _url, **_kwargs):
+                reads.append(1)
+                return _Response(200, {"mfa_enabled": True, "factors": {"totp": [{"factor_type": "totp"}]}})
+
+        class Transport:
+            log_fn = lambda *_args, **_kwargs: None
+
+        runtime.FreeProtocolMixin._confirm_mfa_enabled(Transport(), Session(), {}, "task-confirm")
+        self.assertEqual(len(reads), 1)
+
+    def test_confirm_mfa_enabled_polls_bounded_then_warns_without_raising(self):
+        sleeps: list[float] = []
+        reads = []
+
+        class Session:
+            def get(self, _url, **_kwargs):
+                reads.append(1)
+                return _Response(200, {"mfa_enabled": False})
+
+        class Transport:
+            @staticmethod
+            def log_fn(message, *level):
+                warns.append(str(message))
+
+        warns: list[str] = []
+        with patch.object(runtime.time, "sleep", side_effect=sleeps.append):
+            runtime.FreeProtocolMixin._confirm_mfa_enabled(Transport(), Session(), {}, "task-pending")
+
+        self.assertEqual(len(reads), 3)
+        self.assertEqual(sleeps, [1.0, 1.0])
+        self.assertEqual(len(warns), 1)
+        self.assertIn("激活响应已按成功处理", warns[0])
+
+    def test_confirm_mfa_enabled_swallows_read_errors_with_single_warn(self):
+        reads = []
+
+        class Session:
+            def get(self, _url, **_kwargs):
+                reads.append(1)
+                raise ConnectionError("network down")
+
+        warns: list[str] = []
+
+        class Transport:
+            @staticmethod
+            def log_fn(message, *level):
+                warns.append(str(message))
+
+        with patch.object(runtime.time, "sleep", side_effect=lambda _s: None):
+            runtime.FreeProtocolMixin._confirm_mfa_enabled(Transport(), Session(), {}, "task-error")
+
+        self.assertEqual(len(reads), 3)
+        self.assertEqual(len(warns), 1)
+        self.assertIn("激活响应已按成功处理", warns[0])
+
     def test_twofa_activation_dropped_response_converges_from_mfa_status(self):
         class Otp:
             @staticmethod

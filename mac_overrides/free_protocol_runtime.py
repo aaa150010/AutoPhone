@@ -1169,21 +1169,28 @@ class FreeProtocolMixin(
                 # Telemetry must not mask the failure already recorded above.
                 pass
 
-        time.sleep(2.0)
-        try:
-            response = session.get(
-                "https://chatgpt.com/backend-api/accounts/mfa_info",
-                headers=dict(headers),
-                timeout=15,
-            )
-            status = _response_status(response)
-            if status is not None and 200 <= status < 300:
-                data = response.json() if hasattr(response, "json") else {}
-                if mfa_enabled_from_payload(data):
-                    return
-            _note(f"[{task_id}/free_twofa_activate] 2FA 激活复核未确认 mfa_enabled（HTTP {status if status is not None else '-'}），激活响应已按成功处理")
-        except Exception as exc:
-            _note(f"[{task_id}/free_twofa_activate] 2FA 激活复核异常（{type(exc).__name__}），激活响应已按成功处理")
+        # Bounded confirmation poll instead of a fixed sleep: the activation
+        # write is usually visible immediately, so confirm and return at once;
+        # a still-pending read gets a short bounded retry window.
+        for attempt in range(3):
+            if attempt:
+                time.sleep(1.0)
+            try:
+                response = session.get(
+                    "https://chatgpt.com/backend-api/accounts/mfa_info",
+                    headers=dict(headers),
+                    timeout=15,
+                )
+                status = _response_status(response)
+                if status is not None and 200 <= status < 300:
+                    data = response.json() if hasattr(response, "json") else {}
+                    if mfa_enabled_from_payload(data):
+                        return
+                if attempt == 2:
+                    _note(f"[{task_id}/free_twofa_activate] 2FA 激活复核未确认 mfa_enabled（HTTP {status if status is not None else '-'}），激活响应已按成功处理")
+            except Exception as exc:
+                if attempt == 2:
+                    _note(f"[{task_id}/free_twofa_activate] 2FA 激活复核异常（{type(exc).__name__}），激活响应已按成功处理")
 
 
 
