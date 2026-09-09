@@ -116,13 +116,18 @@ class NotificationQueue:
 
     def _worker(self) -> None:
         while True:
-            try:
-                notification = self._queue.get(timeout=0.05)
-            except queue.Empty:
+            # Block until an item or the close sentinel arrives. The former
+            # 50ms polling get woke the thread ~20x/s for a queue that stays
+            # empty almost all of its lifetime; a blocking get costs one
+            # parked thread and zero wakeups while idle.
+            notification = self._queue.get()
+            if notification is None:
                 with self._condition:
                     if self._closing and self._outstanding == 0:
                         self._condition.notify_all()
                         return
+                    # A late submit raced the sentinel: keep draining and a
+                    # later close() will enqueue another sentinel.
                 continue
 
             with self._condition:
@@ -168,6 +173,15 @@ class NotificationQueue:
             self._closing = True
             thread = self._thread
             self._condition.notify_all()
+        if thread is not None:
+            # Wake a worker parked on the blocking get so it can observe the
+            # closing flag. The sentinel consumes one queue slot; with a full
+            # queue the worker is awake anyway and drains items until a slot
+            # frees, so a bounded retry cannot deadlock.
+            try:
+                self._queue.put_nowait(None)
+            except queue.Full:
+                pass
         if wait and thread is not None:
             thread.join(timeout=max(0.0, timeout))
 
