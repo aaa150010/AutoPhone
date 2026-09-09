@@ -122,6 +122,39 @@ class FreePlanCheckTests(unittest.TestCase):
         self.assertEqual(details["plan_check_status"], "success")
         self.assertEqual(details["plan_source"], "backend-api/wham/usage")
 
+    def test_browser_plan_queries_run_concurrently(self):
+        import asyncio as _asyncio
+
+        started: list[str] = []
+        finished: list[str] = []
+
+        class _Gate:
+            def __init__(self):
+                self._event = _asyncio.Event()
+
+            async def arrive(self, name: str):
+                started.append(name)
+                if len(started) >= 2:
+                    self._event.set()
+                else:
+                    await _asyncio.wait_for(self._event.wait(), timeout=1)
+
+        gate = _Gate()
+
+        async def fake_fetch(_page, url, **_kwargs):
+            name = "accounts" if "accounts/check" in url else "eligibility"
+            await gate.arrive(name)
+            finished.append(name)
+            return {"ok": True, "status": 200, "payload": {"eligible": True}}
+
+        with patch.object(free_account_service, "browser_json_fetch", side_effect=fake_fetch):
+            details = _asyncio.run(free_account_service.browser_plan_details(object(), "token"))
+
+        # Both queries must be in flight before either returns.
+        self.assertEqual(sorted(started), ["accounts", "eligibility"])
+        self.assertEqual(sorted(finished), ["accounts", "eligibility"])
+        self.assertEqual(details["plan_check_status"], "success")
+
     def test_queue_transport_falls_back_without_relogging(self):
         self.pool.save_result(self.row.row_id, {"access_token": "token"})
         calls = []

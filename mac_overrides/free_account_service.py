@@ -149,27 +149,31 @@ async def browser_plan_details(
     token: str,
     *,
     timing_fn: Callable[..., Any] | None = None,
-    timing_stage: str = "free_access_token",
+    timing_stage: str = "free_plan_check",
 ) -> dict[str, Any]:
     """Query browser same-origin plan endpoints with aBai's fallback order."""
     accounts_url = CHATGPT_ACCOUNTS_URL
     if "?" not in accounts_url:
         accounts_url += "?timezone_offset_min=-"
-    accounts = await browser_json_fetch(
-        page,
-        accounts_url,
-        token=token,
-        timing_fn=timing_fn,
-        timing_stage=timing_stage,
-        timing_code="plan_accounts_fetch",
-    )
-    eligibility = await browser_json_fetch(
-        page,
-        CHATGPT_ELIGIBILITY_URL,
-        token=token,
-        timing_fn=timing_fn,
-        timing_stage=timing_stage,
-        timing_code="plan_eligibility_fetch",
+    # The accounts and eligibility queries are independent reads; issuing
+    # them concurrently removes one serial page round-trip per task.
+    accounts, eligibility = await asyncio.gather(
+        browser_json_fetch(
+            page,
+            accounts_url,
+            token=token,
+            timing_fn=timing_fn,
+            timing_stage=timing_stage,
+            timing_code="plan_accounts_fetch",
+        ),
+        browser_json_fetch(
+            page,
+            CHATGPT_ELIGIBILITY_URL,
+            token=token,
+            timing_fn=timing_fn,
+            timing_stage=timing_stage,
+            timing_code="plan_eligibility_fetch",
+        ),
     )
     fallbacks: list[tuple[str, Any]] = []
     if plan_details_from_payloads(accounts, eligibility).get("plan_check_status") != "success":
