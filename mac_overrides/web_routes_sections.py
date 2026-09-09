@@ -965,6 +965,25 @@ def build_remail_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]
         except Exception as exc:
             return ns["free_error_response"](exc, default_code="free_remail_wallet", default_label="读取 Remail 钱包")
 
+    def _auto_import_remail_orders(pool, orders: list[Mapping[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Import freshly purchased orders into the Free pool right away.
+
+        A purchase response that already carries the delivery email and
+        service token skips the manual order-page import entirely; orders
+        still missing their token keep the manual path (import fetches the
+        detail lazily).  Individual failures never fail the purchase itself.
+        """
+        imported: list[dict[str, Any]] = []
+        skipped: list[dict[str, Any]] = []
+        for order in orders:
+            order_no = str(order.get("orderNo") or order.get("order_no") or "").strip()
+            try:
+                row = pool.import_remail_order(order)
+                imported.append({"order_no": order_no, "row_id": row.get("row_id")})
+            except Exception as exc:
+                skipped.append({"order_no": order_no, "reason": _safe_free_message(exc) or "订单凭证不可用"})
+        return imported, skipped
+
     def api_remail_purchase():
         data = scope.module.request.get_json(silent=True) or {}
         if not isinstance(data, Mapping):
@@ -978,13 +997,21 @@ def build_remail_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]
                 raise ValueError("购买参数无效")
             client = _remail_client()
             result = client.create_order_batch(project_id, suffix, quantity, supply=supply) if quantity >= 2 else client.create_order(project_id, suffix, supply=supply)
-            storage = getattr(getattr(scope.free_manager, "pool", None), "storage", None) if scope.free_manager is not None else None
+            manager = scope.free_manager
+            storage = getattr(getattr(manager, "pool", None), "storage", None) if manager is not None else None
             items = result if isinstance(result, list) else [result]
+            normalized_orders: list[Mapping[str, Any]] = []
             for item in items:
                 order = _remail_order_value(item)
-                if isinstance(order, Mapping) and storage is not None:
-                    storage.upsert_remail_order(order)
-            return scope.module.jsonify(ok=True, result=result)
+                if isinstance(order, Mapping):
+                    normalized_orders.append(order)
+                    if storage is not None:
+                        storage.upsert_remail_order(order)
+            # Purchased orders flow straight into the Free mailbox pool; the
+            # response keeps skip reasons so orders still waiting on Remail
+            # side credentials stay visible on the manual order page.
+            imported, skipped = _auto_import_remail_orders(manager.pool, normalized_orders) if manager is not None else ([], [])
+            return scope.module.jsonify(ok=True, result=result, imported=imported, skipped=skipped, state=manager.public_state() if manager is not None else {})
         except Exception as exc:
             return ns["free_error_response"](exc, default_code="free_remail_purchase", default_label="购买 Remail 邮箱")
 
@@ -998,6 +1025,10 @@ def build_remail_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]
             page_size = max(1, min(100, int(args.get("page_size", 50) or 50)))
             imported_arg = str(args.get("imported", "false") or "false").strip().lower()
             imported_filter = None if imported_arg in {"", "all", "null"} else imported_arg in {"1", "true", "yes", "on"}
+            # Failed orders are wrong-parameter residue by default; the order
+            # page hides them (and everything already locally dismissed)
+            # unless the caller explicitly asks for failed rows.
+            include_failed = str(args.get("include_failed", "false") or "false").strip().lower() in {"1", "true", "yes", "on"}
             search = str(args.get("search", "") or "").strip()
             storage = getattr(getattr(scope.free_manager, "pool", None), "storage", None)
             # The Open API is cursor-based.  Pull only enough pages to fill
@@ -1030,13 +1061,37 @@ def build_remail_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]
                     break
                 seen_cursors.add(next_after)
                 after_id = next_after
-            total = storage.count_remail_orders(imported=imported_filter, search=search) if storage is not None else 0
-            rows = storage.list_remail_orders(imported=imported_filter, search=search, public=True, limit=page_size, offset=(page - 1) * page_size) if storage is not None else []
+            total = storage.count_remail_orders(imported=imported_filter, search=search, include_hidden=True) if storage is not None else 0
+            rows = storage.list_remail_orders(
+                imported=imported_filter,
+                search=search,
+                include_hidden=include_failed,
+                public=True,
+                limit=page_size,
+                offset=(page - 1) * page_size,
+            ) if storage is not None else []
+            if not include_failed and storage is not None:
+                rows = [row for row in rows if str(row.get("status") or "").lower() != "failed"]
             if isinstance(remote_total, int) and imported_filter is None and not search:
                 total = remote_total
             return scope.module.jsonify(ok=True, orders=rows, remote_count=remote_count, total=total, page=page, page_size=page_size, has_more=(page * page_size < total))
         except Exception as exc:
             return ns["free_error_response"](exc, default_code="free_remail_orders", default_label="同步 Remail 订单")
+
+    def api_remail_hide_orders():
+        """Dismiss wrong-parameter orders locally; re-sync never resurfaces them."""
+        if scope.free_manager is None:
+            return scope.module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        data = scope.module.request.get_json(silent=True) or {}
+        order_nos = [str(value or "").strip() for value in data.get("order_nos", [])] if isinstance(data, Mapping) and isinstance(data.get("order_nos"), list) else []
+        storage = getattr(getattr(scope.free_manager, "pool", None), "storage", None)
+        if storage is None:
+            return scope.module.jsonify(ok=False, error="Free 存储尚未初始化"), 503
+        try:
+            hidden = storage.hide_remail_orders(order_nos)
+            return scope.module.jsonify(ok=True, hidden=hidden)
+        except Exception as exc:
+            return ns["free_error_response"](exc, default_code="free_remail_hide", default_label="删除 Remail 订单记录")
 
     def api_remail_import_orders():
         if scope.free_manager is None:
@@ -1533,6 +1588,7 @@ def build_remail_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]
         "api_remail_purchase": api_remail_purchase,
         "api_remail_orders": api_remail_orders,
         "api_remail_import_orders": api_remail_import_orders,
+        "api_remail_hide_orders": api_remail_hide_orders,
         "diagnostic_routes": diagnostic_routes,
         "free_account_routes": free_account_routes,
         "free_rebind_routes": free_rebind_routes,

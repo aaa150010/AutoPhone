@@ -286,6 +286,20 @@ class FreeStorageSchemaMixin:
                         db.execute(
                             f"UPDATE {table} SET private_payload='{{}}' WHERE private_payload IS NULL"
                         )
+                    # Remail order rows can be dismissed (hidden) locally so a
+                    # wrong-parameter failed order stops reappearing after the
+                    # remote order list is re-synced.
+                    remail_columns = {
+                        str(item[1])
+                        for item in db.execute("PRAGMA table_info(remail_orders)").fetchall()
+                    }
+                    if "hidden" not in remail_columns:
+                        db.execute(
+                            "ALTER TABLE remail_orders ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0"
+                        )
+                        db.execute(
+                            "UPDATE remail_orders SET hidden=0 WHERE hidden IS NULL"
+                        )
                     self._migrate_payload_sidecars(db)
                     # ``executescript`` manages DDL in autocommit mode when
                     # isolation_level=None; use a short explicit transaction

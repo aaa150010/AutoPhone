@@ -106,6 +106,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
     api_remail_purchase = views["api_remail_purchase"]
     api_remail_orders = views["api_remail_orders"]
     api_remail_import_orders = views["api_remail_import_orders"]
+    api_remail_hide_orders = views["api_remail_hide_orders"]
     api_free_state = views["api_free_state"]
     api_free_camoufox_debug_state = views["api_free_camoufox_debug_state"]
     api_free_camoufox_debug_close = views["api_free_camoufox_debug_close"]
@@ -163,6 +164,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/api/remail/purchase", "api_remail_purchase", api_remail_purchase, ["POST"]),
         ("/api/remail/orders", "api_remail_orders", api_remail_orders, ["GET"]),
         ("/api/remail/orders/import", "api_remail_import_orders", api_remail_import_orders, ["POST"]),
+        ("/api/remail/orders/hide", "api_remail_hide_orders", api_remail_hide_orders, ["POST"]),
         ("/api/free/state", "api_free_state", api_free_state, ["GET"]),
         ("/api/free/camoufox/debug", "api_free_camoufox_debug_state", api_free_camoufox_debug_state, ["GET"]),
         ("/api/free/camoufox/debug/close", "api_free_camoufox_debug_close", api_free_camoufox_debug_close, ["POST"]),

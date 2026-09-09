@@ -335,14 +335,17 @@ class FreeStorageTaskMixin:
             with self._connection() as db:
                 db.execute("BEGIN IMMEDIATE")
                 try:
-                    current = db.execute("SELECT imported,pool_row_id,created_at FROM remail_orders WHERE order_no=?", (order_no,)).fetchone()
+                    current = db.execute("SELECT imported,pool_row_id,created_at,hidden FROM remail_orders WHERE order_no=?", (order_no,)).fetchone()
                     imported = int(current[0]) if current is not None else int(bool(order.get("imported")))
                     pool_row_id = str(current[1]) if current is not None else str(order.get("pool_row_id") or "")
                     created_at = str(current[2]) if current is not None else now
+                    # A locally hidden (dismissed) order stays hidden across
+                    # remote re-syncs; the remote list must not resurface it.
+                    hidden = int(current[3]) if current is not None else 0
                     db.execute(
-                        "INSERT INTO remail_orders(order_no,status,delivery_email,imported,pool_row_id,created_at,updated_at,payload,private_payload) VALUES(?,?,?,?,?,?,?,?,?) "
+                        "INSERT INTO remail_orders(order_no,status,delivery_email,imported,pool_row_id,created_at,updated_at,hidden,payload,private_payload) VALUES(?,?,?,?,?,?,?,?,?,?) "
                         "ON CONFLICT(order_no) DO UPDATE SET status=excluded.status,delivery_email=excluded.delivery_email,updated_at=excluded.updated_at,payload=excluded.payload,private_payload=excluded.private_payload",
-                        (order_no, status, email, imported, pool_row_id, created_at, now, _safe_json(public), _safe_json(private)),
+                        (order_no, status, email, imported, pool_row_id, created_at, now, hidden, _safe_json(public), _safe_json(private)),
                     )
                     row = db.execute("SELECT * FROM remail_orders WHERE order_no=?", (order_no,)).fetchone()
                     db.execute("COMMIT")
@@ -352,9 +355,37 @@ class FreeStorageTaskMixin:
         assert row is not None
         return self._remail_order_dict(row)
 
-    def list_remail_orders(self, *, status: str | None = None, imported: bool | None = None, search: str | None = None, public: bool = False, limit: int = 500, offset: int = 0) -> list[dict[str, Any]]:
+    def hide_remail_orders(self, order_nos: Sequence[str]) -> int:
+        """Dismiss orders locally; hidden orders stay hidden across re-syncs."""
+        selected: list[str] = []
+        seen: set[str] = set()
+        for order_no in order_nos:
+            value = str(order_no or "").strip()
+            if value and value not in seen:
+                seen.add(value)
+                selected.append(value)
+        if not selected:
+            raise ValueError("请选择要删除的 Remail 订单")
+        placeholders = ",".join("?" for _ in selected)
+        with self._transaction():
+            with self._connection() as db:
+                db.execute("BEGIN IMMEDIATE")
+                try:
+                    cursor = db.execute(
+                        f"UPDATE remail_orders SET hidden=1,updated_at=? WHERE order_no IN ({placeholders}) AND imported=0",
+                        [_now(), *selected],
+                    )
+                    db.execute("COMMIT")
+                except BaseException:
+                    db.execute("ROLLBACK")
+                    raise
+        return int(cursor.rowcount or 0)
+
+    def list_remail_orders(self, *, status: str | None = None, imported: bool | None = None, search: str | None = None, include_hidden: bool = False, public: bool = False, limit: int = 500, offset: int = 0) -> list[dict[str, Any]]:
         clauses = ["1=1"]
         params: list[Any] = []
+        if not include_hidden:
+            clauses.append("hidden=0")
         if status:
             clauses.append("status=?")
             params.append(str(status))
@@ -370,9 +401,11 @@ class FreeStorageTaskMixin:
             rows = db.execute(f"SELECT * FROM remail_orders WHERE {' AND '.join(clauses)} ORDER BY created_at DESC, order_no DESC LIMIT ? OFFSET ?", params).fetchall()
         return [self._remail_order_dict(row, public=public) for row in rows]
 
-    def count_remail_orders(self, *, status: str | None = None, imported: bool | None = None, search: str | None = None) -> int:
+    def count_remail_orders(self, *, status: str | None = None, imported: bool | None = None, search: str | None = None, include_hidden: bool = False) -> int:
         clauses = ["1=1"]
         params: list[Any] = []
+        if not include_hidden:
+            clauses.append("hidden=0")
         if status:
             clauses.append("status=?"); params.append(str(status))
         if imported is not None:

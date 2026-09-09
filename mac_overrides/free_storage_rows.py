@@ -152,6 +152,7 @@ class FreeStorageRowMixin:
             "delivery_email": str(row["delivery_email"]) if not public else _mask_email(row["delivery_email"]),
             "delivery_email_masked": _mask_email(row["delivery_email"]),
             "imported": bool(row["imported"]),
+            "hidden": bool(row["hidden"]) if "hidden" in row.keys() else False,
             "pool_row_id": str(row["pool_row_id"]),
             "created_at": str(row["created_at"]),
             "updated_at": str(row["updated_at"]),

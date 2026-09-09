@@ -415,6 +415,7 @@ export interface RemailOrder {
   status: string
   delivery_email_masked?: string
   imported: boolean
+  hidden?: boolean
   pool_row_id?: string
   payload?: Record<string, any>
   created_at?: string

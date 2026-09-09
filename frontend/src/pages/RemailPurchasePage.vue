@@ -53,7 +53,15 @@ async function load() {
 async function purchase() {
   if (!projectId.value || !suffix.value) return ElMessage.warning('请选择项目和邮箱类型')
   loading.value = true
-  try { await purchaseRemail({ project_id: projectId.value, email_suffix: suffix.value, quantity: quantity.value, supply: supply.value }); ElMessage.success('订单已创建，可在订单查询中确认并导入 Free 池'); await load() }
+  try {
+    const result = await purchaseRemail({ project_id: projectId.value, email_suffix: suffix.value, quantity: quantity.value, supply: supply.value })
+    const imported = result.imported?.length || 0
+    const skipped = result.skipped?.length || 0
+    if (imported) ElMessage.success(`订单已创建，${imported} 个邮箱已自动导入 Free 邮箱池${skipped ? `，${skipped} 个待凭证下发后手动导入` : ''}`)
+    else if (skipped) ElMessage.warning(`订单已创建，${skipped} 个邮箱暂缺服务凭证，可在订单查询页手动导入`)
+    else ElMessage.success('订单已创建，可在订单查询中确认并导入 Free 池')
+    await load()
+  }
   catch (error) { ElMessage.error(errorMessage(error) || 'Remail 购买失败') } finally { loading.value = false }
 }
 onMounted(load)

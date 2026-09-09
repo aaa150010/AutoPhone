@@ -2285,6 +2285,119 @@ class WebRouteTests(unittest.TestCase):
         ):
             self.assertNotIn(secret, forwarded)
 
+    def test_remail_purchase_auto_imports_orders_into_free_pool(self):
+        class FakePoolStorage:
+            def __init__(self):
+                self.orders = []
+
+            def upsert_remail_order(self, order):
+                self.orders.append(dict(order))
+
+            def list_remail_orders(self, *, public=True):
+                return [dict(order) for order in self.orders]
+
+        class FakePool:
+            def __init__(self):
+                self.storage = FakePoolStorage()
+                self.imported = []
+
+            def import_remail_order(self, order):
+                self.imported.append(dict(order))
+                return {"row_id": f"row-{len(self.imported)}"}
+
+        class FakePurchaseManager:
+            def __init__(self):
+                self.pool = FakePool()
+
+            def public_state(self):
+                return {"running": False, "tasks": [], "summary": {}}
+
+        class FakeRemailClient:
+            def create_order(self, project_id, email_suffix, *, supply="private_first", idempotency_key=None):
+                return {"orderNo": "ORD-AUTO-1", "status": "active", "deliveryEmail": f"auto1@{email_suffix}", "serviceToken": "tok-1"}
+
+            def create_order_batch(self, project_id, email_suffix, quantity, *, supply="private_first", idempotency_key=None):
+                return [
+                    {"orderNo": "ORD-AUTO-1", "status": "active", "deliveryEmail": f"auto1@{email_suffix}", "serviceToken": "tok-1"},
+                    {"orderNo": "ORD-AUTO-2", "status": "active", "deliveryEmail": f"auto2@{email_suffix}", "serviceToken": "tok-2"},
+                ]
+
+        import mac_overrides.remail_api as remail_api
+        manager = FakePurchaseManager()
+        original_client = remail_api.RemailClient
+        remail_api.RemailClient = lambda *args, **kwargs: FakeRemailClient()
+        try:
+            app = self._app(replace(self.context, free_register_manager=manager))
+            response = app.test_client().post(
+                "/api/remail/purchase",
+                json={"project_id": 1, "email_suffix": "icloud.com", "quantity": 2},
+            )
+        finally:
+            remail_api.RemailClient = original_client
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual([order["orderNo"] for order in manager.pool.imported], ["ORD-AUTO-1", "ORD-AUTO-2"])
+        self.assertEqual([row["row_id"] for row in payload["imported"]], ["row-1", "row-2"])
+        self.assertEqual(payload["skipped"], [])
+        self.assertEqual(
+            sorted(order.get("orderNo") or order.get("order_no") for order in manager.pool.storage.list_remail_orders(public=False)),
+            ["ORD-AUTO-1", "ORD-AUTO-2"],
+        )
+
+    def test_remail_purchase_without_token_keeps_order_pending_manual_import(self):
+        class FakePoolStorage:
+            def __init__(self):
+                self.orders = []
+
+            def upsert_remail_order(self, order):
+                self.orders.append(dict(order))
+
+            def list_remail_orders(self, *, public=True):
+                return [dict(order) for order in self.orders]
+
+        class FakePool:
+            def __init__(self):
+                self.storage = FakePoolStorage()
+                self.imported = []
+
+            def import_remail_order(self, order):
+                self.imported.append(dict(order))
+                raise ValueError("订单缺少交付邮箱或服务凭证")
+
+        class FakePurchaseManager:
+            def __init__(self):
+                self.pool = FakePool()
+
+            def public_state(self):
+                return {"running": False, "tasks": [], "summary": {}}
+
+        class FakeRemailClient:
+            def create_order(self, project_id, email_suffix, *, supply="private_first", idempotency_key=None):
+                return {"orderNo": "ORD-PENDING", "status": "paid", "deliveryEmail": f"pending@{email_suffix}"}
+
+        import mac_overrides.remail_api as remail_api
+        manager = FakePurchaseManager()
+        original_client = remail_api.RemailClient
+        remail_api.RemailClient = lambda *args, **kwargs: FakeRemailClient()
+        try:
+            app = self._app(replace(self.context, free_register_manager=manager))
+            response = app.test_client().post(
+                "/api/remail/purchase",
+                json={"project_id": 1, "email_suffix": "icloud.com", "quantity": 1},
+            )
+        finally:
+            remail_api.RemailClient = original_client
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["imported"], [])
+        self.assertEqual(len(payload["skipped"]), 1)
+        self.assertEqual(payload["skipped"][0]["order_no"], "ORD-PENDING")
+        self.assertEqual(manager.pool.imported[0]["orderNo"], "ORD-PENDING")
+
 
 if __name__ == "__main__":
     unittest.main()
