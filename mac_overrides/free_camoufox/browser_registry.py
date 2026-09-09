@@ -16,6 +16,7 @@ def _host_mod():
     return _host_module_ref
 
 import asyncio
+from collections import deque
 from concurrent.futures import (
     CancelledError as FutureCancelledError,
     TimeoutError as FutureTimeoutError,
@@ -151,7 +152,27 @@ class CamoufoxBrowserPool:
         self._debug_lock = threading.RLock()
         self._debug_sessions: dict[str, _host_mod()._DebugSession] = {}
         self._debug_closing: set[str] = set()
+        # Ring buffer of swallowed best-effort failures (cleanup, artifact
+        # bookkeeping, watcher cancellation). Only the failure site label and
+        # exception class are kept; these never mask the surrounding outcome.
+        self._quiet_failures: deque[dict[str, Any]] = deque(maxlen=40)
         self._start()
+
+    def _note_quiet(self, where: str, exc: BaseException) -> None:
+        """Record a swallowed best-effort failure without changing semantics.
+
+        Deliberately lock-free: callers may already hold ``self._lock`` and a
+        bounded ``deque.append`` is atomic under the GIL.
+        """
+        try:
+            self._quiet_failures.append({
+                "where": str(where or "")[:60],
+                "error": type(exc).__name__,
+                "at": round(time.time(), 3),
+            })
+        except Exception:
+            # Even the quiet note must not break the surrounding best-effort path.
+            return
 
     @staticmethod
     def _task_id_from_kwargs(kwargs: Mapping[str, Any]) -> str:
@@ -358,9 +379,9 @@ class CamoufoxBrowserPool:
             ):
                 try:
                     setattr(error, name, value)
-                except Exception:
+                except Exception as exc:
                     # Enrichment must not mask the original browser failure.
-                    pass
+                    self._note_quiet("error_enrich", exc)
         return True
 
     async def _close_debug_sessions_async(self, session_id: str = "") -> int:
@@ -404,9 +425,9 @@ class CamoufoxBrowserPool:
                     if page_closed:
                         try:
                             await _host_mod()._close_context_safely(session.context, min(timeout, 5.0))
-                        except Exception:
+                        except Exception as exc:
                             # Context close must not mask the original shutdown reason.
-                            pass
+                            self._note_quiet("context_close_shutdown", exc)
                         context_closed = True
                 bridge_error = ""
                 bridge = session.proxy_bridge
@@ -442,9 +463,9 @@ class CamoufoxBrowserPool:
                                 if isinstance(payload, dict):
                                     payload["bridge_cleanup_error"] = bridge_error
                                     _host_mod()._atomic_artifact_write(summary_path, payload)
-                            except Exception:
+                            except Exception as exc:
                                 # Artifact bookkeeping must not break the debug retention.
-                                pass
+                                self._note_quiet("bridge_summary_update", exc)
                     # A retained context can postpone the normal
                     # max-registrations recycle. Once the final hold on an
                     # otherwise idle slot is released, perform that recycle
@@ -596,12 +617,12 @@ class CamoufoxBrowserPool:
             except FutureTimeoutError:
                 try:
                     future.cancel()
-                except Exception:
+                except Exception as exc:
                     # Watcher cancellation must not mask the pool shutdown.
-                    pass
-            except Exception:
+                    self._note_quiet("shutdown_watcher_cancel", exc)
+            except Exception as exc:
                 # Watcher cancellation must not mask the pool shutdown.
-                pass
+                self._note_quiet("shutdown_watcher_result", exc)
             return 0
         except Exception:
             return 0
@@ -674,9 +695,9 @@ class CamoufoxBrowserPool:
                     if isinstance(payload, dict):
                         payload["incident_id"] = normalized_incident
                         _host_mod()._atomic_artifact_write(summary_path, payload)
-                except Exception:
+                except Exception as exc:
                     # Artifact bookkeeping must not break the debug retention.
-                    pass
+                    self._note_quiet("incident_summary_update", exc)
         return True
 
     def has_debug_sessions(self) -> bool:
@@ -715,8 +736,8 @@ class CamoufoxBrowserPool:
                             # preventing the completion signal in ``finally``.
                             try:
                                 shutdown_task.result()
-                            except BaseException:
-                                pass
+                            except BaseException as exc:
+                                self._note_quiet("shutdown_task_result", exc)
                     else:
                         self._loop.run_until_complete(self._shutdown_async())
                     self._cancel_pending_tasks()
@@ -899,9 +920,9 @@ class CamoufoxBrowserPool:
                 last_error = exc
                 try:
                     await manager.__aexit__(type(exc), exc, exc.__traceback__)
-                except Exception:
+                except Exception as close_exc:
                     # Manager close must not mask the original browser failure.
-                    pass
+                    self._note_quiet("manager_exit", close_exc)
                 if attempt + 1 < attempts:
                     await asyncio.sleep(min(2 ** attempt, 5))
         raise _host_mod().CamoufoxBrowserError(
@@ -1020,8 +1041,8 @@ class CamoufoxBrowserPool:
                                         asyncio.shield(task),
                                         timeout=max(1.0, min(30.0, safety_deadline - time.monotonic() + 1.0)),
                                     )
-                                except BaseException:
-                                    pass
+                                except BaseException as cancel_exc:
+                                    self._note_quiet("registration_task_cancel", cancel_exc)
                                 raise _host_mod().CamoufoxBrowserError(
                                     "free_camoufox_browser", "Camoufox 注册页面",
                                     "浏览器注册超时，已取消当前 context 并回收进程",
@@ -1036,8 +1057,8 @@ class CamoufoxBrowserPool:
                             task.cancel()
                         try:
                             await asyncio.wait_for(asyncio.shield(task), timeout=5.0)
-                        except BaseException:
-                            pass
+                        except BaseException as cancel_exc:
+                            self._note_quiet("registration_drain_cancel", cancel_exc)
             except asyncio.TimeoutError as exc:
                 raise _host_mod().CamoufoxBrowserError(
                     "free_camoufox_browser", "Camoufox 注册页面",
@@ -1688,6 +1709,7 @@ class CamoufoxBrowserPool:
                             timeout=float(self.config.get("browser_recycle_drain_timeout_seconds") or 20),
                         )
                     except asyncio.TimeoutError:
+                        # Drain timeout falls through to the debug-holds recheck.
                         pass
                 # A task that was already in its terminal cleanup can retain a
                 # debug page while the drain event is being awaited. Re-check
@@ -1866,12 +1888,12 @@ class CamoufoxBrowserPool:
             except FutureTimeoutError:
                 try:
                     future.cancel()
-                except Exception:
+                except Exception as cancel_exc:
                     # Watcher cancellation must not mask the registration timeout.
-                    pass
-            except Exception:
+                    self._note_quiet("timeout_watcher_cancel", cancel_exc)
+            except Exception as result_exc:
                 # Telemetry must not mask the registration timeout raised below.
-                pass
+                self._note_quiet("timeout_watcher_result", result_exc)
             raise _host_mod().CamoufoxBrowserError("free_camoufox_browser", "Camoufox 注册页面", "浏览器注册超时", error_code="camoufox_registration_timeout") from exc
 
     def shutdown(self, *, force: bool = False) -> bool:
@@ -1902,11 +1924,11 @@ class CamoufoxBrowserPool:
                     init_finished = getattr(self, "_init_finished", None)
                     if init_finished is None or init_finished.is_set():
                         loop.call_soon_threadsafe(self._schedule_shutdown)
-                except (RuntimeError, AttributeError):
+                except (RuntimeError, AttributeError) as exc:
                     # The loop may already be in its final close phase. The
                     # completion event below determines whether cleanup really
                     # finished before the pool is removed from the registry.
-                    pass
+                    self._note_quiet("shutdown_schedule", exc)
         thread = self._thread
         if thread is None:
             completion.set()
@@ -2423,9 +2445,9 @@ class CamoufoxRegistrationRunner:
         # instance instead of adding a private key to the caller's mapping.
         try:
             setattr(otp, "deadline_controller", deadline_controller)
-        except Exception:
+        except Exception as exc:
             # Controller attachment is optional scheduling telemetry.
-            pass
+            self._note_quiet("deadline_controller_attach", exc)
         try:
             stage(task_id, "free_password_enroll" if password_retry else "free_camoufox_signup")
             if stop_event.is_set():
