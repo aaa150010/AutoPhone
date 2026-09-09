@@ -3,14 +3,29 @@ from __future__ import annotations
 import copy
 import json
 import os
+from contextlib import contextmanager
 from pathlib import Path
 import tempfile
 import threading
 import time
 from types import MethodType, SimpleNamespace
+from typing import Any
 import unittest
 
 from tests.web_gui_test_runtime import RecoveredWebGuiImport
+
+
+def patch_module_attr(owner: Any, name: str, value):
+    """Temporarily replace ``owner.name`` and restore it after the block."""
+    original = getattr(owner, name)
+    try:
+        setattr(owner, name, value)
+        yield
+    finally:
+        setattr(owner, name, original)
+
+
+patch_module_attr = contextmanager(patch_module_attr)
 
 
 class WebGuiSecurityTests(unittest.TestCase):
@@ -274,15 +289,17 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_sms_preflight_missing_transport_blocks_paid_allocation(self):
         module = self.module
-        original_preflight = module._SMS_WEB.phone_context_preflight
-        original_allocate = module._SMS_WEB.original_adapter_get_number
         calls = []
         token = module._ACTIVE_SMS_TRANSPORT.set(None)
-        try:
-            module._SMS_WEB.phone_context_preflight = module._preflight_sms_phone_context
-            module._SMS_WEB.original_adapter_get_number = (
-                lambda *_args, **_kwargs: calls.append(True)
-            )
+        with patch_module_attr(
+            module._SMS_WEB,
+            "phone_context_preflight",
+            module._preflight_sms_phone_context,
+        ), patch_module_attr(
+            module._SMS_WEB,
+            "original_adapter_get_number",
+            lambda *_args, **_kwargs: calls.append(True),
+        ):
             adapter = SimpleNamespace(
                 config={"sms_task_id": "task-no-transport"},
                 provider=SimpleNamespace(),
@@ -290,10 +307,7 @@ class WebGuiSecurityTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(Exception, "auth_context_transport_missing"):
                 module._SMS_WEB.adapter_get_number(adapter)
-        finally:
-            module._SMS_WEB.phone_context_preflight = original_preflight
-            module._SMS_WEB.original_adapter_get_number = original_allocate
-            module._ACTIVE_SMS_TRANSPORT.reset(token)
+        module._ACTIVE_SMS_TRANSPORT.reset(token)
         self.assertEqual(calls, [])
 
     def test_sms_preflight_regressions_block_paid_allocation_and_mark_risk(self):
@@ -351,7 +365,6 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_task_config_allows_fifteen_attempts_per_enabled_sms_platform(self):
         module = self.module
-        original_task_config = module._ORIGINAL_TASK_CONFIG
         fake_self = SimpleNamespace()
 
         def build(pools):
@@ -365,8 +378,9 @@ class WebGuiSecurityTests(unittest.TestCase):
                 "task-attempts",
             )
 
-        try:
-            module._ORIGINAL_TASK_CONFIG = lambda *_args, **_kwargs: {"code_timeout": 30}
+        with patch_module_attr(
+            module, "_ORIGINAL_TASK_CONFIG", lambda *_args, **_kwargs: {"code_timeout": 30}
+        ):
             three_platforms = build([
                 {"provider": "smsbower", "enabled": True, "api_keys": ["bower-key"]},
                 {"provider": "herosms", "enabled": True, "api_keys": ["hero-key"]},
@@ -382,8 +396,6 @@ class WebGuiSecurityTests(unittest.TestCase):
                 {"provider": "herosms", "enabled": True, "api_keys": []},
                 {"provider": "5sim", "enabled": False, "api_keys": ["five-key"]},
             ])
-        finally:
-            module._ORIGINAL_TASK_CONFIG = original_task_config
 
         self.assertEqual(three_platforms["phone_max_attempts"], 45)
         self.assertEqual(two_platforms["phone_max_attempts"], 30)
@@ -394,9 +406,9 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_task_config_enables_one_email_otp_resend_by_default(self):
         module = self.module
-        original_task_config = module._ORIGINAL_TASK_CONFIG
-        try:
-            module._ORIGINAL_TASK_CONFIG = lambda *_args, **_kwargs: {"code_timeout": 30}
+        with patch_module_attr(
+            module, "_ORIGINAL_TASK_CONFIG", lambda *_args, **_kwargs: {"code_timeout": 30}
+        ):
             default_config = module._patched_task_config(
                 SimpleNamespace(data_dir=self.tempdir.name),
                 {},
@@ -413,8 +425,6 @@ class WebGuiSecurityTests(unittest.TestCase):
                 "user@example.test",
                 "email-retry-explicit",
             )
-        finally:
-            module._ORIGINAL_TASK_CONFIG = original_task_config
 
         self.assertEqual(default_config["email_otp_verify_attempts"], 2)
         self.assertTrue(default_config["email_otp_resend_on_retry"])
@@ -425,15 +435,15 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_legacy_oauth_session_marker_no_longer_enables_phone_risk_mode(self):
         module = self.module
-        original_task_config = module._ORIGINAL_TASK_CONFIG
         email = "persisted-risk@example.test"
         module._PHONE_RISK_STORE.mark(
             email,
             reason_code="oauth_session_invalid",
             stage="phone_submitting",
         )
-        try:
-            module._ORIGINAL_TASK_CONFIG = lambda *_args, **_kwargs: {"code_timeout": 30}
+        with patch_module_attr(
+            module, "_ORIGINAL_TASK_CONFIG", lambda *_args, **_kwargs: {"code_timeout": 30}
+        ):
             first = module._patched_task_config(
                 SimpleNamespace(data_dir=self.tempdir.name),
                 {},
@@ -446,44 +456,35 @@ class WebGuiSecurityTests(unittest.TestCase):
                 email.upper(),
                 "risk-task-2",
             )
-        finally:
-            module._ORIGINAL_TASK_CONFIG = original_task_config
-            module._PHONE_RISK_STORE.clear(email)
 
+        module._PHONE_RISK_STORE.clear(email)
         for config in (first, second):
             self.assertNotIn("_phone_risk_retry", config)
             self.assertNotIn("_phone_risk_reason_code", config)
 
     def test_register_start_applies_one_run_mailbox_selection_filter(self):
         module = self.module
-        original_start = module._importer_scheduler_ext.start_bounded_importer
-        original_notifications = module._begin_notification_run
         observed = []
         importer = SimpleNamespace(status=lambda _settings: {"running": False})
-        try:
-            module._begin_notification_run = lambda *_args: None
-            module._importer_scheduler_ext.start_bounded_importer = (
-                lambda *_args, **_kwargs: observed.append(
-                    module._MAILBOX_LEASE_FILTER_ACTIVE.get()
-                )
-            )
+        with patch_module_attr(module, "_CURRENT_TASK_ADMISSION", None), \
+                patch_module_attr(module, "_CURRENT_INFLIGHT_GATE", None), \
+                patch_module_attr(
+                    module, "_begin_notification_run", lambda *_args: None
+                ), patch_module_attr(
+                    module._importer_scheduler_ext,
+                    "start_bounded_importer",
+                    lambda *_args, **_kwargs: observed.append(
+                        module._MAILBOX_LEASE_FILTER_ACTIVE.get()
+                    ),
+                ):
             module._patched_importer_start(importer, {"concurrency": 2})
             module._patched_importer_start(importer, {"concurrency": 2, "run_mode": "relogin"})
-        finally:
-            module._importer_scheduler_ext.start_bounded_importer = original_start
-            module._begin_notification_run = original_notifications
 
         self.assertEqual(observed, [True, False])
         self.assertFalse(module._MAILBOX_LEASE_FILTER_ACTIVE.get())
 
     def test_preflight_balance_notification_is_after_scheduler_and_advisory(self):
         module = self.module
-        original_start = module._importer_scheduler_ext.start_bounded_importer
-        original_notifications = module._begin_notification_run
-        original_aggregate = module._notification_aggregate
-        original_thread = module.threading.Thread
-        original_admission = module._CURRENT_TASK_ADMISSION
-        original_inflight = module._CURRENT_INFLIGHT_GATE
         observed = {}
         statuses = [{
             "provider": "smsbower",
@@ -532,11 +533,16 @@ class WebGuiSecurityTests(unittest.TestCase):
             }
             return "started"
 
-        try:
-            module._begin_notification_run = begin
-            module._notification_aggregate = lambda *_args: ("aggregate", 101)
-            module._importer_scheduler_ext.start_bounded_importer = start
-            module.threading.Thread = DormantThread
+        with patch_module_attr(module, "_CURRENT_TASK_ADMISSION", None), \
+                patch_module_attr(module, "_CURRENT_INFLIGHT_GATE", None), \
+                patch_module_attr(module, "_begin_notification_run", begin), \
+                patch_module_attr(
+                    module, "_notification_aggregate", lambda *_args: ("aggregate", 101)
+                ), \
+                patch_module_attr(
+                    module._importer_scheduler_ext, "start_bounded_importer", start
+                ), \
+                patch_module_attr(module.threading, "Thread", DormantThread):
             result = module._patched_importer_start(
                 importer,
                 {
@@ -544,14 +550,7 @@ class WebGuiSecurityTests(unittest.TestCase):
                     "_gptphone_sms_preflight_statuses": statuses,
                 },
             )
-        finally:
-            module._CURRENT_TASK_ADMISSION = original_admission
-            module._CURRENT_INFLIGHT_GATE = original_inflight
-            module._importer_scheduler_ext.start_bounded_importer = original_start
-            module._begin_notification_run = original_notifications
-            module._notification_aggregate = original_aggregate
-            module.threading.Thread = original_thread
-            importer._gptphone_notification_context = None
+        importer._gptphone_notification_context = None
 
         self.assertEqual(result, "started")
         self.assertNotIn(
@@ -571,22 +570,18 @@ class WebGuiSecurityTests(unittest.TestCase):
             SimpleNamespace(line_no=1, source_row=first_row),
             SimpleNamespace(line_no=3, source_row="selected@example.test----********"),
         ]
-        original_patches = module._TOTP_PATCHES
         selection_token = module._MAILBOX_RUN_SELECTION.set(frozenset({
             (module._mailbox_admin_ext.row_id_from_source(selected_row), 2),
         }))
         filter_token = module._MAILBOX_LEASE_FILTER_ACTIVE.set(True)
-        try:
-            module._TOTP_PATCHES = SimpleNamespace(
-                entries_unlocked=lambda _pool: (list(entries), []),
-            )
+        with patch_module_attr(module, "_TOTP_PATCHES", SimpleNamespace(
+            entries_unlocked=lambda _pool: (list(entries), []),
+        )):
             filtered, errors = module._mailbox_entries_for_run_selection(
                 SimpleNamespace(pool_path=pool_path),
             )
-        finally:
-            module._MAILBOX_LEASE_FILTER_ACTIVE.reset(filter_token)
-            module._MAILBOX_RUN_SELECTION.reset(selection_token)
-            module._TOTP_PATCHES = original_patches
+        module._MAILBOX_LEASE_FILTER_ACTIVE.reset(filter_token)
+        module._MAILBOX_RUN_SELECTION.reset(selection_token)
 
         self.assertEqual(errors, [])
         self.assertEqual(filtered, [entries[1]])
@@ -597,31 +592,25 @@ class WebGuiSecurityTests(unittest.TestCase):
         current_row = "replacement@example.test----current-password"
         pool_path.write_text(f"{current_row}\n", encoding="utf-8")
         entry = SimpleNamespace(line_no=1, source_row=current_row)
-        original_patches = module._TOTP_PATCHES
         stale_row_id = module._mailbox_admin_ext.row_id_from_source(
             "previous@example.test----previous-password",
         )
         selection_token = module._MAILBOX_RUN_SELECTION.set(frozenset({(stale_row_id, 1)}))
         filter_token = module._MAILBOX_LEASE_FILTER_ACTIVE.set(True)
-        try:
-            module._TOTP_PATCHES = SimpleNamespace(
-                entries_unlocked=lambda _pool: ([entry], []),
-            )
+        with patch_module_attr(module, "_TOTP_PATCHES", SimpleNamespace(
+            entries_unlocked=lambda _pool: ([entry], []),
+        )):
             filtered, errors = module._mailbox_entries_for_run_selection(
                 SimpleNamespace(pool_path=pool_path),
             )
-        finally:
-            module._MAILBOX_LEASE_FILTER_ACTIVE.reset(filter_token)
-            module._MAILBOX_RUN_SELECTION.reset(selection_token)
-            module._TOTP_PATCHES = original_patches
+        module._MAILBOX_LEASE_FILTER_ACTIVE.reset(filter_token)
+        module._MAILBOX_RUN_SELECTION.reset(selection_token)
 
         self.assertEqual(errors, [])
         self.assertEqual(filtered, [])
 
     def test_batch_priority_is_consumed_only_after_manifest_commit(self):
         module = self.module
-        original_reserve = module._mailbox_priority_runtime_ext.reserve_available_batch
-        original_priority = module._MAILBOX_NEXT_BATCH_PRIORITY
         events = []
         entries = [SimpleNamespace(source_row="priority-row")]
 
@@ -631,21 +620,18 @@ class WebGuiSecurityTests(unittest.TestCase):
             return entries
 
         token = module._MAILBOX_NEXT_BATCH_PRIORITY_ACTIVE.set(True)
-        try:
-            module._mailbox_priority_runtime_ext.reserve_available_batch = reserve
-            module._MAILBOX_NEXT_BATCH_PRIORITY = SimpleNamespace(
-                consume=lambda source_row: events.append(("consume", source_row)),
-            )
+        with patch_module_attr(
+            module._mailbox_priority_runtime_ext, "reserve_available_batch", reserve
+        ), patch_module_attr(module, "_MAILBOX_NEXT_BATCH_PRIORITY", SimpleNamespace(
+            consume=lambda source_row: events.append(("consume", source_row)),
+        )):
             selected = module._reserve_mailbox_batch(
                 object(),
                 1,
                 before_reserve=lambda _rows: events.append(("prepare", "")),
                 after_reserve=lambda _rows: events.append(("commit", "")),
             )
-        finally:
-            module._MAILBOX_NEXT_BATCH_PRIORITY_ACTIVE.reset(token)
-            module._MAILBOX_NEXT_BATCH_PRIORITY = original_priority
-            module._mailbox_priority_runtime_ext.reserve_available_batch = original_reserve
+        module._MAILBOX_NEXT_BATCH_PRIORITY_ACTIVE.reset(token)
 
         self.assertEqual(selected, entries)
         self.assertEqual(
@@ -655,33 +641,28 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_batch_recovery_uses_manifest_private_pool_paths(self):
         module = self.module
-        original_pool = module._runtime.MailboxPool
-        original_release = module._mailbox_priority_runtime_ext.release_owned_batch_leases
         observed = {}
         custom_pool = Path(self.tempdir.name) / "custom-pool.txt"
         custom_state = Path(self.tempdir.name) / "custom-state.json"
 
-        try:
-            module._runtime.MailboxPool = lambda pool_path, state_path: observed.update(
-                pool_path=Path(pool_path),
-                state_path=Path(state_path),
-            ) or "pool"
-            module._mailbox_priority_runtime_ext.release_owned_batch_leases = (
-                lambda pool, batch_id, members: observed.update(
-                    pool=pool,
-                    batch_id=batch_id,
-                    member_count=len(list(members)),
-                ) or {"released": 1}
-            )
+        with patch_module_attr(module._runtime, "MailboxPool", lambda pool_path, state_path: observed.update(
+            pool_path=Path(pool_path),
+            state_path=Path(state_path),
+        ) or "pool"), patch_module_attr(
+            module._mailbox_priority_runtime_ext,
+            "release_owned_batch_leases",
+            lambda pool, batch_id, members: observed.update(
+                pool=pool,
+                batch_id=batch_id,
+                member_count=len(list(members)),
+            ) or {"released": 1},
+        ):
             result = module._release_recovered_batch_leases(
                 "batch-custom",
                 [{"row_id": "a" * 64, "line_no": 1}],
                 pool_path=custom_pool,
                 state_path=custom_state,
             )
-        finally:
-            module._runtime.MailboxPool = original_pool
-            module._mailbox_priority_runtime_ext.release_owned_batch_leases = original_release
 
         self.assertEqual(result, {"released": 1})
         self.assertEqual(observed["pool_path"], custom_pool)
@@ -692,42 +673,42 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_register_start_caps_total_auth_sessions_at_five(self):
         module = self.module
-        original_start = module._importer_scheduler_ext.start_bounded_importer
-        original_notifications = module._begin_notification_run
         observed = []
         importer = SimpleNamespace(status=lambda _settings: {"running": False})
-        try:
-            module._begin_notification_run = lambda *_args: None
-            module._importer_scheduler_ext.start_bounded_importer = (
-                lambda _importer, settings, **_kwargs: observed.append(
-                    settings["auth_session_retries"]
-                )
-            )
+        with patch_module_attr(module, "_CURRENT_TASK_ADMISSION", None), \
+                patch_module_attr(module, "_CURRENT_INFLIGHT_GATE", None), \
+                patch_module_attr(
+                    module, "_begin_notification_run", lambda *_args: None
+                ), patch_module_attr(
+                    module._importer_scheduler_ext,
+                    "start_bounded_importer",
+                    lambda _importer, settings, **_kwargs: observed.append(
+                        settings["auth_session_retries"]
+                    ),
+                ):
             module._patched_importer_start(importer, {"auth_session_retries": 99})
-        finally:
-            module._importer_scheduler_ext.start_bounded_importer = original_start
-            module._begin_notification_run = original_notifications
 
         self.assertEqual(observed, [5])
 
     def test_task_admission_adapts_only_for_register_concurrency_eight(self):
         module = self.module
-        original_start = module._importer_scheduler_ext.start_bounded_importer
-        original_notifications = module._begin_notification_run
-        original_admission = module._CURRENT_TASK_ADMISSION
         observed = []
         importer = SimpleNamespace(status=lambda _settings: {"running": False})
-        try:
-            module._begin_notification_run = lambda *_args: None
-            module._importer_scheduler_ext.start_bounded_importer = (
-                lambda _importer, settings, **kwargs: observed.append(
-                    (
-                        dict(settings),
-                        kwargs["task_admission"].snapshot(),
-                        kwargs["task_admission"].require_backlog_for_restore,
-                    )
-                )
-            )
+        with patch_module_attr(module, "_CURRENT_TASK_ADMISSION", None), \
+                patch_module_attr(module, "_CURRENT_INFLIGHT_GATE", None), \
+                patch_module_attr(
+                    module, "_begin_notification_run", lambda *_args: None
+                ), patch_module_attr(
+                    module._importer_scheduler_ext,
+                    "start_bounded_importer",
+                    lambda _importer, settings, **kwargs: observed.append(
+                        (
+                            dict(settings),
+                            kwargs["task_admission"].snapshot(),
+                            kwargs["task_admission"].require_backlog_for_restore,
+                        )
+                    ),
+                ):
             module._patched_importer_start(importer, {"concurrency": 8})
             module._patched_importer_start(importer, {"concurrency": 7})
             module._patched_importer_start(
@@ -738,10 +719,6 @@ class WebGuiSecurityTests(unittest.TestCase):
                 importer,
                 {"concurrency": 8, "adaptive_task_concurrency": False},
             )
-        finally:
-            module._CURRENT_TASK_ADMISSION = original_admission
-            module._importer_scheduler_ext.start_bounded_importer = original_start
-            module._begin_notification_run = original_notifications
 
         register_eight, register_seven, relogin_eight, disabled_eight = observed
         self.assertEqual(
@@ -767,10 +744,6 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_inflight_gate_reuses_sms_baseline_unless_explicitly_overridden(self):
         module = self.module
-        original_start = module._importer_scheduler_ext.start_bounded_importer
-        original_notifications = module._begin_notification_run
-        original_guard = module._SMS_QUALITY_GUARD
-        original_inflight = module._CURRENT_INFLIGHT_GATE
         observed = []
         importer = SimpleNamespace(status=lambda _settings: {"running": False})
         baseline_path = Path(self.tempdir.name) / "inflight-shared-baseline.json"
@@ -781,18 +754,22 @@ class WebGuiSecurityTests(unittest.TestCase):
             "provider_key": "must-not-leak",
         }
         baseline_path.write_text(json.dumps(shared), encoding="utf-8")
-        try:
-            module._SMS_QUALITY_GUARD = (
-                module._sms_optimization_guard_ext.SmsOptimizationGuard(
-                    baseline_path=baseline_path,
-                )
-            )
-            module._begin_notification_run = lambda *_args: None
-            module._importer_scheduler_ext.start_bounded_importer = (
-                lambda _importer, _settings, **kwargs: observed.append(
-                    kwargs["inflight_gate"].baseline
-                )
-            )
+        with patch_module_attr(
+            module,
+            "_SMS_QUALITY_GUARD",
+            module._sms_optimization_guard_ext.SmsOptimizationGuard(
+                baseline_path=baseline_path,
+            ),
+        ), patch_module_attr(module, "_CURRENT_INFLIGHT_GATE", None), \
+                patch_module_attr(
+                    module, "_begin_notification_run", lambda *_args: None
+                ), patch_module_attr(
+                    module._importer_scheduler_ext,
+                    "start_bounded_importer",
+                    lambda _importer, _settings, **kwargs: observed.append(
+                        kwargs["inflight_gate"].baseline
+                    ),
+                ):
             module._patched_importer_start(
                 importer,
                 {"concurrency": 8},
@@ -804,11 +781,6 @@ class WebGuiSecurityTests(unittest.TestCase):
                     "task_inflight_baseline": {"cancellation_rate": 0.05},
                 },
             )
-        finally:
-            module._CURRENT_INFLIGHT_GATE = original_inflight
-            module._SMS_QUALITY_GUARD = original_guard
-            module._importer_scheduler_ext.start_bounded_importer = original_start
-            module._begin_notification_run = original_notifications
 
         fallback, explicit = observed
         self.assertEqual(fallback.cancellation_rate, 0.02)
@@ -821,11 +793,6 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_adaptive_task_events_sync_node_and_protocol_capacity(self):
         module = self.module
-        original_start = module._importer_scheduler_ext.start_bounded_importer
-        original_notifications = module._begin_notification_run
-        original_admission = module._CURRENT_TASK_ADMISSION
-        original_inflight = module._CURRENT_INFLIGHT_GATE
-        original_protocol = module._PROTOCOL_GATE
         observed = []
         importer = SimpleNamespace(status=lambda _settings: {"running": False})
 
@@ -856,13 +823,18 @@ class WebGuiSecurityTests(unittest.TestCase):
                 module._PROTOCOL_GATE.snapshot("proxy-test"),
             ))
 
-        try:
-            module._begin_notification_run = lambda *_args: None
-            module._PROTOCOL_GATE = module._sms_runtime_ext.ProxyProtocolGate(
-                default_limit=8,
-                launch_interval_seconds=0,
-            )
-            module._importer_scheduler_ext.start_bounded_importer = capture
+        with patch_module_attr(module, "_CURRENT_TASK_ADMISSION", None), \
+                patch_module_attr(module, "_CURRENT_INFLIGHT_GATE", None), \
+                patch_module_attr(
+                    module, "_begin_notification_run", lambda *_args: None
+                ), patch_module_attr(
+                    module,
+                    "_PROTOCOL_GATE",
+                    module._sms_runtime_ext.ProxyProtocolGate(
+                        default_limit=8,
+                        launch_interval_seconds=0,
+                    ),
+                ), patch_module_attr(module._importer_scheduler_ext, "start_bounded_importer", capture):
             module._patched_importer_start(
                 importer,
                 {"concurrency": 8, "node_concurrency": 8},
@@ -871,12 +843,6 @@ class WebGuiSecurityTests(unittest.TestCase):
                 importer,
                 {"concurrency": 8, "node_concurrency": 7},
             )
-        finally:
-            module._CURRENT_TASK_ADMISSION = original_admission
-            module._CURRENT_INFLIGHT_GATE = original_inflight
-            module._PROTOCOL_GATE = original_protocol
-            module._importer_scheduler_ext.start_bounded_importer = original_start
-            module._begin_notification_run = original_notifications
 
         promoted, node_reduced, protocol_reduced = observed[0]
         promoted_node, promoted_protocol = promoted
@@ -894,18 +860,16 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_running_fd_sampler_feeds_current_admission_without_subprocess_snapshot(self):
         module = self.module
-        original_ratio = module._transport_lifecycle_ext.process_fd_ratio
         observed = []
         importer = SimpleNamespace(
             task_admission=SimpleNamespace(
                 observe_resource_ratio=lambda ratio: observed.append(ratio) or 4,
             )
         )
-        try:
-            module._transport_lifecycle_ext.process_fd_ratio = lambda: 0.81
+        with patch_module_attr(
+            module._transport_lifecycle_ext, "process_fd_ratio", lambda: 0.81
+        ):
             result = module._observe_runtime_fd_pressure(importer)
-        finally:
-            module._transport_lifecycle_ext.process_fd_ratio = original_ratio
 
         self.assertEqual(result, 4)
         self.assertEqual(observed, [0.81])
@@ -933,10 +897,6 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_email_timeout_uses_final_baseline_fallback(self):
         module = self.module
-        original_wait_code = module._ORIGINAL_URL_MAILBOX_WAIT_CODE
-        original_final_fallback = (
-            module._mailbox_otp_service_ext.final_runtime_baseline_fallback
-        )
         provider = SimpleNamespace(mailbox_url="https://mail.example.test/messages/test")
         otp_provider = SimpleNamespace(
             timeout=90,
@@ -945,28 +905,26 @@ class WebGuiSecurityTests(unittest.TestCase):
             entry=SimpleNamespace(oauth_client_id="", oauth_refresh_token=""),
             log_fn=lambda *_args: None,
         )
-        try:
-            module._ORIGINAL_URL_MAILBOX_WAIT_CODE = lambda *_args: (_ for _ in ()).throw(
+        with patch_module_attr(
+            module,
+            "_ORIGINAL_URL_MAILBOX_WAIT_CODE",
+            lambda *_args: (_ for _ in ()).throw(
                 module._runtime.MailboxPoolError(
                     "mailbox_code_timeout: attempts=18/30: mailbox still returns baseline code"
                 )
-            )
-            module._mailbox_otp_service_ext.final_runtime_baseline_fallback = (
-                lambda _provider: SimpleNamespace(code="682672")
-            )
-
+            ),
+        ), patch_module_attr(
+            module._mailbox_otp_service_ext,
+            "final_runtime_baseline_fallback",
+            lambda _provider: SimpleNamespace(code="682672"),
+        ):
             code = module._url_mailbox_wait_code(otp_provider, "user@example.test")
-        finally:
-            module._ORIGINAL_URL_MAILBOX_WAIT_CODE = original_wait_code
-            module._mailbox_otp_service_ext.final_runtime_baseline_fallback = original_final_fallback
 
         self.assertEqual(code, "682672")
         self.assertTrue(otp_provider._chatgpt_email_otp_verified)
 
     def test_email_otp_resend_uses_remaining_total_timeout_budget(self):
         module = self.module
-        original_mark_sent = module._ORIGINAL_URL_MAILBOX_MARK_SENT
-        original_wait_code = module._ORIGINAL_URL_MAILBOX_WAIT_CODE
         observed_timeouts = []
         observed_intervals = []
         provider = SimpleNamespace(mailbox_url="https://mail.example.test/messages/test")
@@ -976,15 +934,17 @@ class WebGuiSecurityTests(unittest.TestCase):
             max_attempts=30,
             provider=provider,
         )
-        try:
-            module._ORIGINAL_URL_MAILBOX_MARK_SENT = lambda _self: None
-            module._ORIGINAL_URL_MAILBOX_WAIT_CODE = (
-                lambda value, _email: (
-                    observed_timeouts.append(value.timeout),
-                    observed_intervals.append(value.interval),
-                    "123456",
-                )[-1]
-            )
+        with patch_module_attr(
+            module, "_ORIGINAL_URL_MAILBOX_MARK_SENT", lambda _self: None
+        ), patch_module_attr(
+            module,
+            "_ORIGINAL_URL_MAILBOX_WAIT_CODE",
+            lambda value, _email: (
+                observed_timeouts.append(value.timeout),
+                observed_intervals.append(value.interval),
+                "123456",
+            )[-1],
+        ):
             module._url_mailbox_mark_sent(otp_provider)
             first_deadline = otp_provider._gptphone_email_code_deadline
             module._url_mailbox_mark_sent(otp_provider)
@@ -992,9 +952,6 @@ class WebGuiSecurityTests(unittest.TestCase):
 
             otp_provider._gptphone_email_code_deadline = time.monotonic() + 74
             code = module._url_mailbox_wait_code(otp_provider, "user@example.test")
-        finally:
-            module._ORIGINAL_URL_MAILBOX_MARK_SENT = original_mark_sent
-            module._ORIGINAL_URL_MAILBOX_WAIT_CODE = original_wait_code
 
         self.assertEqual(code, "123456")
         self.assertEqual(len(observed_timeouts), 1)
@@ -1070,7 +1027,6 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_email_otp_page_explicitly_sends_before_waiting(self):
         module = self.module
-        original_submit = module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER
         sent = []
         logs = []
         response = {
@@ -1082,11 +1038,10 @@ class WebGuiSecurityTests(unittest.TestCase):
             send_email_otp=lambda continue_url: sent.append(continue_url) or {"_status": 200},
             log_fn=lambda message, level="info": logs.append((message, level)),
         )
-        try:
-            module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER = lambda _self, _email: response
+        with patch_module_attr(
+            module, "_ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER", lambda _self, _email: response
+        ):
             result = module._real_submit_email_identifier(transport, "user@example.test")
-        finally:
-            module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER = original_submit
 
         self.assertIs(result, response)
         self.assertEqual(sent, [response["continue_url"]])
@@ -1124,15 +1079,13 @@ class WebGuiSecurityTests(unittest.TestCase):
             _headers=lambda flow, referer: {"x-flow": flow, "referer": referer},
             log_fn=lambda message, level="info": logs.append((message, level)),
         )
-        original_lease = module._with_transport_protocol_lease
-        module._with_transport_protocol_lease = lambda _transport, callback: callback()
-        try:
+        with patch_module_attr(
+            module, "_with_transport_protocol_lease", lambda _transport, callback: callback()
+        ):
             result = module._real_send_passwordless_otp(
                 transport,
                 "https://auth.openai.com/api/accounts/email-otp/send",
             )
-        finally:
-            module._with_transport_protocol_lease = original_lease
 
         self.assertEqual(result["page"]["type"], "email_otp_verification")
         self.assertEqual(len(calls), 1)
@@ -1183,7 +1136,6 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_email_otp_continue_path_is_used_when_page_type_is_missing(self):
         module = self.module
-        original_submit = module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER
         sent = []
         response = {
             "_status": 200,
@@ -1193,31 +1145,27 @@ class WebGuiSecurityTests(unittest.TestCase):
             send_email_otp=lambda value: sent.append(value) or {"_status": 200},
             log_fn=None,
         )
-        try:
-            module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER = lambda _self, _email: response
+        with patch_module_attr(
+            module, "_ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER", lambda _self, _email: response
+        ):
             self.assertIs(module._real_submit_email_identifier(transport, "user@example.test"), response)
-        finally:
-            module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER = original_submit
         self.assertEqual(sent, [response["continue_url"]])
 
     def test_non_email_otp_page_does_not_send_email_code(self):
         module = self.module
-        original_submit = module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER
         sent = []
         response = {"_status": 200, "page": {"type": "password_verification"}}
         transport = SimpleNamespace(send_email_otp=lambda value: sent.append(value))
-        try:
-            module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER = lambda _self, _email: response
+        with patch_module_attr(
+            module, "_ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER", lambda _self, _email: response
+        ):
             result = module._real_submit_email_identifier(transport, "user@example.test")
-        finally:
-            module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER = original_submit
 
         self.assertIs(result, response)
         self.assertEqual(sent, [])
 
     def test_initial_email_code_send_failure_stops_before_polling(self):
         module = self.module
-        original_submit = module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER
         response = {
             "_status": 200,
             "page": {"type": "email_otp_verification"},
@@ -1230,12 +1178,11 @@ class WebGuiSecurityTests(unittest.TestCase):
             },
             log_fn=None,
         )
-        try:
-            module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER = lambda _self, _email: response
+        with patch_module_attr(
+            module, "_ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER", lambda _self, _email: response
+        ):
             with self.assertRaisesRegex(Exception, "email_otp_send_failed") as caught:
                 module._real_submit_email_identifier(transport, "user@example.test")
-        finally:
-            module._ORIGINAL_REAL_SUBMIT_EMAIL_IDENTIFIER = original_submit
 
         detail = str(caught.exception)
         self.assertIn("HTTP 429", detail)
@@ -1244,8 +1191,6 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_task_config_binds_401_rerun_to_historical_sub2_account(self):
         module = self.module
-        original_task_config = module._ORIGINAL_TASK_CONFIG
-        original_sub2_runtime = module._SUB2_RUNTIME
         result_dir = Path(self.tempdir.name) / "sub2-update-results"
         result_dir.mkdir(parents=True, exist_ok=True)
         (result_dir / "old-success.json").write_text(
@@ -1264,18 +1209,15 @@ class WebGuiSecurityTests(unittest.TestCase):
                 "needs_rerun": True,
             }
         )
-        try:
-            module._ORIGINAL_TASK_CONFIG = lambda *_args, **_kwargs: {"code_timeout": 30}
-            module._SUB2_RUNTIME = fake_runtime
+        with patch_module_attr(
+            module, "_ORIGINAL_TASK_CONFIG", lambda *_args, **_kwargs: {"code_timeout": 30}
+        ), patch_module_attr(module, "_SUB2_RUNTIME", fake_runtime):
             config = module._patched_task_config(
                 SimpleNamespace(data_dir=self.tempdir.name),
                 {"results_dir": str(result_dir)},
                 "rerun@example.test",
                 "task-rerun",
             )
-        finally:
-            module._ORIGINAL_TASK_CONFIG = original_task_config
-            module._SUB2_RUNTIME = original_sub2_runtime
 
         self.assertEqual(config["_sub2_update_existing"]["account_id"], "501")
         self.assertEqual(config["_sub2_update_existing"]["status_code"], 401)
@@ -1283,7 +1225,6 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_relogin_task_config_uses_only_server_validated_sub2_binding(self):
         module = self.module
-        original_task_config = module._ORIGINAL_TASK_CONFIG
         settings = {
             "run_mode": "relogin",
             "_gptphone_relogin_rows": [
@@ -1295,16 +1236,15 @@ class WebGuiSecurityTests(unittest.TestCase):
                 }
             ],
         }
-        try:
-            module._ORIGINAL_TASK_CONFIG = lambda *_args, **_kwargs: {"code_timeout": 30}
+        with patch_module_attr(
+            module, "_ORIGINAL_TASK_CONFIG", lambda *_args, **_kwargs: {"code_timeout": 30}
+        ):
             config = module._patched_task_config(
                 SimpleNamespace(data_dir=self.tempdir.name),
                 settings,
                 "relogin@example.test",
                 "task-relogin-binding",
             )
-        finally:
-            module._ORIGINAL_TASK_CONFIG = original_task_config
 
         self.assertEqual(config["run_mode"], "relogin")
         self.assertEqual(config["_sub2_update_existing"]["account_id"], "sub2-account-501")
@@ -1313,9 +1253,9 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_relogin_task_config_rejects_missing_server_binding(self):
         module = self.module
-        original_task_config = module._ORIGINAL_TASK_CONFIG
-        try:
-            module._ORIGINAL_TASK_CONFIG = lambda *_args, **_kwargs: {"code_timeout": 30}
+        with patch_module_attr(
+            module, "_ORIGINAL_TASK_CONFIG", lambda *_args, **_kwargs: {"code_timeout": 30}
+        ):
             with self.assertRaisesRegex(RuntimeError, "relogin_sub2_binding_missing"):
                 module._patched_task_config(
                     SimpleNamespace(data_dir=self.tempdir.name),
@@ -1323,14 +1263,9 @@ class WebGuiSecurityTests(unittest.TestCase):
                     "relogin@example.test",
                     "task-relogin-missing",
                 )
-        finally:
-            module._ORIGINAL_TASK_CONFIG = original_task_config
 
     def test_sub2_upload_wrapper_uses_update_branch_and_clears_old_status(self):
         module = self.module
-        original_upload = module._ORIGINAL_REAL_SUB2_UPLOAD
-        original_update = module._sub2_update_runtime_ext.update_existing_sub2_account
-        original_sub2_runtime = module._SUB2_RUNTIME
         calls = []
         cleared = []
 
@@ -1354,21 +1289,20 @@ class WebGuiSecurityTests(unittest.TestCase):
             upload_proxy="",
             log_fn=None,
         )
-        try:
-            module._ORIGINAL_REAL_SUB2_UPLOAD = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        with patch_module_attr(
+            module,
+            "_ORIGINAL_REAL_SUB2_UPLOAD",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
                 AssertionError("create path must not run")
-            )
-            module._sub2_update_runtime_ext.update_existing_sub2_account = update_existing
-            module._SUB2_RUNTIME = SimpleNamespace(clear_status=lambda account_id: cleared.append(account_id))
+            ),
+        ), patch_module_attr(
+            module._sub2_update_runtime_ext, "update_existing_sub2_account", update_existing
+        ), patch_module_attr(module, "_SUB2_RUNTIME", SimpleNamespace(clear_status=lambda account_id: cleared.append(account_id))):
             result = module._real_sub2_upload(
                 uploader,
                 credentials={"access_token": "token"},
                 email="rerun@example.test",
             )
-        finally:
-            module._ORIGINAL_REAL_SUB2_UPLOAD = original_upload
-            module._sub2_update_runtime_ext.update_existing_sub2_account = original_update
-            module._SUB2_RUNTIME = original_sub2_runtime
 
         self.assertTrue(result["ok"])
         self.assertEqual(len(calls), 1)
@@ -1377,21 +1311,21 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_sub2_upload_wrapper_keeps_create_path_for_first_run(self):
         module = self.module
-        original_upload = module._ORIGINAL_REAL_SUB2_UPLOAD
         calls = []
-        try:
-            module._ORIGINAL_REAL_SUB2_UPLOAD = lambda _self, **kwargs: calls.append(kwargs) or {
+        with patch_module_attr(
+            module,
+            "_ORIGINAL_REAL_SUB2_UPLOAD",
+            lambda _self, **kwargs: calls.append(kwargs) or {
                 "ok": True,
                 "sub2api_account_id": "new-account",
                 "sub2_upload_created": True,
-            }
+            },
+        ):
             result = module._real_sub2_upload(
                 SimpleNamespace(config={}, upload_proxy="", log_fn=None),
                 credentials={"access_token": "token"},
                 email="first@example.test",
             )
-        finally:
-            module._ORIGINAL_REAL_SUB2_UPLOAD = original_upload
 
         self.assertTrue(result["ok"])
         self.assertTrue(result["sub2_upload_created"])
@@ -1399,17 +1333,15 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_relogin_sub2_upload_missing_binding_never_calls_create_path(self):
         module = self.module
-        original_upload = module._ORIGINAL_REAL_SUB2_UPLOAD
         calls = []
-        try:
-            module._ORIGINAL_REAL_SUB2_UPLOAD = lambda *_args, **_kwargs: calls.append(kwargs)
+        with patch_module_attr(
+            module, "_ORIGINAL_REAL_SUB2_UPLOAD", lambda *_args, **_kwargs: calls.append(kwargs)
+        ):
             result = module._real_sub2_upload(
                 SimpleNamespace(config={"run_mode": "relogin"}),
                 credentials={"access_token": "must-not-be-sent"},
                 email="relogin@example.test",
             )
-        finally:
-            module._ORIGINAL_REAL_SUB2_UPLOAD = original_upload
 
         self.assertFalse(result["ok"])
         self.assertEqual(result["error_code"], "relogin_sub2_binding_missing")
@@ -1418,7 +1350,6 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_relogin_phone_page_stops_before_original_sms_provider_call(self):
         module = self.module
-        original_run = module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION
 
         class SmsProvider:
             def __init__(self):
@@ -1433,8 +1364,7 @@ class WebGuiSecurityTests(unittest.TestCase):
         def enter_phone_page(**kwargs):
             return kwargs["phone_otp_provider"].get_number()
 
-        try:
-            module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = enter_phone_page
+        with patch_module_attr(module, "_ORIGINAL_RUN_CODEX_AFTER_REGISTRATION", enter_phone_page):
             with self.assertRaisesRegex(Exception, "relogin_phone_required"):
                 module._run_codex_after_registration(
                     oauth_url="https://auth.example.test/authorize",
@@ -1446,14 +1376,11 @@ class WebGuiSecurityTests(unittest.TestCase):
                         "sms_task_id": "task-relogin-phone",
                     },
                 )
-        finally:
-            module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = original_run
 
         self.assertEqual(provider.get_number_calls, 0)
 
     def test_relogin_supported_email_providers_pass_through_existing_auth_chain(self):
         module = self.module
-        original_run = module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION
 
         class EmailProvider:
             def __init__(self, kind):
@@ -1472,8 +1399,7 @@ class WebGuiSecurityTests(unittest.TestCase):
                 ),
             }
 
-        try:
-            module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = succeed
+        with patch_module_attr(module, "_ORIGINAL_RUN_CODEX_AFTER_REGISTRATION", succeed):
             for provider_kind in ("totp", "mailbox_url", "outlook_oauth"):
                 with self.subTest(provider_kind=provider_kind):
                     result = module._run_codex_after_registration(
@@ -1488,8 +1414,6 @@ class WebGuiSecurityTests(unittest.TestCase):
                     self.assertTrue(result["ok"])
                     self.assertEqual(result["provider_kind"], provider_kind)
                     self.assertTrue(result["phone_guarded"])
-        finally:
-            module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = original_run
 
     def test_phase1_snapshot_is_removed_from_task_config_after_chain_exit(self):
         module = self.module
@@ -1531,9 +1455,6 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_protocol_wait_and_limit_changes_are_recorded_without_proxy_details(self):
         module = self.module
-        original_run = module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION
-        original_gate = module._PROTOCOL_GATE
-        original_inflight = module._CURRENT_INFLIGHT_GATE
         outcomes = [{"ok": False, "error": "TLS connection reset"}, {"ok": True}]
         logs = []
         class Lease:
@@ -1569,10 +1490,13 @@ class WebGuiSecurityTests(unittest.TestCase):
                 return self.limit
 
         module._TASK_PROGRESS.reset()
-        try:
-            module._PROTOCOL_GATE = Gate()
-            module._CURRENT_INFLIGHT_GATE = None
-            module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = lambda **_kwargs: outcomes.pop(0)
+        with patch_module_attr(module, "_PROTOCOL_GATE", Gate()), \
+                patch_module_attr(module, "_CURRENT_INFLIGHT_GATE", None), \
+                patch_module_attr(
+                    module,
+                    "_ORIGINAL_RUN_CODEX_AFTER_REGISTRATION",
+                    lambda **_kwargs: outcomes.pop(0),
+                ):
             task_ids = ("task-protocol-down", "task-protocol-up")
             for task_id in task_ids:
                 module._TASK_PROGRESS.set_stage(task_id, "oauth_create_node")
@@ -1587,11 +1511,7 @@ class WebGuiSecurityTests(unittest.TestCase):
                 module._TASK_PROGRESS.progress(task_id)["timing"]["segments"]
                 for task_id in task_ids
             ]
-        finally:
-            module._TASK_PROGRESS.reset()
-            module._PROTOCOL_GATE = original_gate
-            module._CURRENT_INFLIGHT_GATE = original_inflight
-            module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = original_run
+        module._TASK_PROGRESS.reset()
 
         for rows in segments:
             self.assertEqual((rows[0]["code"], rows[0]["elapsed_seconds"]),
@@ -1602,9 +1522,6 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_mailbox_transport_error_does_not_report_global_protocol_pressure(self):
         module = self.module
-        original_run = module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION
-        original_gate = module._PROTOCOL_GATE
-        original_connectivity = module._OPENAI_CONNECTIVITY
         reports = []
         limits = []
 
@@ -1625,15 +1542,20 @@ class WebGuiSecurityTests(unittest.TestCase):
             raise next(outcomes)
 
         admission_token = module._TASK_ADMISSION_CONTEXT.set(Admission())
-        try:
-            module._PROTOCOL_GATE = module._sms_runtime_ext.ProxyProtocolGate(
+        with patch_module_attr(
+            module,
+            "_PROTOCOL_GATE",
+            module._sms_runtime_ext.ProxyProtocolGate(
                 default_limit=5,
                 launch_interval_seconds=0,
-            )
-            module._OPENAI_CONNECTIVITY = module._auth_connectivity_runtime_ext.OpenAIAuthConnectivityRuntime(
+            ),
+        ), patch_module_attr(
+            module,
+            "_OPENAI_CONNECTIVITY",
+            module._auth_connectivity_runtime_ext.OpenAIAuthConnectivityRuntime(
                 proxy="", auto_start_worker=False
-            )
-            module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = fail_run
+            ),
+        ), patch_module_attr(module, "_ORIGINAL_RUN_CODEX_AFTER_REGISTRATION", fail_run):
             for task_id, stage in (
                 ("T-mailbox-transport-1", "email_login"),
                 ("T-mailbox-transport-2", "email_login"),
@@ -1648,20 +1570,14 @@ class WebGuiSecurityTests(unittest.TestCase):
                         config={"sms_task_id": task_id},
                     )
                 limits.append(module._PROTOCOL_GATE.snapshot("")["limit"])
-        finally:
-            module._TASK_ADMISSION_CONTEXT.reset(admission_token)
-            module._TASK_PROGRESS.reset()
-            module._PROTOCOL_GATE = original_gate
-            module._OPENAI_CONNECTIVITY = original_connectivity
-            module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = original_run
+        module._TASK_ADMISSION_CONTEXT.reset(admission_token)
+        module._TASK_PROGRESS.reset()
 
         self.assertEqual(reports, [])
         self.assertEqual(limits, [5, 5, 5, 5])
 
     def test_sms_provider_pressure_does_not_touch_task_or_main_proxy_gates(self):
         module = self.module
-        original_run = module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION
-        original_gate = module._PROTOCOL_GATE
         reports = []
 
         class Admission:
@@ -1676,14 +1592,18 @@ class WebGuiSecurityTests(unittest.TestCase):
         )
 
         admission_token = module._TASK_ADMISSION_CONTEXT.set(Admission())
-        try:
-            module._PROTOCOL_GATE = module._sms_runtime_ext.ProxyProtocolGate(
+        with patch_module_attr(
+            module,
+            "_PROTOCOL_GATE",
+            module._sms_runtime_ext.ProxyProtocolGate(
                 default_limit=5,
                 launch_interval_seconds=0,
-            )
-            module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = lambda **_kwargs: (_ for _ in ()).throw(
-                next(outcomes)
-            )
+            ),
+        ), patch_module_attr(
+            module,
+            "_ORIGINAL_RUN_CODEX_AFTER_REGISTRATION",
+            lambda **_kwargs: (_ for _ in ()).throw(next(outcomes)),
+        ):
             for task_id, stage in (
                 ("T-sms-provider-rate", "phone_acquiring"),
                 ("T-sms-provider-tls", "sms_waiting"),
@@ -1695,21 +1615,15 @@ class WebGuiSecurityTests(unittest.TestCase):
                         account_email="masked@example.test",
                         config={"sms_task_id": task_id},
                     )
-        finally:
             protocol_limit = module._PROTOCOL_GATE.snapshot("")["limit"]
-            module._TASK_ADMISSION_CONTEXT.reset(admission_token)
-            module._TASK_PROGRESS.reset()
-            module._PROTOCOL_GATE = original_gate
-            module._ORIGINAL_RUN_CODEX_AFTER_REGISTRATION = original_run
+        module._TASK_ADMISSION_CONTEXT.reset(admission_token)
+        module._TASK_PROGRESS.reset()
 
         self.assertEqual(reports, [])
         self.assertEqual(protocol_limit, 5)
 
     def test_structured_oauth_429_cools_down_at_baseline_without_reexpansion(self):
         module = self.module
-        original_gate = module._PROTOCOL_GATE
-        original_connectivity = module._OPENAI_CONNECTIVITY
-        original_inflight = module._CURRENT_INFLIGHT_GATE
         reports = []
         clock = [1_000.0]
 
@@ -1718,19 +1632,22 @@ class WebGuiSecurityTests(unittest.TestCase):
                 reports.append((task_id, node_code, immediate))
 
         admission_token = module._TASK_ADMISSION_CONTEXT.set(Admission())
-        try:
-            module._PROTOCOL_GATE = module._sms_runtime_ext.ProxyProtocolGate(
+        with patch_module_attr(
+            module,
+            "_PROTOCOL_GATE",
+            module._sms_runtime_ext.ProxyProtocolGate(
                 default_limit=5,
                 now_fn=lambda: clock[0],
                 launch_interval_seconds=0,
-            )
+            ),
+        ), patch_module_attr(
+            module,
+            "_OPENAI_CONNECTIVITY",
+            module._auth_connectivity_runtime_ext.OpenAIAuthConnectivityRuntime(
+                proxy="", auto_start_worker=False
+            ),
+        ), patch_module_attr(module, "_CURRENT_INFLIGHT_GATE", None):
             module._PROTOCOL_GATE.begin_run(5, healthy_ceiling=12)
-            module._OPENAI_CONNECTIVITY = (
-                module._auth_connectivity_runtime_ext.OpenAIAuthConnectivityRuntime(
-                    proxy="", auto_start_worker=False
-                )
-            )
-            module._CURRENT_INFLIGHT_GATE = None
             decision = module._PROTOCOL_COORDINATOR.observe_connectivity_result(
                 "auth.openai.com", {"status_code": 429}, task_id="T-rate-limit"
             )
@@ -1741,11 +1658,7 @@ class WebGuiSecurityTests(unittest.TestCase):
                     "auth.openai.com", succeeded=True
                 )
             after_success = module._PROTOCOL_GATE.snapshot("")
-        finally:
-            module._TASK_ADMISSION_CONTEXT.reset(admission_token)
-            module._PROTOCOL_GATE = original_gate
-            module._OPENAI_CONNECTIVITY = original_connectivity
-            module._CURRENT_INFLIGHT_GATE = original_inflight
+        module._TASK_ADMISSION_CONTEXT.reset(admission_token)
 
         self.assertEqual(decision["kind"], "rate_limited")
         self.assertEqual((cooldown["baseline"], cooldown["limit"]), (5, 5))
@@ -1812,9 +1725,7 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_account_banned_never_enters_whole_session_retry(self):
         module = self.module
-        original = module._ORIGINAL_PRE_AUTH_SESSION_RETRYABLE
-        try:
-            module._ORIGINAL_PRE_AUTH_SESSION_RETRYABLE = lambda _result: True
+        with patch_module_attr(module, "_ORIGINAL_PRE_AUTH_SESSION_RETRYABLE", lambda _result: True):
             result = {
                 "error": {
                     "code": "account_deactivated",
@@ -1823,17 +1734,14 @@ class WebGuiSecurityTests(unittest.TestCase):
             }
 
             self.assertFalse(module._patched_pre_auth_session_retryable(result))
-        finally:
-            module._ORIGINAL_PRE_AUTH_SESSION_RETRYABLE = original
 
     def test_relogin_password_error_does_not_trigger_password_to_otp_fallback(self):
         module = self.module
-        original = module._ORIGINAL_PASSWORD_CREDENTIALS_REJECTED
         calls = []
-        try:
-            module._ORIGINAL_PASSWORD_CREDENTIALS_REJECTED = (
-                lambda result: calls.append(result) or True
-            )
+        with patch_module_attr(
+            module, "_ORIGINAL_PASSWORD_CREDENTIALS_REJECTED",
+            lambda result: calls.append(result) or True,
+        ):
             token = module._RUN_MODE_CONTEXT.set("relogin")
             try:
                 self.assertFalse(
@@ -1845,8 +1753,6 @@ class WebGuiSecurityTests(unittest.TestCase):
                 module._RUN_MODE_CONTEXT.reset(token)
 
             self.assertTrue(module._patched_password_credentials_rejected({"error": "normal"}))
-        finally:
-            module._ORIGINAL_PASSWORD_CREDENTIALS_REJECTED = original
 
         self.assertEqual(calls, [{"error": "normal"}])
 
@@ -2040,35 +1946,35 @@ class WebGuiSecurityTests(unittest.TestCase):
                 return {"_status": 200, "page": {"type": "add_phone"}}
 
         task_id = "task-sentinel-failure"
-        original_refresh = module._auth_request_runtime_ext.refresh_sentinel
         module._AUTH_SESSIONS.clear(task_id)
         module._TASK_PROGRESS.reset()
         module._TASK_PROGRESS.set_stage(task_id, "phone_submitting")
         token = module._TASK_CONTEXT.set(task_id)
-        try:
-            module._auth_request_runtime_ext.refresh_sentinel = lambda *_args, **_kwargs: (
-                _ for _ in ()
-            ).throw(
+        with patch_module_attr(
+            module._auth_request_runtime_ext,
+            "refresh_sentinel",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
                 module._auth_request_runtime_ext.AuthRequestContextError(
                     "sentinel_refresh_failed",
                     "private sentinel failure",
                 )
-            )
-            with self.assertRaisesRegex(
-                module._codex_oauth_chain.CodexChainError,
-                "sentinel_refresh_failed",
-            ):
-                module._real_send_phone_number_otp(
-                    transport_for(task_id, SuccessfulSession()),
-                    "+15550001234",
-                    "sms",
-                )
-            timing = module._TASK_PROGRESS.progress(task_id)["timing"]
-        finally:
-            module._auth_request_runtime_ext.refresh_sentinel = original_refresh
-            module._TASK_CONTEXT.reset(token)
-            module._TASK_PROGRESS.reset()
-            module._AUTH_SESSIONS.clear(task_id)
+            ),
+        ):
+            try:
+                with self.assertRaisesRegex(
+                    module._codex_oauth_chain.CodexChainError,
+                    "sentinel_refresh_failed",
+                ):
+                    module._real_send_phone_number_otp(
+                        transport_for(task_id, SuccessfulSession()),
+                        "+15550001234",
+                        "sms",
+                    )
+                timing = module._TASK_PROGRESS.progress(task_id)["timing"]
+            finally:
+                module._TASK_CONTEXT.reset(token)
+                module._TASK_PROGRESS.reset()
+                module._AUTH_SESSIONS.clear(task_id)
 
         self.assertEqual(
             [row["code"] for row in timing["segments"]],
@@ -2443,7 +2349,6 @@ class WebGuiSecurityTests(unittest.TestCase):
         email = "immediate-risk@example.test"
         sentinel_resets = []
         checkpoint_deletes = []
-        original_checkpoint_coordinator = module._PHASE1_CHECKPOINTS_COORDINATOR
         transport = SimpleNamespace(
             config={
                 "sms_task_id": task_id,
@@ -2458,27 +2363,26 @@ class WebGuiSecurityTests(unittest.TestCase):
         )
         module._AUTH_SESSIONS.clear(task_id)
         module._register_sms_transport(task_id, transport)
-        try:
-            module._PHASE1_CHECKPOINTS_COORDINATOR = SimpleNamespace(
-                delete=lambda current: checkpoint_deletes.append(current)
-            )
-            module._auth_request_runtime_ext.ensure_transport_context(
-                transport,
-                module._AUTH_SESSIONS,
-                force_new=True,
-            )
-            module._auth_request_runtime_ext.invalidate_auth_session(
-                transport,
-                module._AUTH_SESSIONS,
-                "oauth_session_invalid: sign-in session is no longer valid",
-                stage="phone_submitting",
-            )
-            marker = module._PHONE_RISK_STORE.status(email)
-        finally:
-            module._PHASE1_CHECKPOINTS_COORDINATOR = original_checkpoint_coordinator
-            module._unregister_sms_transport(task_id, transport)
-            module._AUTH_SESSIONS.clear(task_id)
-            module._PHONE_RISK_STORE.clear(email)
+        with patch_module_attr(module, "_PHASE1_CHECKPOINTS_COORDINATOR", SimpleNamespace(
+            delete=lambda current: checkpoint_deletes.append(current),
+        )):
+            try:
+                module._auth_request_runtime_ext.ensure_transport_context(
+                    transport,
+                    module._AUTH_SESSIONS,
+                    force_new=True,
+                )
+                module._auth_request_runtime_ext.invalidate_auth_session(
+                    transport,
+                    module._AUTH_SESSIONS,
+                    "oauth_session_invalid: sign-in session is no longer valid",
+                    stage="phone_submitting",
+                )
+                marker = module._PHONE_RISK_STORE.status(email)
+            finally:
+                module._unregister_sms_transport(task_id, transport)
+                module._AUTH_SESSIONS.clear(task_id)
+                module._PHONE_RISK_STORE.clear(email)
 
         self.assertEqual(marker, {})
         self.assertNotIn("_phone_risk_retry", transport.config)
@@ -2492,7 +2396,6 @@ class WebGuiSecurityTests(unittest.TestCase):
         module = self.module
         task_id = "task-risk-sms-verify"
         email = "sms-verify-risk@example.test"
-        original_post = module._ORIGINAL_REAL_POST_AUTH_JSON
         sentinel_resets = []
         transport = SimpleNamespace(
             config={
@@ -2511,26 +2414,25 @@ class WebGuiSecurityTests(unittest.TestCase):
         transport._post_auth_json = MethodType(module._real_post_auth_json, transport)
         module._AUTH_SESSIONS.clear(task_id)
         module._register_sms_transport(task_id, transport)
-        try:
-            module._ORIGINAL_REAL_POST_AUTH_JSON = lambda *_args, **_kwargs: {
-                "_status": 401,
-                "error": {
-                    "code": "oauth_session_invalid",
-                    "message": "sign-in session is no longer valid",
-                },
-            }
-            with self.assertRaisesRegex(
-                module._codex_oauth_chain.CodexChainError,
-                "oauth_session_invalid",
-            ):
-                module._real_verify_phone_otp(transport, "123456")
-            marker = module._PHONE_RISK_STORE.status(email)
-            snapshot = module._AUTH_SESSIONS.public_snapshot(task_id)
-        finally:
-            module._ORIGINAL_REAL_POST_AUTH_JSON = original_post
-            module._unregister_sms_transport(task_id, transport)
-            module._AUTH_SESSIONS.clear(task_id)
-            module._PHONE_RISK_STORE.clear(email)
+        with patch_module_attr(module, "_ORIGINAL_REAL_POST_AUTH_JSON", lambda *_args, **_kwargs: {
+            "_status": 401,
+            "error": {
+                "code": "oauth_session_invalid",
+                "message": "sign-in session is no longer valid",
+            },
+        }):
+            try:
+                with self.assertRaisesRegex(
+                    module._codex_oauth_chain.CodexChainError,
+                    "oauth_session_invalid",
+                ):
+                    module._real_verify_phone_otp(transport, "123456")
+                marker = module._PHONE_RISK_STORE.status(email)
+                snapshot = module._AUTH_SESSIONS.public_snapshot(task_id)
+            finally:
+                module._unregister_sms_transport(task_id, transport)
+                module._AUTH_SESSIONS.clear(task_id)
+                module._PHONE_RISK_STORE.clear(email)
 
         self.assertEqual(marker, {})
         self.assertEqual(snapshot["invalidations"], 1)
@@ -2677,10 +2579,8 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_runtime_task_waiting_count_includes_executor_backlog(self):
         module = self.module
-        original_admission = module._CURRENT_TASK_ADMISSION
         gate = module._adaptive_concurrency_ext.AdaptiveConcurrencyGate(5, ceiling=8)
-        try:
-            module._CURRENT_TASK_ADMISSION = gate
+        with patch_module_attr(module, "_CURRENT_TASK_ADMISSION", gate):
             public = module._masked_state({
                 "runtime": {
                     "running": True,
@@ -2697,8 +2597,6 @@ class WebGuiSecurityTests(unittest.TestCase):
                     ],
                 }
             })
-        finally:
-            module._CURRENT_TASK_ADMISSION = original_admission
 
         self.assertEqual(public["runtime"]["concurrency"]["task"]["waiting"], 45)
 
@@ -2735,8 +2633,6 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_only_eligible_account_banned_terminal_reports_burst_signal(self):
         module = self.module
-        original_state = module._ORIGINAL_TASK_STATE
-        original_progress = module._TASK_PROGRESS
         reports = []
         gate = SimpleNamespace(
             report_account_banned=lambda task_id: reports.append(("banned", task_id)),
@@ -2747,18 +2643,14 @@ class WebGuiSecurityTests(unittest.TestCase):
         tracker.mark_execution_started("T-fast-banned", now=100)
         tracker.set_stage("T-fast-banned", "oauth_authorize_node", now=110)
         tracker.set_stage("T-fast-banned", "email_code_verifying", now=120)
-        try:
-            module._ORIGINAL_TASK_STATE = lambda *_args, **_kwargs: None
-            module._TASK_PROGRESS = tracker
+        with patch_module_attr(module, "_ORIGINAL_TASK_STATE", lambda *_args, **_kwargs: None), \
+                patch_module_attr(module, "_TASK_PROGRESS", tracker):
             module._patched_task_state(
                 SimpleNamespace(task_admission=gate),
                 "T-fast-banned",
                 status="account_banned",
                 error="account_banned: account has been banned",
             )
-        finally:
-            module._ORIGINAL_TASK_STATE = original_state
-            module._TASK_PROGRESS = original_progress
 
         self.assertEqual(
             reports,
@@ -2767,17 +2659,14 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_sms_rollback_guard_excludes_stopped_and_cancelled_tasks(self):
         module = self.module
-        original_state = module._ORIGINAL_TASK_STATE
-        original_guard = module._SMS_QUALITY_GUARD
         observed = []
         guard = SimpleNamespace(
             observe_task=lambda task_id, status, result: observed.append(
                 (task_id, status, result)
             )
         )
-        try:
-            module._ORIGINAL_TASK_STATE = lambda *_args, **_kwargs: None
-            module._SMS_QUALITY_GUARD = guard
+        with patch_module_attr(module, "_ORIGINAL_TASK_STATE", lambda *_args, **_kwargs: None), \
+                patch_module_attr(module, "_SMS_QUALITY_GUARD", guard):
             for status in ("stopped", "stopped_before_start", "cancelled", "canceled"):
                 module._patched_task_state(
                     SimpleNamespace(task_admission=None),
@@ -2791,9 +2680,6 @@ class WebGuiSecurityTests(unittest.TestCase):
                 status="failed",
                 result={"sms_cost_usd": 1.0},
             )
-        finally:
-            module._ORIGINAL_TASK_STATE = original_state
-            module._SMS_QUALITY_GUARD = original_guard
 
         self.assertEqual(len(observed), 1)
         self.assertEqual(observed[0][:2], ("T-completed", "failed"))
@@ -2801,8 +2687,6 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_oauth_rate_limit_is_strong_pressure_but_mailbox_failure_is_not(self):
         module = self.module
-        original_state = module._ORIGINAL_TASK_STATE
-        original_admission = module._CURRENT_TASK_ADMISSION
         pressure = []
         failures = []
 
@@ -2814,9 +2698,8 @@ class WebGuiSecurityTests(unittest.TestCase):
                 failures.append(task_id)
 
         gate = Gate()
-        try:
-            module._ORIGINAL_TASK_STATE = lambda *_args, **_kwargs: None
-            module._CURRENT_TASK_ADMISSION = gate
+        with patch_module_attr(module, "_ORIGINAL_TASK_STATE", lambda *_args, **_kwargs: None), \
+                patch_module_attr(module, "_CURRENT_TASK_ADMISSION", gate):
             module._TASK_PROGRESS.reset()
             module._TASK_PROGRESS.set_stage("T-rate-limit", "oauth_authorize_node")
             module._patched_task_state(
@@ -2846,10 +2729,7 @@ class WebGuiSecurityTests(unittest.TestCase):
                 status="retryable_infra",
                 error="email_otp_send_failed: Too many requests",
             )
-        finally:
-            module._ORIGINAL_TASK_STATE = original_state
-            module._CURRENT_TASK_ADMISSION = original_admission
-            module._TASK_PROGRESS.reset()
+        module._TASK_PROGRESS.reset()
 
         self.assertEqual(
             pressure,
@@ -2870,8 +2750,6 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_terminal_oauth_429_variants_are_all_strong_pressure(self):
         module = self.module
-        original_state = module._ORIGINAL_TASK_STATE
-        original_admission = module._CURRENT_TASK_ADMISSION
         pressure = []
 
         class Gate:
@@ -2887,9 +2765,8 @@ class WebGuiSecurityTests(unittest.TestCase):
             ("T-http-status-429", "HTTP status: 429"),
             ("T-http-error-429", "HTTPError: 429 Client Error"),
         )
-        try:
-            module._ORIGINAL_TASK_STATE = lambda *_args, **_kwargs: None
-            module._CURRENT_TASK_ADMISSION = gate
+        with patch_module_attr(module, "_ORIGINAL_TASK_STATE", lambda *_args, **_kwargs: None), \
+                patch_module_attr(module, "_CURRENT_TASK_ADMISSION", gate):
             module._TASK_PROGRESS.reset()
             for task_id, detail in cases:
                 module._TASK_PROGRESS.set_stage(task_id, "oauth_authorize_node")
@@ -2899,10 +2776,7 @@ class WebGuiSecurityTests(unittest.TestCase):
                     status="retryable_infra",
                     error=detail,
                 )
-        finally:
-            module._ORIGINAL_TASK_STATE = original_state
-            module._CURRENT_TASK_ADMISSION = original_admission
-            module._TASK_PROGRESS.reset()
+        module._TASK_PROGRESS.reset()
 
         self.assertEqual(
             pressure,
@@ -2911,8 +2785,6 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_terminal_local_provider_node_markers_do_not_create_global_pressure(self):
         module = self.module
-        original_state = module._ORIGINAL_TASK_STATE
-        original_admission = module._CURRENT_TASK_ADMISSION
         pressure = []
         failures = []
 
@@ -2936,9 +2808,8 @@ class WebGuiSecurityTests(unittest.TestCase):
                 "sms_provider_poll_failed: node_sentinel_failed: HTTPError: 429 Client Error",
             ),
         )
-        try:
-            module._ORIGINAL_TASK_STATE = lambda *_args, **_kwargs: None
-            module._CURRENT_TASK_ADMISSION = gate
+        with patch_module_attr(module, "_ORIGINAL_TASK_STATE", lambda *_args, **_kwargs: None), \
+                patch_module_attr(module, "_CURRENT_TASK_ADMISSION", gate):
             module._TASK_PROGRESS.reset()
             for task_id, stage, detail in cases:
                 module._TASK_PROGRESS.set_stage(task_id, stage)
@@ -2948,10 +2819,7 @@ class WebGuiSecurityTests(unittest.TestCase):
                     status="retryable_infra",
                     error=detail,
                 )
-        finally:
-            module._ORIGINAL_TASK_STATE = original_state
-            module._CURRENT_TASK_ADMISSION = original_admission
-            module._TASK_PROGRESS.reset()
+        module._TASK_PROGRESS.reset()
 
         self.assertEqual(pressure, [])
         self.assertEqual(failures, [task_id for task_id, _stage, _detail in cases])
@@ -2973,11 +2841,13 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_terminal_task_state_replaces_generic_error_with_current_node_diagnostic(self):
         module = self.module
-        original_state = module._ORIGINAL_TASK_STATE
         captured = []
         fake_self = SimpleNamespace()
-        try:
-            module._ORIGINAL_TASK_STATE = lambda _self, task_id, **values: captured.append((task_id, values))
+        with patch_module_attr(
+            module,
+            "_ORIGINAL_TASK_STATE",
+            lambda _self, task_id, **values: captured.append((task_id, values)),
+        ):
             module._TASK_PROGRESS.reset()
             module._TASK_PROGRESS.set_stage("T002-safe", "finalizing_callback")
 
@@ -2988,9 +2858,7 @@ class WebGuiSecurityTests(unittest.TestCase):
                 error="授权或上传未完成",
                 result={"codex_chain_events": [{"state": "CONSENT_REQUIRED"}]},
             )
-        finally:
-            module._ORIGINAL_TASK_STATE = original_state
-            module._TASK_PROGRESS.reset()
+        module._TASK_PROGRESS.reset()
 
         values = captured[0][1]
         self.assertEqual(values["failure"]["node_code"], "finalizing_callback")
@@ -3002,14 +2870,10 @@ class WebGuiSecurityTests(unittest.TestCase):
         module = self.module
         gate = module._adaptive_concurrency_ext.AdaptiveConcurrencyGate(5, ceiling=8)
         fake_self = SimpleNamespace(task_admission=gate)
-        original_state = module._ORIGINAL_TASK_STATE
-        original_event = module._ORIGINAL_CHAIN_EVENT
-        original_admission = module._CURRENT_TASK_ADMISSION
         task_token = module._TASK_CONTEXT.set("T-pressure-node")
-        try:
-            module._CURRENT_TASK_ADMISSION = gate
-            module._ORIGINAL_TASK_STATE = lambda *_args, **_kwargs: None
-            module._ORIGINAL_CHAIN_EVENT = lambda *_args, **_kwargs: None
+        with patch_module_attr(module, "_CURRENT_TASK_ADMISSION", gate), \
+                patch_module_attr(module, "_ORIGINAL_TASK_STATE", lambda *_args, **_kwargs: None), \
+                patch_module_attr(module, "_ORIGINAL_CHAIN_EVENT", lambda *_args, **_kwargs: None):
             module._TASK_PROGRESS.reset()
             module._patched_chain_event(
                 [],
@@ -3022,12 +2886,8 @@ class WebGuiSecurityTests(unittest.TestCase):
                 status="failed",
                 error="node_sentinel_failed: node_bridge_timeout",
             )
-        finally:
-            module._TASK_CONTEXT.reset(task_token)
-            module._ORIGINAL_TASK_STATE = original_state
-            module._ORIGINAL_CHAIN_EVENT = original_event
-            module._CURRENT_TASK_ADMISSION = original_admission
-            module._TASK_PROGRESS.reset()
+        module._TASK_CONTEXT.reset(task_token)
+        module._TASK_PROGRESS.reset()
 
         snapshot = gate.snapshot()
         self.assertEqual(snapshot["pressure_count"], 2)
@@ -3125,9 +2985,7 @@ class WebGuiSecurityTests(unittest.TestCase):
         module = self.module
         gate = module._adaptive_concurrency_ext.AdaptiveConcurrencyGate(5, ceiling=8)
         fake_self = SimpleNamespace(task_admission=gate)
-        original_state = module._ORIGINAL_TASK_STATE
-        try:
-            module._ORIGINAL_TASK_STATE = lambda *_args, **_kwargs: None
+        with patch_module_attr(module, "_ORIGINAL_TASK_STATE", lambda *_args, **_kwargs: None):
             module._TASK_PROGRESS.reset()
             for task_id, status, detail in (
                 ("T-sms-timeout", "failed", "sms_timeout: no code received"),
@@ -3140,9 +2998,7 @@ class WebGuiSecurityTests(unittest.TestCase):
                     status=status,
                     error=detail,
                 )
-        finally:
-            module._ORIGINAL_TASK_STATE = original_state
-            module._TASK_PROGRESS.reset()
+        module._TASK_PROGRESS.reset()
 
         snapshot = gate.snapshot()
         self.assertEqual(snapshot["pressure_count"], 0)
@@ -3151,21 +3007,19 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_node_bridge_retry_event_is_persisted_without_terminal_log(self):
         module = self.module
-        original_event = module._ORIGINAL_CHAIN_EVENT
         original_context = module._TASK_CONTEXT.set("T-node-retry")
         captured = []
         logs = []
-        try:
-            module._ORIGINAL_CHAIN_EVENT = lambda *args, **kwargs: captured.append((args, kwargs))
+        with patch_module_attr(
+            module, "_ORIGINAL_CHAIN_EVENT", lambda *args, **kwargs: captured.append((args, kwargs))
+        ):
             module._patched_chain_event(
                 [],
                 "FAILED",
                 detail="node_sentinel_failed: node_bridge_timeout",
                 log_fn=lambda *args: logs.append(args),
             )
-        finally:
-            module._ORIGINAL_CHAIN_EVENT = original_event
-            module._TASK_CONTEXT.reset(original_context)
+        module._TASK_CONTEXT.reset(original_context)
 
         self.assertEqual(len(captured), 1)
         self.assertIsNone(captured[0][1]["log_fn"])
@@ -3176,47 +3030,40 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_mfa_request_enters_verification_stage_before_transport_failure(self):
         module = self.module
-        original_post = module._ORIGINAL_REAL_POST_AUTH_JSON
-        original_begin = module._auth_request_runtime_ext.begin_request
         token = module._TASK_CONTEXT.set("T-mfa-stage")
         module._TASK_PROGRESS.reset()
-        try:
-            module._auth_request_runtime_ext.begin_request = (
-                lambda *_args, **kwargs: {"stage": kwargs["stage"]}
-            )
-            module._ORIGINAL_REAL_POST_AUTH_JSON = (
-                lambda *_args, **_kwargs: (_ for _ in ()).throw(
-                    RuntimeError("node_sentinel_failed:mfa_otp_verify: node_bridge_timeout")
-                )
-            )
+        with patch_module_attr(
+            module._auth_request_runtime_ext,
+            "begin_request",
+            lambda *_args, **kwargs: {"stage": kwargs["stage"]},
+        ), patch_module_attr(
+            module,
+            "_ORIGINAL_REAL_POST_AUTH_JSON",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                RuntimeError("node_sentinel_failed:mfa_otp_verify: node_bridge_timeout")
+            ),
+        ):
+            try:
+                with self.assertRaisesRegex(RuntimeError, "node_bridge_timeout"):
+                    module._real_post_auth_json(
+                        SimpleNamespace(),
+                        "/api/accounts/mfa/verify",
+                        {"code": "redacted"},
+                        flow="mfa_otp_verify",
+                        referer="https://auth.openai.com/mfa-challenge/redacted",
+                    )
 
-            with self.assertRaisesRegex(RuntimeError, "node_bridge_timeout"):
-                module._real_post_auth_json(
-                    SimpleNamespace(),
-                    "/api/accounts/mfa/verify",
-                    {"code": "redacted"},
-                    flow="mfa_otp_verify",
-                    referer="https://auth.openai.com/mfa-challenge/redacted",
+                self.assertEqual(
+                    module._TASK_PROGRESS.progress("T-mfa-stage")["code"],
+                    "mfa_otp_verifying",
                 )
-
-            self.assertEqual(
-                module._TASK_PROGRESS.progress("T-mfa-stage")["code"],
-                "mfa_otp_verifying",
-            )
-        finally:
-            module._ORIGINAL_REAL_POST_AUTH_JSON = original_post
-            module._auth_request_runtime_ext.begin_request = original_begin
-            module._TASK_PROGRESS.reset()
-            module._TASK_CONTEXT.reset(token)
+            finally:
+                module._TASK_PROGRESS.reset()
+                module._TASK_CONTEXT.reset(token)
 
     def test_password_otp_validate_transport_omits_sentinel_headers(self):
         module = self.module
         calls = []
-        originals = {
-            "begin": module._auth_request_runtime_ext.begin_request,
-            "finish": module._auth_request_runtime_ext.finish_request,
-            "lease": module._with_transport_protocol_lease,
-        }
 
         class Response:
             status_code = 200
@@ -3236,12 +3083,15 @@ class WebGuiSecurityTests(unittest.TestCase):
             device_id="device-private",
             config={},
         )
-        try:
-            module._auth_request_runtime_ext.begin_request = lambda *_args, **kwargs: {
-                "stage": kwargs["stage"],
-            }
-            module._auth_request_runtime_ext.finish_request = lambda *_args, **_kwargs: {}
-            module._with_transport_protocol_lease = lambda _transport, operation: operation()
+        with patch_module_attr(
+            module._auth_request_runtime_ext,
+            "begin_request",
+            lambda *_args, **kwargs: {"stage": kwargs["stage"]},
+        ), patch_module_attr(
+            module._auth_request_runtime_ext, "finish_request", lambda *_args, **_kwargs: {}
+        ), patch_module_attr(
+            module, "_with_transport_protocol_lease", lambda _transport, operation: operation()
+        ):
             result = module._real_post_auth_json_without_sentinel(
                 transport,
                 "/api/accounts/email-otp/validate",
@@ -3249,10 +3099,6 @@ class WebGuiSecurityTests(unittest.TestCase):
                 flow="password_add_reauth_email_otp",
                 referer="https://auth.openai.com/email-verification",
             )
-        finally:
-            module._auth_request_runtime_ext.begin_request = originals["begin"]
-            module._auth_request_runtime_ext.finish_request = originals["finish"]
-            module._with_transport_protocol_lease = originals["lease"]
 
         self.assertEqual(result["_status"], 200)
         self.assertEqual(len(calls), 1)
@@ -3263,8 +3109,6 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_expired_mfa_step_never_reenters_dynamic_challenge(self):
         module = self.module
-        original_patches = module._TOTP_PATCHES
-        original_observe = module._observe_auth_step
         challenge_calls = []
         expired = {
             "_status": 401,
@@ -3281,16 +3125,13 @@ class WebGuiSecurityTests(unittest.TestCase):
             email_otp_provider=SimpleNamespace(),
             config={"dynamic_auth_challenges": True},
         )
-        try:
-            module._TOTP_PATCHES = SimpleNamespace(
-                verify_mfa_otp=lambda *_args: expired,
-            )
-            module._observe_auth_step = lambda *_args: None
-            result = module._real_verify_mfa_otp(transport, "private-code")
-        finally:
-            module._TOTP_PATCHES = original_patches
-            module._observe_auth_step = original_observe
-            module._auth_challenge_runtime_ext.clear_transport_context(transport)
+        with patch_module_attr(module, "_TOTP_PATCHES", SimpleNamespace(
+            verify_mfa_otp=lambda *_args: expired,
+        )), patch_module_attr(module, "_observe_auth_step", lambda *_args: None):
+            try:
+                result = module._real_verify_mfa_otp(transport, "private-code")
+            finally:
+                module._auth_challenge_runtime_ext.clear_transport_context(transport)
 
         self.assertIs(result, expired)
         self.assertEqual(challenge_calls, [])
@@ -3301,40 +3142,34 @@ class WebGuiSecurityTests(unittest.TestCase):
         secret = "JBSWY3DPEHPK3PXP"
         logs = []
         seen_codes = []
-        originals = {
-            "patches": module._TOTP_PATCHES,
-            "wait": module._manual_verification_runtime_ext.wait_for_manual,
-            "observe": module._observe_auth_step,
-            "checkpoint": module._checkpoint_save_after_auth,
-            "continue": module._auth_challenge_runtime_ext.continue_if_needed,
-        }
         token = module._TASK_CONTEXT.set("T-manual-totp")
         transport = SimpleNamespace(
             _gptphone_totp_manual_secret=secret,
             config={"sms_task_id": "T-manual-totp"},
             log_fn=lambda message, level="info": logs.append((message, level)),
         )
-        try:
-            def verify(_transport, value):
-                seen_codes.append(value)
-                return {"_status": 403, "error": {"code": "incorrect_code"}}
 
-            module._TOTP_PATCHES = SimpleNamespace(verify_mfa_otp=verify)
-            module._manual_verification_runtime_ext.wait_for_manual = (
-                lambda **_kwargs: self.fail("manual prompt must not open")
-            )
-            module._observe_auth_step = lambda *_args: None
-            module._checkpoint_save_after_auth = lambda *_args: None
-            module._auth_challenge_runtime_ext.continue_if_needed = lambda _transport, response, **_kwargs: response
+        def verify(_transport, value):
+            seen_codes.append(value)
+            return {"_status": 403, "error": {"code": "incorrect_code"}}
 
-            result = module._real_verify_mfa_otp(transport, "123456")
-        finally:
-            module._TOTP_PATCHES = originals["patches"]
-            module._manual_verification_runtime_ext.wait_for_manual = originals["wait"]
-            module._observe_auth_step = originals["observe"]
-            module._checkpoint_save_after_auth = originals["checkpoint"]
-            module._auth_challenge_runtime_ext.continue_if_needed = originals["continue"]
-            module._TASK_CONTEXT.reset(token)
+        with patch_module_attr(module, "_TOTP_PATCHES", SimpleNamespace(verify_mfa_otp=verify)), \
+                patch_module_attr(
+                    module._manual_verification_runtime_ext,
+                    "wait_for_manual",
+                    lambda **_kwargs: self.fail("manual prompt must not open"),
+                ), \
+                patch_module_attr(module, "_observe_auth_step", lambda *_args: None), \
+                patch_module_attr(module, "_checkpoint_save_after_auth", lambda *_args: None), \
+                patch_module_attr(
+                    module._auth_challenge_runtime_ext,
+                    "continue_if_needed",
+                    lambda _transport, response, **_kwargs: response,
+                ):
+            try:
+                result = module._real_verify_mfa_otp(transport, "123456")
+            finally:
+                module._TASK_CONTEXT.reset(token)
 
         self.assertEqual(result["_status"], 403)
         self.assertEqual(seen_codes, ["123456"])
@@ -3346,13 +3181,6 @@ class WebGuiSecurityTests(unittest.TestCase):
         module = self.module
         secret = "JBSWY3DPEHPK3PXP"
         logs = []
-        originals = {
-            "patches": module._TOTP_PATCHES,
-            "wait": module._manual_verification_runtime_ext.wait_for_manual,
-            "observe": module._observe_auth_step,
-            "checkpoint": module._checkpoint_save_after_auth,
-            "continue": module._auth_challenge_runtime_ext.continue_if_needed,
-        }
         token = module._TASK_CONTEXT.set("T-manual-timeout")
         transport = SimpleNamespace(
             _gptphone_totp_manual_secret=secret,
@@ -3360,24 +3188,24 @@ class WebGuiSecurityTests(unittest.TestCase):
             log_fn=lambda message, level="info": logs.append((message, level)),
         )
         rejected = {"_status": 403, "error": {"code": "incorrect_code"}}
-        try:
-            module._TOTP_PATCHES = SimpleNamespace(verify_mfa_otp=lambda *_args: rejected)
-            module._manual_verification_runtime_ext.wait_for_manual = (
-                lambda **_kwargs: self.fail("manual prompt must not open")
-            )
-            module._observe_auth_step = lambda *_args: None
-            module._checkpoint_save_after_auth = lambda *_args: None
-            module._auth_challenge_runtime_ext.continue_if_needed = lambda _transport, response, **_kwargs: response
-
-            result = module._real_verify_mfa_otp(transport, "123456")
-            repeated = module._real_verify_mfa_otp(transport, "123456")
-        finally:
-            module._TOTP_PATCHES = originals["patches"]
-            module._manual_verification_runtime_ext.wait_for_manual = originals["wait"]
-            module._observe_auth_step = originals["observe"]
-            module._checkpoint_save_after_auth = originals["checkpoint"]
-            module._auth_challenge_runtime_ext.continue_if_needed = originals["continue"]
-            module._TASK_CONTEXT.reset(token)
+        with patch_module_attr(module, "_TOTP_PATCHES", SimpleNamespace(verify_mfa_otp=lambda *_args: rejected)), \
+                patch_module_attr(
+                    module._manual_verification_runtime_ext,
+                    "wait_for_manual",
+                    lambda **_kwargs: self.fail("manual prompt must not open"),
+                ), \
+                patch_module_attr(module, "_observe_auth_step", lambda *_args: None), \
+                patch_module_attr(module, "_checkpoint_save_after_auth", lambda *_args: None), \
+                patch_module_attr(
+                    module._auth_challenge_runtime_ext,
+                    "continue_if_needed",
+                    lambda _transport, response, **_kwargs: response,
+                ):
+            try:
+                result = module._real_verify_mfa_otp(transport, "123456")
+                repeated = module._real_verify_mfa_otp(transport, "123456")
+            finally:
+                module._TASK_CONTEXT.reset(token)
 
         self.assertIs(result, rejected)
         self.assertIs(repeated, rejected)
@@ -3387,35 +3215,22 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_sms_wait_code_uses_provider_only_without_manual_prompt(self):
         module = self.module
-        originals = {
-            "adapter_wait_code": module._SMS_WEB.adapter_wait_code,
-            "fallback": module._manual_verification_runtime_ext.wait_with_manual_fallback,
-        }
         provider = SimpleNamespace(task_id="T-sms", log_fn=lambda *_args: None)
         lease = SimpleNamespace(task_id="T-sms")
-        try:
-            module._SMS_WEB.adapter_wait_code = lambda _provider, _lease, timeout=180: "246810"
-            module._manual_verification_runtime_ext.wait_with_manual_fallback = (
-                lambda *_args, **_kwargs: self.fail("manual prompt must not open")
-            )
-
+        with patch_module_attr(
+            module._SMS_WEB, "adapter_wait_code", lambda _provider, _lease, timeout=180: "246810"
+        ), patch_module_attr(
+            module._manual_verification_runtime_ext,
+            "wait_with_manual_fallback",
+            lambda *_args, **_kwargs: self.fail("manual prompt must not open"),
+        ):
             result = module._sms_adapter_wait_code(provider, lease, timeout=90)
-        finally:
-            module._SMS_WEB.adapter_wait_code = originals["adapter_wait_code"]
-            module._manual_verification_runtime_ext.wait_with_manual_fallback = originals["fallback"]
 
         self.assertEqual(result, "246810")
 
     def test_session_invalid_incorrect_totp_never_opens_manual_prompt(self):
         module = self.module
         secret = "JBSWY3DPEHPK3PXP"
-        originals = {
-            "patches": module._TOTP_PATCHES,
-            "wait": module._manual_verification_runtime_ext.wait_for_manual,
-            "observe": module._observe_auth_step,
-            "checkpoint": module._checkpoint_save_after_auth,
-            "continue": module._auth_challenge_runtime_ext.continue_if_needed,
-        }
         token = module._TASK_CONTEXT.set("T-manual-invalid")
         transport = SimpleNamespace(
             _gptphone_totp_manual_secret=secret,
@@ -3425,21 +3240,23 @@ class WebGuiSecurityTests(unittest.TestCase):
             "_status": 401,
             "error": {"code": "incorrect_code", "message": "oauth_session_invalid"},
         }
-        try:
-            module._TOTP_PATCHES = SimpleNamespace(verify_mfa_otp=lambda *_args: invalid)
-            module._manual_verification_runtime_ext.wait_for_manual = lambda **_kwargs: self.fail("manual prompt must not open")
-            module._observe_auth_step = lambda *_args: None
-            module._checkpoint_save_after_auth = lambda *_args: None
-            module._auth_challenge_runtime_ext.continue_if_needed = lambda _transport, response, **_kwargs: response
-
-            result = module._real_verify_mfa_otp(transport, "123456")
-        finally:
-            module._TOTP_PATCHES = originals["patches"]
-            module._manual_verification_runtime_ext.wait_for_manual = originals["wait"]
-            module._observe_auth_step = originals["observe"]
-            module._checkpoint_save_after_auth = originals["checkpoint"]
-            module._auth_challenge_runtime_ext.continue_if_needed = originals["continue"]
-            module._TASK_CONTEXT.reset(token)
+        with patch_module_attr(module, "_TOTP_PATCHES", SimpleNamespace(verify_mfa_otp=lambda *_args: invalid)), \
+                patch_module_attr(
+                    module._manual_verification_runtime_ext,
+                    "wait_for_manual",
+                    lambda **_kwargs: self.fail("manual prompt must not open"),
+                ), \
+                patch_module_attr(module, "_observe_auth_step", lambda *_args: None), \
+                patch_module_attr(module, "_checkpoint_save_after_auth", lambda *_args: None), \
+                patch_module_attr(
+                    module._auth_challenge_runtime_ext,
+                    "continue_if_needed",
+                    lambda _transport, response, **_kwargs: response,
+                ):
+            try:
+                result = module._real_verify_mfa_otp(transport, "123456")
+            finally:
+                module._TASK_CONTEXT.reset(token)
 
         self.assertIs(result, invalid)
         self.assertFalse(hasattr(transport, "_gptphone_totp_manual_secret"))
@@ -3450,28 +3267,30 @@ class WebGuiSecurityTests(unittest.TestCase):
         factor = "factor-private"
         logs = []
         calls = []
-        originals = {
-            "post": module._ORIGINAL_REAL_POST_AUTH_JSON,
-            "begin": module._auth_request_runtime_ext.begin_request,
-            "finish": module._auth_request_runtime_ext.finish_request,
-        }
         transport = SimpleNamespace(_gptphone_totp_secret=secret, log_fn=lambda message, level="info": logs.append((message, level)))
         expired = {"_status": 403, "error": {"code": "mfa_authorization_step_expired"}}
-        try:
-            def post(_transport, path, payload, **_kwargs):
-                calls.append((path, dict(payload)))
-                if len(calls) == 1:
-                    return expired
-                if path.endswith("issue_challenge"):
-                    return {"_status": 200}
-                return {"_status": 200, "page": {"type": "add_phone"}}
 
-            module._ORIGINAL_REAL_POST_AUTH_JSON = post
-            module._auth_request_runtime_ext.begin_request = lambda *_args, **kwargs: {
-                "stage": kwargs["stage"], "session_generation": 5,
-            }
-            module._auth_request_runtime_ext.finish_request = lambda *_args, **_kwargs: {}
+        def post(_transport, path, payload, **_kwargs):
+            calls.append((path, dict(payload)))
+            if len(calls) == 1:
+                return expired
+            if path.endswith("issue_challenge"):
+                return {"_status": 200}
+            return {"_status": 200, "page": {"type": "add_phone"}}
 
+        with patch_module_attr(module, "_ORIGINAL_REAL_POST_AUTH_JSON", post), \
+                patch_module_attr(
+                    module._auth_request_runtime_ext,
+                    "begin_request",
+                    lambda *_args, **kwargs: {
+                        "stage": kwargs["stage"], "session_generation": 5,
+                    },
+                ), \
+                patch_module_attr(
+                    module._auth_request_runtime_ext,
+                    "finish_request",
+                    lambda *_args, **_kwargs: {},
+                ):
             result = module._real_post_auth_json(
                 transport,
                 "/api/accounts/mfa/verify",
@@ -3479,10 +3298,6 @@ class WebGuiSecurityTests(unittest.TestCase):
                 flow="mfa_otp_verify",
                 referer="https://auth.openai.com/mfa-challenge/redacted",
             )
-        finally:
-            module._ORIGINAL_REAL_POST_AUTH_JSON = originals["post"]
-            module._auth_request_runtime_ext.begin_request = originals["begin"]
-            module._auth_request_runtime_ext.finish_request = originals["finish"]
 
         self.assertEqual(result["_status"], 200)
         self.assertEqual([path for path, _payload in calls], [
@@ -3498,29 +3313,33 @@ class WebGuiSecurityTests(unittest.TestCase):
         module = self.module
         secret = "JBSWY3DPEHPK3PXP"
         invalidations = []
-        originals = {
-            "post": module._ORIGINAL_REAL_POST_AUTH_JSON,
-            "begin": module._auth_request_runtime_ext.begin_request,
-            "finish": module._auth_request_runtime_ext.finish_request,
-            "invalidate": module._auth_request_runtime_ext.invalidate_auth_session,
-            "checkpoint": module._checkpoint_delete_after_auth,
-        }
         transport = SimpleNamespace(_gptphone_totp_secret=secret)
         expired = {"_status": 403, "error": {"code": "mfa_authorization_step_expired"}}
         calls = []
-        try:
-            def post(_transport, path, payload, **_kwargs):
-                calls.append((path, dict(payload)))
-                return {"_status": 200} if path.endswith("issue_challenge") else expired
 
-            module._ORIGINAL_REAL_POST_AUTH_JSON = post
-            module._auth_request_runtime_ext.begin_request = lambda *_args, **kwargs: {
-                "stage": kwargs["stage"], "session_generation": 5,
-            }
-            module._auth_request_runtime_ext.finish_request = lambda *_args, **_kwargs: {}
-            module._auth_request_runtime_ext.invalidate_auth_session = lambda *_args, **kwargs: invalidations.append(kwargs)
-            module._checkpoint_delete_after_auth = lambda *_args: None
+        def post(_transport, path, payload, **_kwargs):
+            calls.append((path, dict(payload)))
+            return {"_status": 200} if path.endswith("issue_challenge") else expired
 
+        with patch_module_attr(module, "_ORIGINAL_REAL_POST_AUTH_JSON", post), \
+                patch_module_attr(
+                    module._auth_request_runtime_ext,
+                    "begin_request",
+                    lambda *_args, **kwargs: {
+                        "stage": kwargs["stage"], "session_generation": 5,
+                    },
+                ), \
+                patch_module_attr(
+                    module._auth_request_runtime_ext,
+                    "finish_request",
+                    lambda *_args, **_kwargs: {},
+                ), \
+                patch_module_attr(
+                    module._auth_request_runtime_ext,
+                    "invalidate_auth_session",
+                    lambda *_args, **kwargs: invalidations.append(kwargs),
+                ), \
+                patch_module_attr(module, "_checkpoint_delete_after_auth", lambda *_args: None):
             result = module._real_post_auth_json(
                 transport,
                 "/api/accounts/mfa/verify",
@@ -3528,12 +3347,6 @@ class WebGuiSecurityTests(unittest.TestCase):
                 flow="mfa_otp_verify",
                 referer="https://auth.openai.com/mfa-challenge/redacted",
             )
-        finally:
-            module._ORIGINAL_REAL_POST_AUTH_JSON = originals["post"]
-            module._auth_request_runtime_ext.begin_request = originals["begin"]
-            module._auth_request_runtime_ext.finish_request = originals["finish"]
-            module._auth_request_runtime_ext.invalidate_auth_session = originals["invalidate"]
-            module._checkpoint_delete_after_auth = originals["checkpoint"]
 
         self.assertIs(result, expired)
         self.assertEqual(len(calls), 3)
@@ -3546,13 +3359,7 @@ class WebGuiSecurityTests(unittest.TestCase):
         sent_payloads = []
         logs = []
         observed_stages = []
-        originals = {
-            "verify_email": module._ORIGINAL_REAL_VERIFY_EMAIL_OTP,
-            "headers": module._ORIGINAL_REAL_HEADERS,
-            "request_headers": module._auth_request_runtime_ext.request_headers,
-            "observe": module._observe_auth_step,
-            "refresh": module._chatgpt_totp_ext.refresh_transport_totp_payload,
-        }
+        original_refresh = module._chatgpt_totp_ext.refresh_transport_totp_payload
 
         def slow_headers(_transport, _flow, _referer):
             clock[0] = 37.0
@@ -3570,38 +3377,38 @@ class WebGuiSecurityTests(unittest.TestCase):
         )
         transport._post_auth_json = MethodType(post_auth_json, transport)
         module._MAILBOX_TOTP_SECRET_CONTEXT.set(secret)
-        try:
-            module._ORIGINAL_REAL_VERIFY_EMAIL_OTP = lambda *_args: {
-                "_status": 200,
-                "page": {
-                    "type": "mfa_otp",
-                    "payload": {"factor_id": "factor-safe"},
-                },
-            }
-            module._ORIGINAL_REAL_HEADERS = slow_headers
-            module._auth_request_runtime_ext.request_headers = (
-                lambda _transport, headers: headers
-            )
-            module._observe_auth_step = (
-                lambda _transport, _response, stage: observed_stages.append(stage)
-            )
-            module._chatgpt_totp_ext.refresh_transport_totp_payload = (
-                lambda current_transport, flow: originals["refresh"](
-                    current_transport,
-                    flow,
-                    now_fn=lambda: clock[0],
-                    sleep_fn=lambda seconds: clock.__setitem__(0, clock[0] + seconds),
-                )
-            )
-
-            response = module._real_verify_email_otp(transport, "private-email-code")
-        finally:
-            module._MAILBOX_TOTP_SECRET_CONTEXT.set("")
-            module._ORIGINAL_REAL_VERIFY_EMAIL_OTP = originals["verify_email"]
-            module._ORIGINAL_REAL_HEADERS = originals["headers"]
-            module._auth_request_runtime_ext.request_headers = originals["request_headers"]
-            module._observe_auth_step = originals["observe"]
-            module._chatgpt_totp_ext.refresh_transport_totp_payload = originals["refresh"]
+        with patch_module_attr(module, "_ORIGINAL_REAL_VERIFY_EMAIL_OTP", lambda *_args: {
+            "_status": 200,
+            "page": {
+                "type": "mfa_otp",
+                "payload": {"factor_id": "factor-safe"},
+            },
+        }), \
+                patch_module_attr(module, "_ORIGINAL_REAL_HEADERS", slow_headers), \
+                patch_module_attr(
+                    module._auth_request_runtime_ext,
+                    "request_headers",
+                    lambda _transport, headers: headers,
+                ), \
+                patch_module_attr(
+                    module,
+                    "_observe_auth_step",
+                    lambda _transport, _response, stage: observed_stages.append(stage),
+                ), \
+                patch_module_attr(
+                    module._chatgpt_totp_ext,
+                    "refresh_transport_totp_payload",
+                    lambda current_transport, flow: original_refresh(
+                        current_transport,
+                        flow,
+                        now_fn=lambda: clock[0],
+                        sleep_fn=lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+                    ),
+                ):
+            try:
+                response = module._real_verify_email_otp(transport, "private-email-code")
+            finally:
+                module._MAILBOX_TOTP_SECRET_CONTEXT.set("")
 
         self.assertEqual(response["_status"], 200)
         self.assertEqual(len(sent_payloads), 1)
@@ -3623,31 +3430,23 @@ class WebGuiSecurityTests(unittest.TestCase):
             module._codex_oauth_chain.RealCodexTransport.verify_signup_email_otp,
             module._real_verify_signup_email_otp,
         )
-        originals = {
-            "runtime": module._EMAIL_OTP_MFA_RUNTIME,
-            "verify_signup": module._ORIGINAL_REAL_VERIFY_SIGNUP_EMAIL_OTP,
-        }
         calls = []
 
         def original_verify(transport, code):
             calls.append((transport, code))
             return {"_status": 200, "page": {"type": "mfa_challenge"}}
 
-        try:
-            module._ORIGINAL_REAL_VERIFY_SIGNUP_EMAIL_OTP = original_verify
-            module._EMAIL_OTP_MFA_RUNTIME = SimpleNamespace(
-                verify=lambda transport, code, original: {
-                    "original": original,
-                    "original_result": original(transport, code),
-                    "transport": transport,
-                    "code": code,
-                }
-            )
+        with patch_module_attr(module, "_ORIGINAL_REAL_VERIFY_SIGNUP_EMAIL_OTP", original_verify), \
+                patch_module_attr(module, "_EMAIL_OTP_MFA_RUNTIME", SimpleNamespace(
+                    verify=lambda transport, code, original: {
+                        "original": original,
+                        "original_result": original(transport, code),
+                        "transport": transport,
+                        "code": code,
+                    }
+                )):
             transport = SimpleNamespace()
             result = module._real_verify_signup_email_otp(transport, "email-code")
-        finally:
-            module._EMAIL_OTP_MFA_RUNTIME = originals["runtime"]
-            module._ORIGINAL_REAL_VERIFY_SIGNUP_EMAIL_OTP = originals["verify_signup"]
 
         self.assertIs(result["original"], original_verify)
         self.assertEqual(result["transport"], transport)
@@ -3656,7 +3455,6 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_task_boundary_clears_url_totp_secret_after_early_exit(self):
         module = self.module
-        original_run_one = module._ORIGINAL_IMPORTER_RUN_ONE
         observed = []
 
         def run_one(_self, _settings, ordinal, *_args):
@@ -3665,20 +3463,18 @@ class WebGuiSecurityTests(unittest.TestCase):
                 module._MAILBOX_TOTP_SECRET_CONTEXT.set("JBSWY3DPEHPK3PXP")
             return ordinal
 
-        try:
-            module._ORIGINAL_IMPORTER_RUN_ONE = run_one
-            self.assertEqual(module._patched_importer_run_one(object(), {}, 1), 1)
-            self.assertEqual(module._patched_importer_run_one(object(), {}, 2), 2)
-        finally:
-            module._ORIGINAL_IMPORTER_RUN_ONE = original_run_one
-            module._MAILBOX_TOTP_SECRET_CONTEXT.set("")
+        with patch_module_attr(module, "_ORIGINAL_IMPORTER_RUN_ONE", run_one):
+            try:
+                self.assertEqual(module._patched_importer_run_one(object(), {}, 1), 1)
+                self.assertEqual(module._patched_importer_run_one(object(), {}, 2), 2)
+            finally:
+                module._MAILBOX_TOTP_SECRET_CONTEXT.set("")
 
         self.assertEqual(observed, ["", ""])
         self.assertEqual(module._MAILBOX_TOTP_SECRET_CONTEXT.get(""), "")
 
     def test_legacy_run_one_call_generates_cleanup_visible_task_id(self):
         module = self.module
-        original_run_one = module._ORIGINAL_IMPORTER_RUN_ONE
         observed = {}
 
         class Session:
@@ -3699,11 +3495,8 @@ class WebGuiSecurityTests(unittest.TestCase):
             module._register_sms_transport(task_id, transport)
             return task_id
 
-        try:
-            module._ORIGINAL_IMPORTER_RUN_ONE = run_one
+        with patch_module_attr(module, "_ORIGINAL_IMPORTER_RUN_ONE", run_one):
             result = module._patched_importer_run_one(object(), {}, 7)
-        finally:
-            module._ORIGINAL_IMPORTER_RUN_ONE = original_run_one
 
         self.assertRegex(result, r"^T007-[0-9a-f]{6}$")
         self.assertEqual(observed["task_id"], result)
@@ -3716,17 +3509,13 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_sentinel_emit_formats_internal_failure_as_non_terminal_retry(self):
         module = self.module
-        original_emit = module._ORIGINAL_CHAIN_EMIT
         captured = []
-        try:
-            module._ORIGINAL_CHAIN_EMIT = lambda *args: captured.append(args)
+        with patch_module_attr(module, "_ORIGINAL_CHAIN_EMIT", lambda *args: captured.append(args)):
             module._patched_chain_emit(
                 lambda *_args: None,
                 "  [SentinelRunner] token 生成失败，重试 flow=chat-requirements: timeout",
                 "info",
             )
-        finally:
-            module._ORIGINAL_CHAIN_EMIT = original_emit
 
         self.assertEqual(len(captured), 1)
         self.assertIn("[Node/Sentinel 重试/oauth_create_node]", captured[0][1])
@@ -3735,33 +3524,31 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_sentinel_success_clears_only_stale_node_failure(self):
         module = self.module
-        original_emit = module._ORIGINAL_CHAIN_EMIT
         token = module._TASK_CONTEXT.set("T-node-success")
-        try:
-            module._remember_task_failure(
-                "T-node-success",
-                module._error_observability_ext.classify_failure(
-                    error="node_sentinel_failed: node bridge timeout"
-                ),
-            )
-            module._ORIGINAL_CHAIN_EMIT = lambda *_args: None
-            module._patched_chain_emit(
-                lambda *_args: None,
-                "  [SentinelRunner] token 生成成功, flow=chat-requirements, 包含 so=True",
-                "info",
-            )
-            self.assertIsNone(module._known_task_failure("T-node-success"))
-        finally:
-            module._ORIGINAL_CHAIN_EMIT = original_emit
-            module._TASK_CONTEXT.reset(token)
+        with patch_module_attr(module, "_ORIGINAL_CHAIN_EMIT", lambda *_args: None):
+            try:
+                module._remember_task_failure(
+                    "T-node-success",
+                    module._error_observability_ext.classify_failure(
+                        error="node_sentinel_failed: node bridge timeout"
+                    ),
+                )
+                module._patched_chain_emit(
+                    lambda *_args: None,
+                    "  [SentinelRunner] token 生成成功, flow=chat-requirements, 包含 so=True",
+                    "info",
+                )
+                self.assertIsNone(module._known_task_failure("T-node-success"))
+            finally:
+                module._TASK_CONTEXT.reset(token)
 
     def test_expected_pkce_runtime_context_is_persisted_without_public_warning(self):
         module = self.module
-        original_event = module._ORIGINAL_CHAIN_EVENT
         captured = []
         logs = []
-        try:
-            module._ORIGINAL_CHAIN_EVENT = lambda *args, **kwargs: captured.append((args, kwargs))
+        with patch_module_attr(
+            module, "_ORIGINAL_CHAIN_EVENT", lambda *args, **kwargs: captured.append((args, kwargs))
+        ):
             module._patched_chain_event(
                 [],
                 "RUNTIME_CONTEXT_ISSUE",
@@ -3769,8 +3556,6 @@ class WebGuiSecurityTests(unittest.TestCase):
                 log_fn=lambda *args: logs.append(args),
                 tag="warn",
             )
-        finally:
-            module._ORIGINAL_CHAIN_EVENT = original_event
 
         self.assertEqual(len(captured), 1)
         self.assertIsNone(captured[0][1]["log_fn"])
@@ -3987,7 +3772,6 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_sub2_oauth_session_retries_one_transient_disconnect_with_safe_log(self):
         module = self.module
-        original = module._ORIGINAL_GENERATE_SUB2_OAUTH_SESSION
         calls = []
         logs = []
 
@@ -3999,14 +3783,11 @@ class WebGuiSecurityTests(unittest.TestCase):
                 )
             return {"session_id": "safe-session"}
 
-        try:
-            module._ORIGINAL_GENERATE_SUB2_OAUTH_SESSION = generate
+        with patch_module_attr(module, "_ORIGINAL_GENERATE_SUB2_OAUTH_SESSION", generate):
             result = module._generate_sub2_oauth_session(
                 {"_stop_requested": lambda: False},
                 log_fn=lambda message, level="info": logs.append((message, level)),
             )
-        finally:
-            module._ORIGINAL_GENERATE_SUB2_OAUTH_SESSION = original
 
         self.assertEqual(result, {"session_id": "safe-session"})
         self.assertEqual(calls, ["call", "call"])
@@ -4017,7 +3798,6 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_openai_oauth_retry_preserves_completed_node_and_sub2_setup(self):
         module = self.module
-        original = module._ORIGINAL_REAL_INITIATE_OAUTH
         calls = []
         logs = []
         transport = SimpleNamespace(
@@ -4034,11 +3814,8 @@ class WebGuiSecurityTests(unittest.TestCase):
                 }
             return {"_status": 200, "page": {"type": "login"}}
 
-        try:
-            module._ORIGINAL_REAL_INITIATE_OAUTH = initiate
+        with patch_module_attr(module, "_ORIGINAL_REAL_INITIATE_OAUTH", initiate):
             result = module._real_initiate_oauth(transport, "/authorize")
-        finally:
-            module._ORIGINAL_REAL_INITIATE_OAUTH = original
 
         self.assertEqual(result["_status"], 200)
         self.assertEqual(calls, ["call", "call"])
@@ -4049,7 +3826,6 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_failed_result_persists_same_structured_failure_used_by_public_state(self):
         module = self.module
-        original_persist = module._ORIGINAL_PERSIST_RESULT
         result_dir = Path(self.tempdir.name) / "structured-results"
         entry = SimpleNamespace(email="oauth@example.test")
 
@@ -4072,35 +3848,34 @@ class WebGuiSecurityTests(unittest.TestCase):
             _source_row=lambda _entry: "oauth@example.test----mail-pass----client-id----refresh-token",
             _log=lambda *_args, **_kwargs: None,
         )
-        try:
-            module._ORIGINAL_PERSIST_RESULT = persist
-            module._TASK_PROGRESS.reset()
-            module._TASK_PROGRESS.set_stage("T003-safe", "finalizing_token")
-            module._TASK_PROGRESS.record_segment(
-                "T003-safe",
-                "protocol_slot_waiting",
-                1.25,
-            )
-            result = {"phase2_error": "sub2_exchange_failed: HTTP 401 OPENAI_OAUTH_SESSION_NOT_FOUND"}
-            module._patched_persist_result(
-                fake_self,
-                {"results_dir": str(result_dir)},
-                "T003-safe",
-                entry,
-                result,
-                error="授权或上传未完成",
-                status="repair_pending",
-            )
-            frozen_timing = copy.deepcopy(result["timing"])
-            self.assertIsNotNone(frozen_timing["finished_at"])
-            self.assertFalse(module._TASK_PROGRESS.finish("T003-safe"))
-            self.assertEqual(
-                (module._TASK_PROGRESS.progress("T003-safe") or {})["timing"],
-                frozen_timing,
-            )
-        finally:
-            module._ORIGINAL_PERSIST_RESULT = original_persist
-            module._TASK_PROGRESS.reset()
+        with patch_module_attr(module, "_ORIGINAL_PERSIST_RESULT", persist):
+            try:
+                module._TASK_PROGRESS.reset()
+                module._TASK_PROGRESS.set_stage("T003-safe", "finalizing_token")
+                module._TASK_PROGRESS.record_segment(
+                    "T003-safe",
+                    "protocol_slot_waiting",
+                    1.25,
+                )
+                result = {"phase2_error": "sub2_exchange_failed: HTTP 401 OPENAI_OAUTH_SESSION_NOT_FOUND"}
+                module._patched_persist_result(
+                    fake_self,
+                    {"results_dir": str(result_dir)},
+                    "T003-safe",
+                    entry,
+                    result,
+                    error="授权或上传未完成",
+                    status="repair_pending",
+                )
+                frozen_timing = copy.deepcopy(result["timing"])
+                self.assertIsNotNone(frozen_timing["finished_at"])
+                self.assertFalse(module._TASK_PROGRESS.finish("T003-safe"))
+                self.assertEqual(
+                    (module._TASK_PROGRESS.progress("T003-safe") or {})["timing"],
+                    frozen_timing,
+                )
+            finally:
+                module._TASK_PROGRESS.reset()
 
         payload = json.loads((result_dir / "T003-safe_oauth_at_example.test.json").read_text(encoding="utf-8"))
         self.assertEqual(payload["failure"]["node_code"], "finalizing_token")
@@ -4123,31 +3898,33 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_persistence_exception_reports_save_node_with_sanitized_cause(self):
         module = self.module
-        original_persist = module._ORIGINAL_PERSIST_RESULT
         entry = SimpleNamespace(email="save@example.test")
         fake_self = SimpleNamespace(
             data_dir=self.tempdir.name,
             _source_row=lambda _entry: "save@example.test----mail-pass----client-id----refresh-token",
         )
-        try:
-            module._ORIGINAL_PERSIST_RESULT = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        with patch_module_attr(
+            module,
+            "_ORIGINAL_PERSIST_RESULT",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
                 OSError("permission denied password=mail-pass")
-            )
-            module._TASK_PROGRESS.reset()
-            module._TASK_PROGRESS.set_stage("T006-safe", "email_login")
-            with self.assertRaisesRegex(RuntimeError, "保存任务结果失败") as raised:
-                module._patched_persist_result(
-                    fake_self,
-                    {},
-                    "T006-safe",
-                    entry,
-                    {},
-                    error="mailbox_imap_error",
-                    status="failed",
-                )
-        finally:
-            module._ORIGINAL_PERSIST_RESULT = original_persist
-            module._TASK_PROGRESS.reset()
+            ),
+        ):
+            try:
+                module._TASK_PROGRESS.reset()
+                module._TASK_PROGRESS.set_stage("T006-safe", "email_login")
+                with self.assertRaisesRegex(RuntimeError, "保存任务结果失败") as raised:
+                    module._patched_persist_result(
+                        fake_self,
+                        {},
+                        "T006-safe",
+                        entry,
+                        {},
+                        error="mailbox_imap_error",
+                        status="failed",
+                    )
+            finally:
+                module._TASK_PROGRESS.reset()
 
         self.assertNotIn("mail-pass", str(raised.exception))
         failure = module._known_task_failure("T006-safe")
@@ -4342,7 +4119,6 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_result_file_persists_batch_identity(self):
         module = self.module
-        original_persist = module._ORIGINAL_PERSIST_RESULT
         result_dir = Path(self.tempdir.name) / "batch-results"
         entry = SimpleNamespace(email="batch@example.test")
 
@@ -4365,19 +4141,18 @@ class WebGuiSecurityTests(unittest.TestCase):
             "batch_started_at": 1785823200,
         }
         result = {}
-        try:
-            module._ORIGINAL_PERSIST_RESULT = persist
-            module._patched_persist_result(
-                fake_self,
-                settings,
-                "task-batch",
-                entry,
-                result,
-                status="success",
-            )
-        finally:
-            module._ORIGINAL_PERSIST_RESULT = original_persist
-            module._TASK_PROGRESS.reset()
+        with patch_module_attr(module, "_ORIGINAL_PERSIST_RESULT", persist):
+            try:
+                module._patched_persist_result(
+                    fake_self,
+                    settings,
+                    "task-batch",
+                    entry,
+                    result,
+                    status="success",
+                )
+            finally:
+                module._TASK_PROGRESS.reset()
 
         payload = json.loads(
             (result_dir / "task-batch_batch_at_example.test.json").read_text(encoding="utf-8")
@@ -4389,7 +4164,6 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_relative_result_directory_is_resolved_from_importer_data_dir(self):
         module = self.module
-        original_persist = module._ORIGINAL_PERSIST_RESULT
         with tempfile.TemporaryDirectory() as temporary:
             data_dir = Path(temporary) / "runtime-data"
             entry = SimpleNamespace(email="relative@example.test")
@@ -4411,20 +4185,19 @@ class WebGuiSecurityTests(unittest.TestCase):
                 _source_row=lambda _entry: "relative@example.test----private-password",
                 _log=lambda *_args, **_kwargs: None,
             )
-            try:
-                module._ORIGINAL_PERSIST_RESULT = persist
-                module._TASK_PROGRESS.reset()
-                module._patched_persist_result(
-                    fake_self,
-                    {"results_dir": "relative-results"},
-                    "T-relative",
-                    entry,
-                    {},
-                    status="success",
-                )
-            finally:
-                module._ORIGINAL_PERSIST_RESULT = original_persist
-                module._TASK_PROGRESS.reset()
+            with patch_module_attr(module, "_ORIGINAL_PERSIST_RESULT", persist):
+                try:
+                    module._TASK_PROGRESS.reset()
+                    module._patched_persist_result(
+                        fake_self,
+                        {"results_dir": "relative-results"},
+                        "T-relative",
+                        entry,
+                        {},
+                        status="success",
+                    )
+                finally:
+                    module._TASK_PROGRESS.reset()
 
             expected_dir = (data_dir / "relative-results").resolve()
             self.assertEqual(Path(observed["results_dir"]), expected_dir)
@@ -4434,7 +4207,6 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_persisted_result_ignores_legacy_oauth_session_phone_risk_marker(self):
         module = self.module
-        original_persist = module._ORIGINAL_PERSIST_RESULT
         email = "persist-risk-result@example.test"
         captured = []
         result = {}
@@ -4445,24 +4217,25 @@ class WebGuiSecurityTests(unittest.TestCase):
             reason_code="oauth_session_invalid",
             stage="sms_verifying",
         )
-        try:
-            module._ORIGINAL_PERSIST_RESULT = (
-                lambda _self, _settings, _task_id, _entry, value, **_kwargs: (
-                    captured.append(copy.deepcopy(value)) or "persisted"
+        with patch_module_attr(
+            module,
+            "_ORIGINAL_PERSIST_RESULT",
+            lambda _self, _settings, _task_id, _entry, value, **_kwargs: (
+                captured.append(copy.deepcopy(value)) or "persisted"
+            ),
+        ):
+            try:
+                returned = module._patched_persist_result(
+                    fake_self,
+                    {"pixel_upload_enabled": False},
+                    "task-persist-risk",
+                    entry,
+                    result,
+                    status="stopped",
                 )
-            )
-            returned = module._patched_persist_result(
-                fake_self,
-                {"pixel_upload_enabled": False},
-                "task-persist-risk",
-                entry,
-                result,
-                status="stopped",
-            )
-        finally:
-            module._ORIGINAL_PERSIST_RESULT = original_persist
-            module._PHONE_RISK_STORE.clear(email)
-            module._TASK_PROGRESS.reset()
+            finally:
+                module._PHONE_RISK_STORE.clear(email)
+                module._TASK_PROGRESS.reset()
 
         self.assertEqual(returned, "persisted")
         self.assertNotIn("phone_risk_retry", captured[0])
@@ -4509,7 +4282,6 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_explicit_password_rejection_damages_mailbox_and_skips_generic_retirement(self):
         module = self.module
-        original_retire = module._ORIGINAL_RETIRE_AFTER_FAILURE
         persisted = []
         task_states = []
         logs = []
@@ -4534,10 +4306,13 @@ class WebGuiSecurityTests(unittest.TestCase):
         )
         entry = SimpleNamespace(email="rejected@example.test")
         pool = Pool()
-        try:
-            module._ORIGINAL_RETIRE_AFTER_FAILURE = lambda *_args, **_kwargs: self.fail(
+        with patch_module_attr(
+            module,
+            "_ORIGINAL_RETIRE_AFTER_FAILURE",
+            lambda *_args, **_kwargs: self.fail(
                 "explicit password rejection must not return to the generic retry pool"
-            )
+            ),
+        ):
             module._patched_retire_after_failure(
                 fake_self,
                 {},
@@ -4547,8 +4322,6 @@ class WebGuiSecurityTests(unittest.TestCase):
                 {"error": "password_verify_failed: invalid password"},
                 "password_verify_failed: invalid password",
             )
-        finally:
-            module._ORIGINAL_RETIRE_AFTER_FAILURE = original_retire
 
         message = module._PASSWORD_DAMAGED_MESSAGE
         self.assertEqual(pool.damaged, [(entry.email, message)])
@@ -4559,10 +4332,6 @@ class WebGuiSecurityTests(unittest.TestCase):
 
     def test_account_banned_failure_is_terminal_removes_pool_row(self):
         module = self.module
-        original_persist = module._ORIGINAL_PERSIST_RESULT
-        original_retire = module._ORIGINAL_RETIRE_AFTER_FAILURE
-        original_remove = module._ORIGINAL_POOL_REMOVE_ENTRY
-        original_sms_web = module._SMS_WEB
         result_dir = Path(self.tempdir.name) / "banned-results"
         persisted = []
         task_states = []
@@ -4606,18 +4375,24 @@ class WebGuiSecurityTests(unittest.TestCase):
         entry = SimpleNamespace(key="banned-row", email="banned@example.test")
         pool = Pool()
         message = module._runtime_policy_ext.ACCOUNT_BANNED_MESSAGE
-        try:
-            module._ORIGINAL_PERSIST_RESULT = persist
-            module._ORIGINAL_RETIRE_AFTER_FAILURE = lambda *_args, **_kwargs: self.fail(
-                "explicit account ban must not use generic retirement"
-            )
-            module._ORIGINAL_POOL_REMOVE_ENTRY = lambda target, removed, **_kwargs: (
-                target.removed.append(removed.key) or True
-            )
-            module._SMS_WEB = SimpleNamespace(
-                pop_account_banned_detail=lambda _task_id: "status=403 code=account_banned"
-            )
-
+        with patch_module_attr(module, "_ORIGINAL_PERSIST_RESULT", persist), \
+                patch_module_attr(
+                    module,
+                    "_ORIGINAL_RETIRE_AFTER_FAILURE",
+                    lambda *_args, **_kwargs: self.fail(
+                        "explicit account ban must not use generic retirement"
+                    ),
+                ), \
+                patch_module_attr(
+                    module,
+                    "_ORIGINAL_POOL_REMOVE_ENTRY",
+                    lambda target, removed, **_kwargs: (
+                        target.removed.append(removed.key) or True
+                    ),
+                ), \
+                patch_module_attr(module, "_SMS_WEB", SimpleNamespace(
+                    pop_account_banned_detail=lambda _task_id: "status=403 code=account_banned"
+                )):
             module._patched_retire_after_failure(
                 fake_self,
                 {"results_dir": str(result_dir), "pixel_upload_enabled": True},
@@ -4627,11 +4402,6 @@ class WebGuiSecurityTests(unittest.TestCase):
                 {"error": {"code": "account_banned"}, "access_token": "private-token"},
                 "account_banned",
             )
-        finally:
-            module._ORIGINAL_PERSIST_RESULT = original_persist
-            module._ORIGINAL_RETIRE_AFTER_FAILURE = original_retire
-            module._ORIGINAL_POOL_REMOVE_ENTRY = original_remove
-            module._SMS_WEB = original_sms_web
 
         target = result_dir / "task-ban_banned_at_example.test.json"
         local_payload = json.loads(target.read_text(encoding="utf-8"))
