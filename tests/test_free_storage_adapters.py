@@ -184,6 +184,32 @@ class SQLiteStorageAdapterTests(unittest.TestCase):
         self.assertEqual(current["lease_owner"], "owner-a")
         self.assertEqual(current["status"], "reserved")
 
+    def test_unconfirmed_release_keeps_terminal_status_with_durable_result(self) -> None:
+        """A lost lease confirmation must not demote a finished registration.
+
+        The worker writes the terminal status before releasing its lease.  If
+        the confirmation marker was lost (CAS miss), the unconfirmed release
+        branch used to flip ``success`` back to ``available`` while the stale
+        stage kept the mailbox UI on an old node.
+        """
+        pool = SQLiteFreeMailboxPool(self.root)
+        pool.import_text("terminal@example.com----https://mail.example/terminal")
+        row = pool.entries()[0]
+        pool.reserve([row], "batch-terminal")
+        lease = pool.storage.lease_mailbox(
+            row.row_id, owner="task-terminal", lease_seconds=60
+        )
+        self.assertIsNotNone(lease)
+
+        # Terminal result lands first (worker order), confirmation is missing.
+        pool.update(row.row_id, status="success", stage="free_result_save", error="", failure=None)
+        pool.save_result(row.row_id, {"access_token": "token-value", "has_access_token": True})
+        self.assertTrue(pool.release(row.row_id, owner="task-terminal", reusable=True))
+
+        state = pool._row_state(row.row_id)
+        self.assertEqual(state["status"], "success")
+        self.assertEqual(state["stage"], "free_result_save")
+
     def test_mailbox_batch_reservation_rolls_back_when_a_later_row_is_taken(self) -> None:
         pool = SQLiteFreeMailboxPool(self.root)
         pool.import_text(
@@ -201,6 +227,29 @@ class SQLiteStorageAdapterTests(unittest.TestCase):
         self.assertEqual(raised.exception.node_code, "free_pool_reserve")
         self.assertEqual(pool._row_state(rows[0].row_id)["status"], "available")
         self.assertEqual(pool._row_state(rows[1].row_id)["status"], "reserved")
+
+    def test_remail_order_hide_survives_resync_and_never_hides_imported(self) -> None:
+        """Dismissed failed orders stay hidden; imported rows refuse hiding."""
+        pool = SQLiteFreeMailboxPool(self.root)
+        storage = pool.storage
+        storage.upsert_remail_order({"orderNo": "ord-failed", "status": "failed", "deliveryEmail": "failed@example.com"})
+        storage.upsert_remail_order({"orderNo": "ord-active", "status": "active", "deliveryEmail": "active@example.com"})
+        storage.mark_remail_order_imported("ord-active", "pool-row-1")
+
+        with self.assertRaises(ValueError):
+            storage.hide_remail_orders([])
+        self.assertEqual(storage.hide_remail_orders(["ord-failed", "ord-active"]), 1)
+
+        visible = {row["order_no"] for row in storage.list_remail_orders(public=True)}
+        self.assertNotIn("ord-failed", visible)
+        self.assertIn("ord-active", visible)
+        # Re-sync replays the failed order: the hidden marker must survive.
+        storage.upsert_remail_order({"orderNo": "ord-failed", "status": "failed", "deliveryEmail": "failed@example.com"})
+        visible_after = {row["order_no"] for row in storage.list_remail_orders(public=True)}
+        self.assertNotIn("ord-failed", visible_after)
+        self.assertTrue(
+            next(row for row in storage.list_remail_orders(public=True, include_hidden=True) if row["order_no"] == "ord-failed")["hidden"]
+        )
 
     def test_task_adapter_merges_partial_snapshots_and_skips_stale_timing(self) -> None:
         tasks = SQLiteFreeTaskStore(self.root)

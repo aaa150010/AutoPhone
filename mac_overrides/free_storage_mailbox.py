@@ -51,8 +51,14 @@ except ImportError:  # macOS launcher imports overrides as top-level modules.
         _payload_with_fields,
         _safe_float,
         _safe_json,
-        _stored_bool,
-    )
+            _stored_bool,
+        )
+
+# Terminal mailbox statuses whose durable result must survive an unconfirmed
+# lease release (see ``release_mailbox_lease``).
+TERMINAL_MAILBOX_STATUSES = frozenset({
+    "success", "partial_success", "failed", "stopped", "twofa_pending",
+})
 
 
 class FreeStorageMailboxMixin:
@@ -655,12 +661,31 @@ class FreeStorageMailboxMixin:
                     # overwrite that durable status with ``pending_rerun``.
                     # Only an active confirmed claim needs the pending marker.
                     current_status = str(row["status"] or "")
+                    # A lost confirmation (CAS miss, expired lease row) must
+                    # not let the unconfirmed release branch demote a row whose
+                    # durable account result already proves a finished
+                    # registration: that would flip success back to available
+                    # while the stale stage keeps the UI on an old node.
+                    durable_result = db.execute(
+                        "SELECT 1 FROM results WHERE row_id=? LIMIT 1",
+                        (normalized_row,),
+                    ).fetchone()
+                    result_payload = self._row_payload(row)
+                    has_durable_result = bool(
+                        result_payload.get("access_token")
+                        or result_payload.get("credential_line")
+                    ) or (
+                        durable_result is not None
+                        and current_status in TERMINAL_MAILBOX_STATUSES
+                    )
                     if confirmed:
                         target_status = (
                             "pending_rerun"
                             if current_status in {"reserved", "queued", "running"}
                             else current_status or "pending_rerun"
                         )
+                    elif has_durable_result:
+                        target_status = current_status or "success"
                     else:
                         target_status = "available" if reusable else "failed"
 
