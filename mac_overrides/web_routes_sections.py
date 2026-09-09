@@ -776,7 +776,10 @@ def build_free_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]:
                     error_code="free_start_in_progress",
                 )
                 return free_failure_response(busy, default_code="free_run_start", default_label="启动 Free 注册")
-            return scope.module.jsonify(ok=True, async_start=True, batch_id=result.get("batch_id"), batch={"batch_id": result.get("batch_id"), "members": result.get("tasks") or []}, state=free_state())
+            # The coordinator payload already carries a lock-free ``starting``
+            # state; calling ``free_state()`` here would take the manager lock
+            # and block the response on the background preparation.
+            return scope.module.jsonify(ok=True, async_start=True, batch_id=result.get("batch_id"), batch={"batch_id": result.get("batch_id"), "members": result.get("tasks") or []}, state=result.get("state") or free_state())
         except Exception as exc:
             return free_failure_response(exc, default_code="free_run_start", default_label="启动 Free 注册")
         finally:

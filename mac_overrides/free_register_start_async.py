@@ -82,11 +82,18 @@ class FreeStartAsyncCoordinator:
                 "requested_count": _requested_count(config),
             }
         worker.start()
+        # Deliberately no ``public_state`` here: the background start holds
+        # the manager lock for its whole preparation section, so a lock-based
+        # state read would block the HTTP response until preparation ends
+        # (measured 39s with a Camoufox debug batch). The frontend reacts to
+        # the ``starting`` flag and its 1s polling picks up progress.
         return {
             "batch_id": "",
             "async": True,
+            "starting": True,
+            "pending": self.pending_summary(),
             "tasks": [],
-            "state": self._safe_public_state(),
+            "state": {"running": False, "starting": True, "tasks": [], "summary": {}},
         }
 
     def _run_start(
@@ -131,13 +138,6 @@ class FreeStartAsyncCoordinator:
         except TypeError:
             kwargs.pop("row_ids", None)
         return start(config, **kwargs)
-
-    def _safe_public_state(self) -> dict[str, Any]:
-        try:
-            state = self._manager.public_state()
-        except Exception:
-            state = {}
-        return state if isinstance(state, dict) else {}
 
 
 def start_failure_mapping(exc: BaseException) -> dict[str, Any]:

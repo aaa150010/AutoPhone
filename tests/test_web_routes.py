@@ -2411,3 +2411,70 @@ class WebRouteTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FreeStartAsyncCoordinatorTests(unittest.TestCase):
+    def test_start_in_background_returns_lock_free_starting_payload(self) -> None:
+        """The HTTP payload must not read manager state (it holds the lock)."""
+        from mac_overrides.free_register_start_async import FreeStartAsyncCoordinator
+
+        class BusyManager:
+            def __init__(self):
+                self.state_reads = 0
+                self.started = threading.Event()
+
+            def public_state(self):
+                # Called only while the background start is running would
+                # deadlock the contract; during the test the start blocks on
+                # this event so any read would come from the response path.
+                self.state_reads += 1
+                return {"running": True, "tasks": [], "summary": {}}
+
+            def start(self, config, *, pool_content="", proxy_content="", row_ids=()):
+                self.started.wait(2)
+                return {"batch_id": "b1", "tasks": []}
+
+        manager = BusyManager()
+        coordinator = FreeStartAsyncCoordinator(manager)
+        result = coordinator.start_in_background(
+            {"driver": "protocol", "target_count": 1},
+            pool_content="", proxy_content="", row_ids=[],
+        )
+        try:
+            self.assertTrue(result.get("async"))
+            self.assertTrue(result.get("starting"))
+            self.assertEqual((result.get("state") or {}).get("starting"), True)
+            self.assertEqual(manager.state_reads, 0)
+        finally:
+            manager.started.set()
+            deadline = time.time() + 2
+            while coordinator.in_progress and time.time() < deadline:
+                time.sleep(0.01)
+
+    def test_second_start_while_pending_is_rejected(self) -> None:
+        from mac_overrides.free_register_start_async import (
+            FreeStartAsyncCoordinator,
+            FreeStartInProgressError,
+        )
+
+        release = threading.Event()
+
+        class SlowManager:
+            def start(self, config, *, pool_content="", proxy_content="", row_ids=()):
+                release.wait(2)
+                return {"batch_id": "b1", "tasks": []}
+
+        coordinator = FreeStartAsyncCoordinator(SlowManager())
+        coordinator.start_in_background(
+            {"driver": "protocol"}, pool_content="", proxy_content="", row_ids=[],
+        )
+        try:
+            with self.assertRaises(FreeStartInProgressError):
+                coordinator.start_in_background(
+                    {"driver": "protocol"}, pool_content="", proxy_content="", row_ids=[],
+                )
+        finally:
+            release.set()
+            deadline = time.time() + 2
+            while coordinator.in_progress and time.time() < deadline:
+                time.sleep(0.01)
