@@ -1016,6 +1016,28 @@ def build_remail_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]
         except Exception as exc:
             return ns["free_error_response"](exc, default_code="free_remail_config", default_label="保存 Remail 配置")
 
+    def api_remail_key():
+        """Reveal the stored Remail API key for local copy, on explicit confirm."""
+        import ipaddress as _ipaddress
+
+        request = scope.module.request
+        host = str(getattr(request, "remote_addr", "") or "").strip().lower()
+        is_loopback = host == "localhost"
+        if not is_loopback and host:
+            try:
+                is_loopback = _ipaddress.ip_address(host).is_loopback
+            except ValueError:
+                is_loopback = False
+        if not is_loopback:
+            return scope.module.jsonify(ok=False, error="Remail API Key 仅允许本机查看", code="free_remail_key_loopback_only"), 403
+        confirmation = request.get_json(silent=True) or {}
+        if not isinstance(confirmation, Mapping) or confirmation.get("confirm_raw") is not True:
+            return scope.module.jsonify(ok=False, error="查看 Remail API Key 需要显式确认", code="free_remail_key_confirmation_required"), 400
+        if scope.free_config_store is None:
+            return scope.module.jsonify(ok=False, error="Free 配置尚未初始化"), 503
+        key = scope.free_config_store.secret("remail_api_key")
+        return scope.module.jsonify(ok=True, api_key=key, has_key=bool(key.strip()))
+
     def api_remail_projects():
         try:
             data = _remail_client().projects(status="listed", search="chatgpt")
@@ -1648,6 +1670,7 @@ def build_remail_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]
         "api_mailboxes": api_mailboxes,
         "api_remail_profile": api_remail_profile,
         "api_remail_config": api_remail_config,
+        "api_remail_key": api_remail_key,
         "api_remail_projects": api_remail_projects,
         "api_remail_wallet": api_remail_wallet,
         "api_remail_purchase": api_remail_purchase,

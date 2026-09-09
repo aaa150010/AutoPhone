@@ -101,6 +101,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
     api_mailboxes = views["api_mailboxes"]
     api_remail_profile = views["api_remail_profile"]
     api_remail_config = views["api_remail_config"]
+    api_remail_key = views["api_remail_key"]
     api_remail_projects = views["api_remail_projects"]
     api_remail_wallet = views["api_remail_wallet"]
     api_remail_purchase = views["api_remail_purchase"]
@@ -159,6 +160,7 @@ def patch_flask_app(app: Any, context: WebRouteContext) -> Any:
         ("/api/free/config/secret", "api_free_config_secret", free_control_routes.config_secret, ["POST"]),
         ("/api/remail/profile", "api_remail_profile", api_remail_profile, ["GET"]),
         ("/api/remail/config", "api_remail_config", api_remail_config, ["GET", "POST"]),
+        ("/api/remail/key", "api_remail_key", api_remail_key, ["POST"]),
         ("/api/remail/projects", "api_remail_projects", api_remail_projects, ["GET"]),
         ("/api/remail/wallet", "api_remail_wallet", api_remail_wallet, ["GET"]),
         ("/api/remail/purchase", "api_remail_purchase", api_remail_purchase, ["POST"]),

@@ -2295,6 +2295,32 @@ class WebRouteTests(unittest.TestCase):
         ):
             self.assertNotIn(secret, forwarded)
 
+    def test_remail_config_masks_key_and_key_reveal_requires_confirmation(self):
+        config_store = FreeConfigStore(Path(self.tempdir.name) / "free-remail-key-reveal")
+        config_store.save({
+            "remail": {
+                "enabled": True,
+                "base_url": "https://remail.aishop6.com",
+                "api_key": "rk-secret-key-123",
+            }
+        })
+        app = self._app(replace(self.context, free_config_store=config_store))
+        client = app.test_client()
+
+        config_response = client.get("/api/remail/config")
+        self.assertEqual(config_response.status_code, 200)
+        self.assertEqual(config_response.get_json()["config"]["api_key"], "********")
+
+        missing_confirm = client.post("/api/remail/key", json={})
+        self.assertEqual(missing_confirm.status_code, 400)
+
+        reveal_response = client.post("/api/remail/key", json={"confirm_raw": True})
+        self.assertEqual(reveal_response.status_code, 200)
+        reveal = reveal_response.get_json()
+        self.assertTrue(reveal["ok"])
+        self.assertTrue(reveal["has_key"])
+        self.assertEqual(reveal["api_key"], "rk-secret-key-123")
+
     def test_remail_purchase_auto_imports_orders_into_free_pool(self):
         class FakePoolStorage:
             def __init__(self):

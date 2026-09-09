@@ -154,6 +154,7 @@ export const importRemailOrders = (order_nos: string[]) => api<{ ok: true; impor
 export const hideRemailOrders = (order_nos: string[]) => api<{ ok: true; hidden: number }>('/api/remail/orders/hide', { order_nos })
 export const getRemailConfig = () => api<{ ok: true; config: FreeConfig['remail']; state: FreeState }>('/api/remail/config')
 export const saveRemailConfig = (config: Partial<NonNullable<FreeConfig['remail']>>) => api<{ ok: true; config: FreeConfig['remail']; state: FreeState }>('/api/remail/config', config)
+export const revealRemailKey = () => api<{ ok: true; api_key: string; has_key: boolean }>('/api/remail/key', { confirm_raw: true })
 export const importFreeMailboxes = (poolContent: string, joinCurrentBatch = false) => api<{ ok: true; imported: number; skipped: number; queued?: number; active_batch_joined?: number; next_batch?: number; reason?: string; skipped_items?: Array<{ row_id: string; reason: string }>; state?: FreeState; rows: FreeMailboxRow[] }>(
   '/api/free/mailboxes/import',
   { pool_content: poolContent, join_current_batch: joinCurrentBatch },
