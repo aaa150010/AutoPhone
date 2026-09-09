@@ -396,9 +396,9 @@ def _set_stall_notifications_suspended(suspended):
         setter = getattr(service, "set_stall_suspended", None)
         if callable(setter):
             setter(bool(suspended))
-    except Exception:
+    except Exception as exc:
         # Stall-notification suspension is best-effort UI state.
-        pass
+        _note_stderr("stall_suspended", exc)
 
 
 def _submit_connectivity_email(payload):
@@ -410,9 +410,9 @@ def _submit_connectivity_email(payload):
             capacity=capacity,
         )
         _CONNECTIVITY_EMAILS.submit(notification)
-    except Exception:
+    except Exception as exc:
         # Connectivity alerting must never break the calling flow.
-        pass
+        _note_stderr("connectivity_alert_submit", exc)
 
 
 def _on_connectivity_outage(payload):
@@ -735,13 +735,21 @@ def _set_current_task_stage(code):
         _TASK_PROGRESS.set_stage(task_id, code)
 
 
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort web-gui side paths."""
+    try:
+        print(f"[web_gui/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
+
+
 def _record_task_segment(task_id, code, elapsed_seconds):
     try:
         if task_id:
             _TASK_PROGRESS.record_segment(task_id, code, elapsed_seconds)
-    except Exception:
+    except Exception as exc:
         # Segment telemetry must never change the task outcome.
-        pass
+        _note_stderr("record_task_segment", exc)
 
 
 def _generate_sub2_oauth_session(config, *, upload_proxy="", log_fn=None):
@@ -1546,9 +1554,9 @@ def _reserve_mailbox_batch(
                     _MAILBOX_NEXT_BATCH_PRIORITY.consume(
                         getattr(entry, "source_row", "")
                     )
-                except Exception:
+                except Exception as exc:
                     # Priority consumption is optional bookkeeping for the reservation.
-                    pass
+                    _note_stderr("priority_consume", exc)
 
     entries = _mailbox_priority_runtime_ext.reserve_available_batch(
         pool,
@@ -2161,9 +2169,9 @@ def _write_local_config(data):
     if phone_gate is not None:
         try:
             phone_gate.configure(value.get("phone_submission_concurrency", 2))
-        except Exception:
+        except Exception as exc:
             # Phone-gate configuration is best-effort at startup.
-            pass
+            _note_stderr("phone_gate_configure", exc)
     connectivity = globals().get("_OPENAI_CONNECTIVITY")
     if connectivity is not None:
         try:
@@ -2180,9 +2188,9 @@ def _write_local_config(data):
                     resume()
                 _set_stall_notifications_suspended(False)
             connectivity.configure_proxy(value.get("proxy") or "")
-        except Exception:
+        except Exception as exc:
             # Connectivity reconfiguration must not reject the saved settings.
-            pass
+            _note_stderr("connectivity_reconfigure", exc)
     return value
 
 
