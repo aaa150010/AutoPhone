@@ -23,6 +23,7 @@ from mac_overrides.free_register_runtime import (
 from mac_overrides.free_register_config import FreeConfigStore
 from mac_overrides.free_protocol_runtime import FreeProtocolMixin, resolve_auth_impersonates
 from mac_overrides.free_log_runtime import FreeLogStore
+from mac_overrides import free_runtime_info
 from mac_overrides.diagnostic_store import DiagnosticStore
 from mac_overrides.free_priority_executor import PriorityExecutor
 from mac_overrides.free_proxy_store import FreeProxyPool as StructuredFreeProxyPool
@@ -567,7 +568,10 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             runner=lambda *_args, **_kwargs: {},
             proxy_probe=lambda _proxy, _url: "203.0.113.20",
         )
-        self.assertEqual(manager.public_state()["runtime_version"], "1.6.109")
+        self.assertEqual(
+            manager.public_state()["runtime_version"],
+            free_runtime_info.FREE_RUNTIME_VERSION,
+        )
         self.assertEqual(manager.preflight({"target_count": 1})["otp_parser_revision"], "pickup-dynamic-v7-samples")
 
     def test_close_camoufox_debug_passes_current_config_to_pool_helper(self):
