@@ -25,6 +25,15 @@ _node_runtime_ext.configure_node_runtime()
 
 import codex_oauth_chain as _codex_oauth_chain
 import codex_node_bridge as _codex_node_bridge
+try:
+    import sentinel_bridge_pool_patch as _sentinel_pool_patch_ext
+
+    _sentinel_pool_patch_ext.apply_sentinel_pool_patch(_codex_node_bridge)
+    _sentinel_pool_patch_ext.register_exit_cleanup()
+except Exception:
+    # The resident pool is a latency optimization only; a patch failure must
+    # keep the recovered one-shot bridge fully functional.
+    pass
 import chatgpt_plan_gate as _chatgpt_plan_gate_ext
 import chatgpt_totp as _chatgpt_totp_ext
 import configuration_runtime as _configuration_runtime_ext
