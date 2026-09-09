@@ -12,6 +12,11 @@ import re
 import threading
 import time
 from typing import Any, Callable, Iterator
+
+try:
+    from .concurrency_gate import stop_event_is_set
+except ImportError:  # Loaded as a top-level runtime override.
+    from concurrency_gate import stop_event_is_set  # type: ignore[no-redef]
 import urllib.parse
 import uuid
 
@@ -294,7 +299,7 @@ class PhoneSubmissionGate:
 
     @staticmethod
     def _stopped(stop_event: Any) -> bool:
-        return ProxyProtocolGate._stopped(stop_event)
+        return stop_event_is_set(stop_event)
 
     def _acquire(self, stop_event: Any) -> None:
         with self.status_condition:
