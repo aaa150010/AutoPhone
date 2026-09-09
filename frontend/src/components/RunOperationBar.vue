@@ -16,7 +16,7 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
-  importConfig: [any]
+  importConfig: [unknown]
   exportConfig: []
   save: []
   preflight: []

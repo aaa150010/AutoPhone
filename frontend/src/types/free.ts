@@ -6,7 +6,7 @@ these names, so existing ``from '../api/client'`` imports keep working; new
 code can import from ``types/free`` directly.
 */
 
-import type { ManualVerificationRequest, TaskFailure, TaskProgress, TaskTiming } from './api'
+import type { JsonRecord, ManualVerificationRequest, TaskFailure, TaskProgress, TaskTiming } from './api'
 
 export interface FreeConfig {
   version?: number
@@ -207,7 +207,7 @@ export interface DiagnosticIncident {
   first_node_label?: string
   first_error_code?: string
   retryable?: boolean | number
-  failure?: Record<string, any>
+  failure?: JsonRecord
   event_count?: number
   integrity_status?: string
   match_basis?: string[]
@@ -235,8 +235,8 @@ export interface DiagnosticEvent {
   parent_event_id?: string
   root_cause_event_id?: string
   elapsed_ms?: number | null
-  failure?: Record<string, any>
-  transport?: Record<string, any>
+  failure?: JsonRecord
+  transport?: JsonRecord
   message?: string
   redaction_applied?: boolean
 }
@@ -417,7 +417,7 @@ export interface RemailOrder {
   imported: boolean
   hidden?: boolean
   pool_row_id?: string
-  payload?: Record<string, any>
+  payload?: JsonRecord
   created_at?: string
   updated_at?: string
 }
@@ -481,7 +481,7 @@ export interface FreeProxyPreflightRow {
   failure_reason?: string
   failure?: TaskFailure | null
   incident_id?: string
-  layered_probe?: Record<string, any>
+  layered_probe?: JsonRecord
 }
 
 export interface FreeProxyPreflightResult {

@@ -6,7 +6,7 @@ import type { SmsKeyStatus, SmsProviderPool } from '../types/api'
 import type { AppConfigForm } from '../utils/appConfigNormalize'
 
 const props = defineProps<{ modelValue: AppConfigForm; statuses?: SmsKeyStatus[]; queryingBalances?: boolean }>()
-const emit = defineEmits<{ 'update:modelValue': [any]; queryBalances: [] }>()
+const emit = defineEmits<{ 'update:modelValue': [AppConfigForm]; queryBalances: [] }>()
 
 function update(key: string, value: unknown) {
   emit('update:modelValue', { ...props.modelValue, [key]: value })

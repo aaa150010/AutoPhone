@@ -1,3 +1,7 @@
+/** Open-object payload whose values arrive as provider JSON; consumers must
+narrow before use instead of trusting the shape. */
+export type JsonRecord = Record<string, unknown>
+
 export interface SmsKeyStatus {
   provider?: string
   platform?: string
@@ -406,7 +410,7 @@ export interface RuntimeState {
   running?: boolean
   stop_requested?: boolean
   tasks?: RuntimeTask[]
-  pool?: Record<string, any>
+  pool?: JsonRecord
   free_register?: {
     running?: boolean
     batch_id?: string
@@ -426,7 +430,7 @@ export interface RuntimeState {
 }
 
 export interface AppState {
-  settings?: Record<string, any>
+  settings?: JsonRecord
   runtime?: RuntimeState
   logs?: Array<{ time?: string; level?: string; type?: string; message?: string; text?: string }>
   sms_key_statuses?: SmsKeyStatus[]
@@ -632,6 +636,28 @@ export interface MailboxParserSampleResponse {
   body_text?: string
 }
 
+/** Diagnostics-store health snapshot served by GET /api/diagnostics/health. */
+export interface DiagnosticsHealth {
+  ok?: boolean
+  schema_version?: number | string
+  incidents?: number
+  events?: number
+  integrity_failures?: number
+  database_bytes?: number
+  wal_bytes?: number
+  write_status?: 'ok' | 'degraded' | string
+  write_failures?: number
+  audit_write_failures?: number
+  last_write_failure?: string
+  last_write_failure_at?: string | number | null
+  key_status?: 'ok' | 'degraded' | string
+  key_load_failures?: number
+  key_load_error?: string
+  index_status?: 'ok' | 'degraded' | 'unavailable' | string
+  read_error?: string
+  [key: string]: unknown
+}
+
 export interface MailboxParserSample {
   sample_id: string
   scope: 'ordinary' | 'free' | string
@@ -648,7 +674,7 @@ export interface MailboxParserSample {
   response_fingerprint: string
   parser_version: string
   reason: string
-  diagnostics: Record<string, any>
+  diagnostics: JsonRecord
   status: MailboxParserSampleStatus | string
   first_seen_at: string
   last_seen_at: string

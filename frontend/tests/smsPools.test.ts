@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import type { SmsProviderPool } from '../src/types/api'
 import {
   legacySmsKeys,
   mergeRevealedSmsPools,
@@ -67,5 +68,6 @@ test('syncLegacySmsFields bridges pools back to the legacy single-key fields', (
   assert.equal(config.sms_provider, '5sim')
   assert.deepEqual(config.sms_api_keys, ['z'])
   assert.equal(config.sms_api_key, 'z')
-  assert.equal(config.sms_provider_pools.length, 1)
+  const pools = config.sms_provider_pools as SmsProviderPool[]
+  assert.equal(pools.length, 1)
 })

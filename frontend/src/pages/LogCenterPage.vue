@@ -12,6 +12,7 @@ import {
   searchDiagnostics,
   type DiagnosticEvent,
   type DiagnosticIncident,
+  type DiagnosticsHealth,
 } from '../api/client'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import {
@@ -33,7 +34,7 @@ const incidents = ref<DiagnosticIncident[]>([])
 const selected = ref<DiagnosticIncident[]>([])
 const detail = ref<DiagnosticIncident | null>(null)
 const detailOpen = ref(false)
-const health = ref<Record<string, any>>({})
+const health = ref<DiagnosticsHealth>({})
 const searchError = ref('')
 let refreshTimer = 0
 const query = ref({

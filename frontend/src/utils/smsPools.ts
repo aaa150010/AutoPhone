@@ -129,7 +129,7 @@ export function smsProviderKeyCounts(value: unknown) {
   ]))
 }
 
-export function syncLegacySmsFields(config: Record<string, any>) {
+export function syncLegacySmsFields(config: Record<string, unknown>) {
   const pools = normalizeSmsProviderPools(config.sms_provider_pools, config)
   const keys = legacySmsKeys(pools)
   config.sms_provider_pools = pools

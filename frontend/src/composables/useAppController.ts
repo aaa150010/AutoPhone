@@ -13,7 +13,7 @@ import {
   testEmailNotification,
   updateOpenAIConnectivityGuard,
 } from '../api/client'
-import type { AppState, SmsKeyStatus, SmsProviderPool } from '../types/api'
+import type { AppState, JsonRecord, SmsKeyStatus, SmsProviderPool } from '../types/api'
 import {
   defaultForm,
   mergeConfig,
@@ -21,6 +21,7 @@ import {
   normalizeImportedConfig,
   normalizeOperationalSettings,
   signature,
+  type AppConfigForm,
 } from '../utils/appConfigNormalize'
 import { createRuntimeNotificationObserver } from './useRuntimeNotifications'
 import { createConnectivityDiagnosticTrigger } from './useConnectivityDiagnostics'
@@ -33,7 +34,7 @@ import {
 
 export function createAppController() {
   const state = shallowRef<AppState>({ runtime: {}, settings: {}, logs: [] })
-  const form = reactive<Record<string, any>>(defaultForm())
+  const form = reactive<AppConfigForm>(defaultForm())
   const dirty = ref(false)
   const initialized = ref(false)
   const initializing = ref(false)
@@ -91,7 +92,7 @@ export function createAppController() {
     dirty.value = false
   }
 
-  function updateForm(value: Record<string, any>) {
+  function updateForm(value: AppConfigForm) {
     Object.assign(form, mergeConfig(form, value))
     queriedSmsKeyStatuses.value = []
     dirty.value = signature(form) !== baseline
@@ -203,12 +204,12 @@ export function createAppController() {
               syncLegacySmsFields(form)
             }).catch(() => undefined)
           : Promise.resolve(),
-        loadSecret(() => form.sub2api?.password, value => { form.sub2api.password = String(value || '') }, 'sub2_password'),
+        loadSecret(() => form.sub2api?.password, value => { if (form.sub2api) form.sub2api.password = String(value || '') }, 'sub2_password'),
         loadSecret(() => form.email_notification?.password, value => {
-          form.email_notification.password = String(value || '')
+          if (form.email_notification) form.email_notification.password = String(value || '')
         }, 'notification_email_password'),
         loadSecret(() => form.online_mailbox?.api_token, value => {
-          form.online_mailbox.api_token = String(value || '')
+          if (form.online_mailbox) form.online_mailbox.api_token = String(value || '')
         }, 'online_mailbox_api_token'),
         loadSecret(() => form.proxy, value => { form.proxy = String(value || '') }, 'proxy'),
       ])
@@ -341,7 +342,7 @@ export function createAppController() {
   async function exportConfig() {
     actions.exporting = true
     try {
-      return await api<{ config: Record<string, any> }>('/api/local-config/export', {
+      return await api<{ config: JsonRecord }>('/api/local-config/export', {
         ...requestPayload(),
         download: true,
       })

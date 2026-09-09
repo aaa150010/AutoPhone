@@ -11,7 +11,7 @@ const props = defineProps<{
   status?: NotificationRuntimeStatus
 }>()
 const emit = defineEmits<{
-  'update:modelValue': [any]
+  'update:modelValue': [AppConfigForm]
   test: []
 }>()
 
@@ -19,7 +19,7 @@ function current() {
   return props.modelValue.email_notification || {}
 }
 
-function updateEmail(values: Record<string, any>) {
+function updateEmail(values: Partial<NonNullable<AppConfigForm['email_notification']>>) {
   emit('update:modelValue', {
     ...props.modelValue,
     email_notification: { ...current(), ...values },

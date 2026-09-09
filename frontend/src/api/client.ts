@@ -14,8 +14,10 @@ import type {
   MailboxParserSample,
   MailboxParserSampleHealth,
   MailboxParserSampleReparse,
+  DiagnosticsHealth,
   RuntimeTask,
 } from '../types/api'
+export type { DiagnosticsHealth } from '../types/api'
 import type {
   FreeConfig,
   FreeState,
@@ -136,7 +138,7 @@ export const getDiagnosticIncident = (incidentId: string) => api<{ ok: true; inc
 export const exportDiagnostics = (incidentIds: string[], format: 'json' | 'markdown' = 'markdown') => api<{ ok: true; format: string; content: string; redaction_applied: boolean }>('/api/diagnostics/export', { incident_ids: incidentIds, format })
 export const deleteDiagnostics = (incidentIds: string[]) => api<{ ok: true; deleted: number }>('/api/diagnostics/delete', { incident_ids: incidentIds })
 export const clearDiagnostics = () => api<{ ok: true; deleted: number }>('/api/diagnostics/clear-all', {})
-export const getDiagnosticsHealth = () => api<{ ok: true; health: Record<string, unknown> }>('/api/diagnostics/health')
+export const getDiagnosticsHealth = () => api<{ ok: true; health: DiagnosticsHealth }>('/api/diagnostics/health')
 // ---------------------------------------------------------------------------
 // Free mailbox pool
 // ---------------------------------------------------------------------------
