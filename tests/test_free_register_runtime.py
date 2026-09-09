@@ -25,6 +25,7 @@ from mac_overrides.free_protocol_runtime import FreeProtocolMixin, resolve_auth_
 from mac_overrides.free_log_runtime import FreeLogStore
 from mac_overrides import free_runtime_info
 from mac_overrides.diagnostic_store import DiagnosticStore
+from mac_overrides.free_storage_adapters import build_free_storage_adapters
 from mac_overrides.free_priority_executor import PriorityExecutor
 from mac_overrides.free_proxy_store import FreeProxyPool as StructuredFreeProxyPool
 
@@ -1709,6 +1710,75 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertEqual(public["email"], "private@example.test")
         self.assertEqual(public["email_masked"], public["email"])
         self.assertRegex(public["subject_ref_fingerprint"], r"^[0-9a-f]{16}$")
+
+    def test_public_tasks_bulk_prefetch_keeps_capability_view(self):
+        """Bulk prefetch must keep durable result fill and mailbox lookups."""
+        adapters = build_free_storage_adapters(self.data_dir)
+        pool = adapters.mailboxes
+        pool.import_text("bulk@example.test----https://mail.example.test/pickup\n")
+        row = pool.entries()[0]
+        pool.save_result(row.row_id, {"has_access_token": True, "password": "real-password"})
+        manager = FreeRegisterManager(self.data_dir, storage_adapters=adapters)
+        manager._tasks = {
+            "free-bulk-task": {
+                "task_id": "free-bulk-task",
+                "status": "success",
+                "row_id": row.row_id,
+            },
+        }
+
+        public = manager.public_tasks()[0]
+        self.assertEqual(public["email"], "bulk@example.test")
+        self.assertTrue(public["has_mailbox_url"])
+        self.assertTrue(public["result"]["has_access_token"])
+        self.assertTrue(public["result"]["has_password"])
+
+    def test_public_tasks_resolve_missing_incident_via_batch_query(self):
+        """Missing incident ids are enriched without per-task diagnostic scans."""
+        diagnostics = DiagnosticStore(self.data_dir / "diagnostics")
+        diagnostics.record({
+            "event_id": "evt-bulk-incident",
+            "chain": "free",
+            "workflow": "register",
+            "driver": "protocol",
+            "task_id": "free-bulk-incident",
+            "node_code": "mailbox_parser_unmatched",
+            "node_label": "邮箱解析失败",
+            "outcome": "error",
+        })
+        manager = FreeRegisterManager(self.data_dir, diagnostic_store=diagnostics)
+        manager._tasks = {
+            "free-bulk-incident": {
+                "task_id": "free-bulk-incident",
+                "status": "failed",
+            },
+        }
+
+        public = manager.public_tasks()[0]
+        rows = diagnostics.search({"task_id": "free-bulk-incident", "first_node_code": "mailbox_parser_unmatched"})
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(public["incident_id"], rows[0]["incident_id"])
+        # The batch resolver must agree with the per-task fallback search.
+        self.assertEqual(
+            diagnostics.search_task_nodes(["free-bulk-incident"], "mailbox_parser_unmatched"),
+            {"free-bulk-incident": rows[0]["incident_id"]},
+        )
+
+    def test_pool_bulk_readers_match_single_row_lookups(self):
+        """``results_bulk``/``mailbox_index`` agree with per-row pool reads."""
+        adapters = build_free_storage_adapters(self.data_dir)
+        pool = adapters.mailboxes
+        pool.import_text("one@example.test----https://mail.example.test/one\n")
+        row = pool.entries()[0]
+        pool.save_result(row.row_id, {"password": "real-password"})
+
+        bulk = pool.results_bulk([row.row_id, row.row_id, ""])
+        self.assertEqual(list(bulk), [row.row_id])
+        self.assertEqual(bulk[row.row_id], pool.result(row.row_id))
+        self.assertEqual(pool.results_bulk([]), {})
+        index = pool.mailbox_index()
+        self.assertEqual(index[row.row_id].email, pool.entry(row.row_id).email)
+        self.assertEqual(index[row.row_id].mailbox_url, pool.entry(row.row_id).mailbox_url)
 
     def test_public_task_uses_diagnostic_hmac_subject_fingerprint_when_available(self):
         diagnostics = DiagnosticStore(self.data_dir / "diagnostics")
