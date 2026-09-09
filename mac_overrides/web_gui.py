@@ -103,6 +103,7 @@ import network_tools_routes as _network_tools_routes_ext
 import free_protocol_diagnostics as _free_protocol_diagnostics_ext
 import sys
 import web_gui_config_patches as _config_patches_mod
+import web_gui_config_lifecycle as _config_lifecycle_mod
 import web_gui_importer_patches as _importer_patches
 import web_gui_codex_patches as _codex_patches
 
@@ -2125,75 +2126,11 @@ def _closure_values(fn):
 
 
 def _read_local_config():
-    if _LOCAL_CONFIG_FILE.exists():
-        try:
-            value = json.loads(_LOCAL_CONFIG_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            return {}
-    else:
-        value = {}
-    if not isinstance(value, dict):
-        value = {}
-    changed = False
-    if "nvtoken" in value or "nvtoken_upload" in value or "pixel_upload_enabled" in value:
-        value.pop("nvtoken", None)
-        value.pop("nvtoken_upload", None)
-        value.pop("pixel_upload_enabled", None)
-        changed = True
-    value, timeout_migrated = _migrate_email_timeout_config(value)
-    value, email_proxy_scope_migrated = _migrate_email_proxy_scope_config(value)
-    value, performance_migrated = _sms_runtime_ext.migrate_performance_config(value)
-    if changed or timeout_migrated or email_proxy_scope_migrated or performance_migrated:
-        _write_local_config(value)
-    return value
+    return _config_lifecycle_mod.read_local_config(_host_module())
 
 
 def _write_local_config(data):
-    value = dict(data) if isinstance(data, dict) else {}
-    previous = _read_store_config(_LOCAL_CONFIG_FILE)
-    if "email_proxy_scope_strategy_version" not in value:
-        prior_version = previous.get("email_proxy_scope_strategy_version")
-        if prior_version is not None:
-            value["email_proxy_scope_strategy_version"] = prior_version
-    if "proxy_scope" not in value and isinstance(previous.get("proxy_scope"), dict):
-        value["proxy_scope"] = copy.deepcopy(previous["proxy_scope"])
-    value = _free_register_config_ext.strip_legacy_free_config(value)
-    value.pop("nvtoken", None)
-    value.pop("nvtoken_upload", None)
-    value.pop("pixel_upload_enabled", None)
-    value, _timeout_migrated = _migrate_email_timeout_config(value)
-    value, _email_proxy_scope_migrated = _migrate_email_proxy_scope_config(value)
-    value, _performance_migrated = _sms_runtime_ext.migrate_performance_config(value)
-    _atomic_write_private_json(_LOCAL_CONFIG_FILE, value)
-    phone_gate = globals().get("_SMS_PHONE_GATE")
-    if phone_gate is not None:
-        try:
-            phone_gate.configure(value.get("phone_submission_concurrency", 2))
-        except Exception as exc:
-            # Phone-gate configuration is best-effort at startup.
-            _note_stderr("phone_gate_configure", exc)
-    connectivity = globals().get("_OPENAI_CONNECTIVITY")
-    if connectivity is not None:
-        try:
-            guard_enabled = _performance_runtime_ext.as_bool(
-                value.get("openai_connectivity_guard"),
-                True,
-            )
-            was_paused = bool(connectivity.snapshot().get("paused"))
-            connectivity.set_enabled(guard_enabled)
-            if was_paused and not guard_enabled:
-                _PROTOCOL_GATE.resume_connectivity(_CONNECTIVITY_PROXY)
-                resume = getattr(globals().get("_CURRENT_INFLIGHT_GATE"), "resume", None)
-                if callable(resume):
-                    resume()
-                _set_stall_notifications_suspended(False)
-            connectivity.configure_proxy(value.get("proxy") or "")
-        except Exception as exc:
-            # Connectivity reconfiguration must not reject the saved settings.
-            _note_stderr("connectivity_reconfigure", exc)
-    return value
-
-
+    return _config_lifecycle_mod.write_local_config(_host_module(), data)
 # Copy the pre-existing Free files once, then keep the ordinary runtime config
 # free of Free mailbox, proxy, target and driver settings.
 _FREE_CONFIG_MIGRATION = _FREE_CONFIG_STORE.migrate_legacy(_read_local_config(), _RUNTIME_DATA_DIR)
