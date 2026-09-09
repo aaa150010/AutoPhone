@@ -36,7 +36,9 @@ try:
         _is_cleanup_event,
         _is_cleanup_node,
         _is_cleanup_root,
+        _merge_missing_failure_fields,
         _parse_failure,
+        _retryable_value,
         _safe_failure_mapping,
         _safe_id,
         _safe_message,
@@ -58,7 +60,9 @@ except ImportError:  # pragma: no cover
         _is_cleanup_event,
         _is_cleanup_node,
         _is_cleanup_root,
+        _merge_missing_failure_fields,
         _parse_failure,
+        _retryable_value,
         _safe_failure_mapping,
         _safe_id,
         _safe_message,
@@ -105,6 +109,11 @@ class DiagnosticStore(DiagnosticExportMixin, DiagnosticSummaryMixin):
         self._last_write_failure_at = ""
         self._key_load_failure = ""
         self._key_load_attempts = 0
+        # One lock-serialized handle for the process. Every ``_connection``
+        # user holds ``self._lock`` first, so concurrent use is impossible and
+        # the per-record connect/close cycle (the dominant record cost) is
+        # paid once instead of per append.
+        self._conn: sqlite3.Connection | None = None
         self._key = self._load_key()
         self._initialize()
 
@@ -151,14 +160,35 @@ class DiagnosticStore(DiagnosticExportMixin, DiagnosticSummaryMixin):
 
     @contextmanager
     def _connection(self):
+        connection = self._ensure_connection()
+        try:
+            yield connection
+        except sqlite3.Error:
+            # A broken handle (disk error, corrupted page) must not poison
+            # every later operation; drop it so the next caller reconnects.
+            self._drop_connection()
+            raise
+
+    def _ensure_connection(self) -> sqlite3.Connection:
+        if self._conn is not None:
+            return self._conn
         connection = sqlite3.connect(self.path, timeout=10, isolation_level=None)
         connection.row_factory = sqlite3.Row
+        # WAL is a persistent database property and synchronous a connection
+        # property; both are cheap to (re)assert on every cold connect.
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("PRAGMA synchronous=NORMAL")
+        self._conn = connection
+        return connection
+
+    def _drop_connection(self) -> None:
+        connection, self._conn = self._conn, None
+        if connection is None:
+            return
         try:
-            connection.execute("PRAGMA journal_mode=WAL")
-            connection.execute("PRAGMA synchronous=NORMAL")
-            yield connection
-        finally:
             connection.close()
+        except sqlite3.Error:
+            pass
 
     def _initialize(self) -> None:
         with self._lock, self._connection() as db:
@@ -712,38 +742,123 @@ class DiagnosticStore(DiagnosticExportMixin, DiagnosticSummaryMixin):
                         if next_status in {"success", "partial", "failed", "stopped"}:
                             next_outcome = next_status
 
-            # Derive first-failure columns from the immutable event order. A
-            # later success, cleanup, or bare failure therefore cannot erase a
-            # previously recorded business root cause. If the earliest event
-            # was written by an older release without details, enrich it only
-            # when a later event at the same node carries structured failure.
-            history = db.execute(
-                "SELECT * FROM diagnostic_events WHERE incident_id=? ORDER BY rowid ASC",
-                (incident_id,),
-            ).fetchall()
-            # Once retention removed every event, the denormalized root cause
-            # can no longer be proven by the append-only chain. Do not carry
-            # that stale summary into the newly visible suffix.
-            summary_source = None if history_fully_pruned else existing
-            first_node_code = str(summary_source["first_node_code"] or "") if summary_source is not None else ""
-            first_node_label = str(summary_source["first_node_label"] or "") if summary_source is not None else ""
-            first_error_code = str(summary_source["first_error_code"] or "") if summary_source is not None else ""
-            first_retryable = bool(summary_source["retryable"]) if summary_source is not None else False
-            first_failure = _parse_failure(summary_source["failure_json"]) if summary_source is not None else {}
-            event_count = len(history)
-            integrity_status = self.verify_incident(db, incident_id)
-            # A broken hash chain is not trustworthy input for repairing the
-            # denormalized root-cause summary. Keep the last known summary and
-            # expose the integrity failure until an operator resolves it.
-            summary = self._realtime_failure_summary(existing, history) if integrity_status == "verified" else None
-            if summary is not None:
-                first_node_code, first_node_label, first_error_code, first_retryable, first_failure = summary
+            # Chain status is carried forward instead of re-hashing the whole
+            # event chain on every append (that O(N) re-verification made
+            # steady-state appends quadratic). The append-only chain keeps the
+            # linkage intact by construction here; a previously detected
+            # ``failed``/``unverified`` state stays sticky, and startup
+            # ``rebuild_incident_summaries`` remains the whole-chain verifier.
+            existing_status = str(existing["integrity_status"] or "") if existing is not None else ""
+            if history_fully_pruned or (existing is not None and existing_status == "unverified"):
+                integrity_status = "unverified"
+            elif existing_status == "failed":
+                integrity_status = "failed"
+            else:
+                integrity_status = "verified"
+            # Derive first-failure columns incrementally (O(1) per append).
+            # The persisted summary is authoritative: the append-only chain
+            # means the earliest business failure never changes, so at most
+            # the new event can enrich it. A ``failed`` chain keeps the last
+            # known summary, mirroring the former whole-verify behavior.
+            existing_node = str(existing["first_node_code"] or "") if existing is not None else ""
+            existing_label = str(existing["first_node_label"] or "") if existing is not None else ""
+            existing_error_code = _safe_id(existing["first_error_code"], 120) if existing is not None else ""
+            existing_retryable = bool(existing["retryable"]) if existing is not None else False
+            existing_failure = _parse_failure(existing["failure_json"]) if existing is not None else {}
+            # A pre-migration incident may have selected a cleanup event as
+            # its root; cleanup is never a business cause. The single row
+            # carries that evidence in its outcome/label, so the check stays
+            # O(1) without loading the whole history.
+            existing_is_cleanup_root = existing is not None and (
+                _is_cleanup_event(existing)
+                or any(
+                    _is_cleanup_node(str(existing[key] or ""))
+                    for key in ("first_node_code",)
+                )
+            )
+            new_is_business_failure = (
+                _is_business_failure_event(event_payload)
+                and not _is_cleanup_event(event_payload)
+            )
+            if integrity_status == "failed" or history_fully_pruned:
+                # A broken chain is not trustworthy input for repairing the
+                # denormalized root-cause summary; a fully pruned history
+                # proves nothing about the previously recorded root cause.
+                first_node_code = "" if history_fully_pruned else existing_node
+                first_node_label = "" if history_fully_pruned else existing_label
+                first_error_code = "" if history_fully_pruned else existing_error_code
+                first_retryable = False if history_fully_pruned else existing_retryable
+                first_failure = {} if history_fully_pruned else dict(existing_failure)
+            elif existing_is_cleanup_root and new_is_business_failure:
+                # Repair the legacy cleanup root from the first real business
+                # failure, matching the former whole-history realtime pass.
+                first_node_code = str(event_payload["node_code"] or "")
+                first_node_label = str(event_payload["node_label"] or "")
+                first_failure = dict(event_payload["failure"])
+                first_error_code = _safe_id(first_failure.get("error_code"), 120)
+                first_retryable = (
+                    _retryable_value(first_failure.get("retryable"))
+                    if "retryable" in first_failure
+                    else False
+                )
+            elif existing_is_cleanup_root:
+                # A legacy release could persist a cleanup-only event as the
+                # root; clear that invalid summary as soon as the incident is
+                # touched, while leaving ordinary informational incidents
+                # untouched (same semantics as the former realtime pass).
+                first_node_code = first_node_label = first_error_code = ""
+                first_retryable = False
+                first_failure = {}
+            elif not existing_node:
+                first_node_code = existing_node
+                first_node_label = existing_label
+                first_error_code = existing_error_code
+                first_retryable = existing_retryable
+                first_failure = dict(existing_failure)
+                if new_is_business_failure:
+                    first_node_code = str(event_payload["node_code"] or "")
+                    first_node_label = str(event_payload["node_label"] or "")
+                    first_failure = dict(event_payload["failure"])
+                    first_error_code = _safe_id(first_failure.get("error_code"), 120)
+                    first_retryable = (
+                        _retryable_value(first_failure.get("retryable"))
+                        if "retryable" in first_failure
+                        else False
+                    )
+            else:
+                first_node_code = existing_node
+                first_node_label = existing_label
+                first_error_code = existing_error_code
+                first_failure = dict(existing_failure)
+                if new_is_business_failure and str(event_payload["node_code"] or "") == existing_node:
+                    # Merge only keys missing from the persisted summary; the
+                    # cumulative effect equals the former whole-history merge
+                    # because every earlier same-node enrichment is already
+                    # persisted in ``failure_json``.
+                    first_failure = _merge_missing_failure_fields(
+                        existing_failure,
+                        [dict(event_payload["failure"])],
+                    )
+                    if not first_node_label:
+                        first_node_label = str(event_payload["node_label"] or "")
+                if "retryable" in existing_failure:
+                    first_retryable = _retryable_value(existing_failure.get("retryable"))
+                elif existing_retryable:
+                    first_retryable = True
+                else:
+                    first_retryable = (
+                        _retryable_value(first_failure.get("retryable"))
+                        if "retryable" in first_failure
+                        else False
+                    )
+                if not first_error_code:
+                    first_error_code = _safe_id(first_failure.get("error_code"), 120)
             db.execute(
-                "UPDATE diagnostic_incidents SET updated_at=?, status=?, outcome=?, first_node_code=?, first_node_label=?, first_error_code=?, retryable=?, failure_json=?, event_count=?, integrity_status=? WHERE incident_id=?",
+                "UPDATE diagnostic_incidents SET updated_at=?, status=?, outcome=?, first_node_code=?, first_node_label=?, first_error_code=?, retryable=?, failure_json=?, event_count=event_count+1, integrity_status=? WHERE incident_id=?",
                 (
                     now, next_status, next_outcome, first_node_code, first_node_label,
                     first_error_code, int(first_retryable), json.dumps(first_failure, ensure_ascii=False, sort_keys=True),
-                    event_count, integrity_status, incident_id,
+                    integrity_status, incident_id,
                 ),
             )
             aliases = [("task", task_id), ("batch", batch_id), ("run", run_id), (subject_kind, subject_ref)]
