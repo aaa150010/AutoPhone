@@ -18,6 +18,7 @@ from __future__ import annotations
 import queue
 import secrets
 import threading
+import sys
 import time
 from collections.abc import Mapping
 from datetime import datetime, timezone
@@ -32,6 +33,14 @@ _INCIDENT_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 _DEFAULT_FLUSH_INTERVAL = 1.0
 _DEFAULT_MAX_BATCH = 64
 _DEFAULT_QUEUE_SIZE = 4096
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[diagnostic_writer_async/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 def _new_incident_id() -> str:
@@ -106,10 +115,10 @@ class AsyncDiagnosticWriter(DiagnosticEventWriter):
         if callable(reserve):
             try:
                 reserve(incident)
-            except Exception:
+            except Exception as exc:
                 # Reservation is a collision guard only; the store's
                 # allocator still owns final id uniqueness.
-                pass
+                _note_stderr("L121", exc)
         if not task_id:
             # The store assigns taskless events their own incident; the id is
             # still pre-allocated so ``record`` can return it immediately.
@@ -151,8 +160,8 @@ class AsyncDiagnosticWriter(DiagnosticEventWriter):
         if callable(note):
             try:
                 note("async_queue_full", RuntimeError("diagnostic async queue full"))
-            except Exception:
-                pass
+            except Exception as exc:
+                _note_stderr("L164", exc)
 
     def _drain_once(self, *, wait: bool) -> None:
         batch: list[tuple[bool, dict[str, Any], str]] = []
@@ -179,8 +188,8 @@ class AsyncDiagnosticWriter(DiagnosticEventWriter):
                 if callable(note) and not getattr(exc, "_diagnostic_store_noted", False):
                     try:
                         note("async_drain", exc)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        _note_stderr("L192", exc)
 
     def _drain_loop(self) -> None:
         while not self._stop.is_set():

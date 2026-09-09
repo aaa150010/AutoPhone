@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import re
 import time
+import sys
 from typing import Any, Mapping
 from urllib.parse import urlsplit, urlunsplit
 
@@ -122,6 +123,14 @@ _PUBLIC_BOOL_FALSE = frozenset({
     "0", "false", "no", "n", "off", "disabled", "inactive", "unset",
     "none", "null", "",
 })
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[free_failure_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 def _public_number(value: Any, *, integer: bool = False) -> int | float | None:
@@ -1195,9 +1204,9 @@ class FreeFailureRuntimeMixin:
                         node_label="保存 Free 任务状态",
                         outcome="storage_warning",
                     )
-                except Exception:
+                except Exception as exc:
                     # Storage telemetry must not change the write verdict.
-                    pass
+                    _note_stderr("L1209", exc)
             return False
 
     def _persist_task_failure(

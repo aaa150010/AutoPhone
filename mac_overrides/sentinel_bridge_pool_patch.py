@@ -42,6 +42,14 @@ _PATCHED_MODULES: set[int] = set()
 _BRIDGE_SOURCE_DIR = Path(__file__).resolve().parent.parent / "engine" / "node_chain"
 
 
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[sentinel_bridge_pool_patch/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
+
+
 def _resolve_worker_script(script_path: str) -> Path:
     """Prefer the resident worker next to the configured runner."""
     runner = Path(str(script_path or "")).resolve()
@@ -196,8 +204,8 @@ def register_exit_cleanup() -> None:
             import atexit
 
             atexit.register(shutdown_sentinel_worker_pools)
-        except Exception:
-            pass
+        except Exception as exc:
+            _note_stderr("L208", exc)
 
 
 __all__ = ["apply_sentinel_pool_patch", "register_exit_cleanup"]

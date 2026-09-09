@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import hashlib
 import time
+import sys
 import uuid
 from typing import Any, Mapping
 from urllib.parse import urljoin, urlsplit
@@ -119,6 +120,14 @@ _HTML_MFA_MARKERS = (
     "mfa challenge",
     "2fa verification",
 )
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[auth_request_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 def is_phone_page_type(value: Any) -> bool:
@@ -665,17 +674,17 @@ def invalidate_auth_session(
     if callable(clear_cookies):
         try:
             clear_cookies()
-        except Exception:
+        except Exception as exc:
             # Cookie cleanup must not mask the retry request below.
-            pass
+            _note_stderr("L679", exc)
     sentinel = getattr(transport, "sentinel_provider", None)
     reset_sentinel = getattr(sentinel, "reset", None)
     if callable(reset_sentinel):
         try:
             reset_sentinel()
-        except Exception:
+        except Exception as exc:
             # Sentinel reset must not mask the retry request below.
-            pass
+            _note_stderr("L687", exc)
     if registry is not None and context.task_id:
         registry.invalidate(
             context.task_id,

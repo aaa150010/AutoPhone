@@ -54,6 +54,14 @@ except ImportError:  # macOS launcher imports overrides as top-level modules.
     )
 
 
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[free_protocol_password/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
+
+
 class FreeProtocolPasswordMixin:
     """Methods moved verbatim from the FreeProtocolMixin band."""
 

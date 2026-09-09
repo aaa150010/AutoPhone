@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import re
 import threading
+import sys
 import time
 from typing import Any
 import uuid
@@ -37,6 +38,14 @@ _TERMINAL_STATUSES = frozenset(
 _STOPPED_STATUSES = frozenset(
     {"stopped", "stopped_before_start", "cancelled", "canceled"}
 )
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[run_batch_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 def _clean(value: Any, maximum: int = 256) -> str:
@@ -166,9 +175,9 @@ class RunBatchManifestStore:
             return
         try:
             self.log_fn(_clean(message, 500), level)
-        except Exception:
+        except Exception as exc:
             # Log delivery must never break the batch runner.
-            pass
+            _note_stderr("L180", exc)
 
     def _rebuild_task_index_locked(self) -> None:
         self._task_index.clear()
@@ -682,9 +691,9 @@ class RunBatchManifestStore:
         if callable(self.finalize_callback):
             try:
                 self.finalize_callback(str(public["batch_id"]))
-            except Exception:
+            except Exception as exc:
                 # Run-finished hooks must never change the reconcile outcome.
-                pass
+                _note_stderr("L696", exc)
         return public
 
     def recover(self) -> None:

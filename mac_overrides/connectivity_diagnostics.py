@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 import time
+import sys
 from typing import Any, Callable, Mapping, Sequence
 
 try:
@@ -21,6 +22,14 @@ except ImportError:  # Loaded as a top-level runtime override.
 _ORIGINS = (AUTH_ORIGIN, SENTINEL_ORIGIN)
 _DEFAULT_TIMEOUT = 5.0
 _MAX_NODE_TIMEOUT = 45
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[connectivity_diagnostics/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 def _status_code(value: Any) -> int | None:
@@ -131,9 +140,9 @@ def _probe_origin(
         if callable(close):
             try:
                 close()
-            except Exception:
+            except Exception as exc:
                 # Best-effort response close during diagnostics.
-                pass
+                _note_stderr("L145", exc)
 
 
 class OpenAIConnectivityDiagnostics:

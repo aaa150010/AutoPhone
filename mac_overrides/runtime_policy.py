@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 import re
 import time
+import sys
 from typing import Any
 
 
@@ -151,6 +152,14 @@ _ACCOUNT_BANNED_PHRASES = tuple(
         r"(?:账号|账户)(?:已被|已|被)(?:封禁|停用|删除|暂停)",
     )
 )
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[runtime_policy/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 class AccountBannedError(RuntimeError):
@@ -321,9 +330,9 @@ def call_with_transient_pre_auth_retry(
         if callable(on_retry):
             try:
                 on_retry(error_code, next_attempt, attempt_limit, delay)
-            except Exception:
+            except Exception as exc:
                 # Retry callbacks must not alter the computed backoff.
-                pass
+                _note_stderr("L335", exc)
         if delay:
             sleep_fn(delay)
 

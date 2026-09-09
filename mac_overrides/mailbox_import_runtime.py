@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 import re
 from typing import Any, Mapping, Sequence
@@ -25,6 +26,14 @@ except ImportError:  # Loaded as a top-level runtime override.
 
 _IMPORT_ORDER_VERSION = 1
 _IMPORT_ORDER_FILE_NAME = "mailbox_import_order.json"
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[mailbox_import_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 class MailboxImportMixin:
@@ -158,9 +167,9 @@ class MailboxImportMixin:
                 run_active = run_active or bool(
                     runtime.get("running") if isinstance(runtime, Mapping) else False
                 )
-            except Exception:
+            except Exception as exc:
                 # Runtime-shape probing must not break the import summary.
-                pass
+                _note_stderr("L172", exc)
 
         append_result: dict[str, Any] = {}
         if run_active:

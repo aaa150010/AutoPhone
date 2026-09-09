@@ -9,6 +9,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 import threading
+import sys
 import time
 from typing import Any, Callable
 
@@ -45,6 +46,14 @@ except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
         parse_sms_balance,
         redact_sms_secrets,
     )
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[sms_key_pool/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 @dataclass
@@ -207,9 +216,9 @@ class SmsKeyPool:
         if callable(self.logger):
             try:
                 self.logger(message, level)
-            except Exception:
+            except Exception as exc:
                 # Logger failures must never break key-pool operations.
-                pass
+                _note_stderr("L219", exc)
 
     def _emit_alert_locked(self, state: SmsKeyHealth, kind: str, message: str) -> None:
         alert_key = (state.fingerprint, kind)
@@ -225,9 +234,9 @@ class SmsKeyPool:
         if callable(self.alert_fn):
             try:
                 self.alert_fn(payload)
-            except Exception:
+            except Exception as exc:
                 # Alert failures must never break key-pool operations.
-                pass
+                _note_stderr("L237", exc)
 
     def _mark_error(
         self,

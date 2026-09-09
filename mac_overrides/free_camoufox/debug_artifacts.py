@@ -17,12 +17,21 @@ import json
 import os
 from pathlib import Path
 import threading
+import sys
 import tempfile
 import time
 from typing import Any, Mapping
 from urllib.parse import urlsplit
 
 from .debug_redaction import sanitize_debug_text as _sanitize_debug_text_impl
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[debug_artifacts/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 def _legacy_runtime() -> Any | None:
@@ -48,12 +57,12 @@ def sanitize_debug_text(value: Any, limit: int = 800, *, mask_bare_numeric: bool
     except TypeError:
         try:
             return _redact_fallback(str(_sanitize_debug_text_impl(value, limit) or ""), limit)
-        except Exception:
+        except Exception as exc:
             # Redaction falls back to the plain sanitizer below.
-            pass
-    except Exception:
+            _note_stderr("L62", exc)
+    except Exception as exc:
         # Redaction falls back to the plain sanitizer below.
-        pass
+        _note_stderr("L65", exc)
     return _redact_fallback(str(value or ""), limit)
 
 
@@ -221,9 +230,9 @@ def page_debug_trace(page: Any) -> Any:
     trace = DebugEventBuffer()
     try:
         setattr(page, "_gptphone_debug_trace", trace)
-    except Exception:
+    except Exception as exc:
         # Trace attachment is optional instrumentation on the page.
-        pass
+        _note_stderr("L235", exc)
     return trace
 
 

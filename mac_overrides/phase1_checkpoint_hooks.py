@@ -12,6 +12,7 @@ from collections.abc import Callable, Mapping
 import copy
 import re
 import threading
+import sys
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -35,6 +36,14 @@ _DELETE_CHECKPOINT_MARKERS = (
     "checkpoint_expired",
     "checkpoint_invalid",
 )
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[phase1_checkpoint_hooks/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 def _snake_key(value: Any) -> str:
@@ -370,9 +379,9 @@ class CheckpointCoordinator:
         if callable(self.public_update) and task_id:
             try:
                 self.public_update(task_id, value)
-            except Exception:
+            except Exception as exc:
                 # Public-state refresh must not break the checkpoint write.
-                pass
+                _note_stderr("L384", exc)
 
     def restore(self, transport: Any) -> dict[str, Any] | None:
         # A transport/config object can be reused across an OAuth retry.  Do
@@ -416,9 +425,9 @@ class CheckpointCoordinator:
         if not isinstance(snapshot, Mapping) or not snapshot.get("ready"):
             try:
                 self.store.delete(identity["row_id"])
-            except Exception:
+            except Exception as exc:
                 # Store cleanup must not mask the checkpoint reset result.
-                pass
+                _note_stderr("L430", exc)
             return None
         if isinstance(config, dict):
             # This is deliberately private and is consumed by the recovered
@@ -470,9 +479,9 @@ class CheckpointCoordinator:
             return
         try:
             self.store.delete(row_id)
-        except Exception:
+        except Exception as exc:
             # Store cleanup must not mask the checkpoint reset result.
-            pass
+            _note_stderr("L484", exc)
         self._public(_text(value.get("task_id")), None)
 
     def release(self, transport: Any = None, *, identity: Mapping[str, Any] | None = None) -> bool:

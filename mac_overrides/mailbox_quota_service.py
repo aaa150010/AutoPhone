@@ -20,6 +20,14 @@ except ImportError:  # Loaded as top-level runtime overrides by the Mac launcher
 DEACTIVATED_WORKSPACE_CODE = "openai_quota_deactivated_workspace"
 
 
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[mailbox_quota_service/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
+
+
 def _is_deactivated_workspace(value: Mapping[str, Any]) -> bool:
     try:
         http_status = int(value.get("http_status") or 0)

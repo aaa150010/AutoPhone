@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import os
 import threading
+import sys
 import time
 from typing import Any, Callable, Mapping
 import uuid
@@ -17,6 +18,14 @@ import uuid
 ROLLING_WINDOW_TASKS = 100
 SUCCESS_RATE_BASELINE = 0.839
 SUCCESS_RATE_FLOOR = 0.819
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[sms_optimization_guard/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 def _number(value: Any) -> float | None:
@@ -342,9 +351,9 @@ class SmsOptimizationGuard:
         if event is not None and callable(self.on_disable):
             try:
                 self.on_disable(dict(event))
-            except Exception:
+            except Exception as exc:
                 # Disable-notification telemetry must not change the verdict.
-                pass
+                _note_stderr("L356", exc)
         return event
 
     def observe_confirmed_late_code_loss(self, task_id: Any) -> dict[str, Any] | None:
@@ -361,9 +370,9 @@ class SmsOptimizationGuard:
         if event is not None and callable(self.on_disable):
             try:
                 self.on_disable(dict(event))
-            except Exception:
+            except Exception as exc:
                 # Disable-notification telemetry must not change the verdict.
-                pass
+                _note_stderr("L375", exc)
         return event
 
     def _evaluate_locked(self) -> dict[str, Any] | None:

@@ -16,6 +16,14 @@ from typing import Any, Iterable
 from urllib.parse import urlsplit
 
 
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[transport/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
+
+
 class CamoufoxTransportError(RuntimeError):
     """A page operation failed after selector fallbacks were exhausted."""
 

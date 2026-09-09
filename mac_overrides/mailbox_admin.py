@@ -8,8 +8,17 @@ from pathlib import Path
 import re
 from threading import RLock
 import time
+import sys
 from datetime import datetime
 from typing import Any, Callable, Mapping, Protocol, Sequence
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[mailbox_admin/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 def _created_timestamp(value: Any, fallback: int = 0) -> int:
@@ -475,9 +484,9 @@ class MailboxAdminService(MailboxImportMixin, MailboxSourceLockMixin):
             if poller is not None:
                 try:
                     poller.close()
-                except Exception:
+                except Exception as exc:
                     # Best-effort poller close must not mask the mailbox outcome.
-                    pass
+                    _note_stderr("L489", exc)
 
         if not code:
             return {

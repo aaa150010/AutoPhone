@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 import re
 import threading
+import sys
 import uuid
 from typing import Any, Mapping
 
@@ -104,6 +105,14 @@ _TEXT_FIELDS = frozenset(
     }
 )
 _INTEGER_FIELDS = frozenset({"sequence", "attempt", "elapsed_ms", "duration_ms"})
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[diagnostic_writer/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 def _safe_id(value: Any, *, limit: int = 180) -> str:
@@ -368,9 +377,9 @@ class DiagnosticEventWriter:
             if callable(note) and not getattr(exc, "_diagnostic_store_noted", False):
                 try:
                     note("writer_record", exc)
-                except Exception:
+                except Exception as exc:
                     # The write failure is already recorded; note() must not mask it.
-                    pass
+                    _note_stderr("L382", exc)
             return ""
 
     emit = record

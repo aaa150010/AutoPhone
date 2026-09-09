@@ -10,6 +10,7 @@ import json
 import math
 import re
 import threading
+import sys
 import time
 from typing import Any, Callable, Iterator
 
@@ -198,6 +199,14 @@ try:
 except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
     from sms_key_pool import SmsKeyHealth, SmsKeyPool, PooledSmsBowerProvider, _SmsKeyReservation  # type: ignore[no-redef]
     from sms_provider_orchestration import SmsProviderRegistry, PooledSmsProvider, _sms_timeout_error  # type: ignore[no-redef]
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[sms_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 class PhoneSubmissionGate:
@@ -465,9 +474,9 @@ class PhoneSubmissionGate:
             if attempt < attempts and callable(on_retry):
                 try:
                     on_retry(delay, attempt)
-                except Exception:
+                except Exception as exc:
                     # Retry-notification telemetry must never alter retry timing.
-                    pass
+                    _note_stderr("L479", exc)
 
         if isinstance(last_error, Exception):
             raise last_error

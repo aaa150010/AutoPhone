@@ -22,6 +22,14 @@ EMAIL_OTP_PAGE_TYPES = frozenset({
 })
 
 
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[free_protocol_diagnostics/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
+
+
 def is_email_otp_response(
     page_type: Any,
     continue_url: Any,

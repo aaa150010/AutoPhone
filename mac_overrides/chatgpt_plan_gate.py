@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import json
 import re
 import time
+import sys
 from typing import Any
 
 
@@ -56,6 +57,14 @@ _TRANSIENT_EXCEPTION_NAMES = frozenset(
         "WriteTimeout",
     }
 )
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[chatgpt_plan_gate/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 @dataclass(frozen=True)
@@ -405,17 +414,17 @@ class ChatGptPlanGate:
         safe["token_present"] = bool(values.get("token_present"))
         try:
             setattr(transport, "_gptphone_plan_check_diagnostics", safe)
-        except Exception:
+        except Exception as exc:
             # Diagnostic enrichment must not change the plan-check verdict.
-            pass
+            _note_stderr("L417", exc)
         log_fn = getattr(transport, "log_fn", None)
         if callable(log_fn):
             try:
                 summary = ", ".join(f"{key}={value}" for key, value in safe.items())
                 log_fn(f"[验证套餐等级/phone_plan_check] {summary}", "info")
-            except Exception:
+            except Exception as exc:
                 # Telemetry must not mask the summary already built above.
-                pass
+                _note_stderr("L425", exc)
 
     def _accounts_check_headers(self, transport: Any, token: str) -> dict[str, str]:
         headers = {
@@ -505,9 +514,9 @@ class ChatGptPlanGate:
 
         try:
             setattr(transport, "_gptphone_plan_check_attempt_count", attempt)
-        except Exception:
+        except Exception as exc:
             # Attempt bookkeeping must not change the plan-check verdict.
-            pass
+            _note_stderr("L517", exc)
         return last
 
     def evaluate_sms_binding(self, transport: Any) -> PlanDecision:

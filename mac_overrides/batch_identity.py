@@ -4,11 +4,20 @@ from __future__ import annotations
 
 import re
 import time
+import sys
 from collections.abc import Iterable, Mapping
 from typing import Any
 
 
 _SUFFIX_RE = re.compile(r"^(?P<base>\d{8}-\d{4})(?:-(?P<suffix>\d{2,}))?$")
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[batch_identity/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 def batch_minute_key(started_at: float | int | None = None) -> str:
@@ -67,9 +76,9 @@ def allocate_run_batch_id(context: Any, started_at: int, logs: Any = None) -> st
                     "运行批次号去重读取历史清单失败，将使用当前分钟号",
                     "warn",
                 )
-            except Exception:
+            except Exception as exc:
                 # Telemetry must not mask the allocation failure surfaced above.
-                pass
+                _note_stderr("L81", exc)
     return allocate_batch_id(started_at, existing_ids)
 
 

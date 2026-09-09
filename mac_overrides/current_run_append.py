@@ -7,6 +7,14 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[current_run_append/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
+
+
 def append_imported_mailboxes(
     source_rows: Sequence[str],
     *,

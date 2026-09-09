@@ -55,6 +55,14 @@ except ImportError:  # macOS launcher imports overrides as top-level modules.
     from free_runtime_info import runtime_info  # type: ignore[no-redef]
 
 
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[free_register_preflight/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
+
+
 def _runtime_module() -> Any:
     """Resolve the composing runtime module lazily.
 

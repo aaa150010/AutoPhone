@@ -499,9 +499,9 @@ def wait_with_manual_fallback(
                 if not automatic_submitted.is_set() and on_manual_selected is not None:
                     try:
                         on_manual_selected()
-                    except Exception:
+                    except Exception as exc:
                         # Selection callbacks must not break the verification wait.
-                        pass
+                        _note_stderr("L504", exc)
                 return value
         with condition:
             if result_queue:
@@ -524,9 +524,9 @@ def wait_with_manual_fallback(
                         if not automatic_submitted.is_set() and on_manual_selected is not None:
                             try:
                                 on_manual_selected()
-                            except Exception:
+                            except Exception as exc:
                                 # Selection callbacks must not break the verification wait.
-                                pass
+                                _note_stderr("L529", exc)
                         return waited
                     broker.cancel_task(task_id)
                     return value
@@ -591,9 +591,9 @@ def wait_with_manual_fallback(
         if on_manual_selected is not None and not automatic_submitted.is_set():
             try:
                 on_manual_selected()
-            except Exception:
+            except Exception as exc:
                 # Selection callbacks must not break the verification wait.
-                pass
+                _note_stderr("L596", exc)
         return value
     finally:
         manual_open.clear()

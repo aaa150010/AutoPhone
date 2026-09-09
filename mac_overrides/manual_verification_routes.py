@@ -25,6 +25,14 @@ except ImportError:
     )
 
 
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[manual_verification_routes/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
+
+
 def patch_flask_app(
     app: Any,
     *,

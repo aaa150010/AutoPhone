@@ -16,6 +16,7 @@ import math
 import os
 from pathlib import Path
 import threading
+import sys
 import time
 from typing import Any, Iterator, Mapping
 
@@ -43,6 +44,14 @@ except ImportError:  # Unit tests do not load recovered runtime dependencies.
 DEFAULT_SOURCE_LOCK_TIMEOUT_SECONDS = 5.0
 SOURCE_LOCK_POLL_SECONDS = 0.05
 _MAX_SOURCE_LOCK_TIMEOUT_SECONDS = 30.0
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[mailbox_source_lock/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 class MailboxSourceLockTimeout(TimeoutError):
@@ -125,9 +134,9 @@ def _lock_directory() -> Path:
     if callable(_runtime_path):
         try:
             return Path(_runtime_path("data", "locks"))
-        except Exception:
+        except Exception as exc:
             # A missing runtime anchor falls back to the environment root.
-            pass
+            _note_stderr("L139", exc)
     app_root = str(os.environ.get("CHATGPT_AR_APP_ROOT") or "").strip()
     return Path(app_root or Path.cwd()) / "data" / "locks"
 

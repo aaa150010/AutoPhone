@@ -181,8 +181,8 @@ async def _await_account_otp_callback(
                 # Consume the exception so asyncio does not log
                 # "exception was never retrieved"; CancelledError included.
                 future.exception()
-            except BaseException:
-                pass
+            except BaseException as exc:
+                _note_stderr("L185", exc)
 
     def discard_awaitable(value: Any) -> None:
         """Close/cancel an async callback result that the caller abandoned."""
@@ -393,10 +393,10 @@ async def _await_account_otp_callback(
         if result.done():
             try:
                 discard_awaitable(result.result())
-            except BaseException:
+            except BaseException as exc:
                 # result.result() may raise CancelledError during teardown;
                 # discard already closed what it could.
-                pass
+                _note_stderr("L399", exc)
             end_once()
             return
         await await_cleanup(result, 1.5)
@@ -405,8 +405,8 @@ async def _await_account_otp_callback(
         if result.done():
             try:
                 discard_awaitable(result.result())
-            except BaseException:
-                pass
+            except BaseException as exc:
+                _note_stderr("L409", exc)
         end_once()
 
     handoff_started: float | None = None

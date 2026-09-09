@@ -17,6 +17,7 @@ from pathlib import Path
 import secrets
 import sqlite3
 import threading
+import sys
 import uuid
 from contextlib import contextmanager
 import re
@@ -74,6 +75,14 @@ _INCIDENT_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 # removed by retention. It preserves an explicit incomplete-history signal
 # without adding a schema column or fabricating a real event hash.
 _MISSING_HISTORY_HASH = "history_pruned"
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[diagnostic_store/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 class DiagnosticStore(DiagnosticExportMixin, DiagnosticSummaryMixin):
@@ -751,9 +760,9 @@ class DiagnosticStore(DiagnosticExportMixin, DiagnosticSummaryMixin):
         except Exception as exc:
             try:
                 setattr(exc, "_diagnostic_store_noted", True)
-            except Exception:
+            except Exception as exc:
                 # Marking the exception must not mask the write failure below.
-                pass
+                _note_stderr("L765", exc)
             self.note_write_failure("record", exc)
             raise
 
@@ -818,9 +827,9 @@ class DiagnosticStore(DiagnosticExportMixin, DiagnosticSummaryMixin):
             if connection is not None:
                 try:
                     connection.close()
-                except Exception:
+                except Exception as exc:
                     # Best-effort connection close during store shutdown.
-                    pass
+                    _note_stderr("L832", exc)
 
     @staticmethod
     def _row(row: sqlite3.Row) -> dict[str, Any]:

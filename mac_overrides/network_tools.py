@@ -16,6 +16,7 @@ from pathlib import Path
 import re
 import socket
 import threading
+import sys
 import time
 from typing import Any, Callable, Mapping
 from urllib.parse import quote, unquote, urlsplit
@@ -38,6 +39,14 @@ DEFAULT_NETWORK_CONFIG = {
     "request_timeout_seconds": 30,
     "mihomo_path": "/Applications/Clash Verge.app/Contents/MacOS/verge-mihomo",
 }
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[network_tools/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 class NetworkToolError(RuntimeError):
@@ -293,9 +302,9 @@ class NetworkToolsService:
             candidate = base64.b64decode("".join(text.split()), validate=False).decode("utf-8", "ignore")
             if any(prefix in candidate for prefix in ("vmess://", "vless://", "trojan://", "ss://", "http://", "https://")):
                 decoded = candidate
-        except Exception:
+        except Exception as exc:
             # An undecodable line keeps its original text form.
-            pass
+            _note_stderr("L307", exc)
         lines: list[str] = []
         for line in decoded.splitlines():
             line = line.strip().strip("- ")
@@ -414,9 +423,9 @@ class NetworkToolsService:
             if session is not None:
                 try:
                     session.close()
-                except Exception:
+                except Exception as exc:
                     # Session cleanup must not mask the probe result.
-                    pass
+                    _note_stderr("L428", exc)
             runtime.stop()
 
     def _get(self, proxy_id: str) -> dict[str, Any]:
@@ -440,9 +449,9 @@ class NetworkToolsService:
             result["local_to_proxy_ms"] = round((time.monotonic() - started) * 1000, 1)
             try:
                 sock.close()
-            except Exception:
+            except Exception as exc:
                 # Socket cleanup must not mask the probe result.
-                pass
+                _note_stderr("L454", exc)
             if mode == "deep":
                 session = self._session_factory() if self._session_factory else self._default_session()
                 try:
@@ -461,9 +470,9 @@ class NetworkToolsService:
                 finally:
                     try:
                         session.close()
-                    except Exception:
+                    except Exception as exc:
                         # Session cleanup must not mask the probe result.
-                        pass
+                        _note_stderr("L475", exc)
             result["ok"] = True
             with self._lock:
                 current = self._proxies[row["proxy_id"]]

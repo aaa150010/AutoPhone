@@ -13,7 +13,16 @@ from __future__ import annotations
 
 import inspect
 import threading
+import sys
 from typing import Any, Mapping
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[free_register_start_async/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 class FreeStartAsyncCoordinator:
@@ -113,9 +122,9 @@ class FreeStartAsyncCoordinator:
             if callable(on_error):
                 try:
                     on_error(failure)
-                except Exception:
+                except Exception as exc:
                     # Error publication must not mask the original failure.
-                    pass
+                    _note_stderr("L127", exc)
         finally:
             with self._lock:
                 self._in_progress = False

@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import re
 import threading
+import sys
 import time
 from typing import Any, Callable, Mapping
 from urllib.parse import urlsplit
@@ -76,6 +77,14 @@ _CONNECTIVITY_RULES = (
         ("connectionerror", "failed to connect", "connection refused", "network is unreachable", "no route to host", "curl: (6)", "curl (6)", "curl: (7)", "curl (7)"),
     ),
 )
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[auth_connectivity_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 @dataclass(frozen=True)
@@ -623,9 +632,9 @@ class OpenAIAuthConnectivityRuntime:
                 return
             try:
                 callback.function(callback.payload)
-            except Exception:
+            except Exception as exc:
                 # A failing connectivity callback must not break the chain.
-                pass
+                _note_stderr("L635", exc)
     def wait_until_available(
         self,
         *,
@@ -706,9 +715,9 @@ class OpenAIAuthConnectivityRuntime:
             if callable(close):
                 try:
                     close()
-                except Exception:
+                except Exception as exc:
                     # Best-effort transport close during recovery.
-                    pass
+                    _note_stderr("L718", exc)
 
     def _coerce_probe_result(self, origin: str, value: Any) -> ProbeResult:
         if isinstance(value, ProbeResult):

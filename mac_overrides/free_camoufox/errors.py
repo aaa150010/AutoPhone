@@ -65,6 +65,14 @@ PROXY_BLOCK_PAGE_MARKERS = (
 )
 
 
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[errors/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
+
+
 def browser_process_lost(exc: BaseException | Any) -> bool:
     """Return whether an exception indicates the browser process disappeared."""
 

@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import re
 import threading
+import sys
 import time
 from typing import Any, Callable
 import urllib.request
@@ -22,6 +23,14 @@ ECB_DAILY_URL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
 _CANCEL_RECEIPT_KEYS = frozenset(
     {"cancel_state", "provider_response", "provider_status", "refund_status"}
 )
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[sms_order_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 def _as_float(value: Any, default: float = 0.0) -> float:
@@ -73,9 +82,9 @@ def _provider_exception_text(error: BaseException) -> str:
             if isinstance(body, bytes):
                 body = body.decode("utf-8", "replace")
             parts.append(str(body or ""))
-        except Exception:
+        except Exception as exc:
             # An unreadable error body must not mask the original exception.
-            pass
+            _note_stderr("L87", exc)
     return " ".join(part for part in parts if part)
 
 
@@ -184,9 +193,9 @@ def confirm_herosms_cancellation(
         if callable(on_wait):
             try:
                 on_wait(wait_seconds)
-            except Exception:
+            except Exception as exc:
                 # Wait-observation telemetry must never alter retry timing.
-                pass
+                _note_stderr("L198", exc)
         if defer_early:
             raise HeroSmsCancellationDeferred(wait_seconds, minimum_seconds)
         sleep_fn(wait_seconds)
@@ -433,9 +442,9 @@ class SmsCleanupQueue:
             if callable(handler):
                 try:
                     self.process(handler)
-                except Exception:
+                except Exception as exc:
                     # Worker-loop failures stay local; the loop keeps draining.
-                    pass
+                    _note_stderr("L447", exc)
             with self.condition:
                 if self.worker_stop.is_set():
                     return

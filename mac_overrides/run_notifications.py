@@ -9,6 +9,7 @@ import math
 import re
 import smtplib
 import threading
+import sys
 import time
 from typing import Any
 
@@ -82,6 +83,14 @@ _CONNECTIVITY_REASON_LABELS = {
     "openai_connection_failure": "OpenAI 连接建立失败",
 }
 MAX_UNFINISHED_TASK_IDS = 200
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[run_notifications/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 class NotificationConfigError(RuntimeError):
@@ -864,9 +873,9 @@ class RunNotificationCoordinator:
         for notification in notifications:
             try:
                 self._submit_fn(notification)
-            except Exception:
+            except Exception as exc:
                 # Submission telemetry must not break the notification run.
-                pass
+                _note_stderr("L878", exc)
         return tuple(notification.event for notification in notifications)
 
     def start_run(

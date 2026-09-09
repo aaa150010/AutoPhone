@@ -3,12 +3,21 @@
 from __future__ import annotations
 
 import threading
+import sys
 from typing import Any, Callable
 
 try:
     from .route_failures import explicit_failure_payload
 except ImportError:  # Loaded as a top-level runtime override.
     from route_failures import explicit_failure_payload  # type: ignore[no-redef]
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[connectivity_routes/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 def patch_openai_connectivity_guard_route(
@@ -114,9 +123,9 @@ def patch_openai_connectivity_guard_route(
                 ):
                     try:
                         restore()
-                    except Exception:
+                    except Exception as exc:
                         # Protection rollback is best-effort; the error is reported below.
-                        pass
+                        _note_stderr("L128", exc)
                 logs.add("OpenAI 链路保护开关更新失败", "error")
                 return module.jsonify(explicit_failure_payload(
                     node_code="openai_connectivity_guard",

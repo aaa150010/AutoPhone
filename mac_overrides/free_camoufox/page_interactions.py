@@ -11,6 +11,14 @@ from __future__ import annotations
 _host_module_ref = None
 
 
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[page_interactions/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
+
+
 def _host_mod():
     """Return the hosting runtime module (bound at import time)."""
     return _host_module_ref
@@ -26,6 +34,7 @@ import re
 import shutil
 import tempfile
 import threading
+import sys
 import time
 import traceback
 import uuid
@@ -1994,8 +2003,8 @@ async def _await_otp_callback(
         if not future.cancelled():
             try:
                 future.exception()
-            except BaseException:
-                pass
+            except BaseException as exc:
+                _note_stderr("L2007", exc)
 
     def discard_awaitable(value: Any) -> None:
         """Close/cancel an async callback result that the caller abandoned."""
@@ -2173,8 +2182,8 @@ async def _await_otp_callback(
         if result.done():
             try:
                 discard_awaitable(result.result())
-            except BaseException:
-                pass
+            except BaseException as exc:
+                _note_stderr("L2186", exc)
             end_otp_wait_once()
             return
         # Cooperative mailbox providers normally wake within one poll chunk;
@@ -2183,8 +2192,8 @@ async def _await_otp_callback(
         if result.done():
             try:
                 discard_awaitable(result.result())
-            except BaseException:
-                pass
+            except BaseException as exc:
+                _note_stderr("L2196", exc)
         end_otp_wait_once()
 
     handoff_started: float | None = None

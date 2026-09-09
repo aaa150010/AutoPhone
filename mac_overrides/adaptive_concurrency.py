@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from collections.abc import Callable, Iterator
 import math
 import threading
+import sys
 import time
 from typing import Any
 
@@ -19,14 +20,22 @@ except ImportError:  # Loaded as a top-level runtime override.
     )
 
 
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[adaptive_concurrency/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
+
+
 def _notify(observer: Any, value: dict[str, Any]) -> None:
     if not callable(observer):
         return
     try:
         observer(dict(value))
-    except Exception:
+    except Exception as exc:
         # Observer telemetry must never break gate acquisition.
-        pass
+        _note_stderr("L38", exc)
 
 
 class AdaptiveConcurrencyGate:
@@ -250,9 +259,9 @@ class AdaptiveConcurrencyGate:
         if callable(on_wait):
             try:
                 on_wait(waited)
-            except Exception:
+            except Exception as exc:
                 # Wait telemetry must never break gate acquisition.
-                pass
+                _note_stderr("L264", exc)
         try:
             yield
         finally:

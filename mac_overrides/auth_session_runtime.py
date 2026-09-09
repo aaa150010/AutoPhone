@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import hashlib
 import threading
+import sys
 from typing import Any, Callable, Mapping
 from urllib.parse import urlsplit
 
@@ -30,6 +31,14 @@ _INVALIDATION_CODES = (
     "auth_context_task_mismatch",
     "auth_context_generation_mismatch",
 )
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[auth_session_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 def is_session_invalid(value: Any) -> bool:
@@ -280,15 +289,15 @@ class AuthSessionRegistry:
         if callable(callback):
             try:
                 callback(*callback_args)
-            except Exception:
+            except Exception as exc:
                 # Callback failures must not break the session release path.
-                pass
+                _note_stderr("L294", exc)
         if callable(self._cancel_sms) and item.task_id:
             try:
                 self._cancel_sms(item.task_id, item.invalid_code)
-            except Exception:
+            except Exception as exc:
                 # SMS cancellation must not break the session release path.
-                pass
+                _note_stderr("L300", exc)
         return item
 
     def clear(self, task_id: Any) -> None:

@@ -14,6 +14,7 @@ import socket
 import tempfile
 from threading import RLock
 import time
+import sys
 from typing import Any, Callable, Iterable, Mapping, Protocol, Sequence
 import urllib.parse
 
@@ -25,6 +26,14 @@ MAX_BATCH_WORKERS = 3
 MAX_SSE_BYTES = 1024 * 1024
 MAX_SUMMARY_CHARS = 240
 TOKEN_TTL_SECONDS = 600
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[sub2_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 class Sub2ConfigurationError(RuntimeError):
@@ -556,9 +565,9 @@ def _close_response(response: Any) -> None:
     if callable(close):
         try:
             close()
-        except Exception:
+        except Exception as exc:
             # Best-effort cleanup of a closeable wait handle.
-            pass
+            _note_stderr("L570", exc)
 
 
 class Sub2Client:
@@ -731,9 +740,9 @@ class Sub2BatchService:
                         "sub2_status": status.public(),
                     }
                 )
-            except Exception:
+            except Exception as exc:
                 # Snapshot bookkeeping must not break the SUB2 update.
-                pass
+                _note_stderr("L745", exc)
 
         for index, row in enumerate(normalized):
             if not row["account_id"]:

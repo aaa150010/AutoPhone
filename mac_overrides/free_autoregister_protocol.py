@@ -11,6 +11,7 @@ Mailbox parsing and OTP retrieval deliberately remain outside this module.
 from __future__ import annotations
 
 import time
+import sys
 from collections.abc import Callable, Mapping
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -21,6 +22,14 @@ try:
 except ImportError:  # pragma: no cover
     from free_protocol_diagnostics import response_detail, response_status  # type: ignore[no-redef]
     from free_register_common import FreeRegisterError, safe_log_message  # type: ignore[no-redef]
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[free_autoregister_protocol/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 def _log(log: Callable[..., Any] | None, message: str, level: str = "info") -> None:
@@ -78,9 +87,9 @@ def _json_response(transport: Any, response: Any) -> dict[str, Any]:
             value = parser(response)
             if isinstance(value, Mapping):
                 return dict(value)
-        except Exception:
+        except Exception as exc:
             # Payload shape probing falls back to the request below.
-            pass
+            _note_stderr("L92", exc)
     try:
         payload = response.json()
     except Exception:
@@ -178,9 +187,9 @@ def _timed(monotonic_fn, callback, stage_code: str, code: str, outcome: str = "s
         return
     try:
         callback(stage_code, code, int((time.monotonic() - monotonic_fn) * 1000), outcome)
-    except Exception:
+    except Exception as exc:
         # Timing telemetry must never alter the request outcome.
-        pass
+        _note_stderr("L192", exc)
 
 
 def _run_reference_chatgpt_prelude(transport: Any, email: str, *, config: Mapping[str, Any] | None = None) -> Mapping[str, Any]:

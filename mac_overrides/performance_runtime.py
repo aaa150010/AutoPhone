@@ -6,6 +6,7 @@ from collections import deque
 from contextlib import contextmanager
 from dataclasses import dataclass
 import threading
+import sys
 from typing import Any, Callable, Iterator, Mapping
 
 try:
@@ -66,6 +67,14 @@ INFLIGHT_SUCCESS_RATE_FLOOR = 0.819
 
 _TRUE_VALUES = frozenset({"1", "true", "yes", "on", "enabled"})
 _FALSE_VALUES = frozenset({"0", "false", "no", "off", "disabled"})
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[performance_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 def as_bool(value: Any, default: bool = True) -> bool:
@@ -458,9 +467,9 @@ class InflightAdmissionGate:
         if callable(self.on_rollback):
             try:
                 self.on_rollback(dict(event))
-            except Exception:
+            except Exception as exc:
                 # Rollback telemetry must not change the pressure verdict.
-                pass
+                _note_stderr("L472", exc)
         return event
 
     def report_pressure(self, reason: Any = "protocol_pressure") -> dict[str, Any] | None:

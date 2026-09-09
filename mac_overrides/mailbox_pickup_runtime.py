@@ -16,6 +16,7 @@ import hashlib
 from html import unescape
 from html.parser import HTMLParser
 import json
+import sys
 import re
 from typing import Any, Callable, Iterable, Mapping, Pattern, Sequence
 import urllib.parse
@@ -113,6 +114,14 @@ _EMBEDDED_DATETIME_RE = re.compile(
 _CHINESE_DATETIME_RE = re.compile(
     r"(?<!\d)(\d{4}年\d{1,2}月\d{1,2}日\s+\d{1,2}:\d{2}(?::\d{2})?)(?!\d)"
 )
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[mailbox_pickup_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 class MailboxUrlError(RuntimeError):
@@ -703,9 +712,9 @@ def _parse_html_messages(raw: str, source_url: str, start_order: int = 0) -> tup
     parser = _MailboxHtmlParser()
     try:
         parser.feed(raw)
-    except Exception:
+    except Exception as exc:
         # An unparsable body still yields the messages parsed so far.
-        pass
+        _note_stderr("L717", exc)
     messages: list[MailboxMessage] = []
     detail_urls: list[str] = []
     message_ids: list[str] = []

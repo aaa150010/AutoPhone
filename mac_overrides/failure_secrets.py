@@ -5,6 +5,14 @@ from __future__ import annotations
 from typing import Any, Callable
 
 
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort side paths."""
+    try:
+        print(f"[failure_secrets/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
+
+
 def collect_failure_secrets(
     importer: Any = None,
     entry: Any = None,
