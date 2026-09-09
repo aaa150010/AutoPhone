@@ -187,9 +187,11 @@ npx vue-tsc --noEmit
 - 格式 `type(scope): 中文描述`；type ∈ feat/fix/refactor/docs/chore/test；scope 用既有用法（free、frontend、backend、sms、diagnostics 等）。
 - 一次提交只做一个关注点；结构重构后单独 `chore(free)` 提交 bump `FREE_RUNTIME_VERSION`（见第 9 节）。
 
-### 10.6 存量欠账路线图（本轮不做，逐批排期）
+### 10.6 存量欠账路线图（已全部销账，2026-09-10）
 
-- 大文件拆分批次：`web_gui.py` 的 importer 生命周期/持久化补丁段（约 1559–2316）、codex 传输补丁段（2515–3296）、配置补丁段（686–1006）；`free_camoufox_runtime.py` 的浏览器池与注册表（4010–6266）、`_browser_flow`（2537–4010）、页面交互 helpers（411–2536）按子包既有 lazy `__getattr__` 兼容模式搬迁。
-- 后端 297 处 `except Exception: pass` 按域逐批治理（优先杂项域 importer_scheduler 20 处、SMS 域 32 处）；`sms_key_pool` ↔ `sms_provider_orchestration` 同构 facade 统一；auth 四件套公共 helper 抽取（`normalize_page_type` 三写、`_safe_path` 双实现行为分叉）。
-- 前端 270 处 `any` 治理（优先 `catch (error: any)` 83 处、`freeTaskDisplay.ts`/`freeLiveDisplay.ts` 接入 `FreeMailboxRow`/`FreeTaskRow` 类型）；tsconfig 增补 `noUnusedLocals`/`noUnusedParameters`/`noFallthroughCasesInSwitch`；`api/client.ts` 内联 `any` 返回类型建模。
+原列欠账已按第 5 节闭环逐批完成；新欠账出现时按同样纪律另起批次。
+
+- 大文件拆分批次（已完成）：`web_gui.py` 三段补丁拆为 host 委托模块（`web_gui_config_patches.py`、`web_gui_importer_patches.py`、`web_gui_codex_patches.py`，另拆配置生命周期 `web_gui_config_lifecycle.py`）；`free_camoufox_runtime.py` 6482→约 1230 行（页面交互 `page_interactions.py`、注册主流程 `browser_flow.py`、浏览器池与注册表 `browser_registry.py` 入 `free_camoufox/` 子包，facade 保留委托与 lazy `__getattr__` 兼容导出）。
+- 后端 `except Exception: pass` 治理（已完成）：宽异常裸吞咽全部改为各模块 `_note_stderr`/`_note_quiet` 式最小留痕（仅异常类名与失败点标签，不泄敏感值）；窄类型（OSError/数值清洗/asyncio 取消惯例/delattr 幂等）语义正确予以保留。`sms_key_pool` ↔ `sms_provider_orchestration` 已抽 `_PooledSmsActivationMixin` 公共激活（真实行为分叉保持独立）；auth 四件套 `normalize_page_type` 单源 `auth_page_type.py`、`_safe_path` 语义化为 `_whitelisted_auth_path`/`_continue_url_path`。
+- 前端 `any` 治理（已完成，src 下 any 口径为 0）：`Record<string, any>` 改 `JsonRecord`/精确类型（`DiagnosticsHealth` 等），表单接 `AppConfigForm`，emit 收窄；tsconfig `noUnusedLocals`/`noUnusedParameters`/`noFallthroughCasesInSwitch` 已开启；display 工具接入 `FreeMailboxRow`/`FreeTaskRow`。
 - 每批治理必须先定位首个真实失败风险，做定向测试、完整测试和 `git diff --check`（见第 5 节闭环）。
