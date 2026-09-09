@@ -10,10 +10,12 @@ try:
     from .auth_connectivity_runtime import AUTH_ORIGIN, SENTINEL_ORIGIN
     from .error_observability import sanitize_failure_detail
     from .mailbox_redaction import url_credential_secrets
+    from .network_error_kinds import classify_network_error_kind
 except ImportError:  # Loaded as a top-level runtime override.
     from auth_connectivity_runtime import AUTH_ORIGIN, SENTINEL_ORIGIN  # type: ignore[no-redef]
     from error_observability import sanitize_failure_detail  # type: ignore[no-redef]
     from mailbox_redaction import url_credential_secrets  # type: ignore[no-redef]
+    from network_error_kinds import classify_network_error_kind  # type: ignore[no-redef]
 
 
 _ORIGINS = (AUTH_ORIGIN, SENTINEL_ORIGIN)
@@ -32,20 +34,23 @@ def _status_code(value: Any) -> int | None:
     return None
 
 
+_FAILURE_REASON_TABLE = {
+    "proxy_connect": ("proxy_connection_failed", "代理连接失败"),
+    "dns": ("dns_resolution_failed", "DNS 解析失败"),
+    "tls": ("tls_connection_failed", "TLS 握手失败"),
+    "read_timeout": ("read_timeout", "读取响应超时"),
+    "connect_timeout": ("connect_timeout", "连接超时"),
+    "connect_failure": ("connection_failed", "连接建立失败"),
+    "remote_disconnect": ("remote_disconnected", "远端连接中断"),
+}
+
+
 def _failure_reason(error: Any) -> tuple[str, str]:
-    text = str(error or "").lower()
-    rules = (
-        (("proxyerror", "proxy connect", "unable to connect to proxy", "proxy connection"), "proxy_connection_failed", "代理连接失败"),
-        (("name resolution", "could not resolve", "nodename nor servname", "getaddrinfo"), "dns_resolution_failed", "DNS 解析失败"),
-        (("certificate verify", "sslerror", "ssleoferror", "tls", "handshake"), "tls_connection_failed", "TLS 握手失败"),
-        (("read timed out", "readtimeout", "timed out reading"), "read_timeout", "读取响应超时"),
-        (("connect timeout", "connecttimeout", "connection timed out", "operation timed out"), "connect_timeout", "连接超时"),
-        (("connection refused", "network is unreachable", "no route to host"), "connection_failed", "连接建立失败"),
-        (("connection reset", "remote disconnected", "connection aborted", "unexpected eof"), "remote_disconnected", "远端连接中断"),
-    )
-    for markers, code, label in rules:
-        if any(marker in text for marker in markers):
-            return code, label
+    kind = classify_network_error_kind(error)
+    if kind is not None:
+        mapped = _FAILURE_REASON_TABLE.get(kind)
+        if mapped is not None:
+            return mapped
     return "probe_transport_error", "网络传输失败"
 
 

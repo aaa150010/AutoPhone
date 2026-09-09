@@ -13,6 +13,11 @@ import tempfile
 import time
 from typing import Any, Callable, Mapping, Protocol
 
+try:
+    from .network_error_kinds import classify_network_error_kind
+except ImportError:  # Loaded as a top-level runtime override.
+    from network_error_kinds import classify_network_error_kind  # type: ignore[no-redef]
+
 
 OPENAI_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
 OPENAI_CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses"
@@ -28,18 +33,23 @@ OPENAI_CODEX_PROBE_USER_AGENT = (
 _QUOTA_SUMMARY_LIMIT = 240
 
 
+_QUOTA_NETWORK_ERROR_LABELS = {
+    "proxy_connect": "无法连接当前显式代理",
+    "dns": "OpenAI 域名 DNS 解析失败",
+    "tls": "OpenAI TLS 握手失败",
+    "read_timeout": "OpenAI 连接或响应超时",
+    "connect_timeout": "OpenAI 连接或响应超时",
+    "remote_disconnect": "OpenAI 远端连接中断",
+    "connect_failure": "OpenAI 网络连接失败",
+}
+
+
 def _network_error_message(error: BaseException) -> str:
-    text = f"{type(error).__name__}: {error}".lower()
-    if any(marker in text for marker in ("proxyerror", "proxy connect", "unable to connect to proxy")):
-        return "无法连接当前显式代理"
-    if any(marker in text for marker in ("could not resolve", "name resolution", "getaddrinfo")):
-        return "OpenAI 域名 DNS 解析失败"
-    if any(marker in text for marker in ("tls", "ssl", "certificate", "handshake")):
-        return "OpenAI TLS 握手失败"
-    if any(marker in text for marker in ("timeout", "timed out")):
-        return "OpenAI 连接或响应超时"
-    if any(marker in text for marker in ("connection reset", "remote disconnected", "unexpected eof")):
-        return "OpenAI 远端连接中断"
+    kind = classify_network_error_kind(error)
+    if kind is not None:
+        label = _QUOTA_NETWORK_ERROR_LABELS.get(kind)
+        if label is not None:
+            return label
     return f"OpenAI 网络连接异常（{type(error).__name__}）"
 
 

@@ -56,12 +56,16 @@ _CONNECTIVITY_RULES = (
         ("proxyerror", "proxy error", "proxy_connect_failed", "unable to connect to proxy", "proxy connect aborted", "proxy connection"),
     ),
     (
+        "openai_dns_resolution_failure", "OpenAI 域名 DNS 解析失败",
+        ("name resolution", "could not resolve", "nodename nor servname", "getaddrinfo", "could not resolve host"),
+    ),
+    (
         "openai_tls_connection_failure", "OpenAI TLS 握手失败",
         ("ssleoferror", "sslerror", "tls connect", "tls handshake", "ssl handshake", "handshake failure", "certificate verify failed", "curl: (35)", "curl (35)"),
     ),
     (
         "openai_connection_timeout", "OpenAI 连接超时",
-        ("connecttimeout", "connect timeout", "connection timeout", "connection timed out", "timed out while connecting", "curl: (28)", "curl (28)"),
+        ("connecttimeout", "connect timeout", "connection timeout", "connection timed out", "timed out while connecting", "operation timed out", "curl: (28)", "curl (28)"),
     ),
     (
         "openai_remote_disconnect", "OpenAI 远端连接中断",
@@ -69,7 +73,7 @@ _CONNECTIVITY_RULES = (
     ),
     (
         "openai_connection_failure", "OpenAI 连接建立失败",
-        ("connectionerror", "failed to connect", "connection refused", "network is unreachable", "no route to host", "name resolution", "could not resolve host", "curl: (6)", "curl (6)", "curl: (7)", "curl (7)"),
+        ("connectionerror", "failed to connect", "connection refused", "network is unreachable", "no route to host", "curl: (6)", "curl (6)", "curl: (7)", "curl (7)"),
     ),
 )
 
