@@ -30,10 +30,11 @@ try:
 
     _sentinel_pool_patch_ext.apply_sentinel_pool_patch(_codex_node_bridge)
     _sentinel_pool_patch_ext.register_exit_cleanup()
-except Exception:
+except Exception as exc:
     # The resident pool is a latency optimization only; a patch failure must
-    # keep the recovered one-shot bridge fully functional.
-    pass
+    # keep the recovered one-shot bridge fully functional. Module import time:
+    # no _note_stderr exists yet, print the exception class directly.
+    print(f"[web_gui/sentinel_pool_patch] {type(exc).__name__}", file=sys.stderr)
 import chatgpt_plan_gate as _chatgpt_plan_gate_ext
 import chatgpt_totp as _chatgpt_totp_ext
 import configuration_runtime as _configuration_runtime_ext
@@ -2335,10 +2336,10 @@ def _public_task(task):
                 matches = _DIAGNOSTIC_STORE.search({"task_id": task_id, "limit": 1})
             if matches:
                 public["incident_id"] = str(matches[0].get("incident_id") or "")
-        except Exception:
+        except Exception as exc:
             # A diagnostic index outage must never make the main task state
             # unavailable; the log center health endpoint reports the outage.
-            pass
+            _note_stderr("task_incident_lookup", exc)
     prompt = _MANUAL_VERIFICATION.public(task_id) if task_id else {}
     if isinstance(prompt, dict) and prompt and prompt.get("input_kind"):
         public["manual_verification"] = prompt
@@ -2372,9 +2373,9 @@ def _task_exists(task_id):
     if free_manager is not None:
         try:
             return any(str(item.get("task_id") or "") == normalized for item in free_manager.public_tasks())
-        except Exception:
+        except Exception as exc:
             # A broken Free manager must not corrupt the plain-flow state check.
-            pass
+            _note_stderr("free_task_exists", exc)
     return False
 
 

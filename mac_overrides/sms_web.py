@@ -6,6 +6,7 @@ from collections.abc import Mapping
 import inspect
 from threading import RLock
 import time
+import sys
 from typing import Any, Callable
 
 
@@ -28,6 +29,14 @@ try:
     from .auth_session_runtime import is_session_invalid
 except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
     from auth_session_runtime import is_session_invalid  # type: ignore[no-redef]
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort sms-web side paths."""
+    try:
+        print(f"[sms_web/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 def _call_log(log_fn: Any, message: str, level: str = "info") -> None:
@@ -127,9 +136,9 @@ class SmsWebIntegration:
             recorder = getattr(self.task_progress, "record_segment", None)
             if task_id and callable(recorder):
                 recorder(task_id, code, elapsed_seconds)
-        except Exception:
+        except Exception as exc:
             # Segment telemetry must never change the SMS task outcome.
-            pass
+            _note_stderr("record_segment", exc)
 
     def clamp_max_price(self, value: Any) -> str:
         try:
@@ -243,9 +252,9 @@ class SmsWebIntegration:
                 selector.candidates = []
                 selector.raw_rows = []
                 selector.last_refresh = 0.0
-        except Exception:
+        except Exception as exc:
             # Cache invalidation must never mask the provider outcome.
-            pass
+            _note_stderr("selector_cache_reset", exc)
 
         # The recovered module keeps a process-global discovery cache.  It is
         # deliberately cleared only after a route outcome that proves the
@@ -275,9 +284,9 @@ class SmsWebIntegration:
                         discard_stale()
                 else:
                     discard_stale()
-        except Exception:
+        except Exception as exc:
             # Cache invalidation must never change the route decision.
-            pass
+            _note_stderr("route_cache_discard", exc)
 
     def create_provider(self, name: str, api_key: str, proxy: str = "") -> Any:
         if self.provider_registry is not None and self.provider_registry.has_keys():
@@ -757,9 +766,9 @@ class SmsWebIntegration:
                 if not queued:
                     try:
                         self._mark_cancel_finished(task_id, lease, adapter, cancel_reason, exc)
-                    except Exception:
+                    except Exception as finalize_exc:
                         # Cancel-finalize must not mask the original order failure.
-                        pass
+                        _note_stderr("cancel_finalize", finalize_exc)
                 return None
             raise
         meta = dict(getattr(lease, "meta", None) or {})
@@ -1076,9 +1085,9 @@ class SmsWebIntegration:
         if self.cleanup_queue is not None:
             try:
                 self.cleanup_queue.start_worker(self._retry_cleanup_entry)
-            except Exception:
+            except Exception as exc:
                 # Cleanup-worker startup must not break provider configuration.
-                pass
+                _note_stderr("cleanup_worker_start", exc)
         return sms_proxy
 
     def query_balances(self, config: Any) -> list[dict[str, Any]]:
@@ -1146,9 +1155,9 @@ class SmsWebIntegration:
         if self.cleanup_queue is not None:
             try:
                 self.cleanup_queue.process(self._retry_cleanup_entry)
-            except Exception:
+            except Exception as exc:
                 # Cleanup failures must not block the preflight being requested.
-                pass
+                _note_stderr("cleanup_process", exc)
         statuses = pool.preflight(proxy=proxy)
         insufficient = [row for row in statuses if row.get("status") == "insufficient_balance"]
         usable = [row for row in statuses if row.get("status") == "usable"]

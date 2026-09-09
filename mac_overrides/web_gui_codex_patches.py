@@ -8,6 +8,7 @@ Every patched callable receives the hosting ``web_gui`` module as its first
 from __future__ import annotations
 
 import requests
+import sys
 
 # Bound by web_gui at import time; the ReloginPhoneOtpProvider static methods
 # keep their recovered signatures so the recovered transport can call them.
@@ -55,9 +56,9 @@ def real_transport_init(host,
     if runtime_config.get("free_protocol_state_machine") and session is not None and hasattr(session, "verify"):
         try:
             session.verify = True
-        except Exception:
+        except Exception as exc:
             # Session hardening is best-effort; keep the transport usable.
-            pass
+            _note_stderr("session_verify_sm", exc)
     # Free's protocol state machine owns a fresh OAuth session and its single
     # controlled rebuild. Restoring a recovered Phase1 checkpoint here would
     # reintroduce ordinary SMS cookies/CSRF and make a supposedly new Free
@@ -127,14 +128,14 @@ def real_new_session(host, self, impersonate="chrome"):
 
     try:
         session.verify = True
-    except Exception:
+    except Exception as exc:
         # Session hardening is best-effort; keep the transport usable.
-        pass
+        _note_stderr("session_verify", exc)
     try:
         session.trust_env = False
-    except Exception:
+    except Exception as exc:
         # Session hardening is best-effort; keep the transport usable.
-        pass
+        _note_stderr("session_trust_env", exc)
 
     # The registration proxy is explicit and remains fixed for this task.
     # Never merge values from the process environment into a Free session.
@@ -142,9 +143,9 @@ def real_new_session(host, self, impersonate="chrome"):
     if proxy:
         try:
             session.proxies = {"http": proxy, "https": proxy}
-        except Exception:
+        except Exception as exc:
             # Proxy pinning is best-effort; keep the transport usable.
-            pass
+            _note_stderr("proxy_pinning", exc)
     return session
 
 

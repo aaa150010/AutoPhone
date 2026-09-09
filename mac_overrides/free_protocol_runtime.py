@@ -15,11 +15,20 @@ import os
 from pathlib import Path
 import re
 import secrets
+import sys
 import threading
 import time
 from typing import Any, Callable, Mapping
 from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 import uuid
+
+def _protocol_stderr_note(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort protocol side paths."""
+    try:
+        print(f"[free_protocol_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
+
 
 try:
     from .free_failure_runtime import sanitize_safe_page as _sanitize_safe_page
@@ -603,9 +612,9 @@ class FreeProtocolMixin(
                     finally:
                         try:
                             __timing("free_email_identifier", "email_identifier_submit", int((_time.monotonic() - _started) * 1000), _outcome)
-                        except Exception:
+                        except Exception as exc:
                             # Timing telemetry must never alter the identifier submission.
-                            pass
+                            _protocol_stderr_note("identifier_timing", exc)
 
                 _timed_identifier._gptphone_timed = True
                 setattr(created, "submit_email_identifier", _timed_identifier)
@@ -1024,9 +1033,9 @@ class FreeProtocolMixin(
             if callable(close):
                 try:
                     close()
-                except Exception:
+                except Exception as exc:
                     # Best-effort transport close during session rebuild.
-                    pass
+                    _protocol_stderr_note("transport_close", exc)
 
     def _plan_check(self, transport: Any, token: str) -> tuple[str, bool]:
         if transport is None:
@@ -1062,9 +1071,9 @@ class FreeProtocolMixin(
                 data = {}
                 try:
                     data = response.json() if hasattr(response, "json") else {}
-                except Exception:
+                except Exception as exc:
                     # A response body is optional detail for the failure raised below.
-                    pass
+                    _protocol_stderr_note("plan_accounts_json", exc)
                 raise FreeRegisterError(
                     "free_plan_check", "查询 Free 套餐资格", f"套餐接口返回 HTTP {int(status)}",
                     provider_status=status, provider_code=_response_provider_code(response, data),
@@ -1094,9 +1103,9 @@ class FreeProtocolMixin(
                 eligibility_data = {}
                 try:
                     eligibility_data = eligibility.json() if hasattr(eligibility, "json") else {}
-                except Exception:
+                except Exception as exc:
                     # A response body is optional detail for the failure raised below.
-                    pass
+                    _protocol_stderr_note("plan_eligibility_json", exc)
                 raise FreeRegisterError(
                     "free_plan_check", "查询 Free 套餐资格", f"试用资格接口返回 HTTP {int(eligibility_status)}",
                     provider_status=eligibility_status,
@@ -1162,12 +1171,12 @@ class FreeProtocolMixin(
             except TypeError:
                 try:
                     logger(message)
-                except Exception:
+                except Exception as exc:
                     # Telemetry must not mask the failure already recorded above.
-                    pass
-            except Exception:
+                    _protocol_stderr_note("mfa_review_log_compat", exc)
+            except Exception as exc:
                 # Telemetry must not mask the failure already recorded above.
-                pass
+                _protocol_stderr_note("mfa_review_log", exc)
 
         # Bounded confirmation poll instead of a fixed sleep: the activation
         # write is usually visible immediately, so confirm and return at once;
