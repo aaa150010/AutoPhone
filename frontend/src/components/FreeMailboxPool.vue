@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { errorMessage } from '../utils/errorMessage'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, CircleCheck, Collection, CopyDocument, Delete, Document, DocumentCopy, Download, Key, Link, Lock, MoreFilled, Plus, PriceTag, Refresh, RefreshLeft, RefreshRight, Tickets, Upload, VideoPlay, Warning } from '@element-plus/icons-vue'
-import { deleteFreeMailboxes, exportFreeResults, formatFreeMailboxes, getFreeLiveCheckState, getFreeMailboxLatestCode, getFreeMailboxUrl, getFreeMailboxes, getFreeSecret, getFreeTotp, importFreeMailboxes, retryFreeTwofa, setFreeMailboxStatus, startFree, startFreeLiveCheck, startFreePlanCheck, transferFreeMailboxes } from '../api/client'
+import { deleteFreeMailboxes, exportFreeResults, formatFreeMailboxes, getFreeLiveCheckState, getFreeMailboxLatestCode, getFreeMailboxUrl, getFreeMailboxes, getFreeSecret, getFreeTotp, importFreeMailboxes, retryFreePassword, retryFreeTwofa, setFreeMailboxStatus, startFree, startFreeLiveCheck, startFreePlanCheck, transferFreeMailboxes } from '../api/client'
 import type { FreeLiveCheckState, FreeMailboxRow, FreeState } from '../api/client'
 import ContentEmptyState from './ContentEmptyState.vue'
 import FreeTaskLogDialog from './FreeTaskLogDialog.vue'
@@ -57,6 +57,7 @@ const driverFilter = ref('')
 const liveStatusFilter = ref('')
 const liveBusy = ref<'fast' | 'deep' | ''>('')
 const planBusy = ref('')
+const passwordBusy = ref('')
 const { loadingIds: loadingEmail, copyForRow: copyEmailRow } = useRowClipboard()
 const { copyForRow: copyLatestCodeRow } = useRowClipboard()
 const loadingTotp = ref<string[]>([])
@@ -447,6 +448,28 @@ async function retryMailboxTwofa(row: FreeMailboxRow) {
   await retryTwofa(row)
 }
 
+function canRetryPassword(row: FreeMailboxRow): boolean {
+  return Boolean(row.row_id) && Boolean(row.has_access_token) && !Boolean(row.has_password)
+}
+
+async function retryMailboxPassword(row: FreeMailboxRow) {
+  if (isHistoricalMailboxDriver(row)) return unavailableMailboxAction('历史链路邮箱不支持密码补设')
+  if (!canRetryPassword(row)) {
+    return unavailableMailboxAction(row.has_password ? '该邮箱已有密码' : '该邮箱暂无账号 Token，无法补设密码')
+  }
+  if (passwordBusy.value) return
+  passwordBusy.value = row.row_id
+  try {
+    await retryFreePassword(row.row_id)
+    ElMessage.info('密码设置任务已重新加入队列')
+    await refresh()
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || '密码重试失败')
+  } finally {
+    passwordBusy.value = ''
+  }
+}
+
 async function retryPlan(row: FreeMailboxRow) {
   if (isHistoricalMailboxDriver(row) || !row.row_id || !row.has_access_token || String(row.plan_check_status || '').toLowerCase() !== 'failed' || planBusy.value) return
   planBusy.value = row.row_id
@@ -511,6 +534,7 @@ async function handleMailboxAction(command: string, row: FreeMailboxRow) {
   if (command === 'password') return copyMailboxPassword(row)
   if (command === 'totp') return copyMailboxTotp(row)
   if (command === 'twofa') return retryMailboxTwofa(row)
+  if (command === 'password_retry') return retryMailboxPassword(row)
   if (command === 'plan') return retryMailboxPlan(row)
 }
 
@@ -630,6 +654,7 @@ onMounted(async () => {
                     <el-dropdown-item command="password"><el-icon><Lock /></el-icon>复制密码</el-dropdown-item>
                     <el-dropdown-item command="totp"><el-icon><Collection /></el-icon>复制临时 2FA 验证码</el-dropdown-item>
                     <el-dropdown-item command="twofa"><el-icon><RefreshLeft /></el-icon>重试 2FA</el-dropdown-item>
+                    <el-dropdown-item command="password_retry" :disabled="!canRetryPassword(row)" :title="canRetryPassword(row) ? '使用已保存 Token 补设账号密码' : '需要已保存 Token 且尚未设置密码'"><el-icon><Lock /></el-icon>重跑密码设置</el-dropdown-item>
                     <el-dropdown-item command="plan"><el-icon><PriceTag /></el-icon>重新查询套餐</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
