@@ -292,20 +292,9 @@ class FreeConfigStore:
         result["proxy_quarantine_seconds"] = _int(result.get("proxy_quarantine_seconds"), 600, 30, 86400)
         result["proxy_health_probe_ttl_seconds"] = _int(result.get("proxy_health_probe_ttl_seconds"), 300, 0, 86400)
         result["proxy_retry_count"] = _int(result.get("proxy_retry_count"), 1, 0, 5)
-        # Parse the legacy selection shape only to preserve the API contract;
-        # the final assignment below always replaces it with empty values.
-        selection = result.get("proxy_selection") if isinstance(result.get("proxy_selection"), Mapping) else {}
-        normalized_selection: dict[str, dict[str, str]] = {}
-        for driver in ("protocol", "camoufox"):
-            item = selection.get(driver) if isinstance(selection.get(driver), Mapping) else {}
-            country = clean(item.get("country"), 2).upper()
-            if country and not re.fullmatch(r"[A-Z]{2}", country):
-                country = ""
-            normalized_selection[driver] = {
-                "country": country,
-                "group": clean(item.get("group"), 64),
-            }
-        result["proxy_selection"] = normalized_selection
+        # Single-pool policy: classification fields never influence allocation,
+        # so the final assignment below always writes empty values (see the
+        # end of this normalizer) and any legacy selection input is discarded.
         probe_url = normalize_probe_url(clean(result.get("proxy_probe_url"), 500) or DEFAULT_PROXY_PROBE_URL)
         parsed_probe = urlsplit(probe_url)
         if parsed_probe.scheme not in {"http", "https"} or not parsed_probe.netloc:
