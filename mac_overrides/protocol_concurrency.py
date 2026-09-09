@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 import hashlib
+import sys
 import re
 import threading
 import time
@@ -28,6 +29,14 @@ try:
     from .auth_session_runtime import is_session_invalid
 except ImportError:  # Loaded as a top-level runtime override.
     from auth_session_runtime import is_session_invalid  # type: ignore[no-redef]
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed telemetry/guard enrichment."""
+    try:
+        print(f"[protocol_concurrency/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 def _http_status(value: Any) -> int | None:
@@ -155,9 +164,9 @@ def _notify_observer(observer: Any, value: Any) -> None:
         return
     try:
         observer(value)
-    except Exception:
+    except Exception as exc:
         # Observer telemetry must never break gate acquisition.
-        pass
+        _note_stderr("phase_observer", exc)
 
 
 class ProxyProtocolGate:
@@ -704,15 +713,15 @@ class TransportProtocolCoordinator:
             if callable(reporter):
                 try:
                     reporter("oauth_session_invalid")
-                except Exception:
+                except Exception as exc:
                     # Stall reporting must never break the session refresh.
-                    pass
+                    _note_stderr("stall_report_reason", exc)
             return
         try:
             reporter()
-        except Exception:
+        except Exception as exc:
             # Stall reporting must never break the session refresh.
-            pass
+            _note_stderr("stall_report", exc)
 
     @staticmethod
     def proxy(transport: Any) -> Any:
@@ -729,9 +738,9 @@ class TransportProtocolCoordinator:
         if callable(resume):
             try:
                 resume()
-            except Exception:
+            except Exception as exc:
                 # Resume must not mask the original session failure.
-                pass
+                _note_stderr("guard_resume", exc)
 
     def synchronize_connectivity_pause(
         self,
@@ -986,9 +995,9 @@ class TransportProtocolCoordinator:
                         generation=generation,
                         proxy=route,
                     )
-                except Exception:
+                except Exception as exc:
                     # State recording must not mask the original failure being raised.
-                    pass
+                    _note_stderr("guard_state_record", exc)
                 raise
             try:
                 succeeded = bool(self.success_fn(value))
@@ -999,9 +1008,9 @@ class TransportProtocolCoordinator:
                     generation=generation,
                     proxy=route,
                 )
-            except Exception:
+            except Exception as exc:
                 # Public-state enrichment must not change the guard result.
-                pass
+                _note_stderr("guard_state_enrich", exc)
             return value
 
         return self.inflight_pipeline.call_with_protocol_lease(
@@ -1043,9 +1052,9 @@ class TransportProtocolCoordinator:
                         count_capacity=count_capacity,
                         generation=generation,
                     )
-                except Exception:
+                except Exception as exc:
                     # State recording must not mask the original failure being raised.
-                    pass
+                    _note_stderr("guard_state_record", exc)
                 raise
             try:
                 self.observe_connectivity_result(
@@ -1057,9 +1066,9 @@ class TransportProtocolCoordinator:
                     count_capacity=count_capacity,
                     generation=generation,
                 )
-            except Exception:
+            except Exception as exc:
                 # Public-state enrichment must not change the guard result.
-                pass
+                _note_stderr("guard_state_enrich", exc)
             return value
 
         return self.inflight_pipeline.call_with_protocol_lease(

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 import re
+import sys
 import time
 from typing import Any, Mapping, Sequence
 
@@ -90,6 +91,13 @@ def _runtime_module() -> Any:
 class FreeRegisterTimingMixin:
     """Execution-start markers, per-stage timing and task log helpers."""
 
+    def _note_quiet(self, where: str, exc: BaseException) -> None:
+        """Record a swallowed telemetry/projection fallback on stderr."""
+        try:
+            print(f"[free_register_bands/{where}] {type(exc).__name__}", file=sys.stderr)
+        except Exception:
+            return
+
     @staticmethod
     def _timing_record(task: dict[str, Any]) -> dict[str, Any]:
         value = task.get("timing")
@@ -159,12 +167,12 @@ class FreeRegisterTimingMixin:
             except TypeError:
                 try:
                     self.progress.mark_execution_started(normalized)
-                except Exception:
+                except Exception as exc:
                     # Progress telemetry must not break band evaluation.
-                    pass
-            except Exception:
+                    self._note_quiet("band_execution_started_compat", exc)
+            except Exception as exc:
                 # Progress telemetry must not break band evaluation.
-                pass
+                self._note_quiet("band_execution_started", exc)
         if changed and persist:
             self._save_tasks_safely("任务开始执行计时")
         return True
@@ -371,9 +379,9 @@ class FreeRegisterTimingMixin:
         if self.progress is not None and callable(getattr(self.progress, "set_stage", None)):
             try:
                 changed = bool(self.progress.set_stage(task_id, code))
-            except Exception:
+            except Exception as exc:
                 # Stage progress is best-effort UI state.
-                pass
+                self._note_quiet("progress_set_stage", exc)
         previous_code = ""
         previous_started = 0
         with self._lock:
@@ -561,9 +569,9 @@ class FreeRegisterProjectionMixin:
         if self.progress is not None and callable(getattr(self.progress, "finish", None)):
             try:
                 self.progress.finish(task_id)
-            except Exception:
+            except Exception as exc:
                 # Finish bookkeeping must not mask the task result.
-                pass
+                self._note_quiet("progress_finish", exc)
 
     def _public_task(
         self,
@@ -710,9 +718,9 @@ class FreeRegisterProjectionMixin:
                     })
                     if matches:
                         incident_id = sanitize_public_identifier(matches[0].get("incident_id"), limit=160)
-                except Exception:
+                except Exception as exc:
                     # Diagnostic enrichment must not change the public payload.
-                    pass
+                    self._note_quiet("incident_id_enrich", exc)
             if incident_id:
                 public["incident_id"] = sanitize_public_identifier(incident_id, limit=160)
         # ``account`` is a legacy alias consumed by a few clients.  It must
@@ -861,8 +869,8 @@ class FreeRegisterProjectionMixin:
                 matches = batch_reader(task_ids_with_missing, "mailbox_parser_unmatched")
                 if isinstance(matches, Mapping):
                     return dict(matches)
-            except Exception:
-                pass
+            except Exception as exc:
+                self._note_quiet("parser_unmatched_reader", exc)
         return {}
 
     def public_tasks(self) -> list[dict[str, Any]]:
@@ -910,8 +918,8 @@ class FreeRegisterProjectionMixin:
                 bulk = bulk_reader(row_ids)
                 if isinstance(bulk, Mapping):
                     return bulk
-            except Exception:
-                pass
+            except Exception as exc:
+                self._note_quiet("results_bulk_reader", exc)
         # Compatibility fallback for pool facades without the bulk reader.
         results: dict[str, Mapping[str, Any]] = {}
         for row_id in row_ids:
@@ -930,8 +938,8 @@ class FreeRegisterProjectionMixin:
                 index = index_reader()
                 if isinstance(index, Mapping):
                     return index
-            except Exception:
-                pass
+            except Exception as exc:
+                self._note_quiet("mailbox_index_reader", exc)
         return {}
 
     def public_logs(self, task_id: str = "") -> list[dict[str, Any]]:
