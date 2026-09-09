@@ -1271,34 +1271,6 @@ class FreeRegisterManager(
             "remaining": max(1, 30 - (int(now) % 30)),
         }
 
-    def _verify_binding(self, task: Mapping[str, Any], config: Mapping[str, Any]) -> str:
-        binding = ProxyBinding(
-            str(task.get("proxy") or ""),
-            str(task.get("proxy_fingerprint") or ""),
-            str(task.get("proxy_masked") or ""),
-            str(task.get("exit_ip") or ""),
-            proxy_id=str(task.get("proxy_id") or ""),
-            scheme=str(task.get("proxy_scheme") or ""),
-            country=str(task.get("proxy_country") or ""),
-            group=str(task.get("proxy_group") or ""),
-        )
-        if not binding.proxy:
-            raise FreeRegisterError("free_proxy_lease", "读取 Free 代理租约", "代理租约记录不存在或已损坏", retryable=False)
-        current = self.proxies.verify(
-            binding,
-            probe=self.proxy_probe,
-            probe_url=str(config.get("proxy_probe_url") or "https://chatgpt.com/"),
-        )
-        if isinstance(task, dict):
-            task["exit_ip"] = current
-            task_id = str(task.get("task_id") or "")
-            if task_id:
-                self._save_task(task_id, exit_ip=current)
-            row_id = str(task.get("row_id") or "")
-            if row_id:
-                self.pool.update(row_id, exit_ip=current)
-        return current
-
     def _assert_batch_proxy_uniqueness(self, task: Mapping[str, Any]) -> None:
         """Compatibility hook: shared proxy allocation permits batch collisions."""
         _ = task

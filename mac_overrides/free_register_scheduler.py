@@ -6,10 +6,8 @@ import time
 from typing import Any, Mapping
 
 try:
-    from .free_proxy_health import is_proxy_health_failure
     from .free_register_common import FreeRegisterError, ProxyBinding
 except ImportError:
-    from free_proxy_health import is_proxy_health_failure  # type: ignore[no-redef]
     from free_register_common import FreeRegisterError, ProxyBinding  # type: ignore[no-redef]
 
 
@@ -147,32 +145,3 @@ class FreeRegisterSchedulerMixin:
             exit_ip=replacement.exit_ip,
         )
         return True
-
-    def _verify_pre_registration_proxy(
-        self,
-        task: dict[str, Any],
-        config: Mapping[str, Any],
-        retry_limit: int,
-    ) -> None:
-        """Verify and, on explicit network failure, replace an unconsumed proxy."""
-        attempt = 0
-        while True:
-            try:
-                self._verify_binding(task, config)
-                return
-            except FreeRegisterError as exc:
-                if attempt >= retry_limit or not is_proxy_health_failure(exc):
-                    raise
-                self._record_proxy_failure(task, exc)
-                attempt += 1
-                switched = self._switch_pre_profile_proxy(task, config)
-                node_code = str(getattr(exc, "node_code", "proxy_connect_failed") or "proxy_connect_failed")
-                node_label = str(getattr(exc, "node_label", "代理连接失败") or "代理连接失败")
-                self._log(
-                    f"[{task.get('task_id')}/Free 预注册代理重试/{node_code}] "
-                    f"{node_label}，{'已切换备用代理' if switched else '重试当前代理'}"
-                    f"（第 {attempt + 1} 次）",
-                    "warn",
-                )
-
-__all__ = ["FreeRegisterSchedulerMixin"]

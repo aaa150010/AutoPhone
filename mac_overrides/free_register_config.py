@@ -292,6 +292,8 @@ class FreeConfigStore:
         result["proxy_quarantine_seconds"] = _int(result.get("proxy_quarantine_seconds"), 600, 30, 86400)
         result["proxy_health_probe_ttl_seconds"] = _int(result.get("proxy_health_probe_ttl_seconds"), 300, 0, 86400)
         result["proxy_retry_count"] = _int(result.get("proxy_retry_count"), 1, 0, 5)
+        # Parse the legacy selection shape only to preserve the API contract;
+        # the final assignment below always replaces it with empty values.
         selection = result.get("proxy_selection") if isinstance(result.get("proxy_selection"), Mapping) else {}
         normalized_selection: dict[str, dict[str, str]] = {}
         for driver in ("protocol", "camoufox"):
@@ -349,6 +351,9 @@ class FreeConfigStore:
         camoufox["max_registrations_per_browser"] = _int(camoufox.get("max_registrations_per_browser"), 12, 1, 1000)
         camoufox["browser_launch_attempts"] = _int(camoufox.get("browser_launch_attempts"), 3, 1, 10)
         result["camoufox"] = camoufox
+        # Single-pool policy: classification values are always empty so they
+        # cannot influence allocation; the normalized selection above only
+        # keeps the historical shape for API compatibility.
         result["proxy_selection"] = {
             "protocol": {"country": "", "group": ""},
             "camoufox": {"country": "", "group": ""},

@@ -11,6 +11,7 @@ existing tests can keep patching ``mac_overrides.free_register_runtime.<name>``.
 from __future__ import annotations
 
 import copy
+from concurrent.futures import Future
 import secrets
 import threading
 import time
