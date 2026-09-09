@@ -110,3 +110,39 @@ export function mailboxStageType(row: FreeMailboxRow | null | undefined): string
 export function mailboxStageTooltip(row: FreeMailboxRow | null | undefined): string {
   return freeStageDetail(row?.stage || row?.status, mailboxStageLabel(row), row?.status)
 }
+
+export function mailboxTwofaLabel(row: FreeMailboxRow | null | undefined): string {
+  if (row?.has_totp) return '已启用'
+  if (['queued', 'running'].includes(String(row?.status || '').toLowerCase())) return '处理中'
+  return ['pending', 'failed'].includes(String(row?.twofa_status || '').toLowerCase()) ? '待重试' : '未启用'
+}
+
+export function mailboxTwofaType(row: FreeMailboxRow | null | undefined): 'success' | 'warning' | 'info' {
+  if (row?.has_totp) return 'success'
+  if (['queued', 'running'].includes(String(row?.status || '').toLowerCase())) return 'warning'
+  return ['pending', 'failed'].includes(String(row?.twofa_status || '').toLowerCase()) ? 'warning' : 'info'
+}
+
+export function mailboxPasswordLabel(row: FreeMailboxRow | null | undefined): string {
+  const flow = String(row?.account_flow || '').toLowerCase()
+  if (row?.has_password) return '已设置'
+  if (flow === 'signup') return '未设置（可补设）'
+  return '未设置'
+}
+
+export function mailboxPasswordType(row: FreeMailboxRow | null | undefined): 'success' | 'warning' | 'info' {
+  const flow = String(row?.account_flow || '').toLowerCase()
+  if (row?.has_password) return 'success'
+  if (flow === 'signup') return 'warning'
+  return 'info'
+}
+
+// ``available`` rows are fresh candidates that have not been submitted to a
+// registration task yet; anything else has been through one (or is queued).
+export function mailboxRegisteredLabel(row: FreeMailboxRow | null | undefined): string {
+  return String(row?.status || '') === 'available' ? '未注册' : '已注册'
+}
+
+export function mailboxRegisteredType(row: FreeMailboxRow | null | undefined): 'success' | 'info' {
+  return String(row?.status || '') === 'available' ? 'info' : 'success'
+}

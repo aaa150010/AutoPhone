@@ -91,7 +91,7 @@ body { overflow: hidden; background: var(--workspace-page); font-size: 13px; }
   --el-table-text-color: #303a49;
 }
 .el-table::before { display: none; }
-.el-table th.el-table__cell { height: 42px; color: #667387; font-size: 12px; font-weight: 700; border-bottom-color: var(--workspace-border); }
+.el-table th.el-table__cell { height: 42px; color: #667387; font-size: 12px; font-weight: 700; text-align: center; border-bottom-color: var(--workspace-border); }
 .el-table td.el-table__cell { height: 42px; padding: 7px 0; font-size: 13px; border-bottom-color: #edf0f4; }
 .el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell { background: #fbfcfd; }
 .el-table .cell { min-width: 0; }

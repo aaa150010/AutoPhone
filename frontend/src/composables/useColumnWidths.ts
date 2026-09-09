@@ -2,7 +2,25 @@ import { ref } from 'vue'
 
 // Persist user-dragged column widths per table, keyed by column label so the
 // mapping survives column reordering in future edits.
-export function useColumnWidths(storageKey: string) {
+// Bump to force another one-time reset of every table's saved widths.
+const ONE_TIME_RESET_VERSION = 'v1'
+
+// One-time migration: clear widths saved before a layout change (e.g. new or
+// renamed columns) so stale drag results never shadow the new defaults. The
+// flag marks the reset as done, so later drags persist normally again.
+function consumeOneTimeReset(storageKey: string) {
+  const flagKey = `${storageKey}.one-time-reset.${ONE_TIME_RESET_VERSION}`
+  try {
+    if (window.localStorage.getItem(flagKey)) return
+    window.localStorage.removeItem(storageKey)
+    window.localStorage.setItem(flagKey, '1')
+  } catch {
+    // storage unavailable: nothing persisted to reset
+  }
+}
+
+export function useColumnWidths(storageKey: string, options?: { autoResetOnce?: boolean }) {
+  if (options?.autoResetOnce) consumeOneTimeReset(storageKey)
   const widths = ref<Record<string, number>>(readStored())
 
   function readStored(): Record<string, number> {
@@ -33,5 +51,14 @@ export function useColumnWidths(storageKey: string) {
     }
   }
 
-  return { colWidth, handleHeaderDragend }
+  function resetWidths() {
+    widths.value = {}
+    try {
+      window.localStorage.removeItem(storageKey)
+    } catch {
+      // storage unavailable: in-memory reset is enough for this session
+    }
+  }
+
+  return { colWidth, handleHeaderDragend, resetWidths }
 }

@@ -2,14 +2,14 @@
 import { onMounted, ref, watch } from 'vue'
 import { errorMessage } from '../utils/errorMessage'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete } from '@element-plus/icons-vue'
+import { Delete, RefreshLeft } from '@element-plus/icons-vue'
 import { getRemailOrders, hideRemailOrders, importRemailOrders, type RemailOrder } from '../api/client'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import { useColumnWidths } from '../composables/useColumnWidths'
 import { formatDateTimeOrDash } from '../utils/datetime'
 type DragColumn = { label?: string; noLabelText?: string }
 const loading = ref(false); const rows = ref<RemailOrder[]>([]); const selected = ref<RemailOrder[]>([]); const filter = ref(''); const importedFilter = ref<boolean | 'all'>(false); const includeFailed = ref(false); const currentPage = ref(1); const pageSize = ref(50); const total = ref(0)
-const { colWidth: orderColWidth, handleHeaderDragend: onOrderHeaderDragend } = useColumnWidths('gptphone.table.widths.remail-orders')
+const { colWidth: orderColWidth, handleHeaderDragend: onOrderHeaderDragend, resetWidths: resetOrderWidths } = useColumnWidths('gptphone.table.widths.remail-orders', { autoResetOnce: true })
 const formatTime = (value?: string) => formatDateTimeOrDash(value)
 const deletable = (row: RemailOrder) => !row.imported && row.status === 'failed'
 async function load(showMessage = true) { loading.value = true; try { const result = await getRemailOrders({ page: currentPage.value, page_size: pageSize.value, imported: importedFilter.value, search: filter.value, include_failed: includeFailed.value }); rows.value = result.orders || []; total.value = Number(result.total || 0); if (showMessage) ElMessage.success('订单已同步') } catch (error) { ElMessage.error(errorMessage(error) || 'Remail 订单同步失败') } finally { loading.value = false } }
@@ -44,13 +44,17 @@ onMounted(() => void load(false))
           <el-checkbox v-model="includeFailed" size="small">显示失败订单</el-checkbox>
           <el-button size="small" type="primary" :disabled="!selected.length" :loading="loading" @click="importSelected">导入 Free 邮箱池</el-button>
           <el-button size="small" :loading="loading" @click="load">同步订单</el-button>
+          <el-tooltip content="撤销本表拖拽保存的列宽，恢复默认列宽" placement="top" :show-after="250">
+            <el-button size="small" :icon="RefreshLeft" aria-label="重置列宽" @click="resetOrderWidths">重置列宽</el-button>
+          </el-tooltip>
         </div>
         <el-table v-loading="loading" :data="rows" row-key="order_no" border @header-dragend="(newWidth: number, oldWidth: number, column: DragColumn) => onOrderHeaderDragend(newWidth, oldWidth, column)" @selection-change="selected = $event" size="small">
           <el-table-column type="selection" width="48" />
+          <el-table-column type="index" label="序号" width="58" align="center" :index="(index: number) => index + 1 + (currentPage - 1) * pageSize" />
           <el-table-column prop="order_no" label="订单号" :min-width="orderColWidth('订单号', 200)" show-overflow-tooltip />
           <el-table-column prop="delivery_email_masked" label="邮箱" :min-width="orderColWidth('邮箱', 210)" show-overflow-tooltip />
           <el-table-column prop="status" label="状态" :width="orderColWidth('状态', 110)" show-overflow-tooltip />
-          <el-table-column label="入池" :width="orderColWidth('入池', 92)">
+          <el-table-column label="入池" :width="orderColWidth('入池', 92)" align="center">
             <template #default="scope"><el-tag size="small" :type="scope.row.imported ? 'success' : 'info'">{{ scope.row.imported ? '已导入' : '未导入' }}</el-tag></template>
           </el-table-column>
           <el-table-column label="商品" :min-width="orderColWidth('商品', 160)" show-overflow-tooltip>

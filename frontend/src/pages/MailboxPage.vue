@@ -6,6 +6,7 @@ import {
   Connection,
   DataAnalysis,
   MessageBox,
+  RefreshLeft,
   Search,
   Upload,
 } from '@element-plus/icons-vue'
@@ -57,7 +58,7 @@ const sub2Filter = ref('all')
 const quotaFilter = ref('all')
 const searchText = ref('')
 const selectedRows = ref<MailboxRow[]>([])
-const mailboxTable = ref<{ clearSelection: () => void } | null>(null)
+const mailboxTable = ref<{ clearSelection: () => void; resetWidths: () => void } | null>(null)
 const loading = ref(false)
 const loadingPasswords = ref<string[]>([])
 const loadingTotp = ref<string[]>([])
@@ -549,6 +550,9 @@ onUnmounted(() => {
           @website="uploadWebsiteMailboxes"
           @delete="mutate('/api/mailboxes/delete', '确定删除选中的邮箱？')"
           />
+          <el-tooltip content="撤销本表拖拽保存的列宽，恢复默认列宽" placement="top" :show-after="250">
+            <el-button size="small" :icon="RefreshLeft" aria-label="重置列宽" @click="mailboxTable?.resetWidths()">重置列宽</el-button>
+          </el-tooltip>
         </div>
       </div>
 
@@ -565,6 +569,7 @@ onUnmounted(() => {
           :openaiRetryDisabled="mutating || batchBusy"
           :row-mutation-disabled="mutating || batchBusy"
           :row-action-loading="rowActionLoading"
+          :index-offset="(currentPage - 1) * pageSize"
           @select="selectedRows = $event"
           @email="copyEmail"
           @password="copyPassword"

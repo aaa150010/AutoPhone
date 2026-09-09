@@ -268,6 +268,7 @@ watch(() => props.locationKey, (value, previous) => {
       <div v-else class="table-wrap">
         <el-table class="incident-table" :data="pagedIncidents" v-loading="loading" height="100%" stripe border @selection-change="selectRows" size="small">
         <el-table-column type="selection" width="46" fixed="left" />
+        <el-table-column type="index" label="序号" width="58" align="center" fixed="left" :index="(index: number) => index + 1 + (incidentPage - 1) * incidentPageSize" />
         <el-table-column label="日志 ID" width="230" fixed="left"><template #default="{ row }"><div class="incident-id"><el-link type="primary" @click="openIncident(row)">{{ row.incident_id }}</el-link><el-tooltip content="复制日志 ID" placement="top" :show-after="250"><el-button text size="small" :icon="CopyDocument" aria-label="复制日志 ID" @click="copyIncidentId(row)" /></el-tooltip></div></template></el-table-column>
         <el-table-column label="状态" width="96" align="center"><template #default="{ row }"><el-tag size="small" :type="incidentStatusType(row)">{{ incidentStatusLabel(row) }}</el-tag></template></el-table-column>
         <el-table-column prop="subject_display" label="账号" min-width="150" show-overflow-tooltip />

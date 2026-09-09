@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { CopyDocument, Document, Key, Link, Loading, MoreFilled, Tickets, Warning } from '@element-plus/icons-vue'
+import { CopyDocument, Document, Key, Link, Loading, MoreFilled, RefreshLeft, Tickets, Warning } from '@element-plus/icons-vue'
 import ContentEmptyState from './ContentEmptyState.vue'
 import TaskDetailsDrawer from './TaskDetailsDrawer.vue'
 import TaskProgressCell from './TaskProgressCell.vue'
@@ -59,7 +59,7 @@ const nowSeconds = useTaskProgressClock(
   () => props.tasks,
   () => props.tasks.some(task => shouldShowManualVerification(task)),
 )
-const { colWidth: runColWidth, handleHeaderDragend: onRunHeaderDragend } = useColumnWidths('gptphone.table.widths.run-tasks')
+const { colWidth: runColWidth, handleHeaderDragend: onRunHeaderDragend, resetWidths: resetRunWidths } = useColumnWidths('gptphone.table.widths.run-tasks', { autoResetOnce: true })
 
 function taskRowKey(row: RuntimeTask) {
   return `${String(row.batch_id || 'legacy')}::${row.task_id}`
@@ -193,9 +193,13 @@ function handleRowAction(command: string, row: RuntimeTask) {
       <el-button size="small" :disabled="!visibleFreeTasks.some(row => row.result?.has_access_token)" @click="emitFreeSecret('token', visibleFreeTasks)">复制当前页 Token</el-button>
       <el-button size="small" :disabled="!selectedFreeTasks.some(row => row.result?.has_access_token)" @click="emitFreeSecret('token', selectedFreeTasks)">复制选中 Token</el-button>
       <el-button size="small" :disabled="!selectedFreeTasks.some(row => row.result?.has_credential)" @click="emitFreeSecret('credential', selectedFreeTasks)">复制选中凭据</el-button>
+      <el-tooltip content="撤销本表拖拽保存的列宽，恢复默认列宽" placement="top" :show-after="250">
+        <el-button size="small" :icon="RefreshLeft" aria-label="重置列宽" @click="resetRunWidths">重置列宽</el-button>
+      </el-tooltip>
     </div>
     <el-table v-loading="props.loading" class="task-table" :data="pagedTasks" :row-key="taskRowKey" stripe height="100%" border @header-dragend="(newWidth: number, oldWidth: number, column: DragColumn) => onRunHeaderDragend(newWidth, oldWidth, column)" @selection-change="selectFreeTasks" size="small">
       <el-table-column type="selection" width="42" reserve-selection />
+      <el-table-column type="index" label="序号" width="58" align="center" :index="(index: number) => index + 1 + (runPage - 1) * runPageSize" />
       <el-table-column label="邮箱" :min-width="runColWidth('邮箱', 180)">
         <template #default="{ row }">
           <el-tooltip v-if="row.email || row.account" :content="String(row.email || row.account)" placement="top" :show-after="250"><button type="button" class="copyable-account" @click="emit('copyAccount', row)"><span>{{ row.email || row.account }}</span><el-icon v-if="row.run_mode === 'free_register'" :class="{ 'is-loading': loadingAccountEmails.includes(row.task_id) }"><Loading v-if="loadingAccountEmails.includes(row.task_id)" /><CopyDocument v-else /></el-icon></button></el-tooltip>

@@ -65,7 +65,7 @@ const quickRunDirty = ref(false)
 const running = computed(() => Boolean(state.value.running))
 const debugWindowsOpen = computed(() => Number(state.value.camoufox_debug?.open_contexts || 0) > 0)
 const nowSeconds = useTaskProgressClock(() => state.value.tasks || [], () => Boolean(state.value.running))
-const { colWidth: taskColWidth, handleHeaderDragend: onTaskHeaderDragend } = useColumnWidths('gptphone.table.widths.free-register')
+const { colWidth: taskColWidth, handleHeaderDragend: onTaskHeaderDragend, resetWidths: resetTaskWidths } = useColumnWidths('gptphone.table.widths.free-register', { autoResetOnce: true })
 function automaticOtpRemaining(task: FreeTaskRow) {
   return automaticOtpRemainingPure(task, nowSeconds.value)
 }
@@ -466,7 +466,10 @@ onMounted(async () => {
       <WorkspacePanel fill body-padding="none">
         <div class="task-panel">
           <div class="task-start-bar">
-            <el-tag effect="plain">{{ config.driver === 'camoufox' ? 'Camoufox' : '全协议' }}</el-tag>
+            <el-radio-group v-model="config.driver" class="driver-inline-radio" :disabled="running || Boolean(busy)" size="small" @update:model-value="markQuickRunDirty">
+              <el-radio-button value="protocol">全协议</el-radio-button>
+              <el-radio-button value="camoufox">Camoufox</el-radio-button>
+            </el-radio-group>
             <label class="quick-run-field"><span>注册数量</span><el-input-number v-model="quickTargetCount" class="quick-run-number" :min="1" :max="200" controls-position="right" :disabled="running || Boolean(busy)" @update:model-value="markQuickRunDirty"  size="small" /></label>
             <label class="quick-run-field"><span>并发</span><el-input-number v-model="quickConcurrency" class="quick-run-number" :min="1" :max="16" controls-position="right" :disabled="running || Boolean(busy)" @update:model-value="markQuickRunDirty"  size="small" /></label>
             <span class="muted task-start-meta">可用邮箱 {{ Number(state.pool?.available || 0) }} · 代理 {{ Number(state.pool?.proxies || 0) }}</span>
@@ -477,6 +480,9 @@ onMounted(async () => {
               <el-button size="small" plain :icon="CircleClose" :loading="busy === 'close-debug'" :disabled="!debugWindowsOpen || Boolean(busy)" aria-label="关闭 Camoufox 调试窗口" @click="closeDebugWindows">关闭调试窗口</el-button>
             </el-tooltip>
             <el-button size="small" :icon="Setting" @click="emit('navigate', '/settings#free-register')" aria-label="运行配置">运行配置</el-button>
+            <el-tooltip content="撤销本表拖拽保存的列宽，恢复默认列宽" placement="top" :show-after="250">
+              <el-button size="small" :icon="RefreshLeft" aria-label="重置列宽" @click="resetTaskWidths">重置列宽</el-button>
+            </el-tooltip>
           </div>
           <div class="task-filter-row">
             <div class="task-summary-strip" role="group" aria-label="任务状态筛选">
@@ -507,6 +513,7 @@ onMounted(async () => {
           </div>
           <el-table ref="taskTable" v-loading="loading" :data="pagedTasks" row-key="task_id" height="100%" size="small" border :row-class-name="taskRowClass" @header-dragend="(newWidth: number, oldWidth: number, column: DragColumn) => onTaskHeaderDragend(newWidth, oldWidth, column)" @selection-change="handleTaskSelection">
             <el-table-column type="selection" width="42" reserve-selection />
+            <el-table-column type="index" label="序号" width="58" align="center" :index="(index: number) => index + 1 + (taskPage - 1) * taskPageSize" />
             <el-table-column label="账号" :min-width="taskColWidth('账号', 280)" show-overflow-tooltip>
               <template #default="{ row }">
                 <div class="account-cell">
@@ -520,7 +527,7 @@ onMounted(async () => {
             <el-table-column label="阶段 / 耗时" :min-width="taskColWidth('阶段 / 耗时', 230)"><template #default="{ row }"><TaskProgressCell :progress="row.progress" :timing="row.timing" :now-seconds="nowSeconds" :status="row.status" /></template></el-table-column>
             <el-table-column label="状态" :width="taskColWidth('状态', 122)" align="center" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" :type="isRetryResolved(row.retry_resolved) ? 'success' : taskStatusType(row.status)">{{ displayTaskStatus(row) }}</el-tag></template></el-table-column>
             <el-table-column label="套餐" :width="taskColWidth('套餐', 90)" align="center" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" :type="taskPlanType(row)" effect="plain">{{ taskPlanLabel(row) }}</el-tag><el-tooltip v-if="!isHistoricalDriver(row) && row.result?.has_access_token && String(row.result?.plan_check_status || '').toLowerCase() === 'failed'" content="重新查询套餐" placement="top" :show-after="250"><el-button link size="small" :icon="Refresh" :loading="planBusy === String(row.task_id || row.row_id)" :disabled="Boolean(planBusy)" aria-label="重新查询套餐" @click.stop="refreshPlan(row)" /></el-tooltip></template></el-table-column>
-            <el-table-column label="凭据" :width="taskColWidth('凭据', 112)"><template #default="{ row }"><div class="credential-cell"><StateDot :tone="taskTwofaType(row)" :label="`2FA ${taskTwofaLabel(row)}`" /><StateDot :tone="taskPasswordType(row)" :label="`密码 ${taskPasswordLabel(row)}`" /></div></template></el-table-column>
+            <el-table-column label="凭据" :width="taskColWidth('凭据', 170)"><template #default="{ row }"><div class="credential-cell"><StateDot :tone="taskTwofaType(row)" :label="`2FA ${taskTwofaLabel(row)}`" /><StateDot :tone="taskPasswordType(row)" :label="`密码 ${taskPasswordLabel(row)}`" /></div></template></el-table-column>
             <el-table-column label="错误" :min-width="taskColWidth('错误', 320)">
               <template #default="{ row }">
                 <el-tooltip placement="top" :disabled="!taskFailureDetails(row).length" :show-after="250">
@@ -580,6 +587,8 @@ onMounted(async () => {
 .task-start-bar { min-height: 32px; }
 .task-start-bar .task-start-meta { margin-right: auto; }
 .quick-run-field { display: inline-flex; align-items: center; gap: 8px; color: var(--el-text-color-regular); font-size: 14px; white-space: nowrap; }
+.driver-inline-radio { flex: 0 0 auto; white-space: nowrap; }
+.driver-inline-radio :deep(.el-radio-button__inner) { padding: 5px 12px; font-size: 12px; }
 /* Keep numeric controls compact while preserving Element Plus' native
    keyboard, validation, and spinner behavior. */
 .quick-run-field :deep(.quick-run-number) {
@@ -631,7 +640,7 @@ onMounted(async () => {
 .email-copy { display: inline-flex; max-width: 100%; min-width: 0; gap: 5px; height: auto; padding: 0; color: var(--el-text-color-primary); justify-content: flex-start; }
 .email-copy strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .email-copy .el-icon { flex: 0 0 auto; color: var(--el-color-primary); }
-.credential-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+.credential-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; }
 .automatic-otp-wait { display: inline-flex; align-items: center; justify-content: center; gap: 5px; width: 100%; min-width: 0; color: var(--el-text-color-secondary); font-size: 12px; white-space: nowrap; }
 .automatic-otp-wait strong { color: var(--el-color-warning-dark-2); font-variant-numeric: tabular-nums; }
 .failure-cell { min-width: 0; max-width: 100%; overflow: hidden; line-height: 16px; }

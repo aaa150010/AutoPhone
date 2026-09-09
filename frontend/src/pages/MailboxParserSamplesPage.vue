@@ -169,11 +169,12 @@ onMounted(() => { void load() })
       <div class="table-actions"><span>找到 {{ total }} 条 · 已选 {{ selected.length }} 条</span><div><el-button size="small" :icon="CircleCheck" :disabled="!selected.length" @click="updateStatus('resolved')">标记已解决</el-button><el-button size="small" :icon="Delete" type="danger" plain :disabled="!selected.length" @click="removeSelected">删除</el-button></div></div>
       <el-table :data="samples" height="100%" stripe border v-loading="loading" @selection-change="selectRows" size="small">
         <el-table-column type="selection" width="44" />
+        <el-table-column type="index" label="序号" width="58" align="center" :index="(index: number) => index + 1 + (page - 1) * pageSize" />
         <el-table-column label="样本 ID" min-width="180" show-overflow-tooltip><template #default="{ row }"><el-link type="primary" @click="openDetail(row)">{{ row.sample_id }}</el-link></template></el-table-column>
         <el-table-column label="链路 / 驱动" min-width="130" show-overflow-tooltip><template #default="{ row }">{{ scopeLabel(row.scope) }} / {{ driverLabel(row.driver) }}</template></el-table-column>
         <el-table-column prop="stage" label="阶段" min-width="160" show-overflow-tooltip />
         <el-table-column prop="reason" label="未命中原因" min-width="200" show-overflow-tooltip />
-        <el-table-column label="状态" width="90"><template #default="{ row }"><el-tag size="small" :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag></template></el-table-column>
+        <el-table-column label="状态" width="90" align="center"><template #default="{ row }"><el-tag size="small" :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag></template></el-table-column>
         <el-table-column label="出现" width="64" align="center"><template #default="{ row }">{{ row.occurrence_count }}</template></el-table-column>
         <el-table-column label="响应" width="64" align="center"><template #default="{ row }">{{ row.response_count }}</template></el-table-column>
         <el-table-column label="大小" width="90"><template #default="{ row }">{{ formatBytes(row.total_bytes) }}</template></el-table-column>

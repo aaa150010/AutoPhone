@@ -23,12 +23,18 @@ import {
   mailboxFailureDetails,
   mailboxFailureNode,
   mailboxIsAccountBanned,
+  mailboxPasswordLabel,
+  mailboxPasswordType,
   mailboxPlanLabel,
   mailboxPlanTagType,
   mailboxRowClass,
   mailboxStageLabel,
   mailboxStageTooltip,
   mailboxStageType,
+  mailboxTwofaLabel,
+  mailboxTwofaType,
+  mailboxRegisteredLabel,
+  mailboxRegisteredType,
 } from '../utils/freeLiveDisplay'
 import { useColumnWidths } from '../composables/useColumnWidths'
 import { usePolling } from '../composables/usePolling'
@@ -61,7 +67,7 @@ const liveState = ref<FreeLiveCheckState>({ running: false, workers: 3, queue_li
 const logDialogOpen = ref(false)
 const logRow = ref<FreeMailboxRow | null>(null)
 const logDialog = ref<{ refresh: (options?: { forceLatest?: boolean; silent?: boolean }) => Promise<void> }>()
-const { colWidth: poolColWidth, handleHeaderDragend: onPoolHeaderDragend } = useColumnWidths('gptphone.table.widths.free-mailbox-pool')
+const { colWidth: poolColWidth, handleHeaderDragend: onPoolHeaderDragend, resetWidths: resetPoolWidths } = useColumnWidths('gptphone.table.widths.free-mailbox-pool', { autoResetOnce: true })
 
 const filteredRows = computed(() => rows.value.filter(row => {
   const needle = search.value.trim().toLowerCase()
@@ -533,6 +539,9 @@ onMounted(async () => {
     <WorkspacePanel title="Free 注册邮箱池" :icon="Tickets" fill body-padding="none">
       <template #actions>
         <span class="pool-summary">共 {{ rows.length }} 条</span>
+        <el-tooltip content="撤销本表拖拽保存的列宽，恢复默认列宽" placement="top" :show-after="250">
+          <el-button size="small" :icon="RefreshLeft" aria-label="重置列宽" @click="resetPoolWidths">重置列宽</el-button>
+        </el-tooltip>
         <el-button size="small" type="primary" :icon="VideoPlay" :loading="runBusy" @click="quickStart">快捷运行</el-button>
         <el-button size="small" :icon="Refresh" :loading="loading" @click="refresh">刷新</el-button>
         <el-button size="small" type="primary" :icon="Plus" @click="openImport">导入 Free 邮箱</el-button>
@@ -575,6 +584,7 @@ onMounted(async () => {
           @header-dragend="(newWidth: number, oldWidth: number, column: DragColumn) => onPoolHeaderDragend(newWidth, oldWidth, column)"
           @selection-change="selected = $event" size="small">
           <el-table-column type="selection" width="42" reserve-selection />
+          <el-table-column type="index" label="序号" width="58" align="center" :index="(index: number) => index + 1 + (currentPage - 1) * pageSize" />
           <el-table-column label="邮箱" :min-width="poolColWidth('邮箱', 280)" show-overflow-tooltip>
             <template #default="{ row }">
               <div class="mailbox-account-cell">
@@ -583,15 +593,18 @@ onMounted(async () => {
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="阶段" :min-width="poolColWidth('阶段', 150)" show-overflow-tooltip><template #default="{ row }"><el-tooltip :content="mailboxStageTooltip(row)" placement="top" :show-after="250"><span class="mailbox-stage-cell"><el-tag size="small" effect="light" :type="mailboxStageType(row)">{{ mailboxStageLabel(row) }}</el-tag></span></el-tooltip></template></el-table-column>
+          <el-table-column label="是否注册" :width="poolColWidth('是否注册', 90)" align="center">
+            <template #default="{ row }"><el-tag size="small" :type="mailboxRegisteredType(row)" effect="plain">{{ mailboxRegisteredLabel(row) }}</el-tag></template>
+          </el-table-column>
+          <el-table-column label="阶段" :min-width="poolColWidth('阶段', 150)" align="center" show-overflow-tooltip><template #default="{ row }"><el-tooltip :content="mailboxStageTooltip(row)" placement="top" :show-after="250"><span class="mailbox-stage-cell"><el-tag size="small" effect="light" :type="mailboxStageType(row)">{{ mailboxStageLabel(row) }}</el-tag></span></el-tooltip></template></el-table-column>
           <el-table-column label="套餐" :width="poolColWidth('套餐', 96)" align="center" show-overflow-tooltip>
             <template #default="{ row }"><div class="mailbox-plan-cell"><el-tag size="small" :type="mailboxPlanTagType(row)" effect="plain">{{ mailboxPlanLabel(row) }}</el-tag><el-tag v-if="row.plus_trial_eligible && String(row.subscription_plan || row.plan_type || '').toLowerCase() !== 'free'" size="small" type="success" effect="plain" class="trial-tag">Plus 试用</el-tag></div></template>
           </el-table-column>
-          <el-table-column label="账号测活" :min-width="poolColWidth('账号测活', 150)" show-overflow-tooltip>
+          <el-table-column label="账号测活" :min-width="poolColWidth('账号测活', 120)" align="center" show-overflow-tooltip>
             <template #default="{ row }"><div class="mailbox-live-cell"><el-tag size="small" :type="liveStatusType(row.live_check_status)">{{ liveStatusLabel(row.live_check_status) }}</el-tag><small v-if="row.live_check_mode">{{ row.live_check_mode === 'deep' ? '深度' : '快速' }}</small></div></template>
           </el-table-column>
-          <el-table-column label="2FA" :width="poolColWidth('2FA', 110)">
-            <template #default="{ row }"><StateDot v-if="row.has_totp" tone="success" label="已启用" /><StateDot v-else-if="row.twofa_status === 'pending'" tone="warning" label="待重试" /><StateDot v-else tone="info" label="未启用" /></template>
+          <el-table-column label="凭据" :width="poolColWidth('凭据', 170)">
+            <template #default="{ row }"><div class="credential-cell"><StateDot :tone="mailboxTwofaType(row)" :label="`2FA ${mailboxTwofaLabel(row)}`" /><StateDot :tone="mailboxPasswordType(row)" :label="`密码 ${mailboxPasswordLabel(row)}`" /></div></template>
           </el-table-column>
           <el-table-column label="错误" :min-width="poolColWidth('错误', 320)">
             <template #default="{ row }">
@@ -660,7 +673,8 @@ onMounted(async () => {
 .email-copy { display: inline-flex; max-width: 100%; min-width: 0; gap: 5px; height: auto; padding: 0; color: var(--el-text-color-primary); justify-content: flex-start; }
 .email-copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .email-copy .el-icon { flex: 0 0 auto; color: var(--el-color-primary); }
-.mailbox-plan-cell, .mailbox-live-cell { display: flex; align-items: center; min-width: 0; gap: 5px; overflow: hidden; white-space: nowrap; }
+.mailbox-plan-cell, .mailbox-live-cell { display: flex; align-items: center; justify-content: center; min-width: 0; gap: 5px; overflow: hidden; white-space: nowrap; }
+.credential-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; }
 .mailbox-plan-cell > .el-tag, .mailbox-live-cell > .el-tag { flex: 0 0 auto; }
 .mailbox-stage-cell { display: inline-flex; max-width: 100%; min-width: 0; overflow: hidden; vertical-align: middle; }
 .mailbox-stage-cell :deep(.el-tag) { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

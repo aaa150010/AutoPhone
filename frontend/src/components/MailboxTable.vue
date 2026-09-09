@@ -49,6 +49,7 @@ const props = defineProps<{
   openaiRetryDisabled: boolean
   rowMutationDisabled: boolean
   rowActionLoading: string[]
+  indexOffset?: number
 }>()
 
 const emit = defineEmits<{
@@ -65,7 +66,7 @@ const emit = defineEmits<{
 
 const tableRef = ref<{ clearSelection: () => void } | null>(null)
 const nowSeconds = useTaskProgressClock(() => props.rows)
-const { colWidth: smsColWidth, handleHeaderDragend: onSmsHeaderDragend } = useColumnWidths('gptphone.table.widths.sms-mailbox')
+const { colWidth: smsColWidth, handleHeaderDragend: onSmsHeaderDragend, resetWidths: resetSmsWidths } = useColumnWidths('gptphone.table.widths.sms-mailbox', { autoResetOnce: true })
 
 function clearSelection() {
   tableRef.value?.clearSelection()
@@ -91,7 +92,7 @@ function handleDropdownCommand(command: unknown, row: MailboxRow) {
   emitRowAction(String(command), row)
 }
 
-defineExpose({ clearSelection })
+defineExpose({ clearSelection, resetWidths: resetSmsWidths })
 </script>
 
 <template>
@@ -107,6 +108,7 @@ defineExpose({ clearSelection })
     @header-dragend="(newWidth: number, oldWidth: number, column: DragColumn) => onSmsHeaderDragend(newWidth, oldWidth, column)"
     @selection-change="emit('select', $event)" size="small">
     <el-table-column type="selection" width="45" reserve-selection />
+    <el-table-column type="index" label="序号" width="58" align="center" :index="(index: number) => index + 1 + (indexOffset ?? 0)" />
     <el-table-column label="批次" :width="smsColWidth('批次', 150)" show-overflow-tooltip>
       <template #default="{ row }">
         <div class="batch-cell">
@@ -191,7 +193,7 @@ defineExpose({ clearSelection })
         </el-tooltip>
       </template>
     </el-table-column>
-    <el-table-column label="状态" :width="smsColWidth('状态', 150)">
+    <el-table-column label="状态" :width="smsColWidth('状态', 150)" align="center">
       <template #default="{ row }">
         <el-tag :type="statusTagType(row)">
           {{ statusLabel(row) }}
