@@ -321,9 +321,7 @@ class InflightAdmissionGate:
                         registered_waiter = False
                         acquired = True
                     else:
-                        # Inflight has no time-driven predicate; a coarse slice
-                        # is enough because release/suspend/resume notify.
-                        self.condition.wait(timeout=_GATE_WAIT_MAX_SECONDS)
+                        self.condition.wait(timeout=_GATE_WAIT_SECONDS)
         except BaseException:
             if registered_waiter:
                 with self.condition:

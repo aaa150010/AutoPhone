@@ -20,23 +20,26 @@ __all__ = [
 
 # Upper bound for one Condition.wait slice inside every admission loop.
 GATE_WAIT_TIMEOUT_SECONDS = 0.25
-# Fallback poll ceiling for time-driven predicates (pause/launch-interval
-# expiry). Capacity changes themselves are event-driven via notify_all, so a
-# waiting thread only needs to re-check at a coarse cadence for clock-driven
-# conditions — 1s bounds stop-free drift without the old 4x wake-up cost.
+# Coarse slice used only when a gate acquires WITHOUT a stop event. A stop
+# event lives outside the gate's Condition, so it can only be observed across
+# wait timeouts — those loops keep the fine slice. Capacity changes themselves
+# are event-driven via notify_all.
 GATE_WAIT_MAX_SECONDS = 1.0
 
 
-def gate_wait_slice(remaining: float) -> float:
+def gate_wait_slice(remaining: float, *, stop_observed: bool = True) -> float:
     """Choose the next Condition.wait timeout.
 
     ``remaining`` is an optional time-driven deadline (pause expiry, launch
-    spacing). The slice never exceeds the caller's deadline, falls back to
-    the shared fine slice for fine-grained predicates, and caps at the coarse
-    ceiling otherwise.
+    spacing); the slice never exceeds it. Loops that must observe an external
+    stop event through wait timeouts keep the fine slice; a loop without any
+    stop signal may sleep up to the coarse ceiling because only time-driven
+    predicates can change its fate.
     """
     if remaining > 0:
         return min(GATE_WAIT_TIMEOUT_SECONDS, remaining)
+    if stop_observed:
+        return GATE_WAIT_TIMEOUT_SECONDS
     return GATE_WAIT_MAX_SECONDS
 
 
