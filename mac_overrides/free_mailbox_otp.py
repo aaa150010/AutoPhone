@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 import threading
+import sys
 import math
 import inspect
 from typing import Any, Callable, Mapping
@@ -12,6 +13,14 @@ from typing import Any, Callable, Mapping
 # importing that module here (the two modules load each other).
 MANUAL_OTP_WINDOW_SECONDS = 300
 _DEADLINE_CONTROLLER_MISSING = object()
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    """Last-resort stderr note for swallowed best-effort provider side paths."""
+    try:
+        print(f"[free_mailbox_otp/{where}] {type(exc).__name__}", file=sys.stderr)
+    except Exception:
+        return
 
 
 def _deadline_controller_call(
@@ -170,18 +179,18 @@ class MailboxUrlOtpProvider:
                 "deadline_at": max(0, int(deadline_at or 0)),
             }
             callback(self.task_id, payload)
-        except Exception:
+        except Exception as exc:
             # Stop-notification failures must not break the wait loop.
-            pass
+            _note_stderr("_verification_state_opened", exc)
 
     def _clear_verification_state(self) -> None:
         callback = self.verification_state_fn
         if callable(callback):
             try:
                 callback(self.task_id, None)
-            except Exception:
+            except Exception as exc:
                 # Stop-notification failures must not break the wait loop.
-                pass
+                _note_stderr("_verification_state_reset", exc)
 
     @staticmethod
     def _label(stage_code: str) -> str:
@@ -532,12 +541,12 @@ class MailboxUrlOtpProvider:
             except TypeError:
                 try:
                     self.log_fn(f"[人工邮箱验证码/{stage_code}] 已接收当前任务的人工验证码", "info")
-                except Exception:
+                except Exception as exc:
                     # Log delivery must never break the manual-code wait.
-                    pass
-            except Exception:
+                    _note_stderr("_manual_code_log_compat", exc)
+            except Exception as exc:
                 # Log delivery must never break the manual-code wait.
-                pass
+                _note_stderr("_manual_code_log", exc)
 
     def diagnostic(self) -> dict[str, Any]:
         return self.service.diagnostic()

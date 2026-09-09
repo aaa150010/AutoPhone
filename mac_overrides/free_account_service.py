@@ -120,9 +120,9 @@ def _twofa_navigation_timeout_ms(
                 candidate = float(controller_grace_remaining())
                 if math.isfinite(candidate):
                     grace_seconds = max(0.0, candidate)
-            except Exception:
+            except Exception as exc:
                 # A missing grace probe falls back to the boolean flag below.
-                pass
+                _note_stderr("free_account_service_grace_remaining_probe", exc)
         if grace_seconds is None:
             # Older controllers expose only the boolean flag. Keep the
             # same finite handoff allowance for those adapters.
@@ -133,9 +133,9 @@ def _twofa_navigation_timeout_ms(
         try:
             timeout_ms = max(1_000, min(timeout_ms, int(float(controller_remaining()) * 1000)))
             controller_budget = True
-        except Exception:
+        except Exception as exc:
             # A missing remaining-budget probe falls back to the coarse deadline.
-            pass
+            _note_stderr("free_account_service_controller_remaining_probe", exc)
     if deadline_monotonic is not None and not controller_budget and not paused:
         try:
             timeout_ms = max(1_000, min(timeout_ms, int((float(deadline_monotonic) - time.monotonic()) * 1000)))
@@ -329,9 +329,9 @@ async def browser_add_password(
         if callable(stage_fn):
             try:
                 stage_fn(str(code))
-            except Exception:
+            except Exception as exc:
                 # Stage callbacks are pure UI progress signals.
-                pass
+                _note_stderr("free_account_service_stage_fn", exc)
 
     def failure(
         node_code: str,
@@ -680,9 +680,9 @@ async def browser_twofa(
         if callable(stage_fn):
             try:
                 stage_fn(str(code))
-            except Exception:
+            except Exception as exc:
                 # Stage callbacks are pure UI progress signals.
-                pass
+                _note_stderr("free_account_service_stage_fn_browser", exc)
 
     def failure(
         node_code: str,

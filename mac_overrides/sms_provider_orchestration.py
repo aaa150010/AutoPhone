@@ -205,9 +205,9 @@ class SmsProviderRegistry:
         if callable(self.alert_fn):
             try:
                 self.alert_fn(value)
-            except Exception:
+            except Exception as exc:
                 # Alert failures must never break provider orchestration.
-                pass
+                _note_stderr("sms_orchestration_alert_fn", exc)
 
     def _platform_exhausted(self, _provider: str) -> None:
         provider = _provider
@@ -218,15 +218,15 @@ class SmsProviderRegistry:
                     f"SMS 平台 {provider} 的全部 Key 本批次均不可用，后续任务将直接跳过该平台",
                     "warn",
                 )
-            except Exception:
+            except Exception as exc:
                 # Telemetry must not mask the exhaustion being reported.
-                pass
+                _note_stderr("sms_orchestration_exhausted_warn", exc)
         if self.is_exhausted() and callable(self.exhausted_fn):
             try:
                 self.exhausted_fn()
-            except Exception:
+            except Exception as exc:
                 # Exhausted-notification failures must not break selection.
-                pass
+                _note_stderr("sms_orchestration_exhausted_fn", exc)
 
     def begin_run(self) -> None:
         with self.lock:
@@ -422,9 +422,9 @@ class SmsProviderRegistry:
                         f"SMS 平台 {provider_name} 库存查询失败：{pool.safe_error(exc)}",
                         "warn",
                     )
-                except Exception:
+                except Exception as exc:
                     # Telemetry must not mask the inventory failure surfaced above.
-                    pass
+                    _note_stderr("sms_orchestration_inventory_warn", exc)
             return []
         normalized: list[dict[str, Any]] = []
         for raw in rows or []:
