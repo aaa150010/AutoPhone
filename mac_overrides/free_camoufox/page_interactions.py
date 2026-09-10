@@ -663,19 +663,65 @@ async def _wait_for_any_selector(host, page: Any, selectors: tuple[str, ...], *,
     return None
 
 
+_ENTRY_HYDRATION_PROBE_INTERVAL_SECONDS = 0.1
+_ENTRY_HYDRATION_READY_FLOOR_SECONDS = 0.3
+
+# Positive evidence that the first-party auth bundle has committed content:
+# React 18 stamps fiber keys on the DOM nodes it rendered. Only an explicit
+# ``true`` shortens the grace; probes that cannot run (test doubles, cross
+# -origin quirks) keep the historical bounded sleep.
+_ENTRY_HYDRATION_PROBE_SCRIPT = """
+() => {
+  if (document.readyState === 'loading') return false;
+  const nodes = document.querySelectorAll('form, input, button');
+  for (const node of nodes) {
+    for (const key of Object.keys(node)) {
+      if (key.startsWith('__reactFiber$') || key.startsWith('__reactContainer$')) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+"""
+
+
+async def _page_react_hydrated(page: Any) -> bool:
+    """Return True only with positive evidence that React committed the page."""
+    evaluate = getattr(page, "evaluate", None)
+    if not callable(evaluate):
+        return False
+    try:
+        return bool(await evaluate(_ENTRY_HYDRATION_PROBE_SCRIPT))
+    except Exception:
+        return False
+
+
 async def _wait_for_entry_hydration(host, page: Any, *, timeout: float = 1.5) -> None:
     """Give the first-party auth shell time to bind its React submit handler.
 
     The email input can be painted before the auth bundle has installed its
     delegated submit listener. A native click in that small window reloads
-    ``/auth/login`` instead of starting the OAuth transaction. Keep this
-    bounded grace period only for real browser pages; lightweight test and
-    transport doubles do not expose Playwright's event API and remain
-    immediate.
+    ``/auth/login`` instead of starting the OAuth transaction. The grace exits
+    early only with positive hydration evidence (React fiber keys on rendered
+    nodes plus a short floor); any probe failure or missing marker keeps the
+    full bounded sleep, so the worst case stays identical to the historical
+    fixed wait. Lightweight test and transport doubles do not expose
+    Playwright's event API and remain immediate.
     """
     if not callable(getattr(page, "on", None)):
         return
-    await asyncio.sleep(max(0.0, min(3.0, float(timeout))))
+    grace = max(0.0, min(3.0, float(timeout)))
+    if grace <= 0.0:
+        return
+    deadline = time.monotonic() + grace
+    floor = time.monotonic() + min(_ENTRY_HYDRATION_READY_FLOOR_SECONDS, grace)
+    while time.monotonic() < deadline:
+        if time.monotonic() >= floor and await _page_react_hydrated(page):
+            return
+        await asyncio.sleep(
+            min(_ENTRY_HYDRATION_PROBE_INTERVAL_SECONDS, max(0.0, deadline - time.monotonic()))
+        )
 
 
 async def _find_visible_selector(host, page: Any, selectors: tuple[str, ...]) -> str | None:

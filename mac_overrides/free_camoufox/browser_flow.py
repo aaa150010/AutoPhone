@@ -61,7 +61,10 @@ except ImportError:  # pragma: no cover - top-level recovery import
 # so a finished navigation is observed roughly half a wait earlier; the stuck
 # counters and step limits below are scaled to keep wall-clock semantics.
 _STATE_POLL_SECONDS = 0.5
-_SUBMIT_POLL_SECONDS = 1.0
+# Submit-transition polling shares the state cadence; the 12s/45s/60s submit
+# windows below are wall-clock comparisons, so the tighter cadence only
+# observes the same transitions sooner.
+_SUBMIT_POLL_SECONDS = _STATE_POLL_SECONDS
 # seen[state] guard fires after >4 consecutive polls at the historic 1s cadence
 # (~5s); with a 0.5s cadence the same wall-clock budget needs >8 polls.
 _STATE_STUCK_POLLS = 8

@@ -260,6 +260,46 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         self.assertEqual(browser_elapsed, 1.5)
         self.assertEqual(clock[0] - 100.0, 1.5)
 
+    def test_entry_hydration_grace_exits_early_on_positive_react_evidence(self):
+        """Positive React fiber evidence shortens the grace; negative keeps it."""
+
+        class HydratedPage:
+            def __init__(self):
+                self.probe_calls = 0
+
+            def on(self, *_args):
+                return None
+
+            async def evaluate(self, *_args):
+                self.probe_calls += 1
+                return True
+
+        class UnhydratedPage:
+            def on(self, *_args):
+                return None
+
+            async def evaluate(self, *_args):
+                return False
+
+        clock = [100.0]
+
+        async def fake_sleep(seconds):
+            clock[0] += float(seconds or 0.0)
+
+        hydrated_page = HydratedPage()
+        with (
+            patch.object(runtime.asyncio, "sleep", side_effect=fake_sleep),
+            patch.object(runtime.time, "monotonic", side_effect=lambda: clock[0]),
+        ):
+            asyncio.run(runtime._wait_for_entry_hydration(hydrated_page, timeout=1.5))
+            hydrated_elapsed = clock[0] - 100.0
+            asyncio.run(runtime._wait_for_entry_hydration(UnhydratedPage(), timeout=1.5))
+            unhydrated_elapsed = clock[0] - 100.0 - hydrated_elapsed
+
+        self.assertGreaterEqual(hydrated_page.probe_calls, 1)
+        self.assertLess(hydrated_elapsed, 1.5)
+        self.assertEqual(unhydrated_elapsed, 1.5)
+
     @staticmethod
     def _config(**overrides):
         value = {
