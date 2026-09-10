@@ -51,8 +51,17 @@ _SECURITY_HTML_PATH_MARKERS = (
     "cf-chl-",
     "cf-turnstile",
 )
-SECURITY_CHALLENGE_WAIT_SECONDS = 60.0
-SECURITY_CHALLENGE_POLL_SECONDS = 2.0
+
+try:
+    from .free_protocol_security import (
+        SECURITY_CHALLENGE_POLL_SECONDS,
+        SECURITY_CHALLENGE_WAIT_SECONDS,
+    )
+except ImportError:  # pragma: no cover - top-level recovery import
+    from free_protocol_security import (  # type: ignore[no-redef]
+        SECURITY_CHALLENGE_POLL_SECONDS,
+        SECURITY_CHALLENGE_WAIT_SECONDS,
+    )
 
 # Keep the navigation shape in lockstep with AutoRegister's BrowserSession.
 # The recovered transport's PAGE_HEADERS describe an older Windows Chrome
