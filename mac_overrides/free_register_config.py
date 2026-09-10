@@ -169,6 +169,18 @@ class FreeConfigStore:
         self.log_path = self.data_dir / "logs.json"
         self.lock_path = self.data_dir / "runtime.lock"
         self._lock = threading.RLock()
+        # Polled endpoints (state/config views) hit ``load`` every request.
+        # Cache the last normalized document and reuse it while the file's
+        # mtime/size are unchanged; ``save`` writes under the same lock, so
+        # its own loads always see fresh bytes through the mtime check.
+        self._load_cache: tuple[tuple[int, int], dict[str, Any]] | None = None
+
+    def _file_identity(self) -> tuple[int, int] | None:
+        try:
+            stat_result = self.path.stat()
+        except OSError:
+            return None
+        return (stat_result.st_mtime_ns, stat_result.st_size)
 
     def normalize(self, value: Mapping[str, Any] | None, *, previous: Mapping[str, Any] | None = None) -> dict[str, Any]:
         source_version = _int(
@@ -366,6 +378,13 @@ class FreeConfigStore:
 
     def load(self) -> dict[str, Any]:
         with self._lock:
+            identity = self._file_identity()
+            cached = self._load_cache
+            if identity is not None and cached is not None and cached[0] == identity:
+                # Callers (public/secret/save) freely mutate the returned
+                # document, including nested mappings; hand each one its own
+                # copy of the cached snapshot.
+                return copy.deepcopy(cached[1])
             try:
                 value = json.loads(self.path.read_text(encoding="utf-8"))
             except (FileNotFoundError, OSError, UnicodeError, json.JSONDecodeError):
@@ -406,6 +425,17 @@ class FreeConfigStore:
             )
             if needs_policy_migration:
                 atomic_write(self.path, normalized)
+            # Cache only write-free loads: a load that just persisted a staged
+            # migration must not be reused, because the next load continues
+            # the migration chain (e.g. v7 -> v8, then v8 -> v9).
+            if not needs_policy_migration:
+                final_identity = self._file_identity()
+                if final_identity is not None:
+                    # Store a private snapshot: the returned document is the
+                    # caller's to mutate (public() masks secrets in place).
+                    self._load_cache = (final_identity, copy.deepcopy(normalized))
+            else:
+                self._load_cache = None
             return normalized
 
     def save(self, value: Mapping[str, Any]) -> dict[str, Any]:
