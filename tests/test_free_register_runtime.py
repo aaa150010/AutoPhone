@@ -2328,6 +2328,55 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         row_id = manager.pool.entries()[0].row_id
         self.assertEqual(manager.secret([], "totp", row_ids=[row_id]), "JBSWY3DPEHPK3PXP")
 
+    def test_failed_task_with_saved_token_can_retry_missing_twofa(self):
+        """A callback-phase failure still allows 2FA enrollment from durable state.
+
+        The account result holds a token and a password but no twofa status;
+        the retry must key off that durable snapshot instead of the failed
+        task's public status.
+        """
+        pool = FreeMailboxPool(self.data_dir)
+        pool.import_text("b@example.test----https://mail.example.test/b\n")
+        proxies = FreeProxyPool(self.data_dir)
+        proxies.import_text("http://proxy-b.test:8000\n")
+        retry_flags = []
+
+        def runner(task, _config, _stop, _stage, _log, *, twofa_retry=False):
+            retry_flags.append(twofa_retry)
+            return {"access_token": "token-private", "password": FIXED_PASSWORD, "twofa_status": "enabled", "totp_secret": "JBSWY3DPEHPK3PXP"}
+
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=runner,
+            proxy_probe=lambda _proxy, _url: "203.0.113.20",
+        )
+        row_id = pool.entries()[0].row_id
+        pool.save_result(row_id, {
+            "access_token": "token-private",
+            "has_access_token": True,
+            "password_status": "enabled",
+        })
+        manager.retry_twofa(row_id, {})
+        deadline = time.time() + 3
+        while manager.public_state()["running"] and time.time() < deadline:
+            time.sleep(0.01)
+        self.assertEqual(retry_flags, [True])
+        self.assertEqual(manager.secret([], "totp", row_ids=[row_id]), "JBSWY3DPEHPK3PXP")
+
+    def test_twofa_retry_rejects_already_enabled_account(self):
+        pool = FreeMailboxPool(self.data_dir)
+        pool.import_text("c@example.test----https://mail.example.test/c\n")
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=lambda *_args, **_kwargs: {},
+            proxy_probe=lambda _proxy, _url: "203.0.113.20",
+        )
+        row_id = pool.entries()[0].row_id
+        pool.save_result(row_id, {"access_token": "t", "has_access_token": True, "twofa_status": "enabled"})
+        with self.assertRaises(FreeRegisterError) as raised:
+            manager.retry_twofa(row_id, {})
+        self.assertIn("已启用", str(raised.exception))
+
     def test_registration_retry_preserves_remail_source_and_service_token(self):
         free_root = self.data_dir / "free_register"
         free_root.mkdir()

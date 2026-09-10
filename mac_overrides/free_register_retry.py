@@ -632,16 +632,21 @@ class FreeRegisterRetryMixin:
         normalized = str(task_id or "").strip()
         with self._lock:
             task = copy.deepcopy(self._tasks.get(normalized))
-        if task is None:
-            row = self.pool.entry(normalized)
-            saved = self.pool.result(normalized) if row is not None else {}
-            if row is None or saved.get("twofa_status") != "pending":
-                raise FreeRegisterError("free_twofa_retry", "重试 Free 账号 2FA", "该任务当前没有待重试的 2FA", retryable=False)
-            row_state = self.pool._row_state(row.row_id)
-            source = str(row_state.get("source") or "url").strip().lower()
-            task = {"task_id": normalized, "row_id": row.row_id, "email": row.email, "mailbox_url": row.mailbox_url, "mailbox_source": source, "service_token": str(row_state.get("service_token") or "") if source == "remail" else "", "result": saved, "driver": saved.get("driver") or "protocol", "status": "twofa_pending"}
-        if str(task.get("status") or "") != "twofa_pending":
+        if task is not None and str(task.get("status") or "") == "twofa_pending":
+            return self._enqueue_retry(task, config, retry_node="free_twofa_activate", twofa_retry=True)
+        # Mirror ``retry_password``: the continuation is keyed off the durable
+        # result rather than the task's public status. A callback-phase failure
+        # can move the task away from ``twofa_pending`` while the saved account
+        # still lacks an enabled 2FA, so enroll from the durable snapshot.
+        row = self.pool.entry(normalized)
+        saved = self.pool.result(normalized) if row is not None else {}
+        if row is None or not isinstance(saved, Mapping) or not saved.get("has_access_token"):
             raise FreeRegisterError("free_twofa_retry", "重试 Free 账号 2FA", "该任务当前没有待重试的 2FA", retryable=False)
+        if str(saved.get("twofa_status") or "").strip().lower() == "enabled":
+            raise FreeRegisterError("free_twofa_retry", "重试 Free 账号 2FA", "该账号 2FA 已启用，无需重试", retryable=False)
+        row_state = self.pool._row_state(row.row_id)
+        source = str(row_state.get("source") or "url").strip().lower()
+        task = {"task_id": normalized, "row_id": row.row_id, "email": row.email, "mailbox_url": row.mailbox_url, "mailbox_source": source, "service_token": str(row_state.get("service_token") or "") if source == "remail" else "", "result": saved, "driver": saved.get("driver") or "protocol", "status": "twofa_pending"}
         return self._enqueue_retry(task, config, retry_node="free_twofa_activate", twofa_retry=True)
 
     def retry_password(self, task_id: str, config: Mapping[str, Any]) -> dict[str, Any]:
