@@ -22,10 +22,16 @@ const LEVEL_CLASSES: Record<string, string> = {
   warn: 'log-warn',
   debug: 'log-debug',
 }
+// The run log auto-follows the tail; rendering thousands of history rows
+// only costs DOM and recompute on every append. 250 rows matches the
+// FreeTaskLogDialog window size.
+const LOG_TAIL_WINDOW = 250
 
 const renderedLogs = computed(() => {
+  const all = props.logs || []
+  const visible = all.length > LOG_TAIL_WINDOW ? all.slice(-LOG_TAIL_WINDOW) : all
   const occurrences = new Map<string, number>()
-  return (props.logs || []).map((log) => {
+  return visible.map((log) => {
     const entry = typeof log === 'string' ? { message: log } : log
     const time = String(entry?.time || '')
     const level = String(entry?.type || entry?.level || '').toLowerCase()
