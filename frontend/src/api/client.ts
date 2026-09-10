@@ -1,6 +1,7 @@
 import type {
   ApiErrorPayload,
   AppState,
+  JsonRecord,
   MailboxBatchOperation,
   MailboxOperationKind,
   MailboxPayload,
@@ -70,7 +71,7 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T = unknown>(path: string, body?: unknown): Promise<T> {
+export async function api<T>(path: string, body?: JsonRecord): Promise<T> {
   const options: RequestInit = body === undefined
     ? { cache: 'no-store' }
     : {

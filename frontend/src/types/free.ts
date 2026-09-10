@@ -8,7 +8,7 @@ code can import from ``types/free`` directly.
 
 import type { JsonRecord, ManualVerificationRequest, TaskFailure, TaskProgress, TaskTiming } from './api'
 
-export interface FreeConfig {
+export type FreeConfig = {
   version?: number
   driver: 'protocol' | 'camoufox'
   flow_profile?: 'reference_20260823' | 'legacy' | string

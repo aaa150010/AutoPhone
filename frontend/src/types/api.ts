@@ -187,7 +187,7 @@ export interface MailboxVerificationState {
   deadline_at: number
 }
 
-export interface ManualVerificationSubmission {
+export type ManualVerificationSubmission = {
   task_id: string
   input_kind: ManualVerificationInputKind
   generation: number
