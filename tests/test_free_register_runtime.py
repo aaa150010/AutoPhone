@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests import _support
+
 import json
 import copy
 from concurrent.futures import Future
@@ -76,11 +78,8 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def _drain_diagnostic_writer(self, manager) -> None:
-        """Flush the facade's async diagnostic queue before store reads."""
-        flush = getattr(getattr(manager, "log_store", None), "diagnostic_writer", None)
-        flush = getattr(flush, "flush", None)
-        if callable(flush):
-            flush(2.0)
+        """Delegate to the shared diagnostic-drain helper."""
+        _support.drain_diagnostic_writer(manager)
 
     def test_free_adapter_substep_timing_is_aggregated_and_safe(self):
         logs = []

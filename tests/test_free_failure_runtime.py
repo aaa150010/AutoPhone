@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests import _support
+
 import json
 from pathlib import Path
 import tempfile
@@ -36,10 +38,8 @@ class FreeFailureRuntimeTests(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def _drain_diagnostic_writer(self, store) -> None:
-        """Flush the facade's async diagnostic queue before store reads."""
-        flush = getattr(getattr(store, "diagnostic_writer", None), "flush", None)
-        if callable(flush):
-            flush(2.0)
+        """Delegate to the shared diagnostic-drain helper."""
+        _support.drain_diagnostic_writer(store)
 
     def test_password_status_normalizes_success_markers_from_legacy_results(self) -> None:
         for value in (
