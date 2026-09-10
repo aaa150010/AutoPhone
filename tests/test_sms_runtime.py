@@ -2513,6 +2513,34 @@ class SmsRuntimeTests(unittest.TestCase):
         self.assertEqual(registry.public_statuses()[0]["in_flight"], 1)
         provider.complete()
 
+    def test_isolated_sms_get_clamps_status_poll_timeout_only(self):
+        from mac_overrides import sms_network
+
+        timeouts: list[int] = []
+
+        class Session:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def get(self, url, **kwargs):
+                timeouts.append(kwargs["timeout"])
+                return type("Response", (), {"text": "ACCESS_STATUS:1"})()
+
+        with mock.patch("curl_cffi.requests.Session", Session):
+            sms_network._sms_thread_local.sessions = {}
+            sms_network.isolated_sms_get(
+                "https://sms.example.test/api?api_key=k&action=getStatus&id=1",
+            )
+            sms_network.isolated_sms_get(
+                "https://sms.example.test/api?api_key=k&action=getBalance",
+            )
+            sms_network.isolated_sms_get(
+                "https://sms.example.test/api?api_key=k&action=getStatus&id=1",
+                timeout=8,
+            )
+        self.assertEqual(timeouts, [10, 30, 8])
+        sms_network._sms_thread_local.sessions = {}
+
     def test_isolated_sms_get_pools_default_sessions_per_thread_and_drops_on_failure(self):
         from mac_overrides import sms_network
 

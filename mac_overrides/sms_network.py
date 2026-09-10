@@ -54,6 +54,10 @@ SMS_NETWORK_ATTEMPTS = 3
 SMS_FIRST_WAIT_SECONDS = 30
 SMS_SECOND_WAIT_SECONDS = 30
 SMS_POLL_INTERVAL_SECONDS = 3
+# Status polls are light queries; a hung poll must not consume a third of the
+# wait round. Transient failures retry through call_sms_with_retries.
+_SMS_STATUS_POLL_TIMEOUT_SECONDS = 10
+_STATUS_POLL_URL_MARKER = "action=getstatus"
 
 
 def key_fingerprint(key: str) -> str:
@@ -373,10 +377,13 @@ def isolated_sms_get(
     session = _pooled_sms_session(session_factory, proxy, verify) if pooled else session_factory()
     if hasattr(session, "trust_env"):
         session.trust_env = False
+    effective_timeout = max(1, int(timeout))
+    if _STATUS_POLL_URL_MARKER in str(url or "").lower() and effective_timeout > _SMS_STATUS_POLL_TIMEOUT_SECONDS:
+        effective_timeout = _SMS_STATUS_POLL_TIMEOUT_SECONDS
     request_kwargs: dict[str, Any] = {
         "params": dict(params or {}),
         "headers": dict(headers or {}),
-        "timeout": max(1, int(timeout)),
+        "timeout": effective_timeout,
         "verify": verify,
     }
     if proxy:
