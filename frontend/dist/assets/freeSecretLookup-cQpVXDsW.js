@@ -1,0 +1,1 @@
+function e(t,r){const o=String(t||"").trim();if(o)return{task_ids:[o]};const n=String(r||"").trim();return n?{row_ids:[n]}:{}}function i(t){const r=String(t||"").trim();return r?{row_ids:[r]}:{}}export{e as a,i as f};

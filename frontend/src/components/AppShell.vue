@@ -1,19 +1,21 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, provide, ref, watch } from 'vue'
+import { defineAsyncComponent, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { Document, Expand, Fold, Link, MessageBox, Monitor, Scissor, Setting, ShoppingCart, Tickets, Wallet } from '@element-plus/icons-vue'
-import MailboxPage from '../pages/MailboxPage.vue'
-import FreeMailboxPoolPage from '../pages/FreeMailboxPoolPage.vue'
-import FreeRegistrationPage from '../pages/FreeRegistrationPage.vue'
-import MailboxSplitterPage from '../pages/MailboxSplitterPage.vue'
-import UrlMailboxTestPage from '../pages/UrlMailboxTestPage.vue'
-import RunPage from '../pages/RunPage.vue'
-import SettingsPage from '../pages/SettingsPage.vue'
-import LogCenterPage from '../pages/LogCenterPage.vue'
-import MailboxParserSamplesPage from '../pages/MailboxParserSamplesPage.vue'
-import RemailPurchasePage from '../pages/RemailPurchasePage.vue'
-import RemailOrdersPage from '../pages/RemailOrdersPage.vue'
+// Pages beyond the landing route load on demand: each becomes its own chunk
+// instead of one statically-bundled index, so first paint downloads less.
+const MailboxPage = defineAsyncComponent(() => import('../pages/MailboxPage.vue'))
+const FreeMailboxPoolPage = defineAsyncComponent(() => import('../pages/FreeMailboxPoolPage.vue'))
+const FreeRegistrationPage = defineAsyncComponent(() => import('../pages/FreeRegistrationPage.vue'))
+const MailboxSplitterPage = defineAsyncComponent(() => import('../pages/MailboxSplitterPage.vue'))
+const UrlMailboxTestPage = defineAsyncComponent(() => import('../pages/UrlMailboxTestPage.vue'))
+const RunPage = defineAsyncComponent(() => import('../pages/RunPage.vue'))
+const SettingsPage = defineAsyncComponent(() => import('../pages/SettingsPage.vue'))
+const LogCenterPage = defineAsyncComponent(() => import('../pages/LogCenterPage.vue'))
+const MailboxParserSamplesPage = defineAsyncComponent(() => import('../pages/MailboxParserSamplesPage.vue'))
+const RemailPurchasePage = defineAsyncComponent(() => import('../pages/RemailPurchasePage.vue'))
+const RemailOrdersPage = defineAsyncComponent(() => import('../pages/RemailOrdersPage.vue'))
 import { appControllerKey, createAppController } from '../composables/useAppController'
 import OpenAIConnectivityDiagnosticDialog from './OpenAIConnectivityDiagnosticDialog.vue'
 

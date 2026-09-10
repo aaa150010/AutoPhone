@@ -1,8 +1,17 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import AutoImport from 'unplugin-auto-import/vite'
+import Components from 'unplugin-vue-components/vite'
+import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    // On-demand Element Plus: only the components/styles each SFC actually
+    // uses are bundled, replacing the previous full-library import.
+    AutoImport({ resolvers: [ElementPlusResolver()] }),
+    Components({ resolvers: [ElementPlusResolver()] }),
+  ],
   server: {
     host: '127.0.0.1',
     port: 5173,
@@ -21,7 +30,7 @@ export default defineConfig({
     rollupOptions: {
       onwarn(warning, warn) {
         const dependencyId = String(warning.id || '').replaceAll('\\', '/')
-        if (warning.code === 'INVALID_ANNOTATION' && dependencyId.includes('/node_modules/@vueuse/core/')) return
+        if (warning.code === 'INVALID_ANNOTATION' && dependencyId.includes('/node_modules/')) return
         warn(warning)
       },
       output: {
@@ -29,7 +38,6 @@ export default defineConfig({
           const moduleId = id.replaceAll('\\', '/')
           if (moduleId.includes('/node_modules/@element-plus/icons-vue/')) return 'element-icons'
           if (moduleId.includes('/node_modules/element-plus/')) return 'element-plus'
-          if (moduleId.includes('/node_modules/@vueuse/')) return 'vueuse'
           if (moduleId.includes('/node_modules/vue/') || moduleId.includes('/node_modules/@vue/')) return 'vue'
           return undefined
         },

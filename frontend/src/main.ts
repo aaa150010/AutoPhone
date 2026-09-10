@@ -1,6 +1,6 @@
 import { createApp } from 'vue'
-import ElementPlus from 'element-plus'
-import 'element-plus/dist/index.css'
 import './styles/base.css'
 import App from './App.vue'
-createApp(App).use(ElementPlus).mount('#app')
+// Element Plus resolves on demand via unplugin-vue-components/AutoImport in
+// vite.config.ts; no full-library import here keeps the bundle to used parts.
+createApp(App).mount('#app')
