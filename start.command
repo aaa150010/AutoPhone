@@ -25,11 +25,31 @@ fi
 if [ ! -x "$VENV_DIR/bin/python" ]; then echo "Creating local Python virtual environment..."; "$PYTHON_BIN" -m venv "$VENV_DIR"; fi
 if ! "$VENV_DIR/bin/python" -c 'import sys; raise SystemExit(0 if sys.version_info[:2] >= (3, 13) else 1)' >/dev/null 2>&1; then echo "The local Python environment is stale or cannot be opened."; exit 1; fi
 if ! "$VENV_DIR/bin/python" - <<'PY' >/dev/null 2>&1
+# One interpreter probe replaces four sequential starts: dependency presence,
+# the camoufox package, and the downloaded browser runtime are all checked in
+# a single Python startup (~0.5s saved on every launch).
 import cryptography, curl_cffi, flask, requests, selenium, werkzeug
+import camoufox
+from camoufox.pkgman import installed_verstr
+installed_verstr()
 PY
 then
-  echo "Installing mac Python dependencies..."
-  "$VENV_DIR/bin/python" -m pip install flask==3.1.3 werkzeug==3.1.8 cryptography==46.0.5 curl_cffi==0.15.0 requests selenium rich python-dotenv pysocks certifi charset-normalizer idna urllib3
+  if ! "$VENV_DIR/bin/python" - <<'PY' >/dev/null 2>&1
+import cryptography, curl_cffi, flask, requests, selenium, werkzeug
+PY
+  then
+    echo "Installing mac Python dependencies..."
+    "$VENV_DIR/bin/python" -m pip install flask==3.1.3 werkzeug==3.1.8 cryptography==46.0.5 curl_cffi==0.15.0 requests selenium rich python-dotenv pysocks certifi charset-normalizer idna urllib3
+  fi
+  if ! "$VENV_DIR/bin/python" - <<'PY' >/dev/null 2>&1
+import camoufox
+PY
+  then "$VENV_DIR/bin/python" -m pip install "camoufox[geoip]"; fi
+  if ! "$VENV_DIR/bin/python" - <<'PY' >/dev/null 2>&1
+from camoufox.pkgman import installed_verstr
+installed_verstr()
+PY
+  then "$VENV_DIR/bin/python" "$APP_DIR/tools/install_camoufox_runtime.py"; fi
 fi
 export XDG_CACHE_HOME="$APP_DIR/data/cache"
 if [ ! -f "$APP_DIR/node_chain.dat" ] && [ -f "$APP_DIR/external_assets/node_chain.dat" ]; then
@@ -63,15 +83,6 @@ except OSError:
     shutil.copytree(node_dir, target)
 PY
 fi
-if ! "$VENV_DIR/bin/python" - <<'PY' >/dev/null 2>&1
-import camoufox
-PY
-then "$VENV_DIR/bin/python" -m pip install "camoufox[geoip]"; fi
-if ! "$VENV_DIR/bin/python" - <<'PY' >/dev/null 2>&1
-from camoufox.pkgman import installed_verstr
-installed_verstr()
-PY
-then "$VENV_DIR/bin/python" "$APP_DIR/tools/install_camoufox_runtime.py"; fi
 NODE_BIN="$(command -v node || true)"
 if [ -n "$NODE_BIN" ]; then export CODEX_NODE_BINARY="$NODE_BIN"; fi
 NPM_BIN="$(command -v npm || true)"
