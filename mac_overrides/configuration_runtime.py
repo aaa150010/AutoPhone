@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 try:
+    from .numeric_coerce import coerce_int as _coerce_int_impl
+except ImportError:  # pragma: no cover - top-level recovery import
+    from numeric_coerce import coerce_int as _coerce_int_impl  # type: ignore[no-redef]
+
+try:
     from .atomic_io import atomic_write_json
 except ImportError:  # pragma: no cover - top-level recovery import
     from atomic_io import atomic_write_json  # type: ignore[no-redef]
@@ -63,15 +68,7 @@ def make_email_proxy_scope_migrator(
     return migrate
 
 def _coerce_int(value: Any, default: int, minimum: int | None = None, maximum: int | None = None) -> int:
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        parsed = int(default)
-    if minimum is not None:
-        parsed = max(int(minimum), parsed)
-    if maximum is not None:
-        parsed = min(int(maximum), parsed)
-    return parsed
+    return _coerce_int_impl(value, default, minimum=minimum, maximum=maximum)
 
 
 def make_email_timeout_migrator(

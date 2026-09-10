@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+try:
+    from .numeric_coerce import coerce_int as _coerce_int_impl
+except ImportError:  # pragma: no cover - top-level recovery import
+    from numeric_coerce import coerce_int as _coerce_int_impl  # type: ignore[no-redef]
+
 from collections.abc import Callable, Iterable, Mapping
 import copy
 import hashlib
@@ -57,10 +62,7 @@ def _safe_id(value: Any) -> str:
 
 
 def _safe_int(value: Any, default: int = 0) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
+    return _coerce_int_impl(value, default)
 
 
 def _row_fingerprint(value: Any) -> str:

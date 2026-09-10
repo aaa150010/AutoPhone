@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+try:
+    from .numeric_coerce import coerce_int as _coerce_int_impl
+except ImportError:  # pragma: no cover - top-level recovery import
+    from numeric_coerce import coerce_int as _coerce_int_impl  # type: ignore[no-redef]
+
 from collections.abc import Mapping
 import hashlib
 import hmac
@@ -279,10 +284,7 @@ class RuntimeInfoRouteController:
 
 
 def _safe_int(value: Any, default: int) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
+    return _coerce_int_impl(value, default)
 
 
 __all__ = ["RuntimeInfoRouteController"]

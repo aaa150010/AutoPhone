@@ -7,6 +7,11 @@ needs to provide task rows, a progress lookup, and the SMS ledger.
 
 from __future__ import annotations
 
+try:
+    from .numeric_coerce import coerce_int as _coerce_int_impl
+except ImportError:  # pragma: no cover - top-level recovery import
+    from numeric_coerce import coerce_int as _coerce_int_impl  # type: ignore[no-redef]
+
 import copy
 import math
 import threading
@@ -52,15 +57,7 @@ def _coerce_int(
     minimum: int | None = None,
     maximum: int | None = None,
 ) -> int:
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        parsed = int(default)
-    if minimum is not None:
-        parsed = max(int(minimum), parsed)
-    if maximum is not None:
-        parsed = min(int(maximum), parsed)
-    return parsed
+    return _coerce_int_impl(value, default, minimum=minimum, maximum=maximum)
 
 
 def snapshot_ledger(ledger: Any) -> dict[str, list[dict[str, Any]]]:

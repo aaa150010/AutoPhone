@@ -7,6 +7,11 @@ former closure variables.
 
 from __future__ import annotations
 
+try:
+    from .numeric_coerce import coerce_int as _coerce_int_impl
+except ImportError:  # pragma: no cover - top-level recovery import
+    from numeric_coerce import coerce_int as _coerce_int_impl  # type: ignore[no-redef]
+
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -127,10 +132,7 @@ SUB2_EXPORT_MODEL_MAPPING = {
 
 
 def _safe_int(value: Any, default: int) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
+    return _coerce_int_impl(value, default)
 
 
 def _normalize_run_mailbox_rows(value: Any) -> list[dict[str, Any]] | None:

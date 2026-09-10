@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+try:
+    from .numeric_coerce import coerce_int as _coerce_int_impl
+except ImportError:  # pragma: no cover - top-level recovery import
+    from numeric_coerce import coerce_int as _coerce_int_impl  # type: ignore[no-redef]
+
 from contextvars import ContextVar
 import importlib.util
 import copy
@@ -698,15 +703,7 @@ def _diagnostic_friendly_log_message(value):
 
 
 def _int_value(value, default=0, minimum=None, maximum=None):
-    try:
-        result = int(value)
-    except (TypeError, ValueError):
-        result = int(default)
-    if minimum is not None:
-        result = max(int(minimum), result)
-    if maximum is not None:
-        result = min(int(maximum), result)
-    return result
+    return _coerce_int_impl(value, default, minimum=minimum, maximum=maximum)
 
 
 def _safe_response_status(value) -> int | None:
