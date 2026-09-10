@@ -1035,83 +1035,10 @@ class FreeProxyPool:
                 # Only probe enough stale rows to fill the requested count.
                 # A failed stale proxy is quarantined and skipped so another
                 # healthy candidate can be leased in the same transaction.
-                for record in stale:
-                    if len(selected_values) >= requested:
-                        break
-                    configured_proxy = _proxy_url(record)
-                    transport_proxy = proxy_transport_value(
-                        configured_proxy,
-                        driver=driver,
-                        socks5_dns_mode=self.socks5_dns_mode,
-                    )
-                    try:
-                        started = time.monotonic()
-                        _set_probe_status(None)
-                        if probe is None:
-                            exit_ip, probe_mode = self._probe_with_policy(transport_proxy, probe_url)
-                        else:
-                            exit_ip, probe_mode = str(probe(transport_proxy, probe_url)).strip(), "custom"
-                        observed_status = _probe_status()
-                        probe_http_statuses[str(record.get("proxy_id") or "")] = observed_status or 200
-                        exit_ip = str(exit_ip or "").strip() if _candidate_probe_ip(exit_ip) else ""
-                        self.record_success(
-                            str(record.get("proxy_id") or ""),
-                            exit_ip=exit_ip,
-                            latency_ms=int((time.monotonic() - started) * 1000),
-                            probe_mode=probe_mode,
-                            effective_scheme=urlsplit(transport_proxy).scheme.lower(),
-                            http_status=probe_http_statuses.get(str(record.get("proxy_id") or "")),
-                        )
-                        # ``record_success`` reloads and persists the row;
-                        # carry the fresh observation into this bind's local
-                        # snapshot so the returned binding reflects it.
-                        record["last_exit_ip"] = exit_ip
-                        record["latency_ms"] = int((time.monotonic() - started) * 1000)
-                        record["last_probe_mode"] = probe_mode
-                        selected_values.append(record)
-                    except Exception as exc:
-                        probe_http_statuses[str(record.get("proxy_id") or "")] = _probe_status()
-                        # A stale refresh has the same health policy as an
-                        # explicit bind: only transport/5xx evidence may
-                        # quarantine a saved row.  Challenges and business
-                        # 4xx/429 responses are surfaced to the caller but do
-                        # not silently poison the shared pool.
-                        health_error: BaseException = exc
-                        if not getattr(health_error, "node_code", ""):
-                            # Raw probe exceptions do not carry a Free node;
-                            # attach one locally so HTTP 5xx can be classified
-                            # without broadening the global classifier to all
-                            # arbitrary exceptions with a status attribute.
-                            health_error = FreeRegisterError(
-                                "free_proxy_preflight",
-                                "Free 代理预检",
-                                proxy_error_detail(exc),
-                                provider_status=getattr(exc, "provider_status", None),
-                                error_code=proxy_error_code(exc),
-                            )
-                            health_error.__cause__ = exc
-                        if is_proxy_health_failure(health_error):
-                            self.record_failure(
-                                str(record.get("proxy_id") or ""),
-                                node_code=proxy_error_code(exc),
-                                message=proxy_error_detail(exc),
-                                http_status=probe_http_statuses.get(str(record.get("proxy_id") or "")),
-                            )
-                # Shared healthy_random allocation intentionally permits a
-                # single healthy proxy to serve multiple concurrent tasks.
-                # Once one stale candidate has passed its bounded refresh,
-                # reuse it for any remaining requested slots.
-                if selected_values and len(selected_values) < requested:
-                    selected_values.extend(
-                        source.choice(selected_values)
-                        for _ in range(requested - len(selected_values))
-                    )
-                if len(selected_values) < requested:
-                    raise self._pool_health_error(
-                        requested=requested,
-                        driver=driver,
-                        candidates=selected_values,
-                    )
+                # The bounded refresh probes run below, after the lock: a
+                # multi-second network probe inside the critical section
+                # serializes every concurrent bind behind one TLS handshake.
+                stale_candidates = stale
                 # Recent rows were already health-checked; stale rows have
                 # just been refreshed and should not be probed a second time.
                 perform_probe_for_selected = False
@@ -1119,6 +1046,84 @@ class FreeProxyPool:
                 selected_values = [source.choice(values) for _ in range(requested)]
                 perform_probe_for_selected = perform_probe
         check = probe
+        if stale_refresh:
+            for record in stale_candidates:
+                if len(selected_values) >= requested:
+                    break
+                configured_proxy = _proxy_url(record)
+                transport_proxy = proxy_transport_value(
+                    configured_proxy,
+                    driver=driver,
+                    socks5_dns_mode=self.socks5_dns_mode,
+                )
+                try:
+                    started = time.monotonic()
+                    _set_probe_status(None)
+                    if probe is None:
+                        exit_ip, probe_mode = self._probe_with_policy(transport_proxy, probe_url)
+                    else:
+                        exit_ip, probe_mode = str(probe(transport_proxy, probe_url)).strip(), "custom"
+                    observed_status = _probe_status()
+                    probe_http_statuses[str(record.get("proxy_id") or "")] = observed_status or 200
+                    exit_ip = str(exit_ip or "").strip() if _candidate_probe_ip(exit_ip) else ""
+                    self.record_success(
+                        str(record.get("proxy_id") or ""),
+                        exit_ip=exit_ip,
+                        latency_ms=int((time.monotonic() - started) * 1000),
+                        probe_mode=probe_mode,
+                        effective_scheme=urlsplit(transport_proxy).scheme.lower(),
+                        http_status=probe_http_statuses.get(str(record.get("proxy_id") or "")),
+                    )
+                    # ``record_success`` reloads and persists the row;
+                    # carry the fresh observation into this bind's local
+                    # snapshot so the returned binding reflects it.
+                    record["last_exit_ip"] = exit_ip
+                    record["latency_ms"] = int((time.monotonic() - started) * 1000)
+                    record["last_probe_mode"] = probe_mode
+                    selected_values.append(record)
+                except Exception as exc:
+                    probe_http_statuses[str(record.get("proxy_id") or "")] = _probe_status()
+                    # A stale refresh has the same health policy as an
+                    # explicit bind: only transport/5xx evidence may
+                    # quarantine a saved row.  Challenges and business
+                    # 4xx/429 responses are surfaced to the caller but do
+                    # not silently poison the shared pool.
+                    health_error: BaseException = exc
+                    if not getattr(health_error, "node_code", ""):
+                        # Raw probe exceptions do not carry a Free node;
+                        # attach one locally so HTTP 5xx can be classified
+                        # without broadening the global classifier to all
+                        # arbitrary exceptions with a status attribute.
+                        health_error = FreeRegisterError(
+                            "free_proxy_preflight",
+                            "Free 代理预检",
+                            proxy_error_detail(exc),
+                            provider_status=getattr(exc, "provider_status", None),
+                            error_code=proxy_error_code(exc),
+                        )
+                        health_error.__cause__ = exc
+                    if is_proxy_health_failure(health_error):
+                        self.record_failure(
+                            str(record.get("proxy_id") or ""),
+                            node_code=proxy_error_code(exc),
+                            message=proxy_error_detail(exc),
+                            http_status=probe_http_statuses.get(str(record.get("proxy_id") or "")),
+                        )
+            # Shared healthy_random allocation intentionally permits a
+            # single healthy proxy to serve multiple concurrent tasks.
+            # Once one stale candidate has passed its bounded refresh,
+            # reuse it for any remaining requested slots.
+            if selected_values and len(selected_values) < requested:
+                selected_values.extend(
+                    source.choice(selected_values)
+                    for _ in range(requested - len(selected_values))
+                )
+            if len(selected_values) < requested:
+                raise self._pool_health_error(
+                    requested=requested,
+                    driver=driver,
+                    candidates=selected_values,
+                )
         bindings: list[ProxyBinding] = []
         checked: dict[str, tuple[str, str, int, int, str]] = {}
         for index, record in enumerate(selected_values, 1):
