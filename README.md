@@ -310,6 +310,8 @@ Pixel、NV outbox 和批次清单分别保存在 `data/pixel_upload_records.json
 
 `start.command` 是统一的开发启动入口，会同时启动 Flask 和 Vite。修改 Vue 文件通过 Vite HMR 即时更新，修改 `mac_overrides/` 中的 Python 文件会触发 Flask 自动重载。
 
+要新增功能（节点 / 路由 / 页面 / 配置项 / 邮箱来源 / 短信平台）时，按 [docs/ADD_A_FEATURE.md](docs/ADD_A_FEATURE.md) 的任务清单执行；模块职责地图见 [BUSINESS_MODULES.md](BUSINESS_MODULES.md)，代码规范见 [AGENTS.md](AGENTS.md)。
+
 开发模式启动：
 
 ```sh
