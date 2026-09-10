@@ -1212,9 +1212,8 @@ class CamoufoxBrowserPool:
             except _host_mod()._SlotAdmissionRace:
                 await asyncio.sleep(0)
 
-    async def _register_with_slot_once(self, kwargs: Mapping[str, Any]) -> dict[str, Any]:
-        timing_fn = kwargs.get("timing_fn")
-        admission_started = time.monotonic()
+    async def _select_admission_slot(self) -> _host_mod()._BrowserSlot:
+        """Pick a healthy slot, attempting one recovery when the pool is empty."""
         recovery_attempted = False
         while True:
             available = [
@@ -1316,18 +1315,16 @@ class CamoufoxBrowserPool:
             )
             setattr(failure, "safe_restart", True)
             raise failure
-        permit = await self._acquire_slot_permit(slot)
-        if permit is None:
-            # A debug context may have been retained after the slot selection;
-            # return to the pool scan so another browser can admit this task.
-            raise _host_mod()._SlotAdmissionRace()
-        _host_mod().emit_timing(
-            timing_fn,
-            "free_camoufox_signup",
-            "camoufox_pool_admission",
-            (time.monotonic() - admission_started) * 1000,
-            "success",
-        )
+        return slot
+
+    async def _run_registration_on_slot(
+        self,
+        slot: _host_mod()._BrowserSlot,
+        kwargs: Mapping[str, Any],
+        permit: Any,
+        timing_fn: Any,
+    ) -> dict[str, Any]:
+        """Run one registration inside an acquired slot permit context."""
         async with permit:
             recycle_required = False
             generation = slot.generation
@@ -1622,6 +1619,25 @@ class CamoufoxBrowserPool:
                 )
                 if recycle_required and generation == slot.generation and not self._closed:
                     await self._recycle_slot(slot, generation, "达到单进程注册上限或 context 关闭异常")
+
+    async def _register_with_slot_once(self, kwargs: Mapping[str, Any]) -> dict[str, Any]:
+        """Admit one task onto a healthy slot and run its registration."""
+        timing_fn = kwargs.get("timing_fn")
+        admission_started = time.monotonic()
+        slot = await self._select_admission_slot()
+        permit = await self._acquire_slot_permit(slot)
+        if permit is None:
+            # A debug context may have been retained after the slot selection;
+            # return to the pool scan so another browser can admit this task.
+            raise _host_mod()._SlotAdmissionRace()
+        _host_mod().emit_timing(
+            timing_fn,
+            "free_camoufox_signup",
+            "camoufox_pool_admission",
+            (time.monotonic() - admission_started) * 1000,
+            "success",
+        )
+        return await self._run_registration_on_slot(slot, kwargs, permit, timing_fn)
 
     async def _recycle_slot(self, slot: _host_mod()._BrowserSlot, generation: int, reason: str) -> None:
         lock = slot.recycle_lock
