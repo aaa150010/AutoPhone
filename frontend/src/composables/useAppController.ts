@@ -69,11 +69,28 @@ export function createAppController() {
     || []
   ))
 
+  /** Log rows are append-only from the runtime, so length plus the last
+   * entry identifies the log slice without serializing it. The logs array is
+   * usually the largest part of the payload and arrives every poll tick. */
+  function logFingerprint(logs: AppState['logs']): string {
+    const rows = logs || []
+    const last = rows[rows.length - 1]
+    const tail = last
+      ? `${last.time || ''}\u0000${last.type || last.level || ''}\u0000${last.message || last.text || ''}`
+      : ''
+    return `${rows.length}:${tail}`
+  }
+
+  function stateFingerprint(value: AppState): string {
+    const { logs, ...rest } = value
+    return `${JSON.stringify(rest)}\u0000${logFingerprint(logs)}`
+  }
+
   function syncState(payload: { state?: AppState } | AppState) {
     const next: AppState = 'state' in payload && payload.state ? payload.state : (payload as AppState)
     if (!next || typeof next !== 'object') return
     const accepted = preferNewestOpenAIConnectivityState(state.value, next)
-    const nextSignature = JSON.stringify(accepted)
+    const nextSignature = stateFingerprint(accepted)
     if (nextSignature !== stateSignature) {
       stateSignature = nextSignature
       state.value = accepted
@@ -147,7 +164,7 @@ export function createAppController() {
         },
       },
     }
-    stateSignature = JSON.stringify(state.value)
+    stateSignature = stateFingerprint(state.value)
   }
 
   async function refresh() {

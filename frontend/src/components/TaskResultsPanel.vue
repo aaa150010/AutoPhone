@@ -88,6 +88,9 @@ const pagedTasks = computed(() => visibleTasks.value.slice((runPage.value - 1) *
 const selectedTask = computed(() => props.tasks.find(row => taskRowKey(row) === selectedTaskKey.value) || null)
 const visibleFreeTasks = computed(() => visibleTasks.value.filter(task => task.run_mode === 'free_register'))
 
+// The runtime state arrives as a fresh array reference per poll (shallowRef
+// swap in useAppController), so a reference watch sees every update; deep
+// traversal only re-walked hundreds of immutable snapshots each tick.
 watch(() => props.tasks, (tasks) => {
   const current = new Set<string>()
   for (const task of tasks) {
@@ -103,7 +106,7 @@ watch(() => props.tasks, (tasks) => {
   if (pendingTasks.value.length > 0 && hasNewPending && props.activeView !== 'pending') emit('update:activeView', 'pending')
   previousPendingKeys.value = pendingKeys
   if (props.activeView === 'pending' && pendingTasks.value.length === 0) emit('update:activeView', 'running')
-}, { deep: true, immediate: true })
+}, { immediate: true })
 
 watch([pendingTasks, runningTasks], () => {
   emit('counts', { pending: pendingTasks.value.length, running: runningTasks.value.length, all: props.tasks.length })
