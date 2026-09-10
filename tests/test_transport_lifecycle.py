@@ -382,13 +382,13 @@ class TaskTransportRegistryTests(unittest.TestCase):
             self.assertEqual(transport_lifecycle._darwin_close_wait_count(), 2)
 
     def test_fd_snapshot_classifies_current_process_pipe_and_socket(self):
-        before = process_resource_snapshot()
+        before = process_resource_snapshot(use_cache=False)
         if before.open_fds is None or before.pipe_fds is None or before.socket_fds is None:
             self.skipTest("process FD classification is unavailable")
         read_fd, write_fd = os.pipe()
         left, right = socket.socketpair()
         try:
-            during = process_resource_snapshot()
+            during = process_resource_snapshot(use_cache=False)
             self.assertGreaterEqual(during.open_fds or 0, before.open_fds + 4)
             self.assertGreaterEqual(during.pipe_fds or 0, before.pipe_fds + 2)
             self.assertGreaterEqual(during.socket_fds or 0, before.socket_fds + 2)

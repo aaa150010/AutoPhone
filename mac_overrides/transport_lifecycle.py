@@ -690,7 +690,42 @@ def _node_child_process_count() -> int | None:
     return count
 
 
-def process_resource_snapshot(*, now_fn: Callable[[], float] = time.time) -> ProcessResourceSnapshot:
+_RESOURCE_SNAPSHOT_TTL_SECONDS = 1.0
+_resource_snapshot_lock = threading.Lock()
+_resource_snapshot_cache: tuple[float, "ProcessResourceSnapshot | None"] = (0.0, None)
+
+
+def process_resource_snapshot(
+    *,
+    now_fn: Callable[[], float] = time.time,
+    use_cache: bool = True,
+) -> ProcessResourceSnapshot:
+    """Return current FD/process pressure, cached for one second.
+
+    On macOS the snapshot spawns ``ps``/``lsof`` subprocesses, and the public
+    state endpoint (polled every 0.7-1.5s) requests it on every call. The
+    underlying signals (fd pressure, node children, CLOSE_WAIT sockets)
+    evolve on a seconds scale, so a one-second TTL keeps every consumer's
+    decision correct while eliminating two subprocess spawns per poll. A
+    custom ``now_fn`` or ``use_cache=False`` always observes fresh.
+    """
+    global _resource_snapshot_cache
+    now = float(now_fn())
+    # A custom clock (test/fake time) always observes fresh: the cache key is
+    # the real wall clock and mixing clocks would return bogus TTL decisions.
+    if use_cache and now_fn is time.time:
+        with _resource_snapshot_lock:
+            cached_at, cached = _resource_snapshot_cache
+            if cached is not None and now - cached_at < _RESOURCE_SNAPSHOT_TTL_SECONDS:
+                return cached
+    snapshot = _process_resource_snapshot_uncached(now_fn=now_fn)
+    if use_cache and now_fn is time.time:
+        with _resource_snapshot_lock:
+            _resource_snapshot_cache = (now, snapshot)
+    return snapshot
+
+
+def _process_resource_snapshot_uncached(*, now_fn: Callable[[], float]) -> ProcessResourceSnapshot:
     open_fds: int | None = None
     pipe_fds: int | None = None
     socket_fds: int | None = None
