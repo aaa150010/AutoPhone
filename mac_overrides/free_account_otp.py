@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import inspect
 import math
-import sys
 import threading
 import time
 from typing import Any, Callable
@@ -313,11 +312,7 @@ async def _await_account_otp_callback(
             # credential-free stderr trace because this thread has no store
             # or logger wiring.
             stage_label = clean(stage_code, 32) or "otp_wait"
-            print(
-                f"[Free账号OTP/free_account_otp_worker] 阶段 {stage_label} "
-                f"结果回投失败，事件循环已关闭（{type(exc).__name__}）",
-                file=sys.stderr,
-            )
+            _note_stderr(f"otp_result_publish:{stage_label}", exc)
         finally:
             # Signal loop-side drainers that this worker has exited with no
             # pending awaitable, so a grace wait can stop immediately.
