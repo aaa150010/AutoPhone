@@ -228,6 +228,110 @@ async def _finish_home_flow(
     )
 
 
+async def _finish_password_retry_flow(
+    host,
+    page: Any,
+    *,
+    email: str,
+    password: str,
+    config: Mapping[str, Any],
+    controller: Any,
+    deadline_fn: Callable[[], float],
+    password_retry_token: str,
+    otp_callback: Callable[[], str],
+    otp_prepare: Callable[..., Any] | None,
+    otp_mark_sent: Callable[..., Any] | None,
+    timing_fn: Callable[..., Any] | None,
+    set_stage: Callable[[str], None],
+) -> dict[str, Any]:
+    """Run only the post-registration password continuation.
+
+    A password retry has an account Token already. It must not open the
+    signup entry, submit the mailbox address, or invoke the 2FA helper.
+    ``browser_add_password`` owns the independent OTP baseline and the
+    Auth/ChatGPT callback sequence.
+    """
+    token = str(password_retry_token or "").strip()
+    if not token:
+        raise host.CamoufoxBrowserError(
+            "free_password_retry", "重试 Free 账号密码设置",
+            "原账号没有可用 access token", retryable=False,
+            error_code="free_password_retry_token_missing",
+        )
+    # ``browser_json_fetch`` is evaluated in the page's origin. Start from
+    # ChatGPT home when a concrete Playwright page is available, but keep
+    # compatibility with lightweight test doubles that only implement
+    # ``evaluate``.
+    goto = getattr(page, "goto", None)
+    if callable(goto):
+        try:
+            try:
+                await goto("https://chatgpt.com/", wait_until="domcontentloaded", timeout=45_000)
+            except TypeError:
+                await goto("https://chatgpt.com/", timeout=45_000)
+        except Exception as exc:
+            raise host.CamoufoxBrowserError(
+                "free_password_reauth_authorize", "打开密码设置授权页面",
+                f"密码设置前 ChatGPT 页面跳转失败（{type(exc).__name__}）",
+                retryable=True, error_code="free_password_retry_navigation_failed",
+                safe_page=host._safe_url(page), page_type="password_retry",
+            ) from exc
+    set_stage("free_password_eligibility")
+    try:
+        result = await host.browser_add_password(
+            page,
+            token,
+            email,
+            password,
+            otp_callback=otp_callback,
+            otp_prepare=otp_prepare,
+            otp_mark_sent=otp_mark_sent,
+            stage_fn=set_stage,
+            task_id=str(config.get("task_id") or ""),
+            device_id=str(config.get("device_id") or ""),
+            deadline_monotonic=deadline_fn(),
+            deadline_controller=controller,
+            stop_requested=config.get("host._stop_requested"),
+            timing_fn=timing_fn,
+        )
+    except host.FreeRegisterError as exc:
+        if exc.error_code == "free_run_stop" or exc.node_code == "free_run_stop":
+            raise
+        detail = host.clean(str(exc), 300)
+        return {
+            "access_token": token,
+            "has_access_token": True,
+            "account_flow": "signup",
+            "registration_password_used": False,
+            "password_set_after_registration": False,
+            "password_status": "pending",
+            "password_error": detail,
+            "password_failure": {
+                "node_code": exc.node_code,
+                "node_label": exc.node_label,
+                "error_code": exc.error_code,
+                "public_message": f"{exc.node_label} [{exc.node_label}/{exc.node_code}]：{detail}",
+                "technical_summary": detail,
+                "retryable": bool(exc.retryable),
+                "provider_code": str(exc.provider_code or ""),
+            },
+        }
+    output = dict(result) if isinstance(result, Mapping) else {}
+    output.setdefault("access_token", token)
+    output["has_access_token"] = bool(output.get("access_token"))
+    output.setdefault("account_flow", "signup")
+    output.setdefault("registration_password_used", False)
+    output["password_set_after_registration"] = bool(
+        output.get("password_set_after_registration")
+    )
+    return host.finalize_registration_result(
+        output,
+        driver="camoufox",
+        email=email,
+        password_used=bool(output.get("password_set_after_registration")),
+    )
+
+
 async def _browser_flow(
     host,
     page: Any,
@@ -697,94 +801,6 @@ async def _browser_flow(
         timing_mark(timing_stage, "otp_input_ready", started, "timeout")
         return "", await host._page_state(page)
 
-    async def finish_password_retry() -> dict[str, Any]:
-        """Run only the post-registration password continuation.
-
-        A password retry has an account Token already. It must not open the
-        signup entry, submit the mailbox address, or invoke the 2FA helper.
-        ``browser_add_password`` owns the independent OTP baseline and the
-        Auth/ChatGPT callback sequence.
-        """
-        token = str(password_retry_token or "").strip()
-        if not token:
-            raise host.CamoufoxBrowserError(
-                "free_password_retry", "重试 Free 账号密码设置",
-                "原账号没有可用 access token", retryable=False,
-                error_code="free_password_retry_token_missing",
-            )
-        # ``browser_json_fetch`` is evaluated in the page's origin. Start from
-        # ChatGPT home when a concrete Playwright page is available, but keep
-        # compatibility with lightweight test doubles that only implement
-        # ``evaluate``.
-        goto = getattr(page, "goto", None)
-        if callable(goto):
-            try:
-                try:
-                    await goto("https://chatgpt.com/", wait_until="domcontentloaded", timeout=45_000)
-                except TypeError:
-                    await goto("https://chatgpt.com/", timeout=45_000)
-            except Exception as exc:
-                raise host.CamoufoxBrowserError(
-                    "free_password_reauth_authorize", "打开密码设置授权页面",
-                    f"密码设置前 ChatGPT 页面跳转失败（{type(exc).__name__}）",
-                    retryable=True, error_code="free_password_retry_navigation_failed",
-                    safe_page=host._safe_url(page), page_type="password_retry",
-                ) from exc
-        set_stage("free_password_eligibility")
-        try:
-            result = await host.browser_add_password(
-                page,
-                token,
-                email,
-                password,
-                otp_callback=otp_callback,
-                otp_prepare=otp_prepare,
-                otp_mark_sent=otp_mark_sent,
-                stage_fn=set_stage,
-                task_id=str(config.get("task_id") or ""),
-                device_id=str(config.get("device_id") or ""),
-                deadline_monotonic=current_deadline(),
-                deadline_controller=controller,
-                stop_requested=config.get("host._stop_requested"),
-                timing_fn=timing_fn,
-            )
-        except host.FreeRegisterError as exc:
-            if exc.error_code == "free_run_stop" or exc.node_code == "free_run_stop":
-                raise
-            detail = host.clean(str(exc), 300)
-            return {
-                "access_token": token,
-                "has_access_token": True,
-                "account_flow": "signup",
-                "registration_password_used": False,
-                "password_set_after_registration": False,
-                "password_status": "pending",
-                "password_error": detail,
-                "password_failure": {
-                    "node_code": exc.node_code,
-                    "node_label": exc.node_label,
-                    "error_code": exc.error_code,
-                    "public_message": f"{exc.node_label} [{exc.node_label}/{exc.node_code}]：{detail}",
-                    "technical_summary": detail,
-                    "retryable": bool(exc.retryable),
-                    "provider_code": str(exc.provider_code or ""),
-                },
-            }
-        output = dict(result) if isinstance(result, Mapping) else {}
-        output.setdefault("access_token", token)
-        output["has_access_token"] = bool(output.get("access_token"))
-        output.setdefault("account_flow", "signup")
-        output.setdefault("registration_password_used", False)
-        output["password_set_after_registration"] = bool(
-            output.get("password_set_after_registration")
-        )
-        return host.finalize_registration_result(
-            output,
-            driver="camoufox",
-            email=email,
-            password_used=bool(output.get("password_set_after_registration")),
-        )
-
     async def open_registration_entry() -> None:
         """Keep the reference startup gate around only entry navigation."""
         nonlocal entry_submitted, entry_transition_deadline, entry_transition_observe_deadline, entry_transition_started
@@ -869,7 +885,21 @@ async def _browser_flow(
         )
 
     if password_retry:
-        return await finish_password_retry()
+        return await _finish_password_retry_flow(
+            host,
+            page,
+            email=email,
+            password=password,
+            config=config,
+            controller=controller,
+            deadline_fn=current_deadline,
+            password_retry_token=password_retry_token,
+            otp_callback=otp_callback,
+            otp_prepare=otp_prepare,
+            otp_mark_sent=otp_mark_sent,
+            timing_fn=timing_fn,
+            set_stage=set_stage,
+        )
 
     if startup_gate is None:
         await open_registration_entry()
