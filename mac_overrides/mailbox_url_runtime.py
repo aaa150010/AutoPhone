@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 import hashlib
 import json
@@ -195,6 +196,10 @@ def _parse_client_mailbox_payload(
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 MAX_MESSAGES = 40
 REFRESH_DETAIL_LIMIT = 8
+# Detail payloads are independent GETs against the mailbox origin; a small
+# bounded pool keeps dirty mailboxes from serializing the whole scan while
+# staying polite to the provider.
+DETAIL_FETCH_CONCURRENCY = 4
 REQUEST_CLOCK_SKEW_SECONDS = 120
 RECENT_BASELINE_CODE_WINDOW_SECONDS = 600
 BASELINE_FALLBACK_MAX_ATTEMPTS = 3
@@ -540,6 +545,48 @@ class MailboxUrlClient:
         )
         return urllib.request.build_opener(*handlers)
 
+    def _fetch_detail_batch(
+        self, urls: Sequence[str],
+    ) -> tuple[dict[str, tuple[MailboxMessage, ...]], int]:
+        """Fetch detail payloads with a small bounded pool.
+
+        Fetches run concurrently but every result is parsed back onto the
+        calling thread, so the detail cache keeps its single-threaded
+        invariants. Failures surface as a count instead of raising.
+        """
+        if not urls:
+            return {}, 0
+        successes: dict[str, tuple[MailboxMessage, ...]] = {}
+        failures = 0
+        workers = max(1, min(DETAIL_FETCH_CONCURRENCY, len(urls)))
+        if workers == 1:
+            for url in urls:
+                messages = self._fetch_detail_messages(url)
+                if messages is None:
+                    failures += 1
+                else:
+                    successes[url] = messages
+            return successes, failures
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {url: pool.submit(self._fetch_detail_messages, url) for url in urls}
+            for url, future in futures.items():
+                messages = future.result()
+                if messages is None:
+                    failures += 1
+                else:
+                    successes[url] = messages
+        return successes, failures
+
+    def _fetch_detail_messages(self, detail_url: str) -> tuple[MailboxMessage, ...] | None:
+        """Fetch and parse one detail payload; ``None`` signals a request error."""
+        try:
+            detail_response = self._fetch(detail_url, role="detail")
+            detail_raw = _decode_bytes(detail_response.body, detail_response.content_type)
+            detail_messages, _unused_links = parse_mailbox_payload(detail_raw, detail_response.url)
+        except MailboxUrlError:
+            return None
+        return detail_messages
+
     def _fetch(self, url: str, *, role: str = "request") -> MailboxResponse:
         if not _same_origin(self.mailbox_url, url):
             raise MailboxUrlError("mailbox_cross_origin_detail", "邮箱详情地址与取码入口来源不一致")
@@ -720,18 +767,14 @@ class MailboxUrlClient:
         refreshed = 0
         detail_started = self.monotonic_fn()
         detail_outcome = "success"
-        for detail_url in [*uncached_urls, *refresh_urls]:
-            try:
-                detail_response = self._fetch(detail_url, role="detail")
-                detail_raw = _decode_bytes(detail_response.body, detail_response.content_type)
-                detail_messages, _unused_links = parse_mailbox_payload(detail_raw, detail_response.url)
-            except MailboxUrlError:
-                detail_request_errors += 1
-                detail_outcome = "partial"
-                continue
-            self._detail_cache[detail_url] = detail_messages
-            refreshed += 1
-        if [*uncached_urls, *refresh_urls]:
+        detail_targets = [*uncached_urls, *refresh_urls]
+        detail_successes, detail_failures = self._fetch_detail_batch(detail_targets)
+        self._detail_cache.update(detail_successes)
+        refreshed = len(detail_successes)
+        detail_request_errors += detail_failures
+        if detail_failures:
+            detail_outcome = "partial"
+        if detail_targets:
             self._timing("mailbox_detail_refresh", detail_started, detail_outcome)
         for detail_url in active_detail_urls:
             combined.extend(self._detail_cache.get(detail_url, ()))

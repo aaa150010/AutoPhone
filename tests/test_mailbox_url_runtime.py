@@ -908,7 +908,10 @@ class MailboxUrlRuntimeTests(unittest.TestCase):
 
         self.assertEqual(selection.code, "654321")
         self.assertEqual(selection.reason, "code_found")
-        self.assertEqual(calls, [shell_url, messages_url, detail_url, old_detail_url])
+        # Listing requests stay ordered before detail fan-out; the two detail
+        # payloads are independent GETs and may complete in either order.
+        self.assertEqual(calls[:2], [shell_url, messages_url])
+        self.assertEqual(sorted(calls[2:]), sorted([detail_url, old_detail_url]))
         self.assertTrue(all(url.startswith("https://mail.example.test/") for url in calls))
 
     def test_pickup_shell_detects_runtime_query_params_without_detail_literal(self):
