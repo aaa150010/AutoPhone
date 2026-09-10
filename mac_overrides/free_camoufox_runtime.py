@@ -116,6 +116,7 @@ try:
         RegistrationDeadline,
         deadline_controller_bool as _deadline_controller_bool_impl,
         deadline_controller_call as _deadline_controller_call_impl,
+        profile_transition_timing_outcome as _profile_transition_timing_outcome_impl,
     )
     from .free_camoufox.errors import (  # noqa: E402
         PROXY_BLOCK_PAGE_MARKERS as _PROXY_BLOCK_PAGE_MARKERS,
@@ -169,6 +170,7 @@ except ImportError:  # pragma: no cover - top-level recovery import
         RegistrationDeadline,
         deadline_controller_bool as _deadline_controller_bool_impl,
         deadline_controller_call as _deadline_controller_call_impl,
+        profile_transition_timing_outcome as _profile_transition_timing_outcome_impl,
     )
     from free_camoufox.errors import (  # type: ignore[no-redef]
         PROXY_BLOCK_PAGE_MARKERS as _PROXY_BLOCK_PAGE_MARKERS,
@@ -203,18 +205,8 @@ class CamoufoxBrowserError(FreeRegisterError):
 
 
 def _profile_transition_timing_outcome(state: str) -> str:
-    """Return a public timing outcome for an about-you page transition.
-
-    Only the states that prove the request was accepted by the auth flow are
-    successful.  In particular, a security challenge or an unknown shell must
-    never be presented as a successful profile submission.
-    """
-    normalized = str(state or "").strip().lower()
-    if normalized in {"home", "oauth_callback"}:
-        return "success"
-    if normalized == "security":
-        return "security_challenge"
-    return "unexpected_state"
+    """Delegate to the shared deadline helper; see its docstring for semantics."""
+    return _profile_transition_timing_outcome_impl(state)
 
 
 _DEADLINE_CONTROLLER_MISSING = object()
