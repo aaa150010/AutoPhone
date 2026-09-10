@@ -6,6 +6,11 @@ Split out of ``free_storage.py``; the original module re-exports every name
 
 from __future__ import annotations
 
+try:
+    from .free_register_common import mask_email
+except ImportError:  # pragma: no cover - top-level recovery import
+    from free_register_common import mask_email  # type: ignore[no-redef]
+
 import copy
 import hashlib
 import json
@@ -265,7 +270,8 @@ def _stored_bool(value: Any, default: bool = False) -> bool:
 
 
 def _mask_email(value: Any) -> str:
-    return str(value or "").strip()
+    """Compatibility alias delegating to the shared Free email display form."""
+    return mask_email(value)
 
 
 def _mask_proxy(value: Any) -> str:
