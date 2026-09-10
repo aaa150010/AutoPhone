@@ -374,9 +374,26 @@ _CURRENT_INFLIGHT_GATE = None
 _FAST_ACCOUNT_BANNED_MAX_EXECUTION_SECONDS = 90
 _FAST_ACCOUNT_BANNED_ALLOWED_GROUPS = frozenset({"queue", "oauth", "email"})
 _FAST_ACCOUNT_BANNED_TERMINAL_GROUPS = frozenset({"oauth", "email"})
+
+
+def _protocol_launch_interval_seconds() -> float:
+    """Resolve the per-proxy protocol launch throttle from the environment.
+
+    Defaults to the historic 1.0s; operators can lower it for pure-HTTP
+    protocol batches via ``GPTPHONE_PROTOCOL_LAUNCH_INTERVAL_SECONDS``.
+    """
+    try:
+        value = float(
+            os.environ.get("GPTPHONE_PROTOCOL_LAUNCH_INTERVAL_SECONDS", "1.0"),
+        )
+    except (TypeError, ValueError):
+        return 1.0
+    return max(0.0, min(10.0, value))
+
+
 _PROTOCOL_GATE = _sms_runtime_ext.ProxyProtocolGate(
     default_limit=5,
-    launch_interval_seconds=1.0,
+    launch_interval_seconds=_protocol_launch_interval_seconds(),
 )
 _PROTOCOL_PRESSURE_POLICY = _sms_runtime_ext.ProtocolPressurePolicy(
     progress_getter=lambda task_id: _TASK_PROGRESS.progress(task_id),
