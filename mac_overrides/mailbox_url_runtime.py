@@ -204,8 +204,12 @@ REQUEST_CLOCK_SKEW_SECONDS = 120
 RECENT_BASELINE_CODE_WINDOW_SECONDS = 600
 BASELINE_FALLBACK_MAX_ATTEMPTS = 3
 BASELINE_FALLBACK_POLL_MILESTONES = (10, 20, 30)
-_CLIENT_MAILBOX_REFRESH_INTERVAL_SECONDS = 10
-_CLIENT_MAILBOX_DEEP_REFRESH_AFTER_SECONDS = 25
+# Active-wait refresh cadence: the gate only runs while an OTP request has a
+# pending refresh, so a tighter cadence shortens worst-case code pickup delay
+# without adding load outside active waits. Deep refresh re-checks once after
+# 15s when the provider's async refresh has not landed yet.
+_CLIENT_MAILBOX_REFRESH_INTERVAL_SECONDS = 5
+_CLIENT_MAILBOX_DEEP_REFRESH_AFTER_SECONDS = 15
 _MAX_PARSED_MESSAGES = MAX_MESSAGES * 4
 _EMAIL_PATTERN = re.compile(
     r"(?i)[a-z0-9][a-z0-9._%+-]*@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}"

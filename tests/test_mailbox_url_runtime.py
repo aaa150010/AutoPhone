@@ -1004,7 +1004,7 @@ class MailboxUrlRuntimeTests(unittest.TestCase):
                 self.assertEqual(calls, [url])
                 self.assertFalse(any(message.code for message in scan.messages))
 
-    def test_client_shell_refreshes_non_smtp_cache_at_most_every_ten_seconds(self):
+    def test_client_shell_refreshes_non_smtp_cache_at_most_every_five_seconds(self):
         clock = [0.0]
         shell_url = (
             "https://mail.example.test/latest?"
@@ -1047,7 +1047,7 @@ class MailboxUrlRuntimeTests(unittest.TestCase):
         clock[0] = 10
         state.snapshot()
 
-        self.assertEqual(calls.count(refresh_url), 2)
+        self.assertEqual(calls.count(refresh_url), 3)
         self.assertEqual(calls.count(cache_url), 4)
 
     def test_client_shell_treats_missing_smtp_mode_as_non_smtp(self):
@@ -1087,7 +1087,7 @@ class MailboxUrlRuntimeTests(unittest.TestCase):
         state.snapshot()
         state.begin_request()
         state.snapshot()
-        clock[0] = 20
+        clock[0] = 12
         state.snapshot()
 
         self.assertEqual(calls.count(refresh_url), 2)
@@ -1138,9 +1138,9 @@ class MailboxUrlRuntimeTests(unittest.TestCase):
         state.snapshot()
         state.begin_request()
         first_failure = state.snapshot()
-        clock[0] = 5
+        clock[0] = 3
         between_retries = state.snapshot()
-        clock[0] = 10
+        clock[0] = 5
         second_failure = state.snapshot()
 
         self.assertEqual(first_failure.reason, "mailbox_refresh_request_failed")
@@ -1243,7 +1243,7 @@ class MailboxUrlRuntimeTests(unittest.TestCase):
         self.assertEqual(selection.scan.diagnostics.refresh_http_status, 429)
         self.assertNotIn("private token", repr(selection.scan.diagnostics))
 
-    def test_client_shell_deep_refresh_runs_once_after_twenty_five_seconds(self):
+    def test_client_shell_deep_refresh_runs_once_after_fifteen_seconds(self):
         clock = [0.0]
         shell_url = (
             "https://mail.example.test/latest?"
@@ -1280,7 +1280,7 @@ class MailboxUrlRuntimeTests(unittest.TestCase):
         )
         state.snapshot()
         state.begin_request()
-        for now in (0, 24, 25, 30, 40):
+        for now in (0, 14, 15, 20, 30):
             clock[0] = now
             state.snapshot()
 
