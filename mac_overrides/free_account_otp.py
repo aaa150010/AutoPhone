@@ -509,7 +509,12 @@ async def _await_account_otp_callback(
                         retryable=True,
                         error_code=f"{stage_code}_mailbox_code_timeout",
                     )
-            wait_timeout = 0.25
+            # A resolved future wakes ``wait_for`` immediately, so this
+            # interval only bounds how stale pause/handoff/deadline checks
+            # can be. One second keeps the manual-handoff window (2.0s)
+            # comfortably responsive while cutting idle wakeups 4x per
+            # waiting task under high concurrency.
+            wait_timeout = 1.0
             if remaining is not None and not (paused or prompt or handoff or grace):
                 wait_timeout = min(wait_timeout, max(0.01, remaining))
             try:
