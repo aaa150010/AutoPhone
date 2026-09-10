@@ -2513,6 +2513,46 @@ class SmsRuntimeTests(unittest.TestCase):
         self.assertEqual(registry.public_statuses()[0]["in_flight"], 1)
         provider.complete()
 
+    def test_isolated_sms_get_pools_default_sessions_per_thread_and_drops_on_failure(self):
+        from mac_overrides import sms_network
+
+        sessions = []
+
+        class Session:
+            def __init__(self, *_args, **_kwargs):
+                self.trust_env = True
+                self.closed = False
+                sessions.append(self)
+
+            def get(self, url, **kwargs):
+                if len(sessions) == 1:
+                    raise ConnectionError("stale keep-alive")
+                return type("Response", (), {"text": "ACCESS_BALANCE:1"})()
+
+            def close(self):
+                self.closed = True
+
+        with mock.patch("curl_cffi.requests.Session", Session):
+            with self.assertRaises(ConnectionError):
+                sms_network.isolated_sms_get("https://sms.example.test")
+            self.assertTrue(sessions[0].closed)
+            self.assertEqual(
+                sms_network.isolated_sms_get("https://sms.example.test"),
+                "ACCESS_BALANCE:1",
+            )
+            second = sms_network.isolated_sms_get(
+                "https://sms.example.test", proxy="http://127.0.0.1:7897",
+            )
+            self.assertEqual(second, "ACCESS_BALANCE:1")
+            # Same (proxy, verify) reuses one pooled session; a new proxy
+            # identity opens its own.
+            self.assertEqual(len(sessions), 3)
+            self.assertTrue(sessions[0].closed)
+            self.assertFalse(sessions[1].closed)
+            self.assertFalse(sessions[2].closed)
+
+        sms_network._sms_thread_local.sessions = {}
+
     def test_isolated_sms_get_never_inherits_environment_proxy(self):
         sessions = []
 

@@ -18,6 +18,16 @@ from typing import Any, Callable
 import urllib.parse
 
 try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
+
+def _note_stderr(where: str, exc: BaseException) -> None:
+    note_stderr('sms_network', where, exc)
+
+
+try:
     from .sms_provider_runtime import (
         SECRET_MASK,
         normalize_sms_keys,
@@ -274,6 +284,40 @@ def _sms_tls_verify_enabled() -> bool:
     return bool(value)
 
 
+_sms_thread_local = threading.local()
+
+
+def _pooled_sms_session(session_factory: Callable[[], Any], proxy: str, verify: bool) -> Any:
+    """Return the calling thread's keep-alive session for (proxy, verify).
+
+    curl_cffi sessions are not thread-safe, so the pool is thread-local; the
+    proxy and TLS-verify pair stays in the key so pooled connections never
+    cross network identities.
+    """
+    pool = getattr(_sms_thread_local, "sessions", None)
+    if not isinstance(pool, dict):
+        pool = {}
+        _sms_thread_local.sessions = pool
+    key = (proxy, verify)
+    session = pool.get(key)
+    if session is None:
+        session = session_factory()
+        pool[key] = session
+    return session
+
+
+def _drop_pooled_sms_session(proxy: str, verify: bool, session: Any) -> None:
+    """Close and forget a pooled session after a transport failure."""
+    pool = getattr(_sms_thread_local, "sessions", None)
+    if isinstance(pool, dict) and pool.get((proxy, verify)) is session:
+        pool.pop((proxy, verify), None)
+    try:
+        session.close()
+    except Exception as exc:
+        # Session teardown must not change the request outcome.
+        _note_stderr("sms_session_close", exc)
+
+
 def isolated_sms_get(
     url: str,
     *,
@@ -288,25 +332,39 @@ def isolated_sms_get(
 
     TLS certificates are verified by default. Verification is only disabled
     when the local config key ``sms_tls_verify`` is explicitly set to false;
-    a failed config read falls back to verification being enabled.
+    a failed config read falls back to verification being enabled. The default
+    curl_cffi session is pooled per thread and (proxy, verify) pair so repeated
+    status polls reuse keep-alive connections; a failed request drops the
+    pooled session so the next attempt starts from a clean socket. Injected
+    session factories (tests, custom adapters) keep the one-session-per-call
+    behavior.
     """
 
     if session_factory is None:
         from curl_cffi import requests as curl_requests
 
         session_factory = lambda: curl_requests.Session(impersonate="chrome")
-    session = session_factory()
+        pooled = True
+    else:
+        pooled = False
+    verify = _sms_tls_verify_enabled()
+    session = _pooled_sms_session(session_factory, proxy, verify) if pooled else session_factory()
     if hasattr(session, "trust_env"):
         session.trust_env = False
     request_kwargs: dict[str, Any] = {
         "params": dict(params or {}),
         "headers": dict(headers or {}),
         "timeout": max(1, int(timeout)),
-        "verify": _sms_tls_verify_enabled(),
+        "verify": verify,
     }
     if proxy:
         request_kwargs["proxy"] = str(proxy)
-    response = session.get(str(url), **request_kwargs)
+    try:
+        response = session.get(str(url), **request_kwargs)
+    except Exception:
+        if pooled:
+            _drop_pooled_sms_session(proxy, verify, session)
+        raise
     if as_json:
         return response.json()
     return str(getattr(response, "text", "") or "").strip()
