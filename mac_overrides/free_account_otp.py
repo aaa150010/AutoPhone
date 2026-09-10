@@ -207,6 +207,14 @@ async def _await_account_otp_callback(
     result.add_done_callback(consume_exception)
 
     def publish(kind: str, value: Any) -> None:
+        if kind == "worker_exit":
+            # The worker exited with nothing pending. If the drain path has
+            # abandoned this future (or a race left it pending), wake
+            # ``await_cleanup`` immediately instead of burning the full grace
+            # period; an already-resolved future needs no signal.
+            if abandoned and not result.done():
+                result.set_result(None)
+            return
         if abandoned or result.done():
             if kind == "result":
                 discard_awaitable(value)
@@ -308,6 +316,13 @@ async def _await_account_otp_callback(
                 f"结果回投失败，事件循环已关闭（{type(exc).__name__}）",
                 file=sys.stderr,
             )
+        finally:
+            # Signal loop-side drainers that this worker has exited with no
+            # pending awaitable, so a grace wait can stop immediately.
+            try:
+                loop.call_soon_threadsafe(publish, "worker_exit", None)
+            except RuntimeError:
+                pass
 
     threading.Thread(
         target=worker,

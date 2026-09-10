@@ -216,6 +216,7 @@ class WebRouteTests(unittest.TestCase):
         self.mailbox_admin = FakeMailboxAdmin()
         self.preflight_started = threading.Event()
         self.release_preflight = threading.Event()
+        self.hold_preflight = False
         self.preflight_configs: list[dict] = []
         self.configure_configs: list[dict] = []
         self.active_sms_keys: list[str] = []
@@ -291,7 +292,11 @@ class WebRouteTests(unittest.TestCase):
         self._configure_sms_pool(config)
         self.preflight_configs.append(dict(config))
         self.preflight_started.set()
-        self.release_preflight.wait(2)
+        # Only tests that deliberately exercise preflight concurrency hold the
+        # route open; every other test releases immediately instead of paying
+        # the full 2s timeout for a hold it never uses.
+        if self.hold_preflight:
+            self.release_preflight.wait(2)
         return []
 
     def _app(self, context=None):
@@ -307,6 +312,7 @@ class WebRouteTests(unittest.TestCase):
 
     def test_start_preflight_blocks_save_and_second_preflight(self):
         app = self._app()
+        self.hold_preflight = True
         start_result = []
 
         def run_start():
