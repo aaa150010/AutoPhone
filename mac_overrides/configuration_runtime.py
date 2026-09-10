@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+try:
+    from .atomic_io import atomic_write_json
+except ImportError:  # pragma: no cover - top-level recovery import
+    from atomic_io import atomic_write_json  # type: ignore[no-redef]
+
 import copy
 import json
 import os
@@ -122,25 +127,13 @@ def read_store_config(store: Any) -> dict[str, Any]:
 
 
 def atomic_write_private_json(path: Any, value: Any) -> None:
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(value, ensure_ascii=False, indent=2)
-    temporary = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
-    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write(payload)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.chmod(temporary, 0o600)
-        os.replace(temporary, target)
-        os.chmod(target, 0o600)
-    except BaseException:
-        try:
-            temporary.unlink()
-        except FileNotFoundError:
-            pass
-        raise
+    """Replace ``path`` atomically; kept as a name for existing importers.
+
+    The shared implementation writes to a unique temp file, fsyncs, chmods
+    0600 and then ``os.replace`` — the same contract this module's private
+    variant used to provide.
+    """
+    atomic_write_json(path, value)
 
 
 def write_store_config(store: Any, value: Any) -> None:
