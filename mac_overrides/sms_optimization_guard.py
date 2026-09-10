@@ -11,7 +11,6 @@ import os
 import threading
 import time
 from typing import Any, Callable, Mapping
-import uuid
 
 
 ROLLING_WINDOW_TASKS = 100
@@ -136,6 +135,10 @@ class SmsOptimizationGuard:
     def _persist_state_locked(self) -> None:
         if self.state_path is None:
             return
+        try:
+            from .atomic_io import atomic_write_json
+        except ImportError:  # pragma: no cover - top-level recovery import
+            from atomic_io import atomic_write_json  # type: ignore[no-redef]
         payload = {
             "version": 2,
             "disabled_reason": self.disabled_reason,
@@ -144,26 +147,11 @@ class SmsOptimizationGuard:
             "metrics": self._metrics_locked(),
             "updated_at": int(time.time()),
         }
-        temporary: Path | None = None
         try:
-            self.state_path.parent.mkdir(parents=True, exist_ok=True)
-            temporary = self.state_path.with_name(
-                f".{self.state_path.name}.{uuid.uuid4().hex}.tmp"
-            )
-            with temporary.open("w", encoding="utf-8") as handle:
-                json.dump(payload, handle, sort_keys=True)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.chmod(temporary, 0o600)
-            os.replace(temporary, self.state_path)
+            atomic_write_json(self.state_path, payload, sort_keys=True)
+            os.chmod(self.state_path, 0o600)
         except OSError:
             return
-        finally:
-            if temporary is not None:
-                try:
-                    temporary.unlink()
-                except FileNotFoundError:
-                    pass
 
     def _metrics_locked(self) -> dict[str, Any]:
         samples = tuple(self.samples)

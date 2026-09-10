@@ -11,7 +11,6 @@ import os
 from pathlib import Path
 import re
 import socket
-import tempfile
 from threading import RLock
 import time
 from typing import Any, Callable, Iterable, Mapping, Protocol, Sequence
@@ -476,24 +475,15 @@ class Sub2SnapshotStore:
         return payload
 
     def _write_unlocked(self, payload: Mapping[str, Any]) -> None:
+        try:
+            from .atomic_io import atomic_write_json
+        except ImportError:  # pragma: no cover - top-level recovery import
+            from atomic_io import atomic_write_json  # type: ignore[no-redef]
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        body = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
         temp_name = ""
         try:
-            with tempfile.NamedTemporaryFile(
-                "w",
-                encoding="utf-8",
-                dir=self.path.parent,
-                prefix=f".{self.path.name}.",
-                suffix=".tmp",
-                delete=False,
-            ) as handle:
-                temp_name = handle.name
-                handle.write(body)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.chmod(temp_name, 0o600)
-            os.replace(temp_name, self.path)
+            atomic_write_json(self.path, payload, sort_keys=True)
+            os.chmod(self.path, 0o600)
             stat = self.path.stat()
             self._cached_signature = (stat.st_mtime_ns, stat.st_size)
             self._cached_payload = dict(payload)

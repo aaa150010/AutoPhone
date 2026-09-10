@@ -13,11 +13,8 @@ from __future__ import annotations
 from collections import deque
 import copy
 from dataclasses import dataclass, field
-import json
-import os
 from pathlib import Path
 import threading
-import tempfile
 import time
 from typing import Any, Mapping
 from urllib.parse import urlsplit
@@ -240,29 +237,11 @@ def page_debug_trace(page: Any) -> Any:
 def write_json_atomic(path: str | Path, payload: Mapping[str, Any]) -> None:
     """Small safe JSON writer for independently generated test artifacts."""
 
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    safe_payload = _safe_artifact_mapping(payload)
-    temporary_handle = tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        dir=str(target.parent),
-        prefix=f".{target.name}.",
-        suffix=".tmp",
-        delete=False,
-    )
-    temporary = Path(temporary_handle.name)
     try:
-        with temporary_handle:
-            temporary_handle.write(json.dumps(safe_payload, ensure_ascii=False, indent=2))
-            temporary_handle.flush()
-            os.fsync(temporary_handle.fileno())
-        temporary.replace(target)
-    finally:
-        try:
-            temporary.unlink()
-        except FileNotFoundError:
-            pass
+        from ..atomic_io import atomic_write_json
+    except ImportError:  # pragma: no cover - top-level recovery import
+        from atomic_io import atomic_write_json  # type: ignore[no-redef]
+    atomic_write_json(path, _safe_artifact_mapping(payload))
 
 
 _SENSITIVE_FIELD_KEYS = frozenset({

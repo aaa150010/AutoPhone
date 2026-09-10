@@ -9,7 +9,6 @@ import os
 from pathlib import Path
 import re
 from threading import RLock
-import tempfile
 import time
 from typing import Any, Callable, Mapping, Protocol
 
@@ -327,23 +326,15 @@ class OpenAIQuotaSnapshotStore:
         return payload
 
     def _write_unlocked(self, payload: Mapping[str, Any]) -> None:
+        try:
+            from .atomic_io import atomic_write_json
+        except ImportError:  # pragma: no cover - top-level recovery import
+            from atomic_io import atomic_write_json  # type: ignore[no-redef]
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = ""
         try:
-            with tempfile.NamedTemporaryFile(
-                "w",
-                encoding="utf-8",
-                dir=self.path.parent,
-                prefix=f".{self.path.name}.",
-                suffix=".tmp",
-                delete=False,
-            ) as handle:
-                temporary = handle.name
-                json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.chmod(temporary, 0o600)
-            os.replace(temporary, self.path)
+            atomic_write_json(self.path, payload, sort_keys=True)
+            os.chmod(self.path, 0o600)
             stat = self.path.stat()
             self._cached_signature = (
                 stat.st_mtime_ns,

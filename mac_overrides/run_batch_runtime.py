@@ -7,13 +7,11 @@ import copy
 import hashlib
 import inspect
 import json
-import os
 from pathlib import Path
 import re
 import threading
 import time
 from typing import Any
-import uuid
 
 
 MANIFEST_VERSION = 1
@@ -88,21 +86,10 @@ def _accepts_keyword(callback: Callable[..., Any], name: str) -> bool:
     ) or any(item.kind == inspect.Parameter.VAR_KEYWORD for item in parameters.values())
 
 
-def _atomic_write_json(path: Path, value: Mapping[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
-    try:
-        with temporary.open("w", encoding="utf-8") as handle:
-            json.dump(value, handle, ensure_ascii=False, indent=2)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.chmod(temporary, 0o600)
-        os.replace(temporary, path)
-    finally:
-        try:
-            temporary.unlink()
-        except FileNotFoundError:
-            pass
+try:
+    from .atomic_io import atomic_write_json as _atomic_write_json
+except ImportError:  # pragma: no cover - top-level recovery import
+    from atomic_io import atomic_write_json as _atomic_write_json  # type: ignore[no-redef]
 
 
 def reconciliation_failure(code: str, cause: str) -> dict[str, Any]:

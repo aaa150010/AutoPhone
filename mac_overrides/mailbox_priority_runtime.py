@@ -5,13 +5,11 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping, Sequence
 import hashlib
 import json
-import os
 from pathlib import Path
 import re
 import threading
 import time
 from typing import Any
-import uuid
 
 
 STORE_VERSION = 1
@@ -46,21 +44,10 @@ def _safe_batch_id(value: Any) -> str:
     return text if _SAFE_BATCH_ID.fullmatch(text) else ""
 
 
-def _atomic_write(path: Path, value: Mapping[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
-    try:
-        with temporary.open("w", encoding="utf-8") as handle:
-            json.dump(value, handle, ensure_ascii=False, indent=2)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.chmod(temporary, 0o600)
-        os.replace(temporary, path)
-    finally:
-        try:
-            temporary.unlink()
-        except FileNotFoundError:
-            pass
+try:
+    from .atomic_io import atomic_write_json as _atomic_write
+except ImportError:  # pragma: no cover - top-level recovery import
+    from atomic_io import atomic_write_json as _atomic_write  # type: ignore[no-redef]
 
 
 class MailboxNextBatchPriorityStore:

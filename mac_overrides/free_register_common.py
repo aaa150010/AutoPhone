@@ -415,17 +415,11 @@ def proxy_error_detail(error: BaseException) -> str:
 
 
 def atomic_write(path: Path, value: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
     try:
-        temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
-        os.chmod(temporary, 0o600)
-        os.replace(temporary, path)
-    finally:
-        try:
-            temporary.unlink()
-        except FileNotFoundError:
-            pass
+        from .atomic_io import atomic_write_json
+    except ImportError:  # pragma: no cover - top-level recovery import
+        from atomic_io import atomic_write_json  # type: ignore[no-redef]
+    atomic_write_json(path, value)
 
 
 def mask_proxy(value: Any) -> str:

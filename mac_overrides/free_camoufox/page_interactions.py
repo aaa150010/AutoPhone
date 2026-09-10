@@ -34,7 +34,6 @@ import os
 import random
 import re
 import shutil
-import tempfile
 import threading
 import time
 import traceback
@@ -387,24 +386,17 @@ _ARTIFACT_SESSION_RE = re.compile(r"^cam-debug-[0-9a-f]{12}$")
 
 def _atomic_artifact_write(host, path: Path, payload: Any) -> None:
     """Write one debug artifact atomically inside its target directory."""
-    text = json.dumps(payload, ensure_ascii=False, indent=2)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = tempfile.NamedTemporaryFile(
-        mode="w", encoding="utf-8", dir=str(path.parent),
-        prefix=f".{path.name}.", suffix=".tmp", delete=False,
-    )
-    temporary_path = Path(temporary.name)
     try:
-        with temporary:
-            temporary.write(text)
-            temporary.flush()
-            os.fsync(temporary.fileno())
-        os.replace(temporary_path, path)
-    finally:
-        try:
-            temporary_path.unlink()
-        except FileNotFoundError:
-            pass
+        from ..atomic_io import atomic_write_json
+    except ImportError:  # pragma: no cover - top-level recovery import
+        from atomic_io import atomic_write_json  # type: ignore[no-redef]
+    atomic_write_json(path, payload)
+    # 0600 mirrors the previous NamedTemporaryFile contract so a failure
+    # scene can never become world-readable.
+    try:
+        os.chmod(path, 0o600)
+    except OSError as exc:
+        _note_stderr("artifact_chmod", exc)
 
 
 def _trim_debug_artifacts(host, artifact_root: Path, *, current_session: str = "") -> None:
