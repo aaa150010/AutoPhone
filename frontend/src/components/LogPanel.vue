@@ -14,13 +14,21 @@ const props = defineProps<{
 
 const scrollbar = ref<ScrollbarInstance>()
 const sub2UploadSuccessPattern = /^T\d{3}-[0-9a-f]{6} 成功上传 SUB2: (?:<email>|[^\s@]+@[^\s@]+)$/i
+const LEVEL_CLASSES: Record<string, string> = {
+  error: 'log-error',
+  danger: 'log-error',
+  success: 'log-success',
+  warning: 'log-warn',
+  warn: 'log-warn',
+  debug: 'log-debug',
+}
 
 const renderedLogs = computed(() => {
   const occurrences = new Map<string, number>()
   return (props.logs || []).map((log) => {
     const entry = typeof log === 'string' ? { message: log } : log
     const time = String(entry?.time || '')
-    const level = String(entry?.type || entry?.level || '')
+    const level = String(entry?.type || entry?.level || '').toLowerCase()
     const message = String(entry?.message || entry?.text || entry || '')
     const baseKey = `${time}\u0000${level}\u0000${message}`
     const occurrence = occurrences.get(baseKey) || 0
@@ -29,6 +37,7 @@ const renderedLogs = computed(() => {
       key: `${baseKey}\u0000${occurrence}`,
       time,
       level,
+      levelClass: LEVEL_CLASSES[level] || '',
       message,
       isSub2UploadSuccess: sub2UploadSuccessPattern.test(message),
     }
@@ -78,18 +87,15 @@ onMounted(scrollToBottom)
           :key="log.key"
           v-memo="[log.key]"
           class="log-line"
-          :class="{ 'is-sub2-upload-success': log.isSub2UploadSuccess }"
+          :class="[log.levelClass, { 'is-sub2-upload-success': log.isSub2UploadSuccess }]"
         >
           <span class="log-time">{{ log.time }}</span>
-          <b
-            class="log-message"
-            :class="[log.level, { 'sub2-upload-success-message': log.isSub2UploadSuccess }]"
-          >
+          <span class="log-message">
             <el-icon v-if="log.isSub2UploadSuccess" class="sub2-success-icon" aria-hidden="true">
               <CircleCheckFilled />
             </el-icon>
             <span class="log-message-text">{{ log.message }}</span>
-          </b>
+          </span>
         </div>
       </template>
     </el-scrollbar>
@@ -97,38 +103,24 @@ onMounted(scrollToBottom)
 </template>
 
 <style scoped>
-.log-panel { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; }
+/* Matches the FreeTaskLogDialog terminal styling so both log surfaces read
+   as the same diagnostic surface. */
+.log-panel { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; background: #101923; color: #dbe7f2; font: 12px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; scrollbar-color: #577b9d #101923; }
 .log-scroll { min-height: 0; flex: 1; }
 .log-scroll :deep(.el-scrollbar__view) { min-height: 100%; }
 .log-scroll.is-empty :deep(.el-scrollbar__view) { height: 100%; }
-.log-line { display: flex; gap: 12px; padding: 7px 14px; border-bottom: 1px solid var(--el-border-color-lighter); font-size: 13px; line-height: 20px; }
-.log-time { color: var(--el-text-color-secondary); white-space: nowrap; }
-.log-message { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+.log-line { display: flex; gap: 10px; padding: 3px 12px; white-space: pre-wrap; word-break: break-word; }
+.log-time { flex: 0 0 auto; padding-top: 1px; color: #8ca0b5; white-space: nowrap; }
+.log-message { display: inline-flex; align-items: flex-start; gap: 6px; min-width: 0; }
 .log-message-text { min-width: 0; }
-.success { color: var(--el-color-success); }
-.error { color: var(--el-color-danger); }
-.warning,
-.warn { color: var(--el-color-warning); }
-.log-line.is-sub2-upload-success {
-  background: var(--tone-success-bg);
-  border-bottom-color: var(--tone-success-border);
-  box-shadow: inset 4px 0 0 var(--el-color-success), inset 0 0 0 1px var(--tone-success-border);
-}
-.log-line.is-sub2-upload-success .log-time { color: var(--tone-success-text); font-weight: 600; }
-.log-line.is-sub2-upload-success b.log-message.sub2-upload-success-message {
-  display: inline-flex;
-  align-items: flex-start;
-  gap: 7px;
-  color: var(--tone-success-text);
-  font-size: 14px;
-  font-weight: 800;
-  letter-spacing: 0;
-}
-.sub2-success-icon {
-  flex: 0 0 16px;
-  width: 16px;
-  height: 20px;
-  color: var(--el-color-success);
-  font-size: 16px;
-}
+.log-error { color: #ff8791; }
+.log-warn { color: #f5bc72; }
+.log-success { color: #71dbb1; }
+.log-debug { color: #9ba9b7; }
+.log-line.is-sub2-upload-success { background: rgb(47 158 109 / 0.16); box-shadow: inset 3px 0 0 var(--el-color-success); }
+.log-line.is-sub2-upload-success .log-time { color: #71dbb1; font-weight: 600; }
+.log-line.is-sub2-upload-success .log-message { color: #71dbb1; font-weight: 700; }
+.sub2-success-icon { flex: 0 0 14px; width: 14px; height: 17px; color: #71dbb1; font-size: 14px; }
+.log-panel :deep(.content-empty) { background: transparent; }
+.log-panel :deep(.content-empty .el-empty__description p) { color: #91a8bd; }
 </style>

@@ -534,6 +534,5 @@ async function disableConnectivityGuard() {
 .task-workspace :deep(.copyable-account) { color: var(--el-color-primary-dark-2); }
 .task-workspace :deep(.task-actions .el-button) { color: var(--el-color-primary-dark-2); }
 .task-workspace :deep(.task-actions .el-button:hover) { color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
-.log-workspace :deep(.log-line b.error) { color: var(--el-color-danger); }
 
 </style>
