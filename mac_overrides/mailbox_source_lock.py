@@ -43,6 +43,15 @@ except ImportError:  # Unit tests do not load recovered runtime dependencies.
 DEFAULT_SOURCE_LOCK_TIMEOUT_SECONDS = 5.0
 SOURCE_LOCK_POLL_SECONDS = 0.05
 _MAX_SOURCE_LOCK_TIMEOUT_SECONDS = 30.0
+# Lock files accumulate one per distinct pool path (tests use temp dirs, pool
+# moves change the digest), so the directory grows unboundedly.  A file that
+# can be exclusively flocked and has been idle for the retention window has no
+# holder and no recent activity; deleting it cannot break a concurrent waiter
+# because a fresh holder would have re-locked or re-created it.
+LOCK_FILE_RETENTION_SECONDS = 3600.0
+_LOCK_CLEANUP_GUARD = threading.Lock()
+_LOCK_CLEANUP_LAST_RUN = 0.0
+_LOCK_CLEANUP_INTERVAL_SECONDS = 600.0
 
 
 
@@ -162,6 +171,48 @@ def _unlock_file(handle: Any) -> None:
         msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
 
 
+def prune_stale_lock_files(
+    *,
+    retention_seconds: float = LOCK_FILE_RETENTION_SECONDS,
+    now: float | None = None,
+) -> int:
+    """Delete idle lock files no other process holds.
+
+    A lock file qualifies only when both conditions hold: its mtime is older
+    than the retention window, and an exclusive non-blocking ``flock`` succeeds
+    (a held lock raises ``EACCES``/``EAGAIN`` and the file is kept).  The
+    sweep runs at most once per interval per process; failures never affect
+    the surrounding lock path.
+    """
+    global _LOCK_CLEANUP_LAST_RUN
+    current = time.time() if now is None else float(now)
+    with _LOCK_CLEANUP_GUARD:
+        if current - _LOCK_CLEANUP_LAST_RUN < _LOCK_CLEANUP_INTERVAL_SECONDS:
+            return 0
+        _LOCK_CLEANUP_LAST_RUN = current
+    removed = 0
+    try:
+        entries = list(_lock_directory().iterdir())
+    except OSError:
+        return 0
+    for path in entries:
+        if not path.is_file():
+            continue
+        try:
+            if current - path.stat().st_mtime <= retention_seconds:
+                continue
+            with path.open("a+b") as handle:
+                try:
+                    _try_lock_file(handle)
+                except OSError:
+                    continue
+                path.unlink()
+                removed += 1
+        except OSError:
+            continue
+    return removed
+
+
 @contextmanager
 def _direct_timed_file_lock(name: str, timeout_seconds: float) -> Iterator[None]:
     """Acquire the recovered lock file without an unbounded ``flock`` call."""
@@ -185,6 +236,7 @@ def _direct_timed_file_lock(name: str, timeout_seconds: float) -> Iterator[None]
 
         lock_directory = _lock_directory()
         lock_directory.mkdir(parents=True, exist_ok=True)
+        prune_stale_lock_files()
         handle = (lock_directory / safe_name).open("a+b")
         while True:
             try:
@@ -288,6 +340,8 @@ class MailboxSourceLockMixin:
 
 __all__ = [
     "DEFAULT_SOURCE_LOCK_TIMEOUT_SECONDS",
+    "LOCK_FILE_RETENTION_SECONDS",
     "MailboxSourceLockMixin",
     "MailboxSourceLockTimeout",
+    "prune_stale_lock_files",
 ]

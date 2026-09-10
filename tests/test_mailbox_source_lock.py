@@ -5,6 +5,7 @@ import errno
 import fcntl
 import hashlib
 import json
+import os
 from pathlib import Path
 import tempfile
 import threading
@@ -14,6 +15,7 @@ from unittest.mock import patch
 
 import mac_overrides.mailbox_source_lock as source_lock
 from mac_overrides.mailbox_admin import MailboxAdminService, row_id_from_source
+from mac_overrides.mailbox_source_lock import prune_stale_lock_files
 from mac_overrides.mailbox_state_runtime import mark_mailboxes_unavailable
 
 
@@ -230,3 +232,55 @@ class MailboxSourceLockTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PruneStaleLockFilesTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.locks_dir = Path(self.temp_dir.name) / "locks"
+        self.locks_dir.mkdir(parents=True)
+        self._patchers = [
+            patch("mac_overrides.mailbox_source_lock._lock_directory", return_value=self.locks_dir),
+            patch("mac_overrides.mailbox_source_lock._LOCK_CLEANUP_LAST_RUN", 0.0),
+        ]
+        for patcher in self._patchers:
+            patcher.start()
+
+    def tearDown(self) -> None:
+        for patcher in self._patchers:
+            patcher.stop()
+        self.temp_dir.cleanup()
+
+    def _age_file(self, name: str, seconds: float) -> None:
+        target = self.locks_dir / name
+        target.write_bytes(b"")
+        stamped = time.time() - seconds
+        os.utime(target, (stamped, stamped))
+
+    def test_old_idle_lock_files_are_removed_and_recent_kept(self) -> None:
+        self._age_file("self_mailbox_source_old.lock", 7200)
+        self._age_file("self_mailbox_source_recent.lock", 60)
+        removed = prune_stale_lock_files()
+        self.assertEqual(removed, 1)
+        self.assertFalse((self.locks_dir / "self_mailbox_source_old.lock").exists())
+        self.assertTrue((self.locks_dir / "self_mailbox_source_recent.lock").exists())
+
+    def test_held_lock_file_is_kept_even_when_old(self) -> None:
+        if fcntl is None:  # pragma: no cover - the shipped runtime targets macOS.
+            self.skipTest("fcntl unavailable")
+        stale = self.locks_dir / "self_mailbox_source_held.lock"
+        stale.write_bytes(b"")
+        stamped = time.time() - 7200
+        os.utime(stale, (stamped, stamped))
+        with stale.open("a+b") as handle:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            removed = prune_stale_lock_files()
+        self.assertEqual(removed, 0)
+        self.assertTrue(stale.exists())
+
+    def test_throttled_second_call_within_interval_is_a_noop(self) -> None:
+        self._age_file("self_mailbox_source_a.lock", 7200)
+        self.assertEqual(prune_stale_lock_files(), 1)
+        self._age_file("self_mailbox_source_b.lock", 7200)
+        self.assertEqual(prune_stale_lock_files(now=time.time()), 0)
+        self.assertTrue((self.locks_dir / "self_mailbox_source_b.lock").exists())
