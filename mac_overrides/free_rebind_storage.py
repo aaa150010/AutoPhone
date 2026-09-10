@@ -168,12 +168,28 @@ class RebindSQLiteStore:
         self.path = self.root / "free_rebind.sqlite3"
         self.busy_timeout_ms = max(100, int(busy_timeout_ms))
         self._lock = threading.RLock()
+        # One lock-serialized handle instead of a connect/PRAGMA/close cycle
+        # per call. ``_connection`` runs under ``self._lock`` (RLock reentrant,
+        # so ``_transaction`` nesting stays safe) and every caller finishes
+        # its reads inside the context.
+        self._conn: sqlite3.Connection | None = None
         self._initialize()
         if auto_migrate:
             self.migrate_legacy()
 
     @contextmanager
     def _connection(self) -> Iterator[sqlite3.Connection]:
+        with self._lock:
+            db = self._ensure_connection()
+            try:
+                yield db
+            except sqlite3.Error:
+                self._drop_connection()
+                raise
+
+    def _ensure_connection(self) -> sqlite3.Connection:
+        if self._conn is not None:
+            return self._conn
         db = sqlite3.connect(
             self.path,
             timeout=self.busy_timeout_ms / 1000.0,
@@ -181,14 +197,21 @@ class RebindSQLiteStore:
             check_same_thread=False,
         )
         db.row_factory = sqlite3.Row
+        db.execute(f"PRAGMA busy_timeout={self.busy_timeout_ms}")
+        db.execute("PRAGMA journal_mode=WAL")
+        db.execute("PRAGMA synchronous=NORMAL")
+        db.execute("PRAGMA foreign_keys=ON")
+        self._conn = db
+        return db
+
+    def _drop_connection(self) -> None:
+        connection, self._conn = self._conn, None
+        if connection is None:
+            return
         try:
-            db.execute(f"PRAGMA busy_timeout={self.busy_timeout_ms}")
-            db.execute("PRAGMA journal_mode=WAL")
-            db.execute("PRAGMA synchronous=NORMAL")
-            db.execute("PRAGMA foreign_keys=ON")
-            yield db
-        finally:
-            db.close()
+            connection.close()
+        except sqlite3.Error:
+            pass
 
     @contextmanager
     def _transaction(self) -> Iterator[sqlite3.Connection]:
