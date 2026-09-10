@@ -638,8 +638,11 @@ class FreeRegisterRetryMixin:
         # result rather than the task's public status. A callback-phase failure
         # can move the task away from ``twofa_pending`` while the saved account
         # still lacks an enabled 2FA, so enroll from the durable snapshot.
-        row = self.pool.entry(normalized)
-        saved = self.pool.result(normalized) if row is not None else {}
+        # Results are keyed by row_id; a live task carries it, a bare
+        # restart-recovery lookup falls back to the normalized id.
+        durable_key = str(task.get("row_id") or "") if task is not None else normalized
+        row = self.pool.entry(durable_key)
+        saved = self.pool.result(durable_key) if row is not None else {}
         if row is None or not isinstance(saved, Mapping) or not saved.get("has_access_token"):
             raise FreeRegisterError("free_twofa_retry", "重试 Free 账号 2FA", "该任务当前没有待重试的 2FA", retryable=False)
         if str(saved.get("twofa_status") or "").strip().lower() == "enabled":
