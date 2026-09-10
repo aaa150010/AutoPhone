@@ -1907,7 +1907,15 @@ class FreeRegisterManager(
                 snapshot, values, stage_code=stage_code,
             )
         )
-        if not twofa_retry and not password_retry:
+        if twofa_retry or password_retry:
+            # A continuation inherits the caller's task_config, and an auto
+            # retry is enqueued with the original worker's task_config whose
+            # mailbox lease callbacks pin the original task id. The retry's
+            # email-submit confirmation would then always be rejected as a
+            # lease conflict. Continuations re-confirm nothing: drop them.
+            task_config.pop("_confirm_mailbox_lease", None)
+            task_config.pop("_abort_mailbox_lease_confirmation", None)
+        else:
             confirm_mailbox, abort_mailbox = self._mailbox_lease_callbacks(snapshot)
             if confirm_mailbox is not None:
                 task_config["_confirm_mailbox_lease"] = confirm_mailbox

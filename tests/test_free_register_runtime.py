@@ -2377,6 +2377,39 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             manager.retry_twofa(row_id, {})
         self.assertIn("已启用", str(raised.exception))
 
+    def test_auto_twofa_retry_does_not_inherit_registration_lease_callbacks(self):
+        """An auto 2FA retry must not carry the registration lease callbacks.
+
+        The auto retry is enqueued with the original worker's task_config
+        whose confirm closure pins the original task id; if it leaked into
+        the continuation the email-submit confirmation would always fail as
+        ``free_mailbox_lease_conflict``.
+        """
+        pool = FreeMailboxPool(self.data_dir)
+        pool.import_text("d@example.test----https://mail.example.test/d\n")
+        proxies = FreeProxyPool(self.data_dir)
+        proxies.import_text("http://proxy-d.test:8000\n")
+        retry_config_keys: list[set[str]] = []
+
+        def runner(task, config, _stop, _stage, _log, *, twofa_retry=False):
+            if twofa_retry:
+                retry_config_keys.append(set(config.keys()))
+                return {"access_token": "token-private", "password": FIXED_PASSWORD, "twofa_status": "enabled", "totp_secret": "JBSWY3DPEHPK3PXP"}
+            return {"access_token": "token-private", "password": FIXED_PASSWORD, "twofa_status": "pending"}
+
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=runner,
+            proxy_probe=lambda _proxy, _url: "203.0.113.20",
+        )
+        manager.start({"target_count": 1, "twofa_auto_retry_attempts": 1})
+        deadline = time.time() + 4
+        while manager.public_state()["running"] and time.time() < deadline:
+            time.sleep(0.01)
+        self.assertEqual(len(retry_config_keys), 1)
+        self.assertNotIn("_confirm_mailbox_lease", retry_config_keys[0])
+        self.assertNotIn("_abort_mailbox_lease_confirmation", retry_config_keys[0])
+
     def test_registration_retry_preserves_remail_source_and_service_token(self):
         free_root = self.data_dir / "free_register"
         free_root.mkdir()
