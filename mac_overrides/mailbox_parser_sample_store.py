@@ -127,19 +127,41 @@ class MailboxParserSampleStore:
         self._lock = threading.RLock()
         self._write_failures = 0
         self._discarded = 0
+        # One lock-serialized handle (every ``_connection`` caller holds
+        # ``self._lock`` first) replaces the per-call connect/PRAGMA/close
+        # cycle; dropped on sqlite3.Error so the next caller reconnects.
+        self._conn: sqlite3.Connection | None = None
         self._initialize()
 
     @contextmanager
     def _connection(self):
+        with self._lock:
+            connection = self._ensure_connection()
+            try:
+                yield connection
+            except sqlite3.Error:
+                self._drop_connection()
+                raise
+
+    def _ensure_connection(self) -> sqlite3.Connection:
+        if self._conn is not None:
+            return self._conn
         connection = sqlite3.connect(self.path, timeout=10, isolation_level=None)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA busy_timeout=10000")
         connection.execute("PRAGMA foreign_keys=ON")
         connection.execute("PRAGMA journal_mode=WAL")
+        self._conn = connection
+        return connection
+
+    def _drop_connection(self) -> None:
+        connection, self._conn = self._conn, None
+        if connection is None:
+            return
         try:
-            yield connection
-        finally:
             connection.close()
+        except sqlite3.Error:
+            pass
 
     def _initialize(self) -> None:
         with self._lock, self._connection() as db:
