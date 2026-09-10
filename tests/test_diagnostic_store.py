@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import sqlite3
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -38,6 +39,34 @@ class DiagnosticStoreTests(unittest.TestCase):
         self.assertEqual(incident["integrity_status"], "verified")
         self.assertNotIn("private", self.store.export([incident_id], "markdown"))
         self.assertNotIn("a@example.test", self.store.export([incident_id], "json"))
+
+    def test_cached_connection_serves_foreign_threads(self) -> None:
+        """The cached SQLite handle must serve Flask request threads too.
+
+        The store caches one connection (perf); without
+        ``check_same_thread=False`` a request thread reusing the main
+        thread's handle raises ``sqlite3.ProgrammingError`` and the batch
+        incident lookup silently degrades on every state poll.
+        """
+        self.store.record({
+            "level": "error", "outcome": "error", "task_id": "T-cross",
+            "chain": "free", "driver": "protocol", "node_code": "mailbox_parser_unmatched",
+            "message": "cross-thread probe",
+        })
+        errors: list[BaseException] = []
+        matches: dict[str, str] = {}
+
+        def other_thread() -> None:
+            try:
+                matches.update(self.store.search_task_nodes(["T-cross"], "mailbox_parser_unmatched"))
+            except BaseException as exc:  # captured, asserted on the main thread
+                errors.append(exc)
+
+        worker = threading.Thread(target=other_thread)
+        worker.start()
+        worker.join(timeout=10)
+        self.assertEqual(errors, [])
+        self.assertIn("T-cross", matches)
 
     def test_reused_task_id_isolated_by_workflow_and_driver(self) -> None:
         register_id = self.store.record({

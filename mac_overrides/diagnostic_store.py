@@ -173,7 +173,10 @@ class DiagnosticStore(DiagnosticExportMixin, DiagnosticSummaryMixin):
     def _ensure_connection(self) -> sqlite3.Connection:
         if self._conn is not None:
             return self._conn
-        connection = sqlite3.connect(self.path, timeout=10, isolation_level=None)
+        # The cached handle is shared across Flask request threads and writer
+        # threads; every access is serialized by ``self._lock``, so the
+        # connection must opt out of sqlite3's same-thread affinity check.
+        connection = sqlite3.connect(self.path, timeout=10, isolation_level=None, check_same_thread=False)
         connection.row_factory = sqlite3.Row
         # WAL is a persistent database property and synchronous a connection
         # property; both are cheap to (re)assert on every cold connect.
