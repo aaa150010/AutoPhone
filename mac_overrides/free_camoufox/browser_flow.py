@@ -11,7 +11,6 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
-import math
 import time
 from typing import Any, Callable, Mapping
 
@@ -47,12 +46,14 @@ try:
     from .deadline import (
         MANUAL_OTP_POST_SUBMIT_GRACE_SECONDS,
         ProfileTimingTracker,
+        RegistrationBudget,
         RegistrationDeadline,
     )
 except ImportError:  # pragma: no cover - top-level recovery import
     from free_camoufox.deadline import (  # type: ignore[no-redef]
         MANUAL_OTP_POST_SUBMIT_GRACE_SECONDS,
         ProfileTimingTracker,
+        RegistrationBudget,
         RegistrationDeadline,
     )
 
@@ -253,53 +254,25 @@ async def _browser_flow(
     if controller is None:
         controller = RegistrationDeadline(timeout)
     fallback_deadline = time.monotonic() + timeout
+    budget = RegistrationBudget(host, controller, fallback_deadline=fallback_deadline)
 
     def current_deadline() -> float:
-        value = host._deadline_controller_call(controller, "deadline")
-        if value is not host._DEADLINE_CONTROLLER_MISSING:
-            try:
-                candidate = float(value)
-                if math.isfinite(candidate):
-                    return candidate
-            except (TypeError, ValueError, OverflowError):
-                pass
-        return fallback_deadline
+        return budget.deadline()
 
     def budget_remaining() -> float:
-        value = host._deadline_controller_call(controller, "remaining")
-        if value is not host._DEADLINE_CONTROLLER_MISSING:
-            try:
-                candidate = float(value)
-                if math.isfinite(candidate):
-                    return max(0.0, candidate)
-            except (TypeError, ValueError, OverflowError):
-                pass
-        return max(0.0, current_deadline() - time.monotonic())
+        return budget.remaining()
 
     def budget_paused() -> bool:
-        return host._deadline_controller_bool(controller, "is_paused")
+        return budget.paused()
 
     def budget_grace_active() -> bool:
-        return host._deadline_controller_bool(controller, "manual_submission_grace_active")
+        return budget.grace_active()
 
     def budget_grace_remaining() -> float:
-        value = host._deadline_controller_call(controller, "manual_submission_grace_remaining")
-        if value is not host._DEADLINE_CONTROLLER_MISSING:
-            try:
-                candidate = float(value)
-                if math.isfinite(candidate):
-                    return max(0.0, candidate)
-            except (TypeError, ValueError, OverflowError):
-                pass
-        return MANUAL_OTP_POST_SUBMIT_GRACE_SECONDS if budget_grace_active() else 0.0
+        return budget.grace_remaining()
 
     def budget_expired() -> bool:
-        value = host._deadline_controller_call(controller, "is_expired")
-        if value is not host._DEADLINE_CONTROLLER_MISSING:
-            if bool(value):
-                return not budget_grace_active()
-            return False
-        return not budget_paused() and budget_remaining() <= 0
+        return budget.expired()
 
     deadline = current_deadline()
     account_flow = "existing_login" if force_existing_login else "signup"

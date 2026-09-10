@@ -12,6 +12,7 @@ without the optional Camoufox package.
 
 from __future__ import annotations
 
+import math
 import threading
 import time
 from typing import Any, Callable, Mapping
@@ -300,12 +301,75 @@ class ProfileTimingTracker:
             self.home_state_recorded = True
 
 
+class RegistrationBudget:
+    """Read-only budget probes over one controller with a wall-clock fallback.
+
+    The browser flow used to keep six ``_browser_flow`` closures for these
+    probes.  Every controller hook is resolved through the hosting runtime
+    module at call time, so tests keep patching
+    ``free_camoufox_runtime.<name>`` globals without noticing this facade.
+    """
+
+    def __init__(self, host: Any, controller: Any, *, fallback_deadline: float) -> None:
+        self._host = host
+        self._controller = controller
+        self._fallback_deadline = float(fallback_deadline)
+
+    def deadline(self) -> float:
+        value = self._host._deadline_controller_call(self._controller, "deadline")
+        if value is not self._host._DEADLINE_CONTROLLER_MISSING:
+            try:
+                candidate = float(value)
+                if math.isfinite(candidate):
+                    return candidate
+            except (TypeError, ValueError, OverflowError):
+                pass
+        return self._fallback_deadline
+
+    def remaining(self) -> float:
+        value = self._host._deadline_controller_call(self._controller, "remaining")
+        if value is not self._host._DEADLINE_CONTROLLER_MISSING:
+            try:
+                candidate = float(value)
+                if math.isfinite(candidate):
+                    return max(0.0, candidate)
+            except (TypeError, ValueError, OverflowError):
+                pass
+        return max(0.0, self.deadline() - time.monotonic())
+
+    def paused(self) -> bool:
+        return self._host._deadline_controller_bool(self._controller, "is_paused")
+
+    def grace_active(self) -> bool:
+        return self._host._deadline_controller_bool(self._controller, "manual_submission_grace_active")
+
+    def grace_remaining(self) -> float:
+        value = self._host._deadline_controller_call(self._controller, "manual_submission_grace_remaining")
+        if value is not self._host._DEADLINE_CONTROLLER_MISSING:
+            try:
+                candidate = float(value)
+                if math.isfinite(candidate):
+                    return max(0.0, candidate)
+            except (TypeError, ValueError, OverflowError):
+                pass
+        return MANUAL_OTP_POST_SUBMIT_GRACE_SECONDS if self.grace_active() else 0.0
+
+    def expired(self) -> bool:
+        value = self._host._deadline_controller_call(self._controller, "is_expired")
+        if value is not self._host._DEADLINE_CONTROLLER_MISSING:
+            if bool(value):
+                return not self.grace_active()
+            return False
+        return not self.paused() and self.remaining() <= 0
+
+
 __all__ = [
     "MANUAL_OTP_HANDOFF_GRACE_SECONDS",
     "MANUAL_OTP_POST_SUBMIT_GRACE_SECONDS",
     "MANUAL_OTP_WINDOW_SECONDS",
     "MAX_MANUAL_OTP_WINDOWS",
     "ProfileTimingTracker",
+    "RegistrationBudget",
     "RegistrationDeadline",
     "deadline_controller_bool",
     "deadline_controller_call",
