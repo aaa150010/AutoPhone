@@ -44,6 +44,13 @@ except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
         SmsWaitPlan,
     )
 
+# Dense-then-sparse status polling: most SMS codes land within the first
+# seconds after send, so each wait round opens with a tightly polled window
+# and then falls back to the historic cadence. The dense window stays short
+# so provider getStatus rate limits are only briefly stressed.
+_SMS_DENSE_POLL_SECONDS = 10
+_SMS_DENSE_POLL_INTERVAL_SECONDS = 1
+
 try:
     from .sms_balance_runtime import query_registry_balances
     from .sms_network import (
@@ -762,25 +769,50 @@ class PooledSmsProvider(_PooledSmsActivationMixin):
         interval: int,
     ) -> str | None:
         deadline = time.monotonic() + max(1, int(timeout))
+        slices: list[tuple[int, int]] = []
+        dense = min(_SMS_DENSE_POLL_SECONDS, max(1, int(timeout)))
+        if dense < int(timeout):
+            slices.append((dense, _SMS_DENSE_POLL_INTERVAL_SECONDS))
+        slices.append((max(1, int(timeout) - (dense if dense < int(timeout) else 0)), max(1, int(interval))))
+        for index, (slice_timeout, slice_interval) in enumerate(slices):
+            remaining = max(0, math.ceil(deadline - time.monotonic()))
+            if remaining <= 0:
+                return None
+            if index == len(slices) - 1:
+                # Keep the round bounded by its deadline even if the dense
+                # slice overran on transient-error retries.
+                slice_timeout = min(slice_timeout, max(1, remaining))
+            try:
+                code = call_sms_with_retries(
+                    lambda st=slice_timeout, si=slice_interval: self._polled_slice(
+                        activation_id, generation, st, si,
+                    ),
+                    deadline=deadline,
+                )
+            except Exception as exc:
+                if "sms_activation_replaced" in str(exc):
+                    raise
+                if self._pool is not None:
+                    self._pool.report_error(self._state, exc, runtime=True)
+                detail = self.registry.safe_error(exc)
+                raise RuntimeError(
+                    f"sms_provider_poll_failed: {detail or type(exc).__name__}"
+                ) from exc
+            if code:
+                return code
+        return None
 
-        def poll() -> str | None:
-            self._ensure_activation(activation_id, generation)
-            remaining = max(1, math.ceil(deadline - time.monotonic()))
-            code = self._wait_once(remaining, interval)
-            self._ensure_activation(activation_id, generation)
-            return code
-
-        try:
-            return call_sms_with_retries(poll, deadline=deadline)
-        except Exception as exc:
-            if "sms_activation_replaced" in str(exc):
-                raise
-            if self._pool is not None:
-                self._pool.report_error(self._state, exc, runtime=True)
-            detail = self.registry.safe_error(exc)
-            raise RuntimeError(
-                f"sms_provider_poll_failed: {detail or type(exc).__name__}"
-            ) from exc
+    def _polled_slice(
+        self,
+        activation_id: str,
+        generation: int,
+        timeout: int,
+        interval: int,
+    ) -> str | None:
+        self._ensure_activation(activation_id, generation)
+        code = self._wait_once(timeout, interval)
+        self._ensure_activation(activation_id, generation)
+        return code
 
     def wait_code(self, timeout: int = 300, interval: int = 3) -> str | None:
         if self._provider is None:

@@ -515,7 +515,7 @@ class SmsRuntimeTests(unittest.TestCase):
         self.assertEqual(second.current_order_meta["platform"], "herosms")
         second.cancel()
 
-    def test_sms_wait_uses_two_fixed_thirty_second_rounds_at_three_second_intervals(self):
+    def test_sms_wait_rounds_open_with_dense_polling_then_fall_back_to_cadence(self):
         factory = FakeMultiPlatformFactory({
             ("smsbower", "bower-a"): {"balance": 1.0, "codes": [None, None]},
         })
@@ -532,7 +532,10 @@ class SmsRuntimeTests(unittest.TestCase):
             provider.wait_code(timeout=30, interval=99)
 
         waits = [call for call in factory.calls if call[0] == "wait"]
-        self.assertEqual([call[4:] for call in waits], [(30, 3), (30, 3)])
+        self.assertEqual(
+            [call[4:] for call in waits],
+            [(10, 1), (20, 3), (10, 1), (20, 3)],
+        )
         self.assertEqual(len({call[3] for call in waits}), 1)
 
     def test_degraded_wait_uses_forty_then_twenty_without_alternative(self):
@@ -555,11 +558,14 @@ class SmsRuntimeTests(unittest.TestCase):
             provider.wait_code(timeout=180)
 
         waits = [call for call in factory.calls if call[0] == "wait"]
-        self.assertEqual([call[4:] for call in waits], [(40, 3), (20, 3)])
+        self.assertEqual(
+            [call[4:] for call in waits],
+            [(10, 1), (30, 3), (10, 1), (10, 3)],
+        )
 
     def test_degraded_wait_switches_after_forty_only_when_cancellable(self):
         factory = FakeMultiPlatformFactory({
-            ("smsbower", "bower-a"): {"codes": [None, "late-code"]},
+            ("smsbower", "bower-a"): {"codes": [None, None]},
         })
         registry = SmsProviderRegistry(factory)
         registry.configure({
@@ -583,11 +589,11 @@ class SmsRuntimeTests(unittest.TestCase):
             provider.wait_code(timeout=180)
 
         waits = [call for call in factory.calls if call[0] == "wait"]
-        self.assertEqual([call[4:] for call in waits], [(40, 3)])
+        self.assertEqual([call[4:] for call in waits], [(10, 1), (30, 3)])
 
     def test_degraded_wait_without_alternative_recheck_keeps_second_round(self):
         factory = FakeMultiPlatformFactory({
-            ("smsbower", "bower-a"): {"codes": [None, "late-code"]},
+            ("smsbower", "bower-a"): {"codes": [None, None, None, "late-code"]},
         })
         registry = SmsProviderRegistry(factory)
         registry.configure({
@@ -609,7 +615,10 @@ class SmsRuntimeTests(unittest.TestCase):
         self.assertEqual(provider.wait_code(timeout=180), "late-code")
 
         waits = [call for call in factory.calls if call[0] == "wait"]
-        self.assertEqual([call[4:] for call in waits], [(40, 3), (20, 3)])
+        self.assertEqual(
+            [call[4:] for call in waits],
+            [(10, 1), (30, 3), (10, 1), (10, 3)],
+        )
 
     def test_degraded_wait_rechecks_alternative_after_first_round(self):
         factory = FakeMultiPlatformFactory({
@@ -632,7 +641,10 @@ class SmsRuntimeTests(unittest.TestCase):
             provider.wait_code(timeout=180)
 
         waits = [call for call in factory.calls if call[0] == "wait"]
-        self.assertEqual([call[4:] for call in waits], [(40, 3), (20, 3)])
+        self.assertEqual(
+            [call[4:] for call in waits],
+            [(10, 1), (30, 3), (10, 1), (10, 3)],
+        )
 
     def test_herosms_protection_window_keeps_second_wait_round(self):
         factory = FakeMultiPlatformFactory({
@@ -659,7 +671,10 @@ class SmsRuntimeTests(unittest.TestCase):
             provider.wait_code(timeout=180)
 
         waits = [call for call in factory.calls if call[0] == "wait"]
-        self.assertEqual([call[4:] for call in waits], [(40, 3), (20, 3)])
+        self.assertEqual(
+            [call[4:] for call in waits],
+            [(10, 1), (30, 3), (10, 1), (10, 3)],
+        )
 
     def test_herosms_cancel_uses_documented_access_cancel_refund_ack(self):
         factory = FakeMultiPlatformFactory({
