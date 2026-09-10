@@ -980,7 +980,7 @@ class FreeProtocolRuntimeTests(unittest.TestCase):
             runtime.FreeProtocolMixin._confirm_mfa_enabled(Transport(), Session(), {}, "task-pending")
 
         self.assertEqual(len(reads), 3)
-        self.assertEqual(sleeps, [1.0, 1.0])
+        self.assertEqual(sleeps, [0.3, 0.3])
         self.assertEqual(len(warns), 1)
         self.assertIn("激活响应已按成功处理", warns[0])
 

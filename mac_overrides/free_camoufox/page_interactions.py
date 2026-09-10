@@ -659,7 +659,7 @@ async def _wait_for_any_selector(host, page: Any, selectors: tuple[str, ...], *,
                     return selector
             except Exception:
                 continue
-        await asyncio.sleep(0.4)
+        await asyncio.sleep(0.2)
     return None
 
 

@@ -1183,7 +1183,9 @@ class FreeProtocolMixin(
         # a still-pending read gets a short bounded retry window.
         for attempt in range(3):
             if attempt:
-                time.sleep(1.0)
+                # Activation writes are visible almost immediately; the
+                # backoff only covers replication lag, not user pacing.
+                time.sleep(0.3)
             try:
                 response = session.get(
                     "https://chatgpt.com/backend-api/accounts/mfa_info",
