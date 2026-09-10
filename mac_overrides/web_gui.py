@@ -103,6 +103,7 @@ import network_tools_routes as _network_tools_routes_ext
 import free_protocol_diagnostics as _free_protocol_diagnostics_ext
 import sys
 import web_gui_config_patches as _config_patches_mod
+import web_gui_mailbox_wait as _mailbox_wait_mod
 import web_gui_config_lifecycle as _config_lifecycle_mod
 import web_gui_importer_patches as _importer_patches
 import web_gui_codex_patches as _codex_patches
@@ -1795,98 +1796,15 @@ def _url_mailbox_mark_sent(self):
 
 
 def _automatic_url_mailbox_wait_code(self, email):
-    entry = getattr(self, "entry", None)
-    if (
-        getattr(entry, "oauth_client_id", "") == "chatgpt_totp"
-        and getattr(entry, "oauth_refresh_token", "")
-        and getattr(self, "_chatgpt_email_otp_verified", False)
-    ):
-        code = _chatgpt_totp_ext.totp_code(getattr(entry, "oauth_refresh_token", ""))
-        _mailbox_otp_service_ext.finish_runtime_request(getattr(self, "provider", None))
-        _call_log(getattr(self, "log_fn", None), "  [Codex] 已根据 2FA 密钥生成临时验证码", "info")
-        return code
-    provider = getattr(self, "provider", None)
-    max_poll_attempts = _int_value(
-        getattr(self, "max_attempts", 30),
-        30,
-        minimum=1,
-        maximum=1000,
-    )
-    timeout_seconds = _int_value(getattr(self, "timeout", 90), 90, minimum=1, maximum=600)
-    interval_seconds = _int_value(getattr(self, "interval", 5), 5, minimum=1, maximum=60)
-    deadline = getattr(self, "_gptphone_email_code_deadline", None)
-    code = _mailbox_otp_service_ext.legacy_wait_code(
-        self,
-        email,
-        wait_fn=_ORIGINAL_URL_MAILBOX_WAIT_CODE,
-        max_poll_attempts=max_poll_attempts,
-        timeout_seconds=timeout_seconds,
-        interval_seconds=interval_seconds,
-        deadline_monotonic=float(deadline) if deadline is not None else None,
-    )
-    if code:
-        setattr(self, "_chatgpt_email_otp_verified", True)
-        if (
-            getattr(entry, "oauth_client_id", "") == "chatgpt_totp"
-            and getattr(entry, "oauth_refresh_token", "")
-        ):
-            _MAILBOX_TOTP_SECRET_CONTEXT.set(str(getattr(entry, "oauth_refresh_token", "") or ""))
-    return code
+    return _mailbox_wait_mod.automatic_url_mailbox_wait_code(_host_module(), self, email)
 
 
 def _automatic_outlook_mailbox_wait_code(self, email):
-    used_codes = set(getattr(self, "_gptphone_used_email_otp_codes", ()) or ())
-    poller = getattr(self, "poller", None)
-    original_poll_code = getattr(poller, "poll_code", None)
-    restore_instance_override = False
-    previous_instance_override = None
-
-    if used_codes and callable(original_poll_code):
-        poller_vars = getattr(poller, "__dict__", {})
-        restore_instance_override = "poll_code" in poller_vars
-        previous_instance_override = poller_vars.get("poll_code")
-
-        def poll_distinct_code(*args, **kwargs):
-            excluded = set(kwargs.get("exclude_codes") or ())
-            excluded.update(used_codes)
-            kwargs["exclude_codes"] = excluded
-            return original_poll_code(*args, **kwargs)
-
-        poller.poll_code = poll_distinct_code
-        _call_log(
-            getattr(self, "log_fn", None),
-            "  [邮箱取码诊断/email_code_waiting] 重发后已排除本任务上一轮验证码，等待新邮件",
-            "info",
-        )
-
-    try:
-        code = _ORIGINAL_OUTLOOK_OTP_WAIT_CODE(self, email)
-    finally:
-        if used_codes and callable(original_poll_code):
-            if restore_instance_override:
-                poller.poll_code = previous_instance_override
-            else:
-                del poller.poll_code
-
-    normalized = str(code or "").strip()
-    if normalized:
-        used_codes.add(normalized)
-        self._gptphone_used_email_otp_codes = used_codes
-    return code
+    return _mailbox_wait_mod.automatic_outlook_mailbox_wait_code(_host_module(), self, email)
 
 
 def _manual_task_generation(task_id):
-    free_manager = globals().get("_FREE_REGISTER")
-    if free_manager is not None:
-        try:
-            task = next(
-                item for item in free_manager.public_tasks()
-                if str(item.get("task_id") or "") == str(task_id or "").strip()
-            )
-            return int(free_manager._manual_generation(str(task_id)))
-        except (StopIteration, TypeError, ValueError, AttributeError):
-            pass
-    return _oauth_mfa_runtime_ext.task_generation(task_id, _AUTH_SESSIONS.public_snapshot)
+    return _mailbox_wait_mod.manual_task_generation(_host_module(), task_id)
 _manual_stop_event = _oauth_mfa_runtime_ext.provider_stop_event
 
 
@@ -1907,63 +1825,21 @@ def _submit_manual_code(self, task_id, code):
 
 
 def _manual_email_wait(provider, email, automatic_wait, *, parser_provider=None):
-    # The recovered call sites (and older integrations) use the historic
-    # three-argument helper signature.  Infer the URL parser owner from the
-    # wrapper provider when the optional context is omitted so those callers
-    # remain compatible while still recording parser samples.
-    if parser_provider is None:
-        parser_provider = getattr(provider, "provider", None)
-    task_id = str(_TASK_CONTEXT.get() or getattr(provider, "task_id", "") or "").strip()
-    if not task_id:
-        return automatic_wait()
-    timeout = _int_value(getattr(provider, "timeout", 90), 90, minimum=1, maximum=600)
-    return _manual_verification_runtime_ext.wait_with_manual_fallback(
-        automatic_wait,
-        broker=_MANUAL_VERIFICATION,
-        task_id=task_id,
-        input_kind="email_otp",
-        generation=_manual_task_generation(task_id),
-        stop_event=_manual_stop_event(provider),
-        automatic_timeout_seconds=timeout,
-        manual_timeout_seconds=_manual_verification_runtime_ext.DEFAULT_WINDOW_SECONDS,
-        on_automatic_unmatched=(
-            lambda cause: _mailbox_otp_service_ext.record_runtime_parser_sample(
-                parser_provider,
-                cause,
-            )
-        ) if parser_provider is not None else None,
-        on_manual_selected=lambda: _call_log(
-            getattr(provider, "log_fn", None),
-            "  [人工邮箱验证码/email_code_waiting] 已接收当前任务的人工验证码",
-            "info",
-        ),
+    return _mailbox_wait_mod.manual_email_wait(
+        _host_module(), provider, email, automatic_wait, parser_provider=parser_provider,
     )
 
 
 def _url_mailbox_wait_code(self, email):
-    _oauth_mfa_runtime_ext.remember_provider_totp_secret(self, _TASK_TOTP_SECRETS, current_task_get=_TASK_CONTEXT.get)
-    return _manual_email_wait(
-        self,
-        email,
-        lambda: _automatic_url_mailbox_wait_code(self, email),
-    )
+    return _mailbox_wait_mod.url_mailbox_wait_code(_host_module(), self, email)
 
 
 def _outlook_mailbox_wait_code(self, email):
-    _oauth_mfa_runtime_ext.remember_provider_totp_secret(self, _TASK_TOTP_SECRETS, current_task_get=_TASK_CONTEXT.get)
-    return _manual_email_wait(
-        self,
-        email,
-        lambda: _automatic_outlook_mailbox_wait_code(self, email),
-    )
+    return _mailbox_wait_mod.outlook_mailbox_wait_code(_host_module(), self, email)
 
 
 def _gptmail_mailbox_wait_code(self, email):
-    return _manual_email_wait(
-        self,
-        email,
-        lambda: _ORIGINAL_GPTMAIL_OTP_WAIT_CODE(self, email),
-    )
+    return _mailbox_wait_mod.gptmail_mailbox_wait_code(_host_module(), self, email)
 
 
 def _mfa_factor_id_from_response(response):
