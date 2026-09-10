@@ -49,11 +49,13 @@ class FreeNotificationSummaryTests(unittest.TestCase):
         message = sent[0]
         self.assertEqual(
             message["Subject"],
-            "[GPT 注册中心][Camoufox] Free 注册汇总",
+            "Free 注册汇总：成功 1 失败 0",
         )
         body = message.get_content()
         self.assertIn("结果：成功 1 ｜ 失败 0 ｜ 共 1 个", body)
         self.assertIn("链路：Camoufox", body)
+        self.assertNotIn("平均耗时", body)
+        self.assertNotIn("最慢节点", body)
         self.assertNotIn("free-camoufox-email", message.as_string())
         self.assertNotIn("邮箱：", body)
         self.assertNotIn("自动接码机", message.as_string())
@@ -165,7 +167,7 @@ class FreeNotificationSummaryTests(unittest.TestCase):
         self.assertEqual(summary["average_duration_ms"], 11000)
         self.assertEqual(summary["average_duration_seconds"], 11.0)
 
-    def test_batch_email_reports_average_task_duration(self) -> None:
+    def test_batch_email_reports_counts_without_timing(self) -> None:
         sent: list[object] = []
 
         class FakeSender:
@@ -199,7 +201,8 @@ class FreeNotificationSummaryTests(unittest.TestCase):
             adapter.close()
 
         body = sent[0].get_content()
-        self.assertIn("平均耗时：12.0 秒", body)
+        self.assertIn("结果：成功 2 ｜ 失败 0 ｜ 共 2 个", body)
+        self.assertNotIn("平均耗时", body)
         self.assertNotIn("总耗时", body)
 
 

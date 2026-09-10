@@ -170,12 +170,11 @@ class FreeBatchNotificationAdapter:
             message = EmailMessage()
             chain = str(summary.get("chain") or "未知链路")
             message["Subject"] = (
-                f"[GPT 注册中心][{chain}] Free 注册汇总"
+                f"Free 注册汇总：成功 {summary.get('success', 0)} 失败 {summary.get('failed', 0)}"
             )
             settings = sender._settings
             message["From"] = settings.sender
             message["To"] = ", ".join(settings.recipients)
-            slowest = summary.get("slowest_node") or {}
             failure = summary.get("first_failure") or {}
             result_parts = [
                 f"成功 {summary.get('success', 0)}",
@@ -193,8 +192,6 @@ class FreeBatchNotificationAdapter:
             lines = [
                 f"结果：{' ｜ '.join(result_parts)}",
                 f"链路：{chain}",
-                f"平均耗时：{summary.get('average_duration_seconds', 0)} 秒",
-                f"最慢节点：{slowest.get('label') or '-'} ({int(slowest.get('duration_ms') or 0)} ms)",
                 f"首个失败节点：{failure.get('label') or '-'}",
                 f"脱敏日志 ID：{', '.join(summary.get('incident_ids') or ()) or '-'}",
             ]
