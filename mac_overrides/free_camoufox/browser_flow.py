@@ -1586,3 +1586,8 @@ async def _browser_flow(
         "注册状态机超时，页面未确认进入首页", error_code="camoufox_home_not_confirmed",
         safe_page=host._safe_url(page), page_type=await host._page_state(page),
     )
+
+
+# The registration state machine is consumed through the free_camoufox_runtime
+# facade; no public names are exported here.
+__all__: list[str] = []

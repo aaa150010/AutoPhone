@@ -2530,3 +2530,13 @@ class CamoufoxRegistrationRunner:
                     close()
                 except Exception:
                     log("Camoufox 邮箱 OTP 客户端清理失败，不覆盖原任务结果", "warn")
+
+
+__all__ = [
+    "CamoufoxBrowserPool",
+    "shutdown_camoufox_pools",
+    "camoufox_debug_state",
+    "annotate_camoufox_debug_session",
+    "close_camoufox_debug_browsers",
+    "CamoufoxRegistrationRunner",
+]

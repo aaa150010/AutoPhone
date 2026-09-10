@@ -740,3 +740,23 @@ def run_codex_after_registration(
     if isinstance(result, dict) and result.get("ok"):
         host._clear_known_node_failure(str(runtime_config.get("sms_task_id") or ""))
     return result
+
+
+__all__ = [
+    "bind_host",
+    "real_transport_init",
+    "is_free_transport",
+    "real_new_session",
+    "real_headers",
+    "observe_protocol_request_activity",
+    "real_post_auth_json",
+    "real_post_auth_json_without_sentinel",
+    "observe_auth_step",
+    "real_submit_email_identifier",
+    "real_verify_password",
+    "manual_totp_fallback",
+    "real_verify_mfa_otp",
+    "real_send_mfa_otp",
+    "ReloginPhoneOtpProvider",
+    "run_codex_after_registration",
+]

@@ -146,3 +146,6 @@ class FreeRegisterSchedulerMixin:
             exit_ip=replacement.exit_ip,
         )
         return True
+
+
+__all__ = ["FreeRegisterSchedulerMixin"]

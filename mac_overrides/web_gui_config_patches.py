@@ -332,3 +332,10 @@ def patched_task_config(host, self, settings, email, task_id, *, password=""):
         "register_rejected_min_cooldown": 180,
     }
     return config
+
+
+__all__ = [
+    "patched_config_load",
+    "patched_config_save",
+    "patched_task_config",
+]

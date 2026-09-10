@@ -2412,3 +2412,8 @@ async def _await_otp_callback(
         raise
     finally:
         end_otp_wait_once()
+
+
+# Every callable here is a private host-injection helper; the public surface
+# stays on the free_camoufox_runtime compatibility facade.
+__all__: list[str] = []

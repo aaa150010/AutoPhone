@@ -372,3 +372,15 @@ class MailboxHttpTransport:
         close = getattr(self.session, "close", None)
         if callable(close):
             close()
+
+
+__all__ = [
+    "DEFAULT_FREE_MAILBOX_PROXY",
+    "RETRYABLE_HTTP_STATUSES",
+    "RETRYABLE_ERROR_CODES",
+    "DIAGNOSTIC_LABELS",
+    "MailboxNetworkPolicy",
+    "MailboxOtpError",
+    "normalize_network_policy",
+    "MailboxHttpTransport",
+]
