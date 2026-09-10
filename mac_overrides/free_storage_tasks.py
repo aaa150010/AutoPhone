@@ -324,36 +324,55 @@ class FreeStorageTaskMixin:
 
     def upsert_remail_order(self, order: Mapping[str, Any]) -> dict[str, Any]:
         """Persist an order, keeping service_token in the private sidecar."""
-        order_no = str(order.get("orderNo") or order.get("order_no") or "").strip()
-        if not order_no:
-            raise ValueError("Remail orderNo 不能为空")
-        email = str(order.get("deliveryEmail") or order.get("delivery_email") or "").strip().lower()
-        status = str(order.get("status") or "").strip().lower()
-        public, private = _partition_json(dict(order))
+        saved = self.upsert_remail_orders([order])
+        return saved[0]
+
+    def upsert_remail_orders(self, orders: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+        """Persist many orders in one write transaction.
+
+        The remote order page syncs up to 100 items per cursor page; writing
+        each one as its own ``BEGIN IMMEDIATE`` transaction serialized every
+        sync behind dozens of fsyncs.  One transaction keeps the identical
+        per-order preservation rules (imported/pool_row_id/created_at/hidden)
+        while paying a single commit.
+        """
+        rows: list[dict[str, Any]] = []
+        if not orders:
+            return rows
         now = _now()
         with self._transaction():
             with self._connection() as db:
                 db.execute("BEGIN IMMEDIATE")
                 try:
-                    current = db.execute("SELECT imported,pool_row_id,created_at,hidden FROM remail_orders WHERE order_no=?", (order_no,)).fetchone()
-                    imported = int(current[0]) if current is not None else int(bool(order.get("imported")))
-                    pool_row_id = str(current[1]) if current is not None else str(order.get("pool_row_id") or "")
-                    created_at = str(current[2]) if current is not None else now
-                    # A locally hidden (dismissed) order stays hidden across
-                    # remote re-syncs; the remote list must not resurface it.
-                    hidden = int(current[3]) if current is not None else 0
-                    db.execute(
-                        "INSERT INTO remail_orders(order_no,status,delivery_email,imported,pool_row_id,created_at,updated_at,hidden,payload,private_payload) VALUES(?,?,?,?,?,?,?,?,?,?) "
-                        "ON CONFLICT(order_no) DO UPDATE SET status=excluded.status,delivery_email=excluded.delivery_email,updated_at=excluded.updated_at,payload=excluded.payload,private_payload=excluded.private_payload",
-                        (order_no, status, email, imported, pool_row_id, created_at, now, hidden, _safe_json(public), _safe_json(private)),
-                    )
-                    row = db.execute("SELECT * FROM remail_orders WHERE order_no=?", (order_no,)).fetchone()
+                    for order in orders:
+                        if not isinstance(order, Mapping):
+                            continue
+                        order_no = str(order.get("orderNo") or order.get("order_no") or "").strip()
+                        if not order_no:
+                            raise ValueError("Remail orderNo 不能为空")
+                        email = str(order.get("deliveryEmail") or order.get("delivery_email") or "").strip().lower()
+                        status = str(order.get("status") or "").strip().lower()
+                        public, private = _partition_json(dict(order))
+                        current = db.execute("SELECT imported,pool_row_id,created_at,hidden FROM remail_orders WHERE order_no=?", (order_no,)).fetchone()
+                        imported = int(current[0]) if current is not None else int(bool(order.get("imported")))
+                        pool_row_id = str(current[1]) if current is not None else str(order.get("pool_row_id") or "")
+                        created_at = str(current[2]) if current is not None else now
+                        # A locally hidden (dismissed) order stays hidden across
+                        # remote re-syncs; the remote list must not resurface it.
+                        hidden = int(current[3]) if current is not None else 0
+                        db.execute(
+                            "INSERT INTO remail_orders(order_no,status,delivery_email,imported,pool_row_id,created_at,updated_at,hidden,payload,private_payload) VALUES(?,?,?,?,?,?,?,?,?,?) "
+                            "ON CONFLICT(order_no) DO UPDATE SET status=excluded.status,delivery_email=excluded.delivery_email,updated_at=excluded.updated_at,payload=excluded.payload,private_payload=excluded.private_payload",
+                            (order_no, status, email, imported, pool_row_id, created_at, now, hidden, _safe_json(public), _safe_json(private)),
+                        )
+                        row = db.execute("SELECT * FROM remail_orders WHERE order_no=?", (order_no,)).fetchone()
+                        if row is not None:
+                            rows.append(self._remail_order_dict(row))
                     db.execute("COMMIT")
                 except BaseException:
                     db.execute("ROLLBACK")
                     raise
-        assert row is not None
-        return self._remail_order_dict(row)
+        return rows
 
     def hide_remail_orders(self, order_nos: Sequence[str]) -> int:
         """Dismiss orders locally; hidden orders stay hidden across re-syncs."""

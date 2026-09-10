@@ -327,6 +327,14 @@ class FreeStorageSchemaMixin:
                         db.execute(
                             "UPDATE remail_orders SET hidden=0 WHERE hidden IS NULL"
                         )
+                    # Order-page reads filter hidden/imported and sort by
+                    # created_at; without this every sync page full-scans.
+                    # Built after the hidden backfill because legacy
+                    # installations gain that column only above.
+                    db.execute(
+                        "CREATE INDEX IF NOT EXISTS idx_remail_orders_page "
+                        "ON remail_orders(hidden, imported, created_at DESC, order_no DESC)"
+                    )
                     self._migrate_payload_sidecars(db)
                     # ``executescript`` manages DDL in autocommit mode when
                     # isolation_level=None; use a short explicit transaction

@@ -1144,10 +1144,13 @@ def build_remail_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]
                 remote_count += len(items)
                 if isinstance(remote, Mapping):
                     remote_total = remote.get("total")
-                for item in items:
-                    order = _remail_order_value(item)
-                    if order is not None and storage is not None:
-                        storage.upsert_remail_order(order)
+                if storage is not None:
+                    # One write transaction per remote page instead of one
+                    # per order: 100 individual BEGIN IMMEDIATE commits
+                    # serialized the sync behind dozens of fsyncs.
+                    page_orders = [order for item in items if (order := _remail_order_value(item)) is not None]
+                    if page_orders:
+                        storage.upsert_remail_orders(page_orders)
                 if storage is None or storage.count_remail_orders(imported=imported_filter, search=search) >= target_count:
                     break
                 if not isinstance(remote, Mapping) or not remote.get("hasNext"):
