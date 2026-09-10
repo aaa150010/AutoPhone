@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+try:
+    from .atomic_io import atomic_write_json, atomic_write_text
+except ImportError:  # pragma: no cover - top-level recovery import
+    from atomic_io import atomic_write_json, atomic_write_text  # type: ignore[no-redef]
+
 import hmac
 import json
 from pathlib import Path
@@ -272,8 +277,9 @@ class MailboxAdminService(MailboxImportMixin, MailboxSourceLockMixin):
 
     @staticmethod
     def _write_json_file(path: Path, value: Mapping[str, Any]) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
+        # Atomic replace keeps concurrent task writes from exposing a torn
+        # JSON file to readers.
+        atomic_write_json(path, value)
 
     def _read_pool_lines(self, config: Mapping[str, Any] | None = None) -> list[str]:
         cfg = config or self._config()
@@ -289,9 +295,8 @@ class MailboxAdminService(MailboxImportMixin, MailboxSourceLockMixin):
     def _write_pool_lines(self, lines: Sequence[str], config: Mapping[str, Any] | None = None) -> Path:
         cfg = config or self._config()
         pool_path = self._path(cfg, "pool_path")
-        pool_path.parent.mkdir(parents=True, exist_ok=True)
         content = "\n".join(lines).strip()
-        pool_path.write_text(f"{content}\n" if content else "", encoding="utf-8")
+        atomic_write_text(pool_path, f"{content}\n" if content else "")
         return pool_path
 
     def _log(self, message: str, level: str) -> None:
