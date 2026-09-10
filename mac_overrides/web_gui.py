@@ -140,6 +140,12 @@ if os.environ.get("GPTPHONE_DATA_DIR"):
     _runtime.DEFAULT_DATA_DIR = _RUNTIME_DATA_DIR
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _manual_disabled(*args, **kwargs):
     raise _runtime.MailboxPoolError("手动邮箱验证码功能已禁用")
 
@@ -737,11 +743,7 @@ def _set_current_task_stage(code):
 
 
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort web-gui side paths."""
-    try:
-        print(f"[web_gui/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('web_gui', where, exc)
 
 
 def _record_task_segment(task_id, code, elapsed_seconds):

@@ -11,12 +11,14 @@ from __future__ import annotations
 _host_module_ref = None
 
 
+
+try:
+    from ..quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[page_interactions/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('page_interactions', where, exc)
 
 
 def _host_mod():
@@ -34,7 +36,6 @@ import re
 import shutil
 import tempfile
 import threading
-import sys
 import time
 import traceback
 import uuid

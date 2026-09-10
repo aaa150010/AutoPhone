@@ -7,7 +7,6 @@ shape observed in AutoRegister before the mailbox is consumed.
 
 from __future__ import annotations
 
-import sys
 import time
 from html import unescape
 import re
@@ -68,12 +67,14 @@ _REFERENCE_NAV_ACCEPT = (
 _REFERENCE_DOMAINS = ("chatgpt.com", "auth.openai.com", "sentinel.openai.com")
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort transport hardening."""
-    try:
-        print(f"[free_protocol_bootstrap/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('free_protocol_bootstrap', where, exc)
 
 
 def _reference_fingerprint(transport: Any) -> Mapping[str, Any]:

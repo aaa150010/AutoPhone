@@ -13,7 +13,6 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 import re
 import threading
-import sys
 import uuid
 from typing import Any, Mapping
 
@@ -107,12 +106,14 @@ _TEXT_FIELDS = frozenset(
 _INTEGER_FIELDS = frozenset({"sequence", "attempt", "elapsed_ms", "duration_ms"})
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[diagnostic_writer/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('diagnostic_writer', where, exc)
 
 
 def _safe_id(value: Any, *, limit: int = 180) -> str:

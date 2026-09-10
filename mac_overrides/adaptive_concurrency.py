@@ -6,7 +6,6 @@ from contextlib import contextmanager
 from collections.abc import Callable, Iterator
 import math
 import threading
-import sys
 import time
 from typing import Any
 
@@ -20,12 +19,14 @@ except ImportError:  # Loaded as a top-level runtime override.
     )
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[adaptive_concurrency/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('adaptive_concurrency', where, exc)
 
 
 def _notify(observer: Any, value: dict[str, Any]) -> None:

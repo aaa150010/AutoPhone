@@ -44,12 +44,14 @@ REFERENCE_LOCALES: dict[str, dict[str, Any]] = {
 }
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort transport probing."""
-    try:
-        print(f"[free_protocol_reference/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('free_protocol_reference', where, exc)
 
 
 def reference_flow_enabled(config: Mapping[str, Any]) -> bool:

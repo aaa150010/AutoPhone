@@ -21,12 +21,14 @@ except ImportError:  # Loaded as top-level runtime overrides by the Mac launcher
     from openai_quota_runtime import OpenAIQuotaError, credentials_from_result
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[mailbox_openai_test_service/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('mailbox_openai_test_service', where, exc)
 
 
 def _confirmed_deactivated_rows(result: Mapping[str, Any]) -> list[dict[str, Any]]:

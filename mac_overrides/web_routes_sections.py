@@ -11,7 +11,6 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import threading
-import sys
 import time
 from typing import Any
 import uuid
@@ -82,12 +81,14 @@ except ImportError:
 _SHA256_HEX_CHARACTERS = frozenset("0123456789abcdef")
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[web_routes_sections/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('web_routes_sections', where, exc)
 
 
 def _remail_public_text(value: Any, limit: int) -> str | None:

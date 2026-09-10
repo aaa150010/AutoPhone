@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import threading
-import sys
 from typing import Any, Callable
 
 try:
@@ -12,12 +11,14 @@ except ImportError:  # Loaded as a top-level runtime override.
     from route_failures import explicit_failure_payload  # type: ignore[no-redef]
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[connectivity_routes/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('connectivity_routes', where, exc)
 
 
 def patch_openai_connectivity_guard_route(

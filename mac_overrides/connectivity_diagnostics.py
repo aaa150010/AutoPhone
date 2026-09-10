@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 import time
-import sys
 from typing import Any, Callable, Mapping, Sequence
 
 try:
@@ -24,12 +23,14 @@ _DEFAULT_TIMEOUT = 5.0
 _MAX_NODE_TIMEOUT = 45
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[connectivity_diagnostics/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('connectivity_diagnostics', where, exc)
 
 
 def _status_code(value: Any) -> int | None:

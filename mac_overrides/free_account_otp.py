@@ -20,12 +20,14 @@ except ImportError:  # pragma: no cover - top-level recovery import
     from free_register_common import FreeRegisterError, clean  # type: ignore[no-redef]
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort OTP wait cleanup."""
-    try:
-        print(f"[free_account_otp/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('free_account_otp', where, exc)
 
 
 def _otp_stop_requested(value: Any) -> bool:

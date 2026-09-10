@@ -20,12 +20,14 @@ except ImportError:  # Loaded as top-level runtime overrides by the Mac launcher
 DEACTIVATED_WORKSPACE_CODE = "openai_quota_deactivated_workspace"
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[mailbox_quota_service/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('mailbox_quota_service', where, exc)
 
 
 def _is_deactivated_workspace(value: Mapping[str, Any]) -> bool:

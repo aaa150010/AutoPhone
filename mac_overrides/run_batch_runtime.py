@@ -11,7 +11,6 @@ import os
 from pathlib import Path
 import re
 import threading
-import sys
 import time
 from typing import Any
 import uuid
@@ -40,12 +39,14 @@ _STOPPED_STATUSES = frozenset(
 )
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[run_batch_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('run_batch_runtime', where, exc)
 
 
 def _clean(value: Any, maximum: int = 256) -> str:

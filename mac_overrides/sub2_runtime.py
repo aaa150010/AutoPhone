@@ -14,7 +14,6 @@ import socket
 import tempfile
 from threading import RLock
 import time
-import sys
 from typing import Any, Callable, Iterable, Mapping, Protocol, Sequence
 import urllib.parse
 
@@ -28,12 +27,14 @@ MAX_SUMMARY_CHARS = 240
 TOKEN_TTL_SECONDS = 600
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[sub2_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('sub2_runtime', where, exc)
 
 
 class Sub2ConfigurationError(RuntimeError):

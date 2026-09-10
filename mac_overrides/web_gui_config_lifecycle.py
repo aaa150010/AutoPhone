@@ -9,18 +9,19 @@ from __future__ import annotations
 
 import copy
 import json
-import sys
 from typing import Any
 
 _LEGACY_UPLOAD_FIELDS = ("nvtoken", "nvtoken_upload", "pixel_upload_enabled")
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[web_gui_config_lifecycle/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('web_gui_config_lifecycle', where, exc)
 
 
 def read_local_config(host):

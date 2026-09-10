@@ -7,7 +7,6 @@ from collections.abc import Mapping
 import re
 import threading
 import time
-import sys
 from typing import Any, Callable
 
 
@@ -17,6 +16,12 @@ DEFAULT_WINDOW_SECONDS = 300
 MAX_WINDOW_SECONDS = 300
 TOMBSTONE_RETENTION_SECONDS = 300
 
+
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
 
 class ManualVerificationError(RuntimeError):
     """Stable error carrying an HTTP-like status without exposing a code."""
@@ -56,11 +61,7 @@ class _PromptTombstone:
 
 
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed manual-flow callbacks."""
-    try:
-        print(f"[manual_verification/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('manual_verification_runtime', where, exc)
 
 
 def normalize_input_kind(value: Any) -> str:

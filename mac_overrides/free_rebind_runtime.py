@@ -13,7 +13,6 @@ import inspect
 import json
 from pathlib import Path
 import re
-import sys
 import secrets
 import threading
 import time
@@ -75,12 +74,14 @@ BEGIN_PATH = "/backend-api/accounts/change_email/begin"
 VERIFY_PATH = "/backend-api/accounts/change_email/verify"
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note when the rebind logger itself failed."""
-    try:
-        print(f"[free_rebind/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('free_rebind_runtime', where, exc)
 
 
 def _status(response: Any) -> int | None:

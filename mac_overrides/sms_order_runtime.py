@@ -7,7 +7,6 @@ import json
 from pathlib import Path
 import re
 import threading
-import sys
 import time
 from typing import Any, Callable
 import urllib.request
@@ -25,12 +24,14 @@ _CANCEL_RECEIPT_KEYS = frozenset(
 )
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[sms_order_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('sms_order_runtime', where, exc)
 
 
 def _as_float(value: Any, default: float = 0.0) -> float:

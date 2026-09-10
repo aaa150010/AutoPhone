@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import sqlite3
-import sys
 import threading
 import re
 from typing import Any, Mapping
@@ -29,12 +28,14 @@ except ImportError:
     from diagnostic_writer_async import AsyncDiagnosticWriter  # type: ignore[no-redef]
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note when the diagnostic note channel itself fails."""
-    try:
-        print(f"[free_log_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('free_log_runtime', where, exc)
 
 
 def _build_async_diagnostic_writer(diagnostic_store: Any, *, context: LogContext) -> Any:

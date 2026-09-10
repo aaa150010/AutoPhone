@@ -8,7 +8,6 @@ from dataclasses import dataclass
 import json
 import re
 import time
-import sys
 from typing import Any
 
 
@@ -59,12 +58,14 @@ _TRANSIENT_EXCEPTION_NAMES = frozenset(
 )
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[chatgpt_plan_gate/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('chatgpt_plan_gate', where, exc)
 
 
 @dataclass(frozen=True)

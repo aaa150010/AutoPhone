@@ -9,7 +9,6 @@ import json
 from pathlib import Path
 import os
 import threading
-import sys
 import time
 from typing import Any, Callable, Mapping
 import uuid
@@ -20,12 +19,14 @@ SUCCESS_RATE_BASELINE = 0.839
 SUCCESS_RATE_FLOOR = 0.819
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[sms_optimization_guard/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('sms_optimization_guard', where, exc)
 
 
 def _number(value: Any) -> float | None:

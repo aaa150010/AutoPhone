@@ -6,7 +6,6 @@ from collections import deque
 from contextlib import contextmanager
 from dataclasses import dataclass
 import threading
-import sys
 from typing import Any, Callable, Iterator, Mapping
 
 try:
@@ -69,12 +68,14 @@ _TRUE_VALUES = frozenset({"1", "true", "yes", "on", "enabled"})
 _FALSE_VALUES = frozenset({"0", "false", "no", "off", "disabled"})
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[performance_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('performance_runtime', where, exc)
 
 
 def as_bool(value: Any, default: bool = True) -> bool:

@@ -15,7 +15,6 @@ import re
 from pathlib import Path
 import secrets
 import threading
-import sys
 import time
 from typing import Any, Callable, Mapping, Sequence
 
@@ -60,12 +59,14 @@ PLAN_STAGE = "free_plan_check"
 PLAN_LABEL = "查询 Free 套餐资格"
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[free_plan_check/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('free_plan_check', where, exc)
 
 
 class FreePlanCheckError(FreeRegisterError):

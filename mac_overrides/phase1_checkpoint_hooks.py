@@ -12,7 +12,6 @@ from collections.abc import Callable, Mapping
 import copy
 import re
 import threading
-import sys
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -38,12 +37,14 @@ _DELETE_CHECKPOINT_MARKERS = (
 )
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[phase1_checkpoint_hooks/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('phase1_checkpoint_hooks', where, exc)
 
 
 def _snake_key(value: Any) -> str:

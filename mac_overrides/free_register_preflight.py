@@ -55,12 +55,14 @@ except ImportError:  # macOS launcher imports overrides as top-level modules.
     from free_runtime_info import runtime_info  # type: ignore[no-redef]
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[free_register_preflight/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('free_register_preflight', where, exc)
 
 
 def _runtime_module() -> Any:

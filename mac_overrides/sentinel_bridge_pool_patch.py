@@ -42,12 +42,14 @@ _PATCHED_MODULES: set[int] = set()
 _BRIDGE_SOURCE_DIR = Path(__file__).resolve().parent.parent / "engine" / "node_chain"
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[sentinel_bridge_pool_patch/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('sentinel_bridge_pool_patch', where, exc)
 
 
 def _resolve_worker_script(script_path: str) -> Path:

@@ -16,7 +16,6 @@ from pathlib import Path
 import re
 from threading import RLock
 import time
-import sys
 from typing import Any, Callable, Iterable, Mapping, Protocol, Sequence
 import uuid
 
@@ -72,12 +71,14 @@ _DIRECT_TEST_TRANSIENT_KINDS = frozenset(
 )
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[openai_direct_test_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('openai_direct_test_runtime', where, exc)
 
 
 def _enabled(value: Any, default: bool = True) -> bool:

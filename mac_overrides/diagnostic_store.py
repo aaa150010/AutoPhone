@@ -17,7 +17,6 @@ from pathlib import Path
 import secrets
 import sqlite3
 import threading
-import sys
 import uuid
 from contextlib import contextmanager
 import re
@@ -81,12 +80,14 @@ _INCIDENT_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 _MISSING_HISTORY_HASH = "history_pruned"
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[diagnostic_store/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('diagnostic_store', where, exc)
 
 
 class DiagnosticStore(DiagnosticExportMixin, DiagnosticSummaryMixin):

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 import re
 from typing import Any, Mapping, Sequence
@@ -28,12 +27,14 @@ _IMPORT_ORDER_VERSION = 1
 _IMPORT_ORDER_FILE_NAME = "mailbox_import_order.json"
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[mailbox_import_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('mailbox_import_runtime', where, exc)
 
 
 class MailboxImportMixin:

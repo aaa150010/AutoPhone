@@ -17,7 +17,6 @@ import json
 import os
 from pathlib import Path
 import threading
-import sys
 import tempfile
 import time
 from typing import Any, Mapping
@@ -26,12 +25,14 @@ from urllib.parse import urlsplit
 from .debug_redaction import sanitize_debug_text as _sanitize_debug_text_impl
 
 
+
+try:
+    from ..quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[debug_artifacts/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('debug_artifacts', where, exc)
 
 
 def _legacy_runtime() -> Any | None:

@@ -11,7 +11,6 @@ Mailbox parsing and OTP retrieval deliberately remain outside this module.
 from __future__ import annotations
 
 import time
-import sys
 from collections.abc import Callable, Mapping
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -24,12 +23,14 @@ except ImportError:  # pragma: no cover
     from free_register_common import FreeRegisterError, safe_log_message  # type: ignore[no-redef]
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[free_autoregister_protocol/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('free_autoregister_protocol', where, exc)
 
 
 def _log(log: Callable[..., Any] | None, message: str, level: str = "info") -> None:

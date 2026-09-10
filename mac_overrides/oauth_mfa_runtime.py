@@ -6,7 +6,6 @@ import base64
 from collections.abc import Mapping
 from dataclasses import dataclass
 import threading
-import sys
 import re
 from typing import Any, Callable
 from urllib.parse import urljoin, urlsplit
@@ -29,12 +28,14 @@ _MFA_PATH_PREFIXES = (
 )
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[oauth_mfa_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('oauth_mfa_runtime', where, exc)
 
 
 def _response_is_mfa(response: Any, page_type_get: Callable[[Any], Any]) -> bool:

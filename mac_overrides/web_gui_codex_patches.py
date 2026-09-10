@@ -8,7 +8,6 @@ Every patched callable receives the hosting ``web_gui`` module as its first
 from __future__ import annotations
 
 import requests
-import sys
 
 # Bound by web_gui at import time; the ReloginPhoneOtpProvider static methods
 # keep their recovered signatures so the recovered transport can call them.

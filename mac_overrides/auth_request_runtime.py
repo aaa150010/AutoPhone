@@ -10,7 +10,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import hashlib
 import time
-import sys
 import uuid
 from typing import Any, Mapping
 from urllib.parse import urljoin, urlsplit
@@ -122,12 +121,14 @@ _HTML_MFA_MARKERS = (
 )
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[auth_request_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('auth_request_runtime', where, exc)
 
 
 def is_phone_page_type(value: Any) -> bool:

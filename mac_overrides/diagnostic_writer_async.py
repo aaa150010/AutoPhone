@@ -18,7 +18,6 @@ from __future__ import annotations
 import queue
 import secrets
 import threading
-import sys
 import time
 from collections.abc import Mapping
 from datetime import datetime, timezone
@@ -35,12 +34,14 @@ _DEFAULT_MAX_BATCH = 64
 _DEFAULT_QUEUE_SIZE = 4096
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[diagnostic_writer_async/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('diagnostic_writer_async', where, exc)
 
 
 def _new_incident_id() -> str:

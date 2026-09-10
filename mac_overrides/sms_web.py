@@ -6,7 +6,6 @@ from collections.abc import Mapping
 import inspect
 from threading import RLock
 import time
-import sys
 from typing import Any, Callable
 
 
@@ -31,12 +30,14 @@ except ImportError:  # Loaded as a top-level runtime override by web_gui.py.
     from auth_session_runtime import is_session_invalid  # type: ignore[no-redef]
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort sms-web side paths."""
-    try:
-        print(f"[sms_web/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('sms_web', where, exc)
 
 
 def _call_log(log_fn: Any, message: str, level: str = "info") -> None:

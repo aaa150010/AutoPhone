@@ -74,6 +74,12 @@ LIVE_STAGE_LABELS = {
 }
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _live_transport_context(proxy: str, target_url: str, error: BaseException | None = None) -> dict[str, Any]:
     try:
         scheme = str(urlsplit(proxy).scheme or "").lower()
@@ -97,11 +103,7 @@ _LIVE_ELIGIBILITY_PATH = "/backend-api/aip/first-party/eligibility"
 _LIVE_ORIGIN = "https://chatgpt.com"
 
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort session hardening."""
-    try:
-        print(f"[free_live_check/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('free_live_check', where, exc)
 
 _LIVE_SECURITY_MARKERS = (
     "cloudflare",

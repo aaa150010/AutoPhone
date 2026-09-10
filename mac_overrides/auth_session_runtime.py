@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import hashlib
 import threading
-import sys
 from typing import Any, Callable, Mapping
 from urllib.parse import urlsplit
 
@@ -33,12 +32,14 @@ _INVALIDATION_CODES = (
 )
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[auth_session_runtime/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('auth_session_runtime', where, exc)
 
 
 def is_session_invalid(value: Any) -> bool:

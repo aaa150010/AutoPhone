@@ -16,7 +16,6 @@ import math
 import os
 from pathlib import Path
 import threading
-import sys
 import time
 from typing import Any, Iterator, Mapping
 
@@ -46,12 +45,14 @@ SOURCE_LOCK_POLL_SECONDS = 0.05
 _MAX_SOURCE_LOCK_TIMEOUT_SECONDS = 30.0
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed best-effort side paths."""
-    try:
-        print(f"[mailbox_source_lock/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('mailbox_source_lock', where, exc)
 
 
 class MailboxSourceLockTimeout(TimeoutError):

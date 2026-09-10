@@ -6,7 +6,6 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 import hashlib
-import sys
 import re
 import threading
 import time
@@ -32,12 +31,14 @@ except ImportError:  # Loaded as a top-level runtime override.
     from auth_session_runtime import is_session_invalid  # type: ignore[no-redef]
 
 
+
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # pragma: no cover - top-level recovery import
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 def _note_stderr(where: str, exc: BaseException) -> None:
-    """Last-resort stderr note for swallowed telemetry/guard enrichment."""
-    try:
-        print(f"[protocol_concurrency/{where}] {type(exc).__name__}", file=sys.stderr)
-    except Exception:
-        return
+    note_stderr('protocol_concurrency', where, exc)
 
 
 def _http_status(value: Any) -> int | None:
