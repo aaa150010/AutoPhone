@@ -46,11 +46,13 @@ except ImportError:  # pragma: no cover - top-level recovery import
 try:
     from .deadline import (
         MANUAL_OTP_POST_SUBMIT_GRACE_SECONDS,
+        ProfileTimingTracker,
         RegistrationDeadline,
     )
 except ImportError:  # pragma: no cover - top-level recovery import
     from free_camoufox.deadline import (  # type: ignore[no-redef]
         MANUAL_OTP_POST_SUBMIT_GRACE_SECONDS,
+        ProfileTimingTracker,
         RegistrationDeadline,
     )
 
@@ -172,9 +174,7 @@ async def _browser_flow(
     # the timing anchors below describe two non-overlapping intervals:
     # request completion (leaving profile) and subsequent home confirmation.
     profile_async_started_at = 0.0
-    profile_home_state_started_at = 0.0
-    profile_home_state_recorded = False
-    profile_transition_recorded = False
+    profile_timing = ProfileTimingTracker()
     entry_transition_deadline = 0.0
     entry_transition_observe_deadline = 0.0
     entry_transition_started = 0.0
@@ -325,80 +325,31 @@ async def _browser_flow(
             await asyncio.to_thread(otp_mark_sent, stage_code)
 
     def record_profile_timing(state: str, *, terminal_outcome: str = "") -> None:
-        """Close profile timing intervals only after an observable outcome.
-
-        ``unknown`` is deliberately left open because auth.openai.com can
-        render a transient shell during navigation.  The caller closes it
-        explicitly when the state machine raises or reaches its deadline.
-        """
-        nonlocal profile_transition_recorded
-        nonlocal profile_home_state_started_at, profile_home_state_recorded
-        if not profile_submitted:
-            return
-        normalized_state = str(state or "").strip().lower()
-        if not profile_transition_recorded:
-            if normalized_state == "profile" or normalized_state == "unknown":
-                return
-            started = profile_async_started_at or profile_submitted_at
-            if not started:
-                return
-            outcome = str(terminal_outcome or host._profile_transition_timing_outcome(normalized_state))
-            timing_mark("free_camoufox_profile", "profile_async_submit_wait", started, outcome)
-            profile_transition_recorded = True
-            # Only an accepted auth transition opens the home-confirmation
-            # interval.  Security/unexpected outcomes are terminal for this
-            # branch and must not manufacture a zero-length home success.
-            if outcome != "success":
-                profile_home_state_started_at = 0.0
-                profile_home_state_recorded = True
-                return
-            # Start the second interval exactly when the first one ends.
-            profile_home_state_started_at = time.monotonic()
-            if normalized_state == "home":
-                timing_mark(
-                    "free_camoufox_profile", "profile_home_state_wait",
-                    profile_home_state_started_at, "success",
-                )
-                profile_home_state_recorded = True
-            return
-        if profile_home_state_recorded or not profile_home_state_started_at:
-            return
-        if normalized_state == "home":
-            timing_mark(
-                "free_camoufox_profile", "profile_home_state_wait",
-                profile_home_state_started_at, "success",
-            )
-            profile_home_state_recorded = True
-        elif normalized_state == "security":
-            timing_mark(
-                "free_camoufox_profile", "profile_home_state_wait",
-                profile_home_state_started_at, "security_challenge",
-            )
-            profile_home_state_recorded = True
-        elif terminal_outcome:
-            timing_mark(
-                "free_camoufox_profile", "profile_home_state_wait",
-                profile_home_state_started_at, terminal_outcome,
-            )
-            profile_home_state_recorded = True
+        """Close profile timing intervals only after an observable outcome."""
+        profile_timing.record(
+            state,
+            submitted=profile_submitted,
+            submitted_at=profile_submitted_at,
+            async_started_at=profile_async_started_at,
+            emit_timing=lambda stage, code, started, outcome: timing_mark(
+                "free_camoufox_profile", code, started, outcome,
+            ),
+            stage_code="free_camoufox_profile",
+            terminal_outcome=terminal_outcome,
+        )
 
     def close_profile_timing(outcome: str = "timeout") -> None:
         """Close any pending profile intervals before a terminal failure."""
-        nonlocal profile_transition_recorded
-        nonlocal profile_home_state_started_at, profile_home_state_recorded
-        if not profile_submitted:
-            return
-        if not profile_transition_recorded:
-            started = profile_async_started_at or profile_submitted_at
-            if started:
-                timing_mark("free_camoufox_profile", "profile_async_submit_wait", started, outcome)
-                profile_transition_recorded = True
-        if profile_home_state_started_at and not profile_home_state_recorded:
-            timing_mark(
-                "free_camoufox_profile", "profile_home_state_wait",
-                profile_home_state_started_at, outcome,
-            )
-            profile_home_state_recorded = True
+        profile_timing.close(
+            outcome,
+            submitted=profile_submitted,
+            submitted_at=profile_submitted_at,
+            async_started_at=profile_async_started_at,
+            emit_timing=lambda stage, code, started, closed: timing_mark(
+                "free_camoufox_profile", code, started, closed,
+            ),
+            stage_code="free_camoufox_profile",
+        )
 
     async def submit_entry_email(selector: str, *, recovery: bool = False, recovery_tag: str = "") -> dict[str, Any]:
         nonlocal entry_form_present, entry_submit_selector, entry_recovery
@@ -1513,7 +1464,7 @@ async def _browser_flow(
                 # Start the diagnostic async interval after the optional
                 # birthday confirmation.  This keeps the modal's own timing
                 # out of the network/page-transition measurement.
-                profile_transition_recorded = False
+                profile_timing = ProfileTimingTracker()
                 birthday_modal_started = time.monotonic()
                 birthday_confirmed = await host._confirm_birthday(page, log, timeout=5)
                 timing_mark(
@@ -1521,8 +1472,6 @@ async def _browser_flow(
                     "success" if birthday_confirmed else "skipped",
                 )
                 profile_async_started_at = time.monotonic()
-                profile_home_state_started_at = 0.0
-                profile_home_state_recorded = False
             else:
                 # Match aBaiFreeGPT: submitting about-you is an asynchronous
                 # account-creation request. Keep the page alive for 60s,
@@ -1535,12 +1484,9 @@ async def _browser_flow(
                         "free_camoufox_profile", "profile_async_submit_wait",
                         profile_async_started_at or profile_submitted_at, "timeout",
                     )
-                    profile_transition_recorded = True
                     profile_submitted = False
                     profile_submitted_at = 0.0
                     profile_async_started_at = 0.0
-                    profile_home_state_started_at = 0.0
-                    profile_home_state_recorded = False
                     log("Camoufox 资料页提交后 60 秒未跳转，允许重新填写重试", "warn")
                 else:
                     await host._confirm_birthday(page, log, timeout=0.5)

@@ -205,12 +205,109 @@ class RegistrationDeadline:
                 self.manual_prompt_opened()
 
 
+def profile_transition_timing_outcome(state: str) -> str:
+    """Return a public timing outcome for an about-you page transition.
+
+    Only the states that prove the request was accepted by the auth flow are
+    successful.  In particular, a security challenge or an unknown shell must
+    never be presented as a successful profile submission.
+    """
+    normalized = str(state or "").strip().lower()
+    if normalized in {"home", "oauth_callback"}:
+        return "success"
+    if normalized == "security":
+        return "security_challenge"
+    return "unexpected_state"
+
+
+class ProfileTimingTracker:
+    """Own the two non-overlapping about-you timing intervals.
+
+    The browser flow used to keep four ``nonlocal`` cursors plus two closures
+    for this state machine inside ``_browser_flow``.  Extracting it keeps the
+    exact semantics: interval one covers the profile async submit request and
+    only closes on an observable transition; interval two starts exactly when
+    the first ends and closes on ``home``, a security challenge, or a
+    terminal outcome.  ``unknown`` deliberately leaves both open because
+    auth.openai.com can render a transient navigation shell.
+    """
+
+    def __init__(self) -> None:
+        self.transition_recorded = False
+        self.home_state_started_at = 0.0
+        self.home_state_recorded = False
+
+    def record(
+        self,
+        state: str,
+        *,
+        submitted: bool,
+        submitted_at: float,
+        async_started_at: float,
+        emit_timing: Callable[..., None],
+        stage_code: str,
+        terminal_outcome: str = "",
+    ) -> None:
+        """Close interval one / advance interval two for a polled state."""
+        if not submitted:
+            return
+        normalized_state = str(state or "").strip().lower()
+        if not self.transition_recorded:
+            if normalized_state in {"profile", "unknown"}:
+                return
+            started = async_started_at or submitted_at
+            if not started:
+                return
+            outcome = str(terminal_outcome or profile_transition_timing_outcome(normalized_state))
+            emit_timing(stage_code, "profile_async_submit_wait", started, outcome)
+            self.transition_recorded = True
+            # Only an accepted auth transition opens the home-confirmation
+            # interval.  Security/unexpected outcomes are terminal for this
+            # branch and must not manufacture a zero-length home success.
+            if outcome != "success":
+                self.home_state_started_at = 0.0
+                self.home_state_recorded = True
+                return
+            # Start the second interval exactly when the first one ends.
+            self.home_state_started_at = time.monotonic()
+            if normalized_state == "home":
+                emit_timing(stage_code, "profile_home_state_wait", self.home_state_started_at, "success")
+                self.home_state_recorded = True
+            return
+        if self.home_state_recorded or not self.home_state_started_at:
+            return
+        if normalized_state == "home":
+            emit_timing(stage_code, "profile_home_state_wait", self.home_state_started_at, "success")
+            self.home_state_recorded = True
+        elif normalized_state == "security":
+            emit_timing(stage_code, "profile_home_state_wait", self.home_state_started_at, "security_challenge")
+            self.home_state_recorded = True
+        elif terminal_outcome:
+            emit_timing(stage_code, "profile_home_state_wait", self.home_state_started_at, terminal_outcome)
+            self.home_state_recorded = True
+
+    def close(self, outcome: str, *, submitted: bool, submitted_at: float, async_started_at: float, emit_timing: Callable[..., None], stage_code: str) -> None:
+        """Close any pending profile intervals before a terminal failure."""
+        if not submitted:
+            return
+        if not self.transition_recorded:
+            started = async_started_at or submitted_at
+            if started:
+                emit_timing(stage_code, "profile_async_submit_wait", started, outcome)
+                self.transition_recorded = True
+        if self.home_state_started_at and not self.home_state_recorded:
+            emit_timing(stage_code, "profile_home_state_wait", self.home_state_started_at, outcome)
+            self.home_state_recorded = True
+
+
 __all__ = [
     "MANUAL_OTP_HANDOFF_GRACE_SECONDS",
     "MANUAL_OTP_POST_SUBMIT_GRACE_SECONDS",
     "MANUAL_OTP_WINDOW_SECONDS",
     "MAX_MANUAL_OTP_WINDOWS",
+    "ProfileTimingTracker",
     "RegistrationDeadline",
     "deadline_controller_bool",
     "deadline_controller_call",
+    "profile_transition_timing_outcome",
 ]
