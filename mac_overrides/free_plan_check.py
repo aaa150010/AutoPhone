@@ -27,6 +27,7 @@ try:
         plan_details_with_fallbacks,
     )
     from .free_failure_runtime import canonical_failure, exception_to_failure
+    from .free_subject_fingerprint import subject_fingerprint
     from .free_register_common import (
         FreeRegisterError,
         atomic_write,
@@ -44,6 +45,7 @@ except ImportError:  # pragma: no cover - recovery import
         plan_details_with_fallbacks,
     )
     from free_failure_runtime import canonical_failure, exception_to_failure  # type: ignore[no-redef]
+    from free_subject_fingerprint import subject_fingerprint  # type: ignore[no-redef]
     from free_register_common import (  # type: ignore[no-redef]
         FreeRegisterError,
         atomic_write,
@@ -170,24 +172,7 @@ class FreePlanCheckService:
 
     def _subject_fingerprint(self, email: Any) -> str:
         """Use the diagnostic HMAC for public correlation when available."""
-        value = str(email or "").strip()
-        if not value:
-            return ""
-        store = getattr(self.log_store, "diagnostic_store", None)
-        if store is None:
-            # Accept direct DiagnosticEventWriter injection as well as the
-            # historical FreeLogStore facade.
-            store = getattr(self.log_store, "store", None)
-        fingerprint_fn = getattr(store, "fingerprint", None)
-        if callable(fingerprint_fn):
-            try:
-                candidate = str(fingerprint_fn(value) or "").strip().lower()
-                if re.fullmatch(r"[0-9a-f]{32}", candidate):
-                    return candidate
-            except Exception as exc:
-                # A malformed stored fingerprint falls back to hashing the value.
-                _note_stderr("L177", exc)
-        return fingerprint(value)
+        return subject_fingerprint(self.log_store, email)
 
     def _public(self, job: Mapping[str, Any]) -> dict[str, Any]:
         result = {

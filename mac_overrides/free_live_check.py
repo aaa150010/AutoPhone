@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 try:
     from .free_failure_runtime import canonical_failure, exception_to_failure
     from .free_mailbox_otp import MailboxUrlOtpProvider, build_free_mailbox_otp_provider
+    from .free_subject_fingerprint import subject_fingerprint
     from .free_register_common import (
         FreeRegisterError,
         ProxyBinding,
@@ -32,6 +33,7 @@ try:
 except ImportError:
     from free_failure_runtime import canonical_failure, exception_to_failure  # type: ignore[no-redef]
     from free_mailbox_otp import MailboxUrlOtpProvider, build_free_mailbox_otp_provider  # type: ignore[no-redef]
+    from free_subject_fingerprint import subject_fingerprint  # type: ignore[no-redef]
     from free_register_common import (  # type: ignore[no-redef]
         FreeRegisterError,
         ProxyBinding,
@@ -425,24 +427,7 @@ class FreeLiveCheckService:
 
     def _subject_fingerprint(self, email: Any) -> str:
         """Use the diagnostic HMAC for public correlation when available."""
-        value = str(email or "").strip()
-        if not value:
-            return ""
-        store = getattr(self.log_store, "diagnostic_store", None)
-        if store is None:
-            # Accept direct DiagnosticEventWriter injection as well as the
-            # historical FreeLogStore facade.
-            store = getattr(self.log_store, "store", None)
-        fingerprint_fn = getattr(store, "fingerprint", None)
-        if callable(fingerprint_fn):
-            try:
-                candidate = str(fingerprint_fn(value) or "").strip().lower()
-                if re.fullmatch(r"[0-9a-f]{32}", candidate):
-                    return candidate
-            except Exception as exc:
-                # A malformed stored fingerprint falls back to hashing the value.
-                self._note_quiet("stored_fingerprint_probe", exc)
-        return fingerprint(value)
+        return subject_fingerprint(self.log_store, email)
 
     def _save_jobs(self) -> None:
         atomic_write(self.path, {"version": 1, "jobs": self._jobs})

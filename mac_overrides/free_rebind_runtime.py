@@ -22,6 +22,7 @@ from urllib.parse import urljoin
 try:
     from .free_failure_runtime import canonical_failure, exception_to_failure, sanitize_failure_text, sanitize_log_message
     from .free_mailbox_otp import build_free_mailbox_otp_provider
+    from .free_subject_fingerprint import subject_fingerprint
     from .free_register_common import FreeRegisterError, atomic_write, fingerprint, mask_proxy, proxy_transport_value
     from .free_rebind_store import RebindMailboxPool
     from .free_rebind_storage import (
@@ -37,6 +38,7 @@ try:
 except ImportError:  # pragma: no cover - top-level runtime loading
     from free_failure_runtime import canonical_failure, exception_to_failure, sanitize_failure_text, sanitize_log_message  # type: ignore[no-redef]
     from free_mailbox_otp import build_free_mailbox_otp_provider  # type: ignore[no-redef]
+    from free_subject_fingerprint import subject_fingerprint  # type: ignore[no-redef]
     from free_register_common import FreeRegisterError, atomic_write, fingerprint, mask_proxy, proxy_transport_value  # type: ignore[no-redef]
     from free_rebind_store import RebindMailboxPool  # type: ignore[no-redef]
     from free_rebind_storage import (  # type: ignore[no-redef]
@@ -541,20 +543,7 @@ class FreeRebindService:
 
     def _public_subject_fingerprint(self, email: Any) -> str:
         """Return the diagnostic HMAC when available, else a short hash."""
-        value = str(email or "").strip()
-        if not value:
-            return ""
-        diagnostic_store = getattr(getattr(self.free_manager, "log_store", None), "diagnostic_store", None)
-        fingerprint_fn = getattr(diagnostic_store, "fingerprint", None)
-        if callable(fingerprint_fn):
-            try:
-                candidate = str(fingerprint_fn(value) or "").strip().lower()
-                if re.fullmatch(r"[0-9a-f]{32}", candidate):
-                    return candidate
-            except Exception as exc:
-                # A malformed stored fingerprint falls back to hashing the value.
-                _note_stderr("stored_fingerprint_probe", exc)
-        return fingerprint(value)
+        return subject_fingerprint(getattr(self.free_manager, "log_store", None), email)
 
     def _set_task(self, task_id: str, **values: Any) -> dict[str, Any]:
         with self._lock:
