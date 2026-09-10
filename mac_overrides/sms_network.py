@@ -249,8 +249,17 @@ def call_sms_with_retries(
     raise last_error
 
 
+_sms_local_config_lock = threading.Lock()
+_sms_local_config_cache: dict[str, tuple[int | None, dict[str, Any]]] = {}
+
+
 def _sms_local_config() -> dict[str, Any]:
-    """Read the local config file, mirroring web_gui's resolution rules."""
+    """Read the local config file, mirroring web_gui's resolution rules.
+
+    The parsed value is cached per resolved path and revalidated through the
+    file's mtime, so every SMS request avoids a full disk read while config
+    edits still take effect immediately.
+    """
 
     app_dir = Path(__file__).resolve().parent.parent
     data_dir = Path(
@@ -259,11 +268,24 @@ def _sms_local_config() -> dict[str, Any]:
     config_file = Path(
         os.environ.get("GPTPHONE_LOCAL_CONFIG_FILE") or data_dir / "local_config.json"
     )
+    key = str(config_file)
+    try:
+        mtime_ns: int | None = config_file.stat().st_mtime_ns
+    except OSError:
+        mtime_ns = None
+    with _sms_local_config_lock:
+        cached = _sms_local_config_cache.get(key)
+        if cached is not None and cached[0] == mtime_ns:
+            return cached[1]
     try:
         value = json.loads(config_file.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
-    return value if isinstance(value, dict) else {}
+    if not isinstance(value, dict):
+        value = {}
+    with _sms_local_config_lock:
+        _sms_local_config_cache[key] = (mtime_ns, value)
+    return value
 
 
 def _sms_tls_verify_enabled() -> bool:
