@@ -78,6 +78,11 @@ class FreeStorageSchemaMixin:
         self.path = self.root / "free_register.sqlite3"
         self.busy_timeout_ms = max(100, int(busy_timeout_ms))
         self._lock = threading.RLock()
+        # One lock-serialized handle instead of a connect/PRAGMA/close cycle
+        # per call. ``_connection`` always runs under ``self._lock`` (RLock,
+        # so nested ``_transaction`` + ``_connection`` stays safe), and every
+        # caller finishes its reads inside the context, so no cursor escapes.
+        self._conn: sqlite3.Connection | None = None
         # Read failures are kept separate from malformed individual rows.
         # The latter are stable data-quality diagnostics; the former mean a
         # legacy source may not have been seen at all and must keep migration
@@ -89,6 +94,19 @@ class FreeStorageSchemaMixin:
 
     @contextmanager
     def _connection(self) -> Iterator[sqlite3.Connection]:
+        with self._lock:
+            connection = self._ensure_connection()
+            try:
+                yield connection
+            except sqlite3.Error:
+                # A broken handle (disk error, damaged page) must not poison
+                # every later operation; drop it so the next caller reconnects.
+                self._drop_connection()
+                raise
+
+    def _ensure_connection(self) -> sqlite3.Connection:
+        if self._conn is not None:
+            return self._conn
         connection = sqlite3.connect(
             self.path,
             timeout=self.busy_timeout_ms / 1000.0,
@@ -96,14 +114,23 @@ class FreeStorageSchemaMixin:
             check_same_thread=False,
         )
         connection.row_factory = sqlite3.Row
+        # WAL is a persistent database property; the rest are per-connection
+        # settings re-asserted on every cold connect.
+        connection.execute(f"PRAGMA busy_timeout={self.busy_timeout_ms}")
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("PRAGMA synchronous=NORMAL")
+        connection.execute("PRAGMA foreign_keys=ON")
+        self._conn = connection
+        return connection
+
+    def _drop_connection(self) -> None:
+        connection, self._conn = self._conn, None
+        if connection is None:
+            return
         try:
-            connection.execute(f"PRAGMA busy_timeout={self.busy_timeout_ms}")
-            connection.execute("PRAGMA journal_mode=WAL")
-            connection.execute("PRAGMA synchronous=NORMAL")
-            connection.execute("PRAGMA foreign_keys=ON")
-            yield connection
-        finally:
             connection.close()
+        except sqlite3.Error:
+            pass
 
     @contextmanager
     def _transaction(self, *, immediate: bool = True) -> Iterator[None]:
