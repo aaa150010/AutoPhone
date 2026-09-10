@@ -196,7 +196,13 @@ async function start() {
     quickTargetCount.value = submittedConfig.target_count
     quickConcurrency.value = submittedConfig.concurrency
     quickRunDirty.value = false
-    state.value = result.state || state.value
+    const next = result.state
+    if (next?.tasks?.length) {
+      state.value = next
+    } else if (next) {
+      // 异步受理响应在后台准备期不带任务列表；保留现有列表避免整表闪空。
+      state.value = { ...next, tasks: state.value.tasks }
+    }
     if (result.async_start) {
       // 启动请求已受理，批次在后台准备中；立即进入 1s 快速轮询，
       // 任务渐进上线后 running 状态自然出现。
