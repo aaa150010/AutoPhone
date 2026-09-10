@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import RuntimeSettingsSection from './RuntimeSettingsSection.vue'
 import SmsSettingsSection from './SmsSettingsSection.vue'
 import IntegrationSettingsSection from './IntegrationSettingsSection.vue'
@@ -43,6 +43,8 @@ defineExpose({ saveFreeConfig })
 
 const scrollRegion = ref<HTMLElement>()
 const activeKey = ref('runtime')
+const flashAnchor = ref('')
+let flashTimer = 0
 const navProps = { label: 'label', children: 'children' }
 const navigation: SettingsNavNode[] = [
   {
@@ -96,13 +98,24 @@ function scrollToAnchor(anchor: string) {
   activeKey.value = targetNode?.key || anchor || 'runtime'
   nextTick(() => {
     const target = scrollRegion.value?.querySelector<HTMLElement>(`[data-settings-anchor="${anchor}"]`)
-    target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    if (!target) return
+    // Always re-scroll to the target's absolute top: when the section is
+    // already (partially) visible scrollIntoView is a no-op and the click
+    // feels dead. The temporary outline gives visible feedback either way.
+    scrollRegion.value?.scrollTo({ top: target.offsetTop - 4, behavior: 'smooth' })
+    flashAnchor.value = anchor
+    window.clearTimeout(flashTimer)
+    flashTimer = window.setTimeout(() => { flashAnchor.value = '' }, 1600)
   })
 }
 
 function jumpTo(node: SettingsNavNode) {
   scrollToAnchor(node.anchor || node.key)
 }
+
+onUnmounted(() => {
+  window.clearTimeout(flashTimer)
+})
 
 onMounted(() => {
   if (props.initialAnchor) scrollToAnchor(props.initialAnchor)
@@ -130,16 +143,16 @@ watch(() => props.initialAnchor, (anchor) => {
 
     <div ref="scrollRegion" class="settings-scroll">
       <el-form label-position="top" class="settings-fields">
-        <section data-settings-anchor="runtime" class="settings-anchor">
+        <section data-settings-anchor="runtime" class="settings-anchor" :class="{ 'anchor-flash': flashAnchor === 'runtime' }">
           <RuntimeSettingsSection
             :model-value="modelValue"
             @update:model-value="emit('update:modelValue', $event)"
           />
         </section>
-        <section data-settings-anchor="free-register" class="settings-anchor">
+        <section data-settings-anchor="free-register" class="settings-anchor" :class="{ 'anchor-flash': flashAnchor === 'free-register' }">
           <FreeRegisterSettingsSection ref="freeSettings" @dirty-change="value => emit('freeDirtyChange', value)" @navigate="emit('navigate', $event)" />
         </section>
-        <section data-settings-anchor="sms" class="settings-anchor">
+        <section data-settings-anchor="sms" class="settings-anchor" :class="{ 'anchor-flash': flashAnchor === 'sms' }">
           <SmsSettingsSection
             :model-value="modelValue"
             :statuses="smsKeyStatuses"
@@ -148,16 +161,16 @@ watch(() => props.initialAnchor, (anchor) => {
             @query-balances="emit('querySmsBalances')"
           />
         </section>
-        <section data-settings-anchor="remail" class="settings-anchor">
+        <section data-settings-anchor="remail" class="settings-anchor" :class="{ 'anchor-flash': flashAnchor === 'remail' }">
           <RemailSettingsSection ref="remailSettings" @dirty-change="value => emit('freeDirtyChange', value)" />
         </section>
-        <section data-settings-anchor="integration" class="settings-anchor">
+        <section data-settings-anchor="integration" class="settings-anchor" :class="{ 'anchor-flash': flashAnchor === 'integration' }">
           <IntegrationSettingsSection
             :model-value="modelValue"
             @update:model-value="emit('update:modelValue', $event)"
           />
         </section>
-        <section data-settings-anchor="notification" class="settings-anchor">
+        <section data-settings-anchor="notification" class="settings-anchor" :class="{ 'anchor-flash': flashAnchor === 'notification' }">
           <EmailNotificationSettingsSection
             :model-value="modelValue"
             :testing="testingNotification"
@@ -211,4 +224,10 @@ watch(() => props.initialAnchor, (anchor) => {
 .settings-scroll::-webkit-scrollbar-track { background: #edf1f5; }
 .settings-fields { box-sizing: border-box; width: 100%; padding: 12px 16px 20px; }
 .settings-anchor + .settings-anchor { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--workspace-border); }
+.settings-anchor { position: relative; border-radius: 6px; }
+.settings-anchor.anchor-flash { animation: settings-anchor-flash 1.6s ease-out; }
+@keyframes settings-anchor-flash {
+  0% { background: var(--el-color-primary-light-8); box-shadow: 0 0 0 2px var(--el-color-primary-light-5); }
+  100% { background: transparent; box-shadow: 0 0 0 2px transparent; }
+}
 </style>
