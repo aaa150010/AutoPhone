@@ -30,14 +30,39 @@ export function defaultFreeConfig(): FreeConfig {
 }
 
 /** Delete removed legacy roxybrowser fields from a config draft in place. */
-export function stripLegacyFreeConfigDraft(draft: Record<string, unknown>): void {
-  delete draft.roxybrowser
-  delete draft.roxy_circuit_failure_threshold
-  delete draft.roxy_circuit_recovery_seconds
-  delete draft.roxy_api_key
-  delete draft.roxy_workspace_id
-  const proxySelection = draft.proxy_selection
+export function stripLegacyFreeConfigDraft(draft: FreeConfig): void {
+  // Legacy keys no longer exist on FreeConfig, so the deletion pass goes
+  // through a structural record view of the same object.
+  const record: Record<string, unknown> = draft
+  delete record.roxybrowser
+  delete record.roxy_circuit_failure_threshold
+  delete record.roxy_circuit_recovery_seconds
+  delete record.roxy_api_key
+  delete record.roxy_workspace_id
+  const proxySelection = draft.proxy_selection as Record<string, unknown> | undefined
   if (proxySelection && typeof proxySelection === 'object') {
-    delete (proxySelection as Record<string, unknown>).roxybrowser
+    delete proxySelection.roxybrowser
   }
+}
+
+/**
+ * Merge one server Free config into a reactive draft, stripping legacy
+ * fields and clamping the shared scalar bounds. Callers keep any
+ * page-local extra wiring (quick-run bar, proxy scheme selector) around
+ * this common core.
+ */
+export function mergeFreeConfigDraft(
+  draft: FreeConfig,
+  value: FreeConfig | undefined | null,
+): void {
+  if (!value || typeof value !== 'object') return
+  Object.assign(draft, value)
+  stripLegacyFreeConfigDraft(draft)
+  Object.assign(draft.protocol, value.protocol || {})
+  Object.assign(draft.camoufox, value.camoufox || {})
+  // Old persisted configs may still report a removed driver. Keep the editor
+  // valid while historical task rows retain their original read-only metadata.
+  if (!['protocol', 'camoufox'].includes(String(draft.driver || '').trim().toLowerCase())) draft.driver = 'protocol'
+  draft.target_count = Math.min(200, Math.max(1, Number(draft.target_count) || 1))
+  draft.concurrency = Math.min(16, Math.max(1, Number(draft.concurrency) || 1))
 }

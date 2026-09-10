@@ -5,7 +5,7 @@ import { ElMessage } from 'element-plus'
 import { CircleCheck, CopyDocument, Refresh, View } from '@element-plus/icons-vue'
 import { ApiError, getFreeConfig, getFreeProxies, preflightFree, preflightFreeProxies, saveFreeConfig, type FreeConfig, type FreeState, type FreeProxyPool, type FreeProxyPreflightRow, type FreeProxyRow } from '../api/client'
 import type { TaskFailure } from '../types/api'
-import { defaultFreeConfig, stripLegacyFreeConfigDraft } from '../utils/freeConfigDefaults'
+import { defaultFreeConfig, mergeFreeConfigDraft } from '../utils/freeConfigDefaults'
 import FieldHelpLabel from './FieldHelpLabel.vue'
 
 const emit = defineEmits<{ dirtyChange: [boolean]; navigate: [string] }>()
@@ -37,22 +37,11 @@ const proxyCheckSummary = computed(() => {
 })
 
 function mergeConfig(value: FreeConfig) {
-  if (!value || typeof value !== 'object') return
-  Object.assign(config, value)
-  // Strip removed legacy fields from old responses before they can be
-  // persisted again by the save payload.
-  stripLegacyFreeConfigDraft(config as unknown as Record<string, unknown>)
-  Object.assign(config.protocol, value.protocol || {})
-  Object.assign(config.camoufox, value.camoufox || {})
-  if (!['protocol', 'camoufox'].includes(String(config.driver || '').trim().toLowerCase())) {
-    config.driver = 'protocol'
-  }
+  mergeFreeConfigDraft(config, value)
   if (typeof config.proxy_default_scheme === 'string' && config.proxy_default_scheme.trim()) {
     proxyScheme.value = config.proxy_default_scheme.trim().toLowerCase()
   }
   config.proxy_allocation_mode = 'healthy_random'
-  config.target_count = Math.min(200, Math.max(1, Number(config.target_count) || 1))
-  config.concurrency = Math.min(16, Math.max(1, Number(config.concurrency) || 1))
 }
 
 function updateCamoufoxHeadless(value: boolean) {

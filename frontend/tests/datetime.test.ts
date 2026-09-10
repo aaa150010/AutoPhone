@@ -4,7 +4,6 @@ import {
   formatDateTime,
   formatDateTimeOrDash,
   formatDateTimeZh,
-  formatDateTimeZhOrEmpty,
   formatShortDateTime,
   parseTimestamp,
 } from '../src/utils/datetime.ts'
@@ -31,7 +30,6 @@ test('formatDateTimeOrDash renders a dash for missing values', () => {
 
 test('zh-CN helpers keep 24-hour clock text', () => {
   assert.equal(formatDateTimeZh(''), '-')
-  assert.equal(formatDateTimeZhOrEmpty(''), '')
   assert.match(formatDateTimeZh(1_700_000_000), /^\d{4}\/\d{1,2}\/\d{1,2} \d{2}:\d{2}:\d{2}$/)
 })
 

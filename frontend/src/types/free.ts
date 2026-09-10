@@ -77,6 +77,9 @@ export interface FreeConfig {
     order_sync_interval_minutes: number
     auto_import_new_purchase_orders: boolean
   }
+  /** Server payloads may still carry removed legacy keys (e.g. roxybrowser
+   * fields) that the editor strips before re-saving. */
+  [legacyKey: string]: unknown
 }
 
 export interface FreeState {

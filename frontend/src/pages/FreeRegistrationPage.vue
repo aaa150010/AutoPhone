@@ -22,7 +22,7 @@ import { useTaskProgressClock } from '../composables/useTaskProgressClock'
 import { useColumnWidths } from '../composables/useColumnWidths'
 import { usePolling } from '../composables/usePolling'
 import { useFreeTaskRowActions } from '../composables/useFreeTaskRowActions'
-import { defaultFreeConfig, stripLegacyFreeConfigDraft } from '../utils/freeConfigDefaults'
+import { defaultFreeConfig, mergeFreeConfigDraft, stripLegacyFreeConfigDraft } from '../utils/freeConfigDefaults'
 import {
   automaticOtpRemaining as automaticOtpRemainingPure,
   canRetryPassword,
@@ -125,30 +125,18 @@ function handleCopyCommand(command: string) {
 }
 const selectedTask = computed(() => visibleTasks.value.find(task => task.task_id === selectedTaskId.value))
 function mergeConfig(value: FreeConfig, forceQuickRun = false) {
-  if (!value || typeof value !== 'object') return
-  Object.assign(config, value)
-  // Do not let removed legacy fields re-enter the reactive draft when loading
-  // a pre-migration config from the server. Spreading this draft is
-  // used for every new preflight/start request.
-  stripLegacyFreeConfigDraft(config as unknown as Record<string, unknown>)
-  Object.assign(config.protocol, value.protocol || {})
-  Object.assign(config.camoufox, value.camoufox || {})
-  // Old persisted configs may still report a removed driver. Keep the editor
-  // valid while historical task rows retain their original read-only metadata.
-  if (!['protocol', 'camoufox'].includes(String(config.driver || '').trim().toLowerCase())) config.driver = 'protocol'
-  config.target_count = Math.min(200, Math.max(1, Number(config.target_count) || 1))
-  config.concurrency = Math.min(16, Math.max(1, Number(config.concurrency) || 1))
+  mergeFreeConfigDraft(config, value)
   if (forceQuickRun || !quickRunDirty.value) {
     quickTargetCount.value = config.target_count
     quickConcurrency.value = config.concurrency
   }
 }
 function quickRunConfig(): FreeConfig {
-  const sanitized = {
+  const sanitized: FreeConfig = {
     ...config,
     target_count: Math.min(200, Math.max(1, Number(quickTargetCount.value) || 1)),
     concurrency: Math.min(16, Math.max(1, Number(quickConcurrency.value) || 1)),
-  } as FreeConfig & Record<string, unknown>
+  }
   stripLegacyFreeConfigDraft(sanitized)
   return sanitized
 }

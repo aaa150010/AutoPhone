@@ -37,12 +37,6 @@ export function formatDateTimeZh(value: unknown): string {
   return date ? date.toLocaleString('zh-CN', { hour12: false }) : '-'
 }
 
-/** zh-CN 24-hour text without the dash fallback (empty input stays empty). */
-export function formatDateTimeZhOrEmpty(value: unknown): string {
-  const date = parseTimestamp(value)
-  return date ? date.toLocaleString('zh-CN', { hour12: false }) : ''
-}
-
 /** Compact month/day hour/minute label used by batch columns; '-' fallback. */
 export function formatShortDateTime(value: unknown): string {
   const date = parseTimestamp(value)
