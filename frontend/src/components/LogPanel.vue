@@ -109,24 +109,24 @@ onMounted(scrollToBottom)
 </template>
 
 <style scoped>
-/* Matches the FreeTaskLogDialog terminal styling so both log surfaces read
-   as the same diagnostic surface. */
-.log-panel { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; background: #101923; color: #dbe7f2; font: 12px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; scrollbar-color: #577b9d #101923; }
+/* Light diagnostic surface shared with FreeTaskLogDialog so both log
+   surfaces read as the same view. */
+.log-panel { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; background: var(--el-bg-color); color: var(--el-text-color-regular); font: 12px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; scrollbar-color: var(--el-border-color) var(--el-bg-color); }
 .log-scroll { min-height: 0; flex: 1; }
 .log-scroll :deep(.el-scrollbar__view) { min-height: 100%; }
 .log-scroll.is-empty :deep(.el-scrollbar__view) { height: 100%; }
 .log-line { display: flex; gap: 10px; padding: 3px 12px; white-space: pre-wrap; word-break: break-word; }
-.log-time { flex: 0 0 auto; padding-top: 1px; color: #8ca0b5; white-space: nowrap; }
+.log-time { flex: 0 0 auto; padding-top: 1px; color: var(--el-text-color-secondary); white-space: nowrap; }
 .log-message { display: inline-flex; align-items: flex-start; gap: 6px; min-width: 0; }
 .log-message-text { min-width: 0; }
-.log-error { color: #ff8791; }
-.log-warn { color: #f5bc72; }
-.log-success { color: #71dbb1; }
-.log-debug { color: #9ba9b7; }
-.log-line.is-sub2-upload-success { background: rgb(47 158 109 / 0.16); box-shadow: inset 3px 0 0 var(--el-color-success); }
-.log-line.is-sub2-upload-success .log-time { color: #71dbb1; font-weight: 600; }
-.log-line.is-sub2-upload-success .log-message { color: #71dbb1; font-weight: 700; }
-.sub2-success-icon { flex: 0 0 14px; width: 14px; height: 17px; color: #71dbb1; font-size: 14px; }
+.log-error { color: var(--el-color-danger); }
+.log-warn { color: var(--el-color-warning); }
+.log-success { color: var(--el-color-success); }
+.log-debug { color: var(--el-text-color-secondary); }
+.log-line.is-sub2-upload-success { background: var(--el-color-success-light-9); box-shadow: inset 3px 0 0 var(--el-color-success); }
+.log-line.is-sub2-upload-success .log-time { color: var(--el-color-success); font-weight: 600; }
+.log-line.is-sub2-upload-success .log-message { color: var(--el-color-success); font-weight: 700; }
+.sub2-success-icon { flex: 0 0 14px; width: 14px; height: 17px; color: var(--el-color-success); font-size: 14px; }
 .log-panel :deep(.content-empty) { background: transparent; }
-.log-panel :deep(.content-empty .el-empty__description p) { color: #91a8bd; }
+.log-panel :deep(.content-empty .el-empty__description p) { color: var(--el-text-color-secondary); }
 </style>

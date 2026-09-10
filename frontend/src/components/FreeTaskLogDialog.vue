@@ -264,23 +264,23 @@ defineExpose({ refresh })
 .filtered-count { color: var(--el-text-color-secondary); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .window-control { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; white-space: nowrap; }
 .window-control small { min-width: 92px; color: var(--el-text-color-secondary); text-align: center; font-variant-numeric: tabular-nums; }
-.log-dialog-list { position: relative; height: 560px; overflow: auto; padding: 9px 10px; border: 1px solid var(--workspace-border); border-radius: 4px; background: #101923; color: #dbe7f2; font: 12px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; scrollbar-width: thin; scrollbar-color: #577b9d #101923; }
+.log-dialog-list { position: relative; height: 560px; overflow: auto; padding: 9px 10px; border: 1px solid var(--workspace-border); border-radius: 4px; background: var(--el-bg-color); color: var(--el-text-color-regular); font: 12px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; scrollbar-width: thin; scrollbar-color: var(--el-border-color) var(--el-bg-color); }
 .log-dialog-list > div:not(.content-empty) { display: grid; grid-template-columns: 145px 36px 150px minmax(0, 1fr); gap: 8px; padding: 2px 0; white-space: pre-wrap; word-break: break-word; }
-.log-dialog-list small { color: #8ca0b5; }
+.log-dialog-list small { color: var(--el-text-color-secondary); }
 .log-time, .log-task-id { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .log-level { color: currentColor; font-size: 11px; font-weight: 700; }
 .log-message { min-width: 0; }
-.log-error { color: #ff8791; }
-.log-warn { color: #f5bc72; }
-.log-success { color: #71dbb1; }
-.log-debug { color: #9ba9b7; }
-.log-dialog-list b { margin-right: 7px; color: #78b4ef; font-weight: 650; }
-.log-dialog-list code { margin-left: 5px; color: #91a8bd; font-size: 11px; }
+.log-error { color: var(--el-color-danger); }
+.log-warn { color: var(--el-color-warning); }
+.log-success { color: var(--el-color-success); }
+.log-debug { color: var(--el-text-color-secondary); }
+.log-dialog-list b { margin-right: 7px; color: var(--el-color-primary); font-weight: 650; }
+.log-dialog-list code { margin-left: 5px; color: var(--el-text-color-secondary); font-size: 11px; }
 .log-dialog-list em, .log-dialog-list .log-code, .log-dialog-list .log-diagnostic, .log-dialog-list .log-action { display: block; margin-top: 1px; font-style: normal; font-size: 11px; }
-.log-dialog-list em { color: #91a8bd; }
-.log-dialog-list .log-code { color: #b5c8d9; }
-.log-dialog-list .log-diagnostic { color: #e0ad77; }
-.log-dialog-list .log-action { color: #80c9ee; }
+.log-dialog-list em { color: var(--el-text-color-secondary); }
+.log-dialog-list .log-code { color: var(--el-text-color-regular); }
+.log-dialog-list .log-diagnostic { color: var(--el-color-warning-dark-2); }
+.log-dialog-list .log-action { color: var(--el-color-primary); }
 .log-dialog-list :deep(.content-empty) { background: transparent; }
-.log-dialog-list :deep(.content-empty .el-empty__description p) { color: #91a8bd; }
+.log-dialog-list :deep(.content-empty .el-empty__description p) { color: var(--el-text-color-secondary); }
 </style>
