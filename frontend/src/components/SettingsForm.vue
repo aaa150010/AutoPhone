@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import RuntimeSettingsSection from './RuntimeSettingsSection.vue'
 import SmsSettingsSection from './SmsSettingsSection.vue'
 import IntegrationSettingsSection from './IntegrationSettingsSection.vue'
@@ -44,22 +44,23 @@ defineExpose({ saveFreeConfig })
 const scrollRegion = ref<HTMLElement>()
 const activeKey = ref('runtime')
 const flashAnchor = ref('')
+const navQuery = ref('')
 let flashTimer = 0
+
 const navProps = { label: 'label', children: 'children' }
 const navigation: SettingsNavNode[] = [
   {
     key: 'runtime',
-    label: '接码机运行配置',
+    label: '基础运行配置',
     anchor: 'runtime',
     children: [
-      { key: 'runtime-scale', label: '任务规模与并发', anchor: 'runtime' },
-      { key: 'runtime-network', label: '代理与链路', anchor: 'runtime' },
-      { key: 'runtime-protection', label: '性能保护', anchor: 'runtime' },
+      { key: 'runtime-proxy', label: '代理配置', anchor: 'runtime' },
+      { key: 'runtime-concurrency', label: '并发与超时', anchor: 'runtime' },
     ],
   },
   {
     key: 'free-register',
-    label: 'Free 注册运行配置',
+    label: 'Free 注册',
     anchor: 'free-register',
     children: [
       { key: 'free-scale', label: '目标数与并发', anchor: 'free-register' },
@@ -69,7 +70,7 @@ const navigation: SettingsNavNode[] = [
   },
   {
     key: 'sms',
-    label: 'SMS 接码',
+    label: '任务与接码',
     anchor: 'sms',
     children: [
       { key: 'sms-policy', label: '接码策略', anchor: 'sms' },
@@ -82,8 +83,8 @@ const navigation: SettingsNavNode[] = [
     label: '平台集成',
     anchor: 'integration',
     children: [
-      { key: 'sub2', label: 'SUB2 API', anchor: 'sub2' },
-      { key: 'online-mailbox', label: '在线邮箱', anchor: 'online-mailbox' },
+      { key: 'sub2', label: 'SUB2 API', anchor: 'integration' },
+      { key: 'online-mailbox', label: '在线邮箱', anchor: 'integration' },
     ],
   },
   {
@@ -92,6 +93,19 @@ const navigation: SettingsNavNode[] = [
     anchor: 'notification',
   },
 ]
+
+/** Search matches a node or any descendant; groups stay when a child hits. */
+const filteredNavigation = computed<SettingsNavNode[]>(() => {
+  const query = navQuery.value.trim().toLowerCase()
+  if (!query) return navigation
+  const matches = (node: SettingsNavNode): boolean => (
+    node.label.toLowerCase().includes(query)
+    || (node.children || []).some(matches)
+  )
+  return navigation
+    .map(node => ({ ...node, children: (node.children || []).filter(matches) }))
+    .filter(node => matches(node))
+})
 
 function scrollToAnchor(anchor: string) {
   const targetNode = navigation.find(node => node.anchor === anchor || node.key === anchor)
@@ -129,9 +143,17 @@ watch(() => props.initialAnchor, (anchor) => {
 <template>
   <div class="settings-form">
     <aside class="settings-nav" aria-label="运行配置快捷导航">
-      <div class="nav-title">快捷导航</div>
+      <el-input
+        v-model="navQuery"
+        size="small"
+        clearable
+        placeholder="搜索配置"
+        aria-label="搜索配置"
+        class="nav-search"
+      />
       <el-tree
-        :data="navigation"
+        v-if="filteredNavigation.length"
+        :data="filteredNavigation"
         :props="navProps"
         node-key="key"
         default-expand-all
@@ -139,6 +161,7 @@ watch(() => props.initialAnchor, (anchor) => {
         :current-node-key="activeKey"
         @node-click="jumpTo"
       />
+      <p v-else class="nav-empty">没有匹配的配置项</p>
     </aside>
 
     <div ref="scrollRegion" class="settings-scroll">
@@ -195,6 +218,9 @@ watch(() => props.initialAnchor, (anchor) => {
   background: var(--workspace-surface);
 }
 .settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   min-width: 0;
   min-height: 0;
   padding: 12px 8px 12px 10px;
@@ -202,12 +228,8 @@ watch(() => props.initialAnchor, (anchor) => {
   background: var(--workspace-subtle);
   overflow: auto;
 }
-.nav-title {
-  margin: 0 8px 8px;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  font-weight: 650;
-}
+.nav-search :deep(.el-input__wrapper) { min-height: 28px; height: 28px; }
+.nav-empty { margin: 4px 8px; color: var(--el-text-color-secondary); font-size: 12px; }
 .settings-nav :deep(.el-tree) { background: transparent; color: var(--el-text-color-regular); }
 .settings-nav :deep(.el-tree-node__content) { height: 32px; border-radius: 4px; }
 .settings-nav :deep(.el-tree-node__label) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
