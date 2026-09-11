@@ -155,8 +155,9 @@ class RemailClient:
 
     def __post_init__(self) -> None:
         # A frozen dataclass cannot reassign fields; the persistent session
-        # lives in this lazily-created cache slot instead.
+        # and its opener live in lazily-created cache slots instead.
         object.__setattr__(self, "_session_cache", None)
+        object.__setattr__(self, "_opener_cache", None)
 
     def _session_opener(self):
         """Return a keep-alive opener bound to one persistent session.
@@ -166,6 +167,9 @@ class RemailClient:
         round. ``trust_env=False`` keeps inherited HTTP_PROXY/HTTPS_PROXY/
         ALL_PROXY variables out of mailbox IO, matching MailboxHttpTransport.
         """
+        opener_cache = getattr(self, "_opener_cache", None)
+        if opener_cache is not None:
+            return opener_cache
         cached = getattr(self, "_session_cache", None)
         if cached is None:
             cached = self.session_factory() if callable(self.session_factory) else None
@@ -212,7 +216,8 @@ class RemailClient:
                     )
                 return _SessionResponse(response)
 
-        return _SessionOpener()
+        object.__setattr__(self, "_opener_cache", _SessionOpener())
+        return self._opener_cache
 
     def _dispatch(self, request: Request, timeout: float) -> Any:
         if self.opener is not urlopen:

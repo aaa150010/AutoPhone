@@ -191,17 +191,6 @@ def safe_detail_url(base_url: str, value: Any) -> str:
     return candidate
 
 
-def _scalar_text(value: Any) -> str:
-    """Flatten an endpoint id/query value without accepting control bytes."""
-    if isinstance(value, str):
-        return value
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return str(value)
-    if isinstance(value, Mapping):
-        return "\n".join(_scalar_text(item) for item in value.values() if item not in (None, ""))
-    if isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray, str)):
-        return "\n".join(_scalar_text(item) for item in value if item not in (None, ""))
-    return ""
 
 
 def client_mailbox_detail_url(source_url: str, message_id: Any) -> str:

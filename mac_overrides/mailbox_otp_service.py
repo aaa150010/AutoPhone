@@ -35,17 +35,9 @@ except ImportError:
     from mailbox_parser_sample_store import MAILBOX_PARSER_REVISION, record_parser_failure, sample_store_for  # type: ignore[no-redef]
 
 
-@dataclass(frozen=True, slots=True)
-class MailboxNetworkPolicy:
-    mode: str = "direct"
-    proxy_url: str = ""
-    retries: int = 3
-    backoff_seconds: float = 1.0
-    request_timeout_seconds: int = 15
-
-    @property
-    def effective_proxy(self) -> str:
-        return self.proxy_url if self.mode == "local_proxy" else ""
+# ``MailboxNetworkPolicy`` is imported from mailbox_transport below; the
+# historical local copy was dead on arrival because both import branches
+# rebind the name immediately after module import.
 
 
 try:
@@ -191,6 +183,10 @@ def diagnostic_message(diagnostic: Mapping[str, Any]) -> str:
 
 class MailboxOtpService:
     """One mailbox request lifecycle shared by every URL-based registration flow."""
+
+    #: Adaptive poll cadence thresholds (seconds waited) for long OTP waits.
+    POLL_BACKOFF_MEDIUM_AFTER_SECONDS = 20.0
+    POLL_BACKOFF_SLOW_AFTER_SECONDS = 45.0
 
     def __init__(
         self,
@@ -601,7 +597,18 @@ class MailboxOtpService:
                     )
             remaining = deadline - self.monotonic_fn()
             if remaining > 0:
-                delay = min(self.poll_interval_seconds, remaining)
+                # Adaptive cadence: the hot pickup window keeps the full poll
+                # rate (codes usually arrive within the first seconds and the
+                # resend window lives there); long waits step the interval up
+                # so a silent mailbox stops hammering the provider.
+                waited = self.monotonic_fn() - started
+                if waited >= self.POLL_BACKOFF_SLOW_AFTER_SECONDS:
+                    interval = min(self.poll_interval_seconds * 3.0, 6.0)
+                elif waited >= self.POLL_BACKOFF_MEDIUM_AFTER_SECONDS:
+                    interval = min(self.poll_interval_seconds * 2.0, 4.0)
+                else:
+                    interval = self.poll_interval_seconds
+                delay = min(interval, remaining)
                 if callable(stop_requested):
                     # Bound stop latency even when the configured poll interval
                     # is large. Fake clocks still advance through sleep_fn.
@@ -785,6 +792,9 @@ class MailboxOtpService:
     def close(self) -> None:
         if self.transport is not None:
             self.transport.close()
+        client_close = getattr(self.client, "close", None)
+        if callable(client_close):
+            client_close()
 
 
 def mailbox_error_from_url_error(

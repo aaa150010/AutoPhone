@@ -462,6 +462,17 @@ class MailboxUrlClient:
         self._client_mailbox_deep_refresh_done = False
         self._client_mailbox_refresh_error_code = ""
         self._client_mailbox_refresh_http_status: int | None = None
+        # Listing parse memo: OTP waiting polls the same listing endpoint
+        # every second, and unchanged bodies re-parse to identical results.
+        self._last_listing_digest = ""
+        self._last_listing_api: "_ClientMailboxApi | None" = None
+        self._last_listing_parse: tuple[list[MailboxMessage], list[str], bool, bool] | None = None
+        # Handlers depend only on constructor state, so one opener serves
+        # every request of this client instead of rebuilding per fetch.
+        self._opener_cache: Any = None
+        # Detail fetches run on a persistent pool; rebuilding a ThreadPool
+        # per scan dominated the OTP wait loop's per-poll overhead.
+        self._detail_executor: ThreadPoolExecutor | None = None
         # Keep bounded raw responses for the optional parser-miss sample
         # recorder.  This is memory-only until a complete operation ends
         # without a code and the caller explicitly commits a sample.
@@ -543,11 +554,13 @@ class MailboxUrlClient:
         self._clear_client_mailbox_refresh_error()
 
     def _opener(self):
-        handlers: list[Any] = [_SameOriginRedirectHandler(self.mailbox_url)]
-        handlers.append(
-            urllib.request.ProxyHandler({"http": self.proxy, "https": self.proxy} if self.proxy else {})
-        )
-        return urllib.request.build_opener(*handlers)
+        if self._opener_cache is None:
+            handlers: list[Any] = [_SameOriginRedirectHandler(self.mailbox_url)]
+            handlers.append(
+                urllib.request.ProxyHandler({"http": self.proxy, "https": self.proxy} if self.proxy else {})
+            )
+            self._opener_cache = urllib.request.build_opener(*handlers)
+        return self._opener_cache
 
     def _fetch_detail_batch(
         self, urls: Sequence[str],
@@ -571,14 +584,15 @@ class MailboxUrlClient:
                 else:
                     successes[url] = messages
             return successes, failures
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = {url: pool.submit(self._fetch_detail_messages, url) for url in urls}
-            for url, future in futures.items():
-                messages = future.result()
-                if messages is None:
-                    failures += 1
-                else:
-                    successes[url] = messages
+        if self._detail_executor is None:
+            self._detail_executor = ThreadPoolExecutor(max_workers=DETAIL_FETCH_CONCURRENCY)
+        futures = {url: self._detail_executor.submit(self._fetch_detail_messages, url) for url in urls}
+        for url, future in futures.items():
+            messages = future.result()
+            if messages is None:
+                failures += 1
+            else:
+                successes[url] = messages
         return successes, failures
 
     def _fetch_detail_messages(self, detail_url: str) -> tuple[MailboxMessage, ...] | None:
@@ -643,6 +657,25 @@ class MailboxUrlClient:
             raise MailboxUrlError("mailbox_cross_origin_redirect", "邮箱取码地址跳转到了其他来源")
         return MailboxResponse(final_url, body, content_type, status)
 
+    def close(self) -> None:
+        """Release the persistent detail-fetch pool; safe to call twice."""
+        executor, self._detail_executor = self._detail_executor, None
+        if executor is not None:
+            executor.shutdown(wait=False)
+
+    def _remember_listing(
+        self,
+        digest: str,
+        client_api: "_ClientMailboxApi | None",
+        messages: list[MailboxMessage],
+        detail_urls: list[str],
+        smtp_inbound: bool,
+        refreshing: bool,
+    ) -> None:
+        self._last_listing_digest = digest
+        self._last_listing_api = client_api
+        self._last_listing_parse = (messages, detail_urls, smtp_inbound, refreshing)
+
     def scan(self) -> MailboxScan:
         client_api = self._client_mailbox_api
         response = self._fetch(
@@ -658,7 +691,19 @@ class MailboxUrlClient:
                 raw = _decode_bytes(response.body, response.content_type)
 
         detail_request_errors = 0
-        if client_api is not None:
+        cache_refresh_error_code = ""
+        cache_refresh_http_status: int | None = None
+        listing_digest = hashlib.sha256(response.body).hexdigest()
+        if (
+            listing_digest == self._last_listing_digest
+            and client_api is self._last_listing_api
+            and self._last_listing_parse is not None
+        ):
+            # The listing body is byte-identical to the previous poll, so the
+            # parse result is too; skip the JSON/HTML/regex re-parse. Detail
+            # refreshes below still run and keep new codes reachable.
+            messages, detail_urls, smtp_inbound, refreshing = self._last_listing_parse
+        elif client_api is not None:
             (
                 messages,
                 detail_urls,
@@ -672,10 +717,12 @@ class MailboxUrlClient:
                     cache_refresh_error_code,
                     cache_refresh_http_status,
                 )
+            self._remember_listing(listing_digest, client_api, messages, detail_urls, smtp_inbound, refreshing)
         else:
             messages, detail_urls = parse_mailbox_payload(raw, response.url)
             smtp_inbound = False
             refreshing = False
+            self._remember_listing(listing_digest, client_api, messages, detail_urls, smtp_inbound, refreshing)
         combined = list(messages)
 
         if client_api is not None:
@@ -783,7 +830,7 @@ class MailboxUrlClient:
         for detail_url in active_detail_urls:
             combined.extend(self._detail_cache.get(detail_url, ()))
         merged = _merge_messages(combined)
-        page_fingerprint = hashlib.sha256(response.body).hexdigest()
+        page_fingerprint = listing_digest
         openai_messages = sum(
             1
             for message in merged
