@@ -25,7 +25,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Mapping, Sequence
 
 try:
-    from .diagnostic_contract import DiagnosticEvent, SCHEMA_VERSION, utc_now
+    from .diagnostic_contract import SCHEMA_VERSION, utc_now
     from .diagnostic_summary import (
         DiagnosticSummaryMixin,
         _FAILURE_OUTCOMES,
@@ -49,7 +49,7 @@ try:
     )
     from .diagnostic_export import DiagnosticExportMixin
 except ImportError:  # pragma: no cover
-    from diagnostic_contract import DiagnosticEvent, SCHEMA_VERSION, utc_now  # type: ignore[no-redef]
+    from diagnostic_contract import SCHEMA_VERSION, utc_now  # type: ignore[no-redef]
     from diagnostic_summary import (  # type: ignore[no-redef]
         DiagnosticSummaryMixin,
         _FAILURE_OUTCOMES,
