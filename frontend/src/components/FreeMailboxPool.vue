@@ -40,8 +40,8 @@ import { useColumnWidths } from '../composables/useColumnWidths'
 import { usePolling } from '../composables/usePolling'
 type DragColumn = { label?: string; noLabelText?: string }
 
-const FAST_LIVE_CHECK_TIP = '用注册时保存的 Token，通过原绑定代理查询一次账号状态：正常 / Token 失效 / 已停用 / 被出口或安全策略拒绝。不重新登录、不收取邮件。'
-const DEEP_LIVE_CHECK_TIP = '通过原绑定代理完整重新登录确认账号状态：可能收取一封邮箱 OTP 验证码，并按需校验密码 / 2FA。成功后刷新 Token 并同步套餐与 Plus 资格。'
+const FAST_LIVE_CHECK_TIP = '用注册时保存的 Token，通过代理池分配的代理查询一次账号状态：正常 / Token 失效 / 已停用 / 被出口或安全策略拒绝。不重新登录、不收取邮件。'
+const DEEP_LIVE_CHECK_TIP = '通过代理池分配的代理完整重新登录确认账号状态：可能收取一封邮箱 OTP 验证码，并按需校验密码 / 2FA。成功后刷新 Token 并同步套餐与 Plus 资格；确认封禁的账号会自动移出邮箱池。'
 
 const rows = ref<FreeMailboxRow[]>([])
 const selected = ref<FreeMailboxRow[]>([])
@@ -89,6 +89,80 @@ const metrics = computed(() => {
   return { total: rows.value.length, available: count('available'), running: count('running'), success: count('success'), failed: count('failed'), pending: count('twofa_pending'), rerun: count('pending_rerun'), live: live('live'), deactivated: live('deactivated'), checking: live('queued') + live('running') }
 })
 
+const tokenExpiredRows = computed(() => rows.value.filter(row => row.live_check_status === 'token_expired'))
+const activePoolTab = computed(() => {
+  if (!statusFilter.value && !liveStatusFilter.value) return 'all'
+  if (statusFilter.value && liveStatusFilter.value) return ''
+  if (!liveStatusFilter.value) {
+    if (statusFilter.value === 'success') return 'success'
+    if (statusFilter.value === 'pending_rerun') return 'pending_rerun'
+    if (statusFilter.value === 'twofa_pending') return 'twofa_pending'
+    return ''
+  }
+  if (liveStatusFilter.value === 'active') return 'checking'
+  if (liveStatusFilter.value === 'live') return 'live'
+  if (liveStatusFilter.value === 'token_expired') return 'token_expired'
+  if (liveStatusFilter.value === 'deactivated') return 'deactivated'
+  return ''
+})
+const poolTabs = computed(() => [
+  { value: 'all', label: '全部', count: metrics.value.total, tone: 'info' },
+  { value: 'success', label: '注册成功', count: metrics.value.success, tone: 'success' },
+  { value: 'checking', label: '测活中', count: metrics.value.checking, tone: 'primary' },
+  { value: 'live', label: '账号正常', count: metrics.value.live, tone: 'success' },
+  { value: 'token_expired', label: 'Token 失效', count: tokenExpiredRows.value.length, tone: 'warning' },
+  { value: 'deactivated', label: '已停用', count: metrics.value.deactivated, tone: 'danger' },
+  { value: 'pending_rerun', label: '待重跑', count: metrics.value.rerun, tone: 'warning' },
+  { value: 'twofa_pending', label: '2FA 待重试', count: metrics.value.pending, tone: 'warning' },
+] as { value: string; label: string; count: number; tone: string }[])
+
+function setPoolTab(value: string) {
+  switch (value) {
+    case 'success': statusFilter.value = 'success'; liveStatusFilter.value = ''; break
+    case 'checking': statusFilter.value = ''; liveStatusFilter.value = 'active'; break
+    case 'live': statusFilter.value = ''; liveStatusFilter.value = 'live'; break
+    case 'token_expired': statusFilter.value = ''; liveStatusFilter.value = 'token_expired'; break
+    case 'deactivated': statusFilter.value = ''; liveStatusFilter.value = 'deactivated'; break
+    case 'pending_rerun': statusFilter.value = 'pending_rerun'; liveStatusFilter.value = ''; break
+    case 'twofa_pending': statusFilter.value = 'twofa_pending'; liveStatusFilter.value = ''; break
+    default: statusFilter.value = ''; liveStatusFilter.value = ''
+  }
+  currentPage.value = 1
+}
+
+async function rerunExpiredTokens() {
+  // Selection first: re-run only the checked 401 rows; fall back to the
+  // whole Token 失效 tab when nothing is checked.
+  const selectedExpired = selected.value.filter(row => canLiveCheck(row) && row.live_check_status === 'token_expired')
+  const targets = selectedExpired.length ? selectedExpired : tokenExpiredRows.value.filter(canLiveCheck)
+  if (!targets.length) {
+    ElMessage.info('当前没有可重跑的 Token 失效账号')
+    return
+  }
+  const scope = selectedExpired.length ? `选中的 ${targets.length} 个 Token 失效账号` : `Token 失效页的全部 ${targets.length} 个账号`
+  try {
+    await ElMessageBox.confirm(
+      `深度测活会从代理池分配代理重新登录${scope}，并可能各收一封 OTP 邮件；确认封禁的账号会自动移出邮箱池。确定继续吗？`,
+      '批量重跑401',
+      { type: 'warning', confirmButtonText: '开始重跑', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  liveBusy.value = 'deep'
+  try {
+    const result = await startFreeLiveCheck('deep', targets.map(row => row.row_id))
+    rows.value = result.rows || rows.value
+    liveState.value = result.state || liveState.value
+    const skipped = Number(result.skipped_count || 0)
+    ElMessage.success(`已加入深度测活 ${Number(result.accepted_count || 0)} 个${skipped ? `，跳过 ${skipped} 个` : ''}`)
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || '批量重跑 401 启动失败')
+  } finally {
+    liveBusy.value = ''
+  }
+}
+
 
 function handleBulkCommand(command: string) {
   if (command === 'copy-mailbox') return void copyMailboxFormat('mailbox')
@@ -133,20 +207,20 @@ async function refreshLiveState() {
 }
 
 function canLiveCheck(row: FreeMailboxRow) {
-  return Boolean(row.has_access_token && row.proxy_masked)
+  return Boolean(row.has_access_token)
     && !['queued', 'running'].includes(String(row.live_check_status || ''))
 }
 
 async function startLiveCheck(mode: 'fast' | 'deep', selection = selected.value) {
   const eligible = selection.filter(canLiveCheck)
   if (!eligible.length) {
-    ElMessage.warning('请选择已保存 Token 和代理的 Free 账号')
+    ElMessage.warning('请选择已保存 Token 的 Free 账号')
     return
   }
   if (mode === 'deep') {
     try {
       await ElMessageBox.confirm(
-        `深度测活会使用注册时的代理重新登录 ${eligible.length} 个账号，并可能多收一封 OTP 邮件。确定继续吗？`,
+        `深度测活会从代理池分配代理重新登录 ${eligible.length} 个账号，并可能多收一封 OTP 邮件；确认封禁的账号会自动移出邮箱池。确定继续吗？`,
         '深度测活',
         { type: 'warning', confirmButtonText: '开始测活', cancelButtonText: '取消' },
       )
@@ -202,7 +276,7 @@ async function openLiveLog(row: FreeMailboxRow) {
 
 async function startLiveCheckAction(mode: 'fast' | 'deep', row: FreeMailboxRow) {
   if (!canLiveCheck(row)) {
-    unavailableMailboxAction('该邮箱需要已保存 Token 和代理，且当前不在测活中')
+    unavailableMailboxAction('该邮箱需要已保存 Token，且当前不在测活中')
     return
   }
   await startLiveCheck(mode, [row])
@@ -560,41 +634,50 @@ onMounted(async () => {
 
 <template>
   <div class="free-pool">
-    <WorkspacePanel title="Free 注册邮箱池" :icon="Tickets" fill body-padding="none">
-      <template #actions>
-        <span class="pool-summary">共 {{ rows.length }} 条</span>
-        <el-tooltip content="撤销本表拖拽保存的列宽，恢复默认列宽" placement="top" :show-after="250">
-          <el-button size="small" :icon="RefreshLeft" aria-label="重置列宽" @click="resetPoolWidths">重置列宽</el-button>
-        </el-tooltip>
-        <el-button size="small" type="primary" :icon="VideoPlay" :loading="runBusy" @click="quickStart">快捷运行</el-button>
-        <el-button size="small" :icon="Refresh" :loading="loading" @click="refresh">刷新</el-button>
-        <el-button size="small" type="primary" :icon="Plus" @click="openImport">导入 Free 邮箱</el-button>
-      </template>
-
+    <WorkspacePanel fill body-padding="none">
       <div class="table-region">
-        <div class="metrics"><span>总数 <b>{{ metrics.total }}</b></span><span class="is-good">注册成功 <b>{{ metrics.success }}</b></span><span>测活中 <b>{{ metrics.checking }}</b></span><span class="is-good">账号正常 <b>{{ metrics.live }}</b></span><span class="is-bad">已停用 <b>{{ metrics.deactivated }}</b></span><span class="is-warn">待重跑 <b>{{ metrics.rerun }}</b></span><span class="is-warn">2FA 待重试 <b>{{ metrics.pending }}</b></span></div>
-        <div class="filters"><el-input v-model="search" size="small" clearable placeholder="搜索邮箱或错误节点" /><el-select v-model="statusFilter" size="small" clearable placeholder="注册状态"><el-option label="可用" value="available" /><el-option label="运行中" value="running" /><el-option label="成功" value="success" /><el-option label="失败" value="failed" /><el-option label="待重跑" value="pending_rerun" /><el-option label="2FA 待重试" value="twofa_pending" /></el-select><el-select v-model="driverFilter" size="small" clearable placeholder="注册链路"><el-option label="全协议" value="protocol" /><el-option label="Camoufox" value="camoufox" /></el-select><el-select v-model="liveStatusFilter" size="small" clearable placeholder="测活状态"><el-option label="排队 / 测活中" value="active" /><el-option label="正常" value="live" /><el-option label="已停用" value="deactivated" /><el-option label="Token 失效" value="token_expired" /><el-option label="出口/反爬拒绝" value="free_live_proxy_blocked" /><el-option label="Session 被拒绝" value="free_live_session_rejected" /><el-option label="触发限流" value="free_live_rate_limited" /><el-option label="上游异常" value="free_live_upstream_error" /><el-option label="网络异常" value="free_live_network_error" /><el-option label="需要真实密码" value="free_live_password_required" /><el-option label="测活失败" value="failed" /></el-select></div>
-        <div class="bulk-actions">
-          <span>已选 {{ selected.length }} 条</span>
-          <el-tooltip placement="top" :show-after="250"><template #content><div class="live-check-tip">{{ FAST_LIVE_CHECK_TIP }}</div></template><el-button size="small" type="success" plain :icon="CircleCheck" :loading="liveBusy === 'fast'" :disabled="!selected.some(canLiveCheck) || Boolean(liveBusy)" @click="startLiveCheck('fast')">快速测活</el-button></el-tooltip>
-          <el-tooltip placement="top" :show-after="250"><template #content><div class="live-check-tip">{{ DEEP_LIVE_CHECK_TIP }}</div></template><el-button size="small" type="warning" plain :icon="RefreshRight" :loading="liveBusy === 'deep'" :disabled="!selected.some(canLiveCheck) || Boolean(liveBusy)" @click="startLiveCheck('deep')">深度测活</el-button></el-tooltip>
-          <el-button size="small" :icon="Upload" :disabled="!selected.length || loading" @click="transferSelected">传输至接码邮箱</el-button>
-          <el-button size="small" :icon="Download" :disabled="loading" @click="exportResults">导出</el-button>
-          <el-button size="small" type="danger" plain :icon="Delete" :disabled="!selected.length || loading" @click="deleteSelected">删除选中</el-button>
-          <el-dropdown trigger="click" @command="(command: string) => handleBulkCommand(command)">
-            <el-button size="small" :icon="CopyDocument" aria-label="更多批量操作">更多操作<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="copy-mailbox"><el-icon><CopyDocument /></el-icon>复制接码格式</el-dropdown-item>
-                <el-dropdown-item command="copy-full"><el-icon><CopyDocument /></el-icon>复制完整格式</el-dropdown-item>
-                <el-dropdown-item command="copy-token"><el-icon><Key /></el-icon>复制 Token</el-dropdown-item>
-                <el-dropdown-item command="copy-credential"><el-icon><DocumentCopy /></el-icon>复制凭据</el-dropdown-item>
-                <el-dropdown-item command="copy-page-token"><el-icon><CopyDocument /></el-icon>当前页 Token</el-dropdown-item>
-                <el-dropdown-item command="mark-available" divided><el-icon><CircleCheck /></el-icon>恢复为可用</el-dropdown-item>
-                <el-dropdown-item command="mark-unavailable"><el-icon><Warning /></el-icon>标记不可用</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+        <div class="metrics-row">
+          <div class="pool-summary-strip" role="group" aria-label="邮箱池状态筛选">
+            <button v-for="item in poolTabs" :key="item.value" type="button" class="summary-cell is-filter" :class="{ 'is-active': activePoolTab === item.value, [`tone-${item.tone}`]: true }" :aria-pressed="activePoolTab === item.value" @click="setPoolTab(item.value)">
+              <span>{{ item.label }}</span><strong>{{ item.count }}</strong>
+            </button>
+          </div>
+          <div class="pool-actions">
+            <el-tooltip v-if="activePoolTab === 'token_expired'" :content="DEEP_LIVE_CHECK_TIP" placement="top" :show-after="250">
+              <el-button size="small" type="warning" :icon="RefreshRight" :loading="liveBusy === 'deep'" :disabled="!tokenExpiredRows.length || Boolean(liveBusy)" aria-label="批量重跑401" @click="rerunExpiredTokens">批量重跑401</el-button>
+            </el-tooltip>
+            <el-tooltip content="撤销本表拖拽保存的列宽，恢复默认列宽" placement="top" :show-after="250">
+              <el-button size="small" :icon="RefreshLeft" aria-label="重置列宽" @click="resetPoolWidths">重置列宽</el-button>
+            </el-tooltip>
+            <el-button size="small" type="primary" :icon="VideoPlay" :loading="runBusy" @click="quickStart">快捷运行</el-button>
+            <el-button size="small" :icon="Refresh" :loading="loading" @click="refresh">刷新</el-button>
+            <el-button size="small" type="primary" :icon="Plus" @click="openImport">导入 Free 邮箱</el-button>
+          </div>
+        </div>
+        <div class="pool-filter-row">
+          <el-input v-model="search" class="pool-search" size="small" clearable placeholder="搜索邮箱或错误节点" /><el-select v-model="statusFilter" class="pool-select" size="small" clearable placeholder="注册状态"><el-option label="可用" value="available" /><el-option label="运行中" value="running" /><el-option label="成功" value="success" /><el-option label="失败" value="failed" /><el-option label="待重跑" value="pending_rerun" /><el-option label="2FA 待重试" value="twofa_pending" /></el-select><el-select v-model="driverFilter" class="pool-select" size="small" clearable placeholder="注册链路"><el-option label="全协议" value="protocol" /><el-option label="Camoufox" value="camoufox" /></el-select><el-select v-model="liveStatusFilter" class="pool-select" size="small" clearable placeholder="测活状态"><el-option label="排队 / 测活中" value="active" /><el-option label="正常" value="live" /><el-option label="已停用" value="deactivated" /><el-option label="Token 失效" value="token_expired" /><el-option label="出口/反爬拒绝" value="free_live_proxy_blocked" /><el-option label="Session 被拒绝" value="free_live_session_rejected" /><el-option label="触发限流" value="free_live_rate_limited" /><el-option label="上游异常" value="free_live_upstream_error" /><el-option label="网络异常" value="free_live_network_error" /><el-option label="需要真实密码" value="free_live_password_required" /><el-option label="测活失败" value="failed" /></el-select>
+          <div class="pool-bulk-actions">
+            <span>已选 {{ selected.length }} 条</span>
+            <el-tooltip placement="top" :show-after="250"><template #content><div class="live-check-tip">{{ FAST_LIVE_CHECK_TIP }}</div></template><el-button size="small" type="success" plain :icon="CircleCheck" :loading="liveBusy === 'fast'" :disabled="!selected.some(canLiveCheck) || Boolean(liveBusy)" @click="startLiveCheck('fast')">快速测活</el-button></el-tooltip>
+            <el-tooltip placement="top" :show-after="250"><template #content><div class="live-check-tip">{{ DEEP_LIVE_CHECK_TIP }}</div></template><el-button size="small" type="warning" plain :icon="RefreshRight" :loading="liveBusy === 'deep'" :disabled="!selected.some(canLiveCheck) || Boolean(liveBusy)" @click="startLiveCheck('deep')">深度测活</el-button></el-tooltip>
+            <el-button size="small" :icon="Upload" :disabled="!selected.length || loading" @click="transferSelected">传输至接码邮箱</el-button>
+            <el-button size="small" :icon="Download" :disabled="loading" @click="exportResults">导出</el-button>
+            <el-button size="small" type="danger" plain :icon="Delete" :disabled="!selected.length || loading" @click="deleteSelected">删除选中</el-button>
+            <el-dropdown trigger="click" @command="(command: string) => handleBulkCommand(command)">
+              <el-button size="small" :icon="CopyDocument" aria-label="更多批量操作">更多操作<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="copy-mailbox"><el-icon><CopyDocument /></el-icon>复制接码格式</el-dropdown-item>
+                  <el-dropdown-item command="copy-full"><el-icon><CopyDocument /></el-icon>复制完整格式</el-dropdown-item>
+                  <el-dropdown-item command="copy-token"><el-icon><Key /></el-icon>复制 Token</el-dropdown-item>
+                  <el-dropdown-item command="copy-credential"><el-icon><DocumentCopy /></el-icon>复制凭据</el-dropdown-item>
+                  <el-dropdown-item command="copy-page-token"><el-icon><CopyDocument /></el-icon>当前页 Token</el-dropdown-item>
+                  <el-dropdown-item command="mark-available" divided><el-icon><CircleCheck /></el-icon>恢复为可用</el-dropdown-item>
+                  <el-dropdown-item command="mark-unavailable"><el-icon><Warning /></el-icon>标记不可用</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
         </div>
         <el-table
           ref="tableRef"
@@ -680,18 +763,30 @@ onMounted(async () => {
 
 <style scoped>
 .free-pool { width: 100%; height: 100%; min-height: 0; }
-.pool-summary { color: var(--el-text-color-secondary); font-size: 12px; }
-.table-region { display: grid; grid-template-rows: auto auto auto minmax(0, 1fr) 46px; gap: var(--workspace-gap); width: 100%; height: 100%; min-height: 0; padding: 10px; }
-.metrics { display: flex; align-items: center; gap: 14px; min-height: 28px; color: var(--el-text-color-secondary); font-size: 12px; }
-.metrics b { color: var(--el-text-color-primary); font-variant-numeric: tabular-nums; }
-.metrics .is-good b { color: var(--el-color-success); }
-.metrics .is-bad b { color: var(--el-color-danger); }
-.metrics .is-warn b { color: var(--el-color-warning); }
-.filters { display: grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap: var(--workspace-gap); }
-.filters > .el-input, .filters > .el-select { width: 100%; }
-.bulk-actions { display: flex; align-items: center; gap: var(--workspace-gap); min-width: 0; color: var(--el-text-color-secondary); font-size: 12px; flex-wrap: wrap; }
-.bulk-actions > span { margin-right: auto; white-space: nowrap; }
-.bulk-actions :deep(.el-button + .el-button) { margin-left: 0; }
+.pool-actions { margin-left: auto; display: flex; align-items: center; gap: var(--workspace-gap); flex: 0 0 auto; }
+.pool-actions :deep(.el-button + .el-button) { margin-left: 0; }
+.table-region { display: grid; grid-template-rows: auto auto minmax(0, 1fr) 46px; gap: var(--workspace-gap); width: 100%; height: 100%; min-height: 0; padding: 10px; }
+.metrics-row { display: flex; align-items: center; gap: var(--workspace-gap); min-width: 0; }
+.metrics-row .el-button { flex: 0 0 auto; }
+.pool-summary-strip { display: flex; align-items: stretch; flex: 0 1 auto; height: 30px; min-width: 0; border: 1px solid var(--workspace-border); border-radius: var(--workspace-radius); overflow: hidden; background: var(--workspace-surface); }
+.summary-cell { display: flex; align-items: center; justify-content: center; gap: 6px; flex: 1 1 0; min-width: 0; padding: 0 10px; border: 0; border-right: 1px solid var(--workspace-border); background: transparent; white-space: nowrap; }
+.summary-cell:last-child { border-right: 0; }
+.summary-cell span { color: var(--el-text-color-secondary); font-size: 12px; line-height: 16px; }
+.summary-cell strong { color: var(--el-text-color-primary); font-size: 14px; line-height: 18px; font-variant-numeric: tabular-nums; }
+.summary-cell.is-filter { cursor: pointer; font: inherit; }
+.summary-cell.is-filter:hover { background: var(--workspace-subtle); }
+.summary-cell.is-filter.is-active { background: var(--workspace-accent-soft); }
+.summary-cell.is-filter.is-active span,
+.summary-cell.is-filter.is-active strong { color: var(--el-color-primary-dark-2); }
+.summary-cell.tone-success strong { color: var(--el-color-success); }
+.summary-cell.tone-warning strong { color: var(--el-color-warning); }
+.summary-cell.tone-danger strong { color: var(--el-color-danger); }
+.pool-filter-row { display: flex; align-items: center; gap: var(--workspace-gap); min-width: 0; flex-wrap: wrap; }
+.pool-search { width: 200px; flex: 0 0 auto; }
+.pool-select { width: 136px; flex: 0 0 auto; }
+.pool-bulk-actions { margin-left: auto; display: flex; align-items: center; gap: var(--workspace-gap); min-width: 0; color: var(--el-text-color-secondary); font-size: 12px; }
+.pool-bulk-actions > span { white-space: nowrap; }
+.pool-bulk-actions :deep(.el-button + .el-button) { margin-left: 0; }
 .trial-tag { margin-left: 5px; }
 .mailbox-account-cell { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .mailbox-subline { display: block; overflow: hidden; color: var(--el-text-color-secondary); font-size: 11px; line-height: 15px; text-overflow: ellipsis; white-space: nowrap; }
@@ -704,6 +799,9 @@ onMounted(async () => {
 .mailbox-stage-cell { display: inline-flex; max-width: 100%; min-width: 0; overflow: hidden; vertical-align: middle; }
 .mailbox-stage-cell :deep(.el-tag) { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mailbox-live-cell small { display: inline; flex: 0 0 auto; margin-top: 0; color: var(--el-text-color-secondary); white-space: nowrap; }
+.table-region :deep(.el-table td.el-table__cell),
+.table-region :deep(.el-table th.el-table__cell) { padding-top: 3px; padding-bottom: 3px; }
+.table-region :deep(.el-table .cell) { line-height: 18px; }
 .table-region :deep(.el-pagination) { justify-content: flex-end; border-top: 1px solid var(--workspace-border); }
 .table-region small { color: var(--el-text-color-secondary); display: block; overflow: hidden; margin-top: 2px; text-overflow: ellipsis; white-space: nowrap; }
 .failure-cell { min-width: 0; max-width: 100%; overflow: hidden; line-height: 16px; }
