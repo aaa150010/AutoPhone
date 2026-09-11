@@ -451,8 +451,23 @@ class FreeLiveCheckService:
         """Use the diagnostic HMAC for public correlation when available."""
         return subject_fingerprint(self.log_store, email)
 
+    _JOBS_FLUSH_INTERVAL = 0.5
+
     def _save_jobs(self) -> None:
         atomic_write(self.path, {"version": 1, "jobs": self._jobs})
+        self._jobs_flushed_at = time.monotonic()
+
+    def _save_jobs_coalesced(self, *, force: bool = False) -> None:
+        """Write the jobs file at most every half second unless forced.
+
+        Stage-only updates used to fsync the whole jobs file per protocol
+        node. A crash losing the last coalesced window is harmless for
+        recovery: the persisted job is still in an ACTIVE status, so
+        ``_recover_jobs`` re-queues it and the check reruns idempotently.
+        Terminal states, enqueue and recovery always flush immediately.
+        """
+        if force or time.monotonic() - getattr(self, "_jobs_flushed_at", 0.0) >= self._JOBS_FLUSH_INTERVAL:
+            self._save_jobs()
 
     def _recover_jobs(self) -> None:
         recovered: list[str] = []
@@ -750,7 +765,7 @@ class FreeLiveCheckService:
                 for span in stages:
                     if isinstance(span, dict) and span.get("finished_at") is None:
                         span["finished_at"] = int(job["checked_at"])
-            self._save_jobs()
+            self._save_jobs_coalesced(force=str(values.get("status") or "") in TERMINAL_LIVE_STATUSES)
             return dict(job)
 
     def _save_live_result(self, row_id: str, values: Mapping[str, Any]) -> dict[str, Any]:
@@ -789,13 +804,24 @@ class FreeLiveCheckService:
             task_id = str(current.get("task_id") or "")
             if task_id and self.task_store is not None:
                 try:
-                    tasks = self.task_store.load()
-                    task = tasks.get(task_id)
-                    if isinstance(task, dict) and str(task.get("status") or "") == "partial_success":
-                        task.update({"status": "success", "stage": "free_result_save", "error": ""})
-                        task.pop("failure", None)
-                        task["result"] = copy.deepcopy(current)
-                        self.task_store.save(tasks)
+                    get_one = getattr(self.task_store, "get_task", None)
+                    if callable(get_one):
+                        # Single-row flip: the dirty-save channel applies the
+                        # same per-row CAS without loading the whole table.
+                        task = get_one(task_id)
+                        if isinstance(task, dict) and str(task.get("status") or "") == "partial_success":
+                            task.update({"status": "success", "stage": "free_result_save", "error": ""})
+                            task.pop("failure", None)
+                            task["result"] = copy.deepcopy(current)
+                            self.task_store.save({task_id: task}, partial_snapshot=True)
+                    else:
+                        tasks = self.task_store.load()
+                        task = tasks.get(task_id)
+                        if isinstance(task, dict) and str(task.get("status") or "") == "partial_success":
+                            task.update({"status": "success", "stage": "free_result_save", "error": ""})
+                            task.pop("failure", None)
+                            task["result"] = copy.deepcopy(current)
+                            self.task_store.save(tasks)
                 except Exception as exc:
                     # Keep the result file and mailbox row authoritative when
                     # reading legacy task snapshots is not possible.
@@ -1410,6 +1436,8 @@ class FreeLiveCheckService:
 
     def shutdown(self, *, wait: bool = True) -> None:
         self._executor.shutdown(wait=wait, cancel_futures=False)
+        with self._lock:
+            self._save_jobs()
 
 
 def build_free_live_check_service(

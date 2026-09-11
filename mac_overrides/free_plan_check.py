@@ -63,6 +63,7 @@ except ImportError:  # pragma: no cover - recovery import
 
 
 ACTIVE_STATUSES = frozenset({"queued", "running"})
+TERMINAL_PLAN_STATUSES = frozenset({"success", "failed", "partial_success", "stopped"})
 PLAN_STAGE = "free_plan_check"
 PLAN_LABEL = "查询 Free 套餐资格"
 
@@ -177,8 +178,21 @@ class FreePlanCheckService:
             result[str(key)] = job
         return result
 
+    _JOBS_FLUSH_INTERVAL = 0.5
+
     def _save(self) -> None:
         atomic_write(self.path, {"version": 1, "jobs": self._jobs})
+        self._jobs_flushed_at = time.monotonic()
+
+    def _save_coalesced(self, *, force: bool = False) -> None:
+        """Write the jobs file at most every half second unless forced.
+
+        Terminal states, enqueue and recovery always flush immediately; a
+        crash inside a coalesced window only loses stage-progress rows that
+        ``_recover`` re-queues anyway.
+        """
+        if force or time.monotonic() - getattr(self, "_jobs_flushed_at", 0.0) >= self._JOBS_FLUSH_INTERVAL:
+            self._save()
 
     def _recover(self) -> None:
         submit: list[str] = []
@@ -323,7 +337,7 @@ class FreePlanCheckService:
                 return {}
             job.update(values)
             job["updated_at"] = int(time.time())
-            self._save()
+            self._save_coalesced(force=str(values.get("status") or "") in TERMINAL_PLAN_STATUSES)
             return dict(job)
 
     def _request(self, session: Any, url: str, token: str) -> dict[str, Any]:
@@ -469,8 +483,20 @@ class FreePlanCheckService:
             return
         if self.task_store is None:
             return
-        tasks = self.task_store.load()
         task_id = str(result.get("task_id") or "")
+        get_one = getattr(self.task_store, "get_task", None)
+        if callable(get_one):
+            task = get_one(task_id)
+            if not isinstance(task, dict):
+                return
+            task["result"] = copy.deepcopy(dict(result))
+            task["updated_at"] = int(time.time())
+            if promoted and str(task.get("status") or "") == "partial_success":
+                task.update({"status": "success", "stage": PLAN_STAGE, "error": ""})
+                task.pop("failure", None)
+            self.task_store.save({task_id: task}, partial_snapshot=True)
+            return
+        tasks = self.task_store.load()
         task = tasks.get(task_id)
         if not isinstance(task, dict):
             return

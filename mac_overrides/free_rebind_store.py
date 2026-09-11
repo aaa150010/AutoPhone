@@ -106,13 +106,25 @@ class RebindMailboxPool:
             existing_ids = {row.row_id for row in existing}
             # Upserts are idempotent and preserve active reservations in the
             # SQLite store.  Existing rows are not rewritten to legacy files.
-            for row in incoming:
-                self.storage.upsert_mailbox(
-                    email=row.email,
-                    mailbox_url=row.mailbox_url,
-                    row_id=row.row_id,
-                    payload={"line_no": row.line_no},
-                )
+            bulk = getattr(self.storage, "upsert_mailboxes_bulk", None)
+            if callable(bulk):
+                bulk([
+                    {
+                        "email": row.email,
+                        "mailbox_url": row.mailbox_url,
+                        "row_id": row.row_id,
+                        "payload": {"line_no": row.line_no},
+                    }
+                    for row in incoming
+                ])
+            else:
+                for row in incoming:
+                    self.storage.upsert_mailbox(
+                        email=row.email,
+                        mailbox_url=row.mailbox_url,
+                        row_id=row.row_id,
+                        payload={"line_no": row.line_no},
+                    )
             added = sum(row.row_id not in existing_ids for row in incoming)
             return added, max(0, len(incoming) - added)
 

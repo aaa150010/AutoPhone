@@ -74,6 +74,22 @@ class SQLiteFreeTaskStore(_LegacyTaskStoreBase):
         }
         return loaded
 
+    def get_task(self, task_id: str) -> dict[str, Any] | None:
+        """Return one task row without materializing the whole table.
+
+        Single-row consumers (live-check/plan-check result promotion) used to
+        pay a full-table SELECT plus a per-row payload decode for one flip.
+        """
+        target = str(task_id or "").strip()
+        if not target:
+            return None
+        row = self.storage.get_task(target)
+        if row is None:
+            return None
+        task = self._task_from_row(row)
+        self._remember_revision(target, row)
+        return task
+
     def _remember_revision(self, task_id: str, row: Mapping[str, Any]) -> None:
         try:
             self._known_task_revisions[str(task_id)] = int(row.get("revision") or 0)

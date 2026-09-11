@@ -500,6 +500,49 @@ class RebindSQLiteStore:
             raise ValueError("invalid rebind mailbox")
         return parsed
 
+    def _upsert_mailbox_in_transaction(
+        self,
+        db: sqlite3.Connection,
+        *,
+        email: str,
+        mailbox_url: str,
+        row_id: str | None,
+        status: str,
+        task_id: str,
+        payload: Mapping[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Upsert one mailbox row using the caller's open transaction."""
+        email_text, url_text = self._normalize_mailbox(email, mailbox_url)
+        normalized_id = str(row_id or _fingerprint(f"{email_text}|{url_text}")).strip().lower()
+        if not normalized_id:
+            raise ValueError("row_id is required")
+        incoming_payload = _json_object(payload)
+        incoming_payload.update({"email": email_text, "mailbox_url": url_text})
+        now = _now()
+        existing = self._fetch_mailbox(db, normalized_id)
+        if existing is None:
+            db.execute(
+                "INSERT INTO mailboxes "
+                "(row_id,email,mailbox_url,status,task_id,revision,created_at,updated_at,payload) "
+                "VALUES(?,?,?,?,?,?,?,?,?)",
+                (normalized_id, email_text, url_text, str(status or "available"), str(task_id or ""), 0, now, now, _safe_json(incoming_payload)),
+            )
+        else:
+            old_status = str(existing.get("status") or "available")
+            old_task = str(existing.get("task_id") or "")
+            # Importing a duplicate must never steal an active reservation.
+            next_status = old_status if old_status in ACTIVE_REBIND_STATUSES else str(status or old_status)
+            next_task = old_task if old_status in ACTIVE_REBIND_STATUSES else str(task_id or old_task)
+            merged = _json_object(existing)
+            merged.update(incoming_payload)
+            db.execute(
+                "UPDATE mailboxes SET email=?,mailbox_url=?,status=?,task_id=?,revision=revision+1,updated_at=?,payload=? WHERE row_id=?",
+                (email_text, url_text, next_status, next_task, now, _safe_json(merged), normalized_id),
+            )
+        result = self._fetch_mailbox(db, normalized_id)
+        assert result is not None
+        return result
+
     def upsert_mailbox(
         self,
         *,
@@ -510,37 +553,45 @@ class RebindSQLiteStore:
         task_id: str = "",
         payload: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
-        email_text, url_text = self._normalize_mailbox(email, mailbox_url)
-        normalized_id = str(row_id or _fingerprint(f"{email_text}|{url_text}")).strip().lower()
-        if not normalized_id:
-            raise ValueError("row_id is required")
-        incoming_payload = _json_object(payload)
-        incoming_payload.update({"email": email_text, "mailbox_url": url_text})
-        now = _now()
         with self._transaction() as db:
-            existing = self._fetch_mailbox(db, normalized_id)
-            if existing is None:
-                db.execute(
-                    "INSERT INTO mailboxes "
-                    "(row_id,email,mailbox_url,status,task_id,revision,created_at,updated_at,payload) "
-                    "VALUES(?,?,?,?,?,?,?,?,?)",
-                    (normalized_id, email_text, url_text, str(status or "available"), str(task_id or ""), 0, now, now, _safe_json(incoming_payload)),
+            return self._upsert_mailbox_in_transaction(
+                db,
+                email=email,
+                mailbox_url=mailbox_url,
+                row_id=row_id,
+                status=status,
+                task_id=task_id,
+                payload=payload,
+            )
+
+    def upsert_mailboxes_bulk(
+        self,
+        rows: Sequence[Mapping[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Upsert many mailbox rows inside one transaction.
+
+        Imports previously paid one BEGIN IMMEDIATE/COMMIT (and WAL fsync)
+        per row; large batches now commit once with identical per-row merge
+        and reservation-preservation semantics.
+        """
+        if not rows:
+            return []
+        results: list[dict[str, Any]] = []
+        with self._transaction() as db:
+            for row in rows:
+                row_map = dict(row) if isinstance(row, Mapping) else {}
+                results.append(
+                    self._upsert_mailbox_in_transaction(
+                        db,
+                        email=str(row_map.get("email") or ""),
+                        mailbox_url=str(row_map.get("mailbox_url") or ""),
+                        row_id=row_map.get("row_id"),
+                        status=str(row_map.get("status") or "available"),
+                        task_id=str(row_map.get("task_id") or ""),
+                        payload=row_map.get("payload") if isinstance(row_map.get("payload"), Mapping) else {},
+                    )
                 )
-            else:
-                old_status = str(existing.get("status") or "available")
-                old_task = str(existing.get("task_id") or "")
-                # Importing a duplicate must never steal an active reservation.
-                next_status = old_status if old_status in ACTIVE_REBIND_STATUSES else str(status or old_status)
-                next_task = old_task if old_status in ACTIVE_REBIND_STATUSES else str(task_id or old_task)
-                merged = _json_object(existing)
-                merged.update(incoming_payload)
-                db.execute(
-                    "UPDATE mailboxes SET email=?,mailbox_url=?,status=?,task_id=?,revision=revision+1,updated_at=?,payload=? WHERE row_id=?",
-                    (email_text, url_text, next_status, next_task, now, _safe_json(merged), normalized_id),
-                )
-            result = self._fetch_mailbox(db, normalized_id)
-        assert result is not None
-        return result
+        return results
 
     def get_mailbox(self, row_id: str) -> dict[str, Any] | None:
         normalized = str(row_id or "").strip().lower()
