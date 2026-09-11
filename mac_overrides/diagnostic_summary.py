@@ -56,6 +56,19 @@ def _safe_occurred_at(value: Any, fallback: str) -> str:
         return fallback
 
 
+# Stricter store-side redaction passes applied after the shared failure
+# sanitizer; compiled once because every written event runs them.
+_STRICT_BEARER_RE = re.compile(r"(?i)\b(?:bearer|basic)\s+[A-Za-z0-9._~+/=-]{6,}")
+_STRICT_AUTH_HEADER_RE = re.compile(r"(?i)(authorization\s*=\s*\*+\s+)[^\s]+")
+_STRICT_QUERY_CREDENTIAL_RE = re.compile(
+    r"(?i)([?&](?:code|state|token|access_token|refresh_token|id_token|authorization|client_secret|otp|email|phone)=[^&\s]+)"
+)
+_STRICT_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+_STRICT_URL_USERINFO_RE = re.compile(r"(?i)(https?://)([^\s/@:]+):([^\s/@]+)@")
+_STRICT_URL_RE = re.compile(r"(?i)\b(?:https?|socks[45h]?)://[^\s]+")
+_STRICT_PHONE_RE = re.compile(r"(?<![A-Za-z0-9])\+?\d[\d ()-]{7,}\d(?![A-Za-z0-9])")
+
+
 def _safe_message(value: Any, limit: int = 500) -> str:
     text = _safe_text(value, limit)
     if not text:
@@ -67,17 +80,16 @@ def _safe_message(value: Any, limit: int = 500) -> str:
     # The shared redactor intentionally keeps some transport context for the
     # ordinary log panel. The diagnostic index is stricter: no raw email,
     # bearer value, URL query credential, proxy credential, or phone number.
-    redacted = re.sub(r"(?i)\b(?:bearer|basic)\s+[A-Za-z0-9._~+/=-]{6,}", "<credential>", redacted)
-    redacted = re.sub(r"(?i)(authorization\s*=\s*\*+\s+)[^\s]+", r"\1<credential>", redacted)
-    redacted = re.sub(
-        r"(?i)([?&](?:code|state|token|access_token|refresh_token|id_token|authorization|client_secret|otp|email|phone)=[^&\s]+)",
+    redacted = _STRICT_BEARER_RE.sub("<credential>", redacted)
+    redacted = _STRICT_AUTH_HEADER_RE.sub(r"\1<credential>", redacted)
+    redacted = _STRICT_QUERY_CREDENTIAL_RE.sub(
         lambda match: f"{match.group(1).split('=', 1)[0]}=********",
         redacted,
     )
-    redacted = re.sub(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", "<email>", redacted)
-    redacted = re.sub(r"(?i)(https?://)([^\s/@:]+):([^\s/@]+)@", r"\1<credential>@", redacted)
-    redacted = re.sub(r"(?i)\b(?:https?|socks[45h]?)://[^\s]+", "<url>", redacted)
-    redacted = re.sub(r"(?<![A-Za-z0-9])\+?\d[\d ()-]{7,}\d(?![A-Za-z0-9])", "<phone>", redacted)
+    redacted = _STRICT_EMAIL_RE.sub("<email>", redacted)
+    redacted = _STRICT_URL_USERINFO_RE.sub(r"\1<credential>@", redacted)
+    redacted = _STRICT_URL_RE.sub("<url>", redacted)
+    redacted = _STRICT_PHONE_RE.sub("<phone>", redacted)
     return redacted[:limit]
 
 

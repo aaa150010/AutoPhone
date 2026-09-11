@@ -163,13 +163,23 @@ class DiagnosticExportMixin:
             for key, label in (("task_id", "任务 ID"), ("batch_id", "批次 ID"), ("run_id", "运行 ID"), ("chain", "链路"), ("workflow", "工作流"), ("driver", "驱动"), ("subject", "账号 HMAC 指纹"), ("email", "邮箱 HMAC 指纹"), ("account", "账号 HMAC 指纹"), ("date", "日期全天"), ("from", "开始时间"), ("to", "结束时间"), ("time_point", "时间点 ±30 分钟")):
                 if query.get(key):
                     basis.append(label)
+            time_center: datetime | None = None
+            if time_point:
+                # The ±30min anchor is identical for every result row; parse
+                # it once instead of per row.
+                try:
+                    time_center = datetime.fromisoformat(_search_bound(time_point).replace("Z", "+00:00"))
+                except (TypeError, ValueError, OverflowError):
+                    time_center = None
             for result in results:
                 result["match_basis"] = basis or ["最近发生时间"]
                 if time_point:
+                    if time_center is None:
+                        result["time_distance_seconds"] = None
+                        continue
                     try:
-                        center = datetime.fromisoformat(_search_bound(time_point).replace("Z", "+00:00"))
                         updated = datetime.fromisoformat(str(result.get("updated_at") or "").replace("Z", "+00:00"))
-                        result["time_distance_seconds"] = abs((updated - center).total_seconds())
+                        result["time_distance_seconds"] = abs((updated - time_center).total_seconds())
                     except (TypeError, ValueError, OverflowError):
                         result["time_distance_seconds"] = None
             return results

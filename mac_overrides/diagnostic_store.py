@@ -17,6 +17,7 @@ from pathlib import Path
 import secrets
 import sqlite3
 import threading
+import time
 import uuid
 from contextlib import contextmanager
 import re
@@ -115,6 +116,10 @@ class DiagnosticStore(DiagnosticExportMixin, DiagnosticSummaryMixin):
         # the per-record connect/close cycle (the dominant record cost) is
         # paid once instead of per append.
         self._conn: sqlite3.Connection | None = None
+        # Short-lived cache for the three health() COUNT(*) aggregates; the
+        # dashboard polls health every few seconds and the counts tolerate a
+        # one-second lag. Write-failure counters stay read live.
+        self._health_counts_cache: tuple[float, int, int, int] | None = None
         self._key = self._load_key()
         self._initialize()
 
@@ -288,6 +293,8 @@ class DiagnosticStore(DiagnosticExportMixin, DiagnosticSummaryMixin):
                 CREATE INDEX IF NOT EXISTS idx_diag_events_batch ON diagnostic_events(batch_id, occurred_at);
                 CREATE INDEX IF NOT EXISTS idx_diag_events_node ON diagnostic_events(node_code, occurred_at);
                 CREATE INDEX IF NOT EXISTS idx_diag_incidents_updated ON diagnostic_incidents(updated_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_diag_incidents_task ON diagnostic_incidents(task_id, updated_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_diag_events_received ON diagnostic_events(received_at);
                 CREATE INDEX IF NOT EXISTS idx_diag_aliases_ref ON diagnostic_aliases(alias_ref, created_at DESC);
                 CREATE INDEX IF NOT EXISTS idx_diag_tasks_task ON diagnostic_tasks(task_id, updated_at DESC);
                 """
@@ -328,7 +335,10 @@ class DiagnosticStore(DiagnosticExportMixin, DiagnosticSummaryMixin):
                     "SELECT * FROM diagnostic_events WHERE incident_id=? ORDER BY rowid ASC",
                     (incident_id,),
                 ).fetchall()
-                integrity = self.verify_incident(db, incident_id)
+                # Reuse the already-fetched rows for the chain verification
+                # instead of re-querying and re-parsing every event a second
+                # time inside ``verify_incident``.
+                integrity = self._verify_event_rows(db, incident_id, events)
                 # Retention deliberately leaves a verifiable suffix marked
                 # unverified because its original chain anchor is gone. It is
                 # incomplete history, not evidence of tampering.
@@ -432,11 +442,23 @@ class DiagnosticStore(DiagnosticExportMixin, DiagnosticSummaryMixin):
             event_rows = db.execute("SELECT event_id, incident_id FROM diagnostic_events WHERE received_at<?", (event_cutoff,)).fetchall()
             event_count = int(db.execute("DELETE FROM diagnostic_events WHERE received_at<?", (event_cutoff,)).rowcount or 0)
             touched_incidents = {str(row[1]) for row in event_rows}
-            for incident_id in touched_incidents:
-                remaining = int(db.execute("SELECT COUNT(*) FROM diagnostic_events WHERE incident_id=?", (incident_id,)).fetchone()[0])
-                db.execute(
+            if touched_incidents:
+                # One grouped COUNT replaces the per-incident round trip;
+                # idx_diag_events_incident covers the GROUP BY scan.
+                placeholders = ",".join("?" for _ in touched_incidents)
+                remaining = {
+                    str(row[0]): int(row[1])
+                    for row in db.execute(
+                        f"SELECT incident_id, COUNT(*) FROM diagnostic_events WHERE incident_id IN ({placeholders}) GROUP BY incident_id",
+                        tuple(touched_incidents),
+                    ).fetchall()
+                }
+                db.executemany(
                     "UPDATE diagnostic_incidents SET event_count=?, integrity_status=? WHERE incident_id=?",
-                    (remaining, "unverified" if event_count else "verified", incident_id),
+                    [
+                        (remaining.get(incident_id, 0), "unverified" if event_count else "verified", incident_id)
+                        for incident_id in touched_incidents
+                    ],
                 )
             old_incidents = db.execute("SELECT incident_id FROM diagnostic_incidents WHERE updated_at<?", (incident_cutoff,)).fetchall()
             old_ids = [str(row[0]) for row in old_incidents]
@@ -716,9 +738,9 @@ class DiagnosticStore(DiagnosticExportMixin, DiagnosticSummaryMixin):
                 (
                     event_id, SCHEMA_VERSION, incident_id, event_payload["occurred_at"], event_payload["received_at"], event_payload["chain"], event_payload["workflow"],
                     event_payload["driver"], run_id, batch_id, task_id, subject_kind, subject_ref,
-                    subject_display, _safe_id(fields.get("stage_group"), 64), node_code,
-                    _safe_message(fields.get("node_label"), 160), max(0, sequence), max(0, attempt), _safe_id(fields.get("attempt_group"), 120),
-                    outcome, _safe_id(fields.get("parent_event_id"), 80), _safe_id(fields.get("root_cause_event_id"), 80), elapsed_ms,
+                    subject_display, event_payload["stage_group"], node_code,
+                    event_payload["node_label"], event_payload["sequence"], event_payload["attempt"], event_payload["attempt_group"],
+                    outcome, event_payload["parent_event_id"], event_payload["root_cause_event_id"], elapsed_ms,
                     json.dumps(failure, ensure_ascii=False, sort_keys=True), json.dumps(transport, ensure_ascii=False, sort_keys=True),
                     message, 1, previous_hash, event_hash,
                 ),
@@ -991,12 +1013,29 @@ class DiagnosticStore(DiagnosticExportMixin, DiagnosticSummaryMixin):
                 ),
                 "",
             )
-            payload["integrity_status"] = self.verify_incident(db, incident_id)
+            payload["integrity_status"] = self._verify_event_rows(db, incident_id, events)
             return payload
+
+    def incident_events(self, incident_id: str) -> list[dict[str, Any]] | None:
+        """Return the append-order event timeline without re-verifying hashes.
+
+        Polling hot paths (dashboard snapshots) only need the event rows;
+        per-event HMAC recomputation over the whole store is reserved for
+        ``incident()`` and the explicit integrity views.
+        """
+        incident_id = _safe_text(incident_id, 80).upper()
+        with self._lock, self._connection() as db:
+            row = db.execute("SELECT 1 FROM diagnostic_incidents WHERE incident_id=?", (incident_id,)).fetchone()
+            if row is None:
+                return None
+            events = db.execute("SELECT * FROM diagnostic_events WHERE incident_id=? ORDER BY rowid ASC", (incident_id,)).fetchall()
+            return [self._row(event) for event in events]
 
     def verify_incident(self, db: sqlite3.Connection, incident_id: str) -> str:
         rows = db.execute("SELECT * FROM diagnostic_events WHERE incident_id=? ORDER BY rowid ASC", (incident_id,)).fetchall()
-        previous = ""
+        return self._verify_event_rows(db, incident_id, rows)
+
+    def _verify_event_rows(self, db: sqlite3.Connection, incident_id: str, rows: Sequence[sqlite3.Row]) -> str:
         status_row = db.execute(
             "SELECT integrity_status FROM diagnostic_incidents WHERE incident_id=?",
             (incident_id,),
@@ -1011,6 +1050,7 @@ class DiagnosticStore(DiagnosticExportMixin, DiagnosticSummaryMixin):
             if status_row is not None and str(status_row[0] or "") in {"failed", "unverified"}:
                 return str(status_row[0] or "unverified")
             return "verified"
+        previous = ""
         if rows and str(rows[0]["previous_event_hash"] or ""):
             if not status_unverified:
                 return "failed"
@@ -1094,16 +1134,21 @@ class DiagnosticStore(DiagnosticExportMixin, DiagnosticSummaryMixin):
     def health(self) -> dict[str, Any]:
         read_error = ""
         incidents = events = failed = 0
-        try:
-            with self._lock, self._connection() as db:
-                incidents = int(db.execute("SELECT COUNT(*) FROM diagnostic_incidents").fetchone()[0])
-                events = int(db.execute("SELECT COUNT(*) FROM diagnostic_events").fetchone()[0])
-                failed = int(db.execute("SELECT COUNT(*) FROM diagnostic_incidents WHERE integrity_status='failed'").fetchone()[0])
-        except Exception as exc:
-            # Keep health useful even when the database cannot be opened. Only
-            # the exception class is exposed; paths, SQL and payloads stay
-            # private to the local process.
-            read_error = _safe_id(type(exc).__name__, 64) or "database_error"
+        cached = self._health_counts_cache
+        if cached is not None and (time.monotonic() - cached[0]) < 1.0:
+            _, incidents, events, failed = cached
+        else:
+            try:
+                with self._lock, self._connection() as db:
+                    incidents = int(db.execute("SELECT COUNT(*) FROM diagnostic_incidents").fetchone()[0])
+                    events = int(db.execute("SELECT COUNT(*) FROM diagnostic_events").fetchone()[0])
+                    failed = int(db.execute("SELECT COUNT(*) FROM diagnostic_incidents WHERE integrity_status='failed'").fetchone()[0])
+                self._health_counts_cache = (time.monotonic(), incidents, events, failed)
+            except Exception as exc:
+                # Keep health useful even when the database cannot be opened. Only
+                # the exception class is exposed; paths, SQL and payloads stay
+                # private to the local process.
+                read_error = _safe_id(type(exc).__name__, 64) or "database_error"
         try:
             size = self.path.stat().st_size
         except OSError:

@@ -628,12 +628,20 @@ class FreeLogStore:
                 query["driver"] = driver_scope
             incidents = self.diagnostic_store.search(query)
             rows: list[dict[str, Any]] = []
+            events_reader = getattr(self.diagnostic_store, "incident_events", None)
             for summary in incidents:
                 if not isinstance(summary, Mapping):
                     continue
                 incident_id = str(summary.get("incident_id") or "")
-                detail = self.diagnostic_store.incident(incident_id) if incident_id else None
-                events = detail.get("events") if isinstance(detail, Mapping) else None
+                if callable(events_reader) and incident_id:
+                    # Snapshot polling only needs the event rows; the HMAC
+                    # re-verification inside ``incident()`` would rescan the
+                    # whole store on every dashboard refresh for data the
+                    # snapshot discards.
+                    events = events_reader(incident_id)
+                else:
+                    detail = self.diagnostic_store.incident(incident_id) if incident_id else None
+                    events = detail.get("events") if isinstance(detail, Mapping) else None
                 if not isinstance(events, list):
                     # A compatible/injected store may return event rows directly.
                     events = [summary]
