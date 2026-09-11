@@ -327,6 +327,7 @@ export interface FreeTaskRow {
   proxy_group?: string
   retry_of?: string
   retry_task_id?: string
+  retry_mode?: string
   retry_status?: string
   retry_attempt?: number
   retry_resolved?: boolean | string
@@ -436,6 +437,7 @@ export interface FreeLiveCheckState {
     email: string
     email_masked?: string
     subject_ref_fingerprint?: string
+    created_at?: number
     mode: 'fast' | 'deep' | string
     status: string
     stage?: string

@@ -121,7 +121,7 @@ onUnmounted(() => {
           </el-sub-menu>
           <el-sub-menu index="free-workspace">
             <template #title><el-icon><Setting /></el-icon><span>Free 注册</span></template>
-            <el-menu-item index="/free-register"><el-icon><Monitor /></el-icon><span>Free 注册运行</span></el-menu-item>
+            <el-menu-item index="/free-register"><el-icon><Monitor /></el-icon><span>Free 运行日志</span></el-menu-item>
             <el-menu-item index="/free-mailboxes"><el-icon><Tickets /></el-icon><span>Free 邮箱管理</span></el-menu-item>
           </el-sub-menu>
           <el-sub-menu index="remail-workspace">

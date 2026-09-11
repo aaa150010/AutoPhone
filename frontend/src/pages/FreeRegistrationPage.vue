@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { errorMessage } from '../utils/errorMessage'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, CircleCheck, CircleClose, CopyDocument, Delete, Document, Key, Link, Lock, MoreFilled, Refresh, RefreshLeft, RefreshRight, Setting, Tickets, VideoPause, VideoPlay, Warning } from '@element-plus/icons-vue'
-import { closeFreeCamoufoxDebug, deleteFreeTasks, freeBatchRetry, getFreeConfig, getFreeState, preflightFree, rerunFreeTask, retryFreePassword, retryFreeTwofa, startFree, startFreePlanCheck, stopFree, type FreeConfig, type FreeState, type FreeTaskRow } from '../api/client'
+import { closeFreeCamoufoxDebug, deleteFreeTasks, freeBatchRetry, getFreeConfig, getFreeLiveCheckState, getFreeState, preflightFree, rerunFreeTask, retryFreePassword, retryFreeTwofa, startFree, startFreePlanCheck, stopFree, type FreeConfig, type FreeLiveCheckState, type FreeState, type FreeTaskRow } from '../api/client'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import ContentEmptyState from '../components/ContentEmptyState.vue'
 import FreeTaskLogDialog from '../components/FreeTaskLogDialog.vue'
@@ -22,6 +22,8 @@ import { useTaskProgressClock } from '../composables/useTaskProgressClock'
 import { useColumnWidths } from '../composables/useColumnWidths'
 import { usePolling } from '../composables/usePolling'
 import { useFreeTaskRowActions } from '../composables/useFreeTaskRowActions'
+import { liveStatusLabel, liveStatusType } from '../utils/freeLiveDisplay'
+import { formatShortDateTime } from '../utils/datetime'
 import { defaultFreeConfig, mergeFreeConfigDraft, stripLegacyFreeConfigDraft } from '../utils/freeConfigDefaults'
 import {
   automaticOtpRemaining as automaticOtpRemainingPure,
@@ -48,6 +50,9 @@ const defaultConfig: FreeConfig = defaultFreeConfig()
 const emit = defineEmits<{ navigate: [string] }>()
 const config = reactive<FreeConfig>(structuredClone(defaultConfig))
 const state = ref<FreeState>({ running: false, tasks: [], summary: {}, pool: {} })
+const liveState = ref<FreeLiveCheckState>({ running: false, workers: 3, queue_limit: 500, active: 0, jobs: [] })
+const liveLogTask = ref<{ task_id: string; email: string; stage: string } | null>(null)
+const runKindFilter = ref('')
 const selectedTaskId = ref('')
 const taskSearch = ref('')
 const taskStatusFilter = ref('all')
@@ -88,37 +93,108 @@ const visibleTasks = computed(() => (state.value.tasks || []).slice().sort((a, b
 }))
 const taskPage = ref(1)
 const taskPageSize = ref(50)
-const filteredTasks = computed(() => {
-  const query = taskSearch.value.trim().toLowerCase()
-  return visibleTasks.value.filter(task => {
-    const haystack = [task.email, task.task_id || '', task.failure?.node_label, task.failure?.node_code].join(' ').toLowerCase()
-    return (!query || haystack.includes(query))
-      && (taskStatusFilter.value === 'all' || (taskStatusFilter.value === 'active' ? ['queued', 'running'].includes(task.status || '') : task.status === taskStatusFilter.value && !isRetryResolved(task.retry_resolved)))
-      && (!taskDriverFilter.value || task.driver === taskDriverFilter.value)
+type RunKind = 'register' | 'register_rerun' | 'twofa_retry' | 'password_retry' | 'live_fast' | 'live_deep'
+const RUN_KIND_LABELS: Record<RunKind, string> = {
+  register: 'Free 注册',
+  register_rerun: '注册重跑',
+  twofa_retry: '2FA 重试',
+  password_retry: '密码重跑',
+  live_fast: '快速测活',
+  live_deep: '401 重跑',
+}
+type UnifiedRunRow = {
+  key: string
+  kind: RunKind
+  kindLabel: string
+  createdAt: number
+  task?: FreeTaskRow
+  job?: FreeLiveCheckState['jobs'][number]
+}
+
+function runKindOfTask(task: FreeTaskRow): RunKind {
+  const mode = String(task.retry_mode || '').toLowerCase()
+  if (mode === 'twofa') return 'twofa_retry'
+  if (mode === 'password') return 'password_retry'
+  if (task.retry_of) return 'register_rerun'
+  return 'register'
+}
+
+const unifiedRuns = computed<UnifiedRunRow[]>(() => {
+  const rows: UnifiedRunRow[] = visibleTasks.value.map(task => {
+    const kind = runKindOfTask(task)
+    return { key: `task:${task.task_id}`, kind, kindLabel: RUN_KIND_LABELS[kind], createdAt: Number(task.created_at || 0), task }
   })
+  for (const job of liveState.value.jobs || []) {
+    const kind: RunKind = job.mode === 'deep' ? 'live_deep' : 'live_fast'
+    rows.push({ key: `live:${job.task_id}`, kind, kindLabel: RUN_KIND_LABELS[kind], createdAt: Number(job.created_at || 0), job })
+  }
+  return rows.sort((a, b) => b.createdAt - a.createdAt)
 })
-const pagedTasks = computed(() => filteredTasks.value.slice((taskPage.value - 1) * taskPageSize.value, taskPage.value * taskPageSize.value))
-watch(() => [filteredTasks.value.length, taskSearch.value, taskStatusFilter.value, taskDriverFilter.value], () => {
-  const maxPage = Math.max(1, Math.ceil(filteredTasks.value.length / taskPageSize.value))
-  if (taskPage.value > maxPage) taskPage.value = maxPage
-})
-const taskCounts = computed(() => {
-  const count = (status: string) => visibleTasks.value.filter(task => task.status === status && !isRetryResolved(task.retry_resolved)).length
-  return { total: visibleTasks.value.length, running: count('running') + count('queued'), success: count('success') + count('partial_success'), partial: count('partial_success'), failed: count('failed'), pending: count('twofa_pending'), rerun: count('pending_rerun'), stopped: count('stopped') }
+
+function runStatusBucket(row: UnifiedRunRow): string {
+  if (row.task) {
+    const task = row.task
+    if (isRetryResolved(task.retry_resolved)) return 'success'
+    return String(task.status || '')
+  }
+  const status = String(row.job?.status || '')
+  if (['queued', 'running'].includes(status)) return 'active'
+  if (status === 'live') return 'success'
+  return 'failed'
+}
+
+const runCounts = computed(() => {
+  const count = (bucket: string) => unifiedRuns.value.filter(row => runStatusBucket(row) === bucket).length
+  return {
+    total: unifiedRuns.value.length,
+    active: count('active'),
+    success: count('success') + count('partial_success'),
+    partial: count('partial_success'),
+    failed: count('failed'),
+    twofa: count('twofa_pending'),
+    rerun: count('pending_rerun'),
+    stopped: count('stopped'),
+  }
 })
 const statusFilters = computed(() => [
-  { value: 'all', label: '全部', count: taskCounts.value.total, tone: 'info' },
-  { value: 'active', label: '排队/运行', count: taskCounts.value.running, tone: 'primary' },
-  { value: 'success', label: '成功', count: taskCounts.value.success - taskCounts.value.partial, tone: 'success' },
-  { value: 'partial_success', label: '部分成功', count: taskCounts.value.partial, tone: 'warning' },
-  { value: 'failed', label: '失败', count: taskCounts.value.failed, tone: 'danger' },
-  { value: 'twofa_pending', label: '2FA', count: taskCounts.value.pending, tone: 'warning' },
-  { value: 'pending_rerun', label: '待重跑', count: taskCounts.value.rerun, tone: 'warning' },
-  { value: 'stopped', label: '已停止', count: taskCounts.value.stopped, tone: 'info' },
+  { value: 'all', label: '全部', count: runCounts.value.total, tone: 'info' },
+  { value: 'active', label: '排队/运行', count: runCounts.value.active, tone: 'primary' },
+  { value: 'success', label: '成功', count: runCounts.value.success - runCounts.value.partial, tone: 'success' },
+  { value: 'partial_success', label: '部分成功', count: runCounts.value.partial, tone: 'warning' },
+  { value: 'failed', label: '失败', count: runCounts.value.failed, tone: 'danger' },
+  { value: 'twofa_pending', label: '2FA', count: runCounts.value.twofa, tone: 'warning' },
+  { value: 'pending_rerun', label: '待重跑', count: runCounts.value.rerun, tone: 'warning' },
+  { value: 'stopped', label: '已停止', count: runCounts.value.stopped, tone: 'info' },
 ] as { value: string; label: string; count: number; tone: string }[])
 
+const filteredRuns = computed(() => {
+  const query = taskSearch.value.trim().toLowerCase()
+  return unifiedRuns.value.filter(row => {
+    if (runKindFilter.value && row.kind !== runKindFilter.value) return false
+    const task = row.task
+    const haystack = task
+      ? [task.email, task.task_id || '', task.failure?.node_label, task.failure?.node_code].join(' ').toLowerCase()
+      : [row.job?.email || '', row.job?.task_id || '', row.job?.failure?.node_label || '', row.job?.failure?.node_code || ''].join(' ').toLowerCase()
+    if (query && !haystack.includes(query)) return false
+    if (taskDriverFilter.value && (!task || task.driver !== taskDriverFilter.value)) return false
+    if (taskStatusFilter.value !== 'all' && runStatusBucket(row) !== taskStatusFilter.value) return false
+    return true
+  })
+})
+const pagedRuns = computed(() => filteredRuns.value.slice((taskPage.value - 1) * taskPageSize.value, taskPage.value * taskPageSize.value))
+watch(() => [filteredRuns.value.length, taskSearch.value, taskStatusFilter.value, taskDriverFilter.value, runKindFilter.value], () => {
+  const maxPage = Math.max(1, Math.ceil(filteredRuns.value.length / taskPageSize.value))
+  if (taskPage.value > maxPage) taskPage.value = maxPage
+})
+function kindTagType(kind: RunKind): string {
+  if (kind === 'live_deep') return 'danger'
+  if (kind === 'twofa_retry' || kind === 'password_retry') return 'warning'
+  if (kind === 'live_fast') return 'info'
+  return 'primary'
+}
+
 function handleCopyCommand(command: string) {
-  if (command === 'filtered-token') return void copyTaskTokens(filteredTasks.value)
+  if (command === 'filtered-token') return void copyTaskTokens(filteredRuns.value.map(row => row.task).filter((task): task is FreeTaskRow => Boolean(task)))
   const kind = command as 'token' | 'password' | 'totp' | 'credential'
   const labels = { token: 'Token', password: '密码', totp: 'TOTP', credential: '完整凭据' } as const
   void copyTaskSecret(kind, selectedTasks.value, labels[kind])
@@ -157,6 +233,15 @@ async function refresh() {
     }
   } catch (error) {
     if (!loading.value) ElMessage.error(errorMessage(error) || 'Free 状态刷新失败')
+  }
+  try {
+    const live = await getFreeLiveCheckState()
+    liveState.value = live.state || liveState.value
+    if (logDialogOpen.value && liveLogTask.value) {
+      await logDialog.value?.refresh({ silent: true })
+    }
+  } catch (error) {
+    if (liveState.value.running) ElMessage.error(errorMessage(error) || 'Free 测活状态刷新失败')
   }
 }
 
@@ -247,8 +332,31 @@ async function closeDebugWindows() {
 
 function openTaskLog(task: FreeTaskRow) {
   selectedTaskId.value = String(task?.task_id || '')
+  liveLogTask.value = null
   logDialogOpen.value = true
 }
+
+function openLiveRunLog(row: UnifiedRunRow) {
+  const job = row.job
+  if (!job) return
+  selectedTaskId.value = ''
+  liveLogTask.value = { task_id: job.task_id, email: job.email, stage: job.stage_label || liveStatusLabel(job.status) }
+  logDialogOpen.value = true
+}
+
+function runRowClass({ row }: { row: UnifiedRunRow }): string {
+  return row.task ? taskRowClass({ row: row.task }) : ''
+}
+
+function runSelectable(row: UnifiedRunRow): boolean {
+  return Boolean(row.task)
+}
+
+function handleRunAction(command: string, row: UnifiedRunRow) {
+  if (command === 'live_log') return openLiveRunLog(row)
+}
+
+const dialogTask = computed(() => selectedTask.value ?? liveLogTask.value ?? undefined)
 
 function openIncidentCenter(value: string) {
   const incidentId = String(value || '').trim()
@@ -495,6 +603,7 @@ onMounted(async () => {
             </div>
             <el-input v-model="taskSearch" size="small" clearable class="task-search" placeholder="搜索邮箱、任务 ID 或失败节点" />
             <el-select v-model="taskDriverFilter" size="small" clearable placeholder="链路" class="task-driver-filter"><el-option label="全协议" value="protocol" /><el-option label="Camoufox" value="camoufox" /></el-select>
+            <el-select v-model="runKindFilter" size="small" clearable placeholder="类型" class="task-driver-filter"><el-option v-for="(label, kind) in RUN_KIND_LABELS" :key="kind" :label="label" :value="kind" /></el-select>
             <div class="task-actions">
               <span class="muted">已选 {{ selectedTasks.length }} 个</span>
               <el-button v-if="['success', 'partial_success', 'twofa_pending', 'pending_rerun'].includes(taskStatusFilter)" size="small" type="warning" :icon="Refresh" :disabled="!selectedTasks.some(task => !isHistoricalDriver(task) && (['failed', 'stopped', 'pending_rerun', 'twofa_pending'].includes(String(task.status || '')) || canRetryPassword(task)))" aria-label="按当前失败节点批量重试" @click="batchRetryCurrentNode">按当前失败节点批量重试</el-button>
@@ -506,7 +615,7 @@ onMounted(async () => {
                     <el-dropdown-item command="password"><el-icon><Lock /></el-icon>复制密码</el-dropdown-item>
                     <el-dropdown-item command="totp"><el-icon><Tickets /></el-icon>复制 TOTP</el-dropdown-item>
                     <el-dropdown-item command="credential"><el-icon><Document /></el-icon>复制完整凭据</el-dropdown-item>
-                    <el-dropdown-item command="filtered-token" divided :disabled="!filteredTasks.some(task => task.result?.has_access_token)"><el-icon><CopyDocument /></el-icon>复制当前筛选 Token</el-dropdown-item>
+                    <el-dropdown-item command="filtered-token" divided :disabled="!filteredRuns.some(row => row.task?.result?.has_access_token)"><el-icon><CopyDocument /></el-icon>复制当前筛选 Token</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
@@ -514,36 +623,81 @@ onMounted(async () => {
               <el-button size="small" :icon="Refresh" @click="refresh" aria-label="刷新任务">刷新任务</el-button>
             </div>
           </div>
-          <el-table ref="taskTable" v-loading="loading" :data="pagedTasks" row-key="task_id" height="100%" size="small" border :row-class-name="taskRowClass" @header-dragend="(newWidth: number, oldWidth: number, column: DragColumn) => onTaskHeaderDragend(newWidth, oldWidth, column)" @selection-change="handleTaskSelection">
-            <el-table-column type="selection" width="42" reserve-selection />
+          <el-table ref="taskTable" v-loading="loading" :data="pagedRuns" row-key="key" height="100%" size="small" border :row-class-name="runRowClass" @header-dragend="(newWidth: number, oldWidth: number, column: DragColumn) => onTaskHeaderDragend(newWidth, oldWidth, column)" @selection-change="handleTaskSelection">
+            <el-table-column type="selection" width="42" reserve-selection :selectable="runSelectable" />
             <el-table-column type="index" label="序号" width="58" align="center" :index="(index: number) => index + 1 + (taskPage - 1) * taskPageSize" />
+            <el-table-column label="类型" :width="taskColWidth('类型', 104)" align="center">
+              <template #default="{ row }"><el-tag size="small" :type="kindTagType(row.kind)" effect="plain">{{ row.kindLabel }}</el-tag></template>
+            </el-table-column>
             <el-table-column label="账号" :min-width="taskColWidth('账号', 280)" show-overflow-tooltip>
               <template #default="{ row }">
-                <div class="account-cell">
-                  <el-tooltip v-if="row.email" :content="`${String(row.email)}${row.task_id ? ` · 任务 ${row.task_id}` : ''}`" placement="top" :show-after="250"><el-button link class="email-copy" :loading="loadingEmailTaskIds.includes(String(row.task_id || ''))" @click.stop="copyTaskEmail(row)"><strong>{{ row.email }}</strong><el-icon v-if="!loadingEmailTaskIds.includes(String(row.task_id || ''))"><CopyDocument /></el-icon></el-button></el-tooltip>
+                <div v-if="row.task" class="account-cell">
+                  <el-tooltip v-if="row.task.email" :content="`${String(row.task.email)}${row.task.task_id ? ` · 任务 ${row.task.task_id}` : ''}`" placement="top" :show-after="250"><el-button link class="email-copy" :loading="loadingEmailTaskIds.includes(String(row.task.task_id || ''))" @click.stop="copyTaskEmail(row.task)"><strong>{{ row.task.email }}</strong><el-icon v-if="!loadingEmailTaskIds.includes(String(row.task.task_id || ''))"><CopyDocument /></el-icon></el-button></el-tooltip>
                   <span v-else>-</span>
-                  <span class="account-subline">{{ taskDriverLabel(row.driver) }}<template v-if="taskCreatedText(row)"> · {{ taskCreatedText(row) }}</template></span>
+                  <span class="account-subline">{{ taskDriverLabel(row.task.driver) }}<template v-if="taskCreatedText(row.task)"> · {{ taskCreatedText(row.task) }}</template></span>
+                </div>
+                <div v-else class="account-cell">
+                  <strong>{{ row.job?.email }}</strong>
+                  <span class="account-subline">{{ row.kindLabel }} · {{ formatShortDateTime(row.createdAt) }}</span>
                 </div>
               </template>
             </el-table-column>
-            <el-table-column label="验证码" :width="taskColWidth('验证码', 110)" align="center"><template #default="{ row }"><TaskVerificationInput v-if="!isHistoricalDriver(row) && row.manual_verification?.can_submit" :task-id="row.task_id" :request="row.manual_verification" :now-seconds="nowSeconds" /><span v-else-if="!isHistoricalDriver(row) && row.mailbox_verification?.phase === 'automatic'" class="automatic-otp-wait">自动取码 <strong>{{ automaticOtpRemaining(row) }}s</strong></span><span v-else class="muted">-</span></template></el-table-column>
-            <el-table-column label="阶段 / 耗时" :min-width="taskColWidth('阶段 / 耗时', 230)"><template #default="{ row }"><TaskProgressCell :progress="row.progress" :timing="row.timing" :now-seconds="nowSeconds" :status="row.status" /></template></el-table-column>
-            <el-table-column label="状态" :width="taskColWidth('状态', 122)" align="center" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" :type="isRetryResolved(row.retry_resolved) ? 'success' : taskStatusType(row.status)">{{ displayTaskStatus(row) }}</el-tag></template></el-table-column>
-            <el-table-column label="套餐" :width="taskColWidth('套餐', 90)" align="center" show-overflow-tooltip><template #default="{ row }"><el-tag size="small" :type="taskPlanType(row)" effect="plain">{{ taskPlanLabel(row) }}</el-tag><el-tooltip v-if="!isHistoricalDriver(row) && row.result?.has_access_token && String(row.result?.plan_check_status || '').toLowerCase() === 'failed'" content="重新查询套餐" placement="top" :show-after="250"><el-button link size="small" :icon="Refresh" :loading="planBusy === String(row.task_id || row.row_id)" :disabled="Boolean(planBusy)" aria-label="重新查询套餐" @click.stop="refreshPlan(row)" /></el-tooltip></template></el-table-column>
-            <el-table-column label="凭据" :width="taskColWidth('凭据', 170)"><template #default="{ row }"><div class="credential-cell"><StateDot :tone="taskTwofaType(row)" :label="`2FA ${taskTwofaLabel(row)}`" /><StateDot :tone="taskPasswordType(row)" :label="`密码 ${taskPasswordLabel(row)}`" /></div></template></el-table-column>
+            <el-table-column label="验证码" :width="taskColWidth('验证码', 110)" align="center">
+              <template #default="{ row }">
+                <template v-if="row.task"><TaskVerificationInput v-if="!isHistoricalDriver(row.task) && row.task.manual_verification?.can_submit" :task-id="row.task.task_id" :request="row.task.manual_verification" :now-seconds="nowSeconds" /><span v-else-if="!isHistoricalDriver(row.task) && row.task.mailbox_verification?.phase === 'automatic'" class="automatic-otp-wait">自动取码 <strong>{{ automaticOtpRemaining(row.task) }}s</strong></span><span v-else class="muted">-</span></template>
+                <span v-else class="muted">-</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="阶段 / 耗时" :min-width="taskColWidth('阶段 / 耗时', 230)">
+              <template #default="{ row }">
+                <TaskProgressCell v-if="row.task" :progress="row.task.progress" :timing="row.task.timing" :now-seconds="nowSeconds" :status="row.task.status" />
+                <span v-else class="muted">{{ row.job?.stage_label || liveStatusLabel(row.job?.status) }}<template v-if="row.job?.checked_at"> · {{ formatShortDateTime(row.job.checked_at) }}</template></span>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" :width="taskColWidth('状态', 122)" align="center" show-overflow-tooltip>
+              <template #default="{ row }">
+                <el-tag v-if="!row.task" size="small" :type="liveStatusType(row.job?.status)">{{ liveStatusLabel(row.job?.status) }}</el-tag>
+                <el-tag v-else size="small" :type="isRetryResolved(row.task.retry_resolved) ? 'success' : taskStatusType(row.task.status)">{{ displayTaskStatus(row.task) }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="套餐" :width="taskColWidth('套餐', 90)" align="center" show-overflow-tooltip>
+              <template #default="{ row }">
+                <template v-if="row.task"><el-tag size="small" :type="taskPlanType(row.task)" effect="plain">{{ taskPlanLabel(row.task) }}</el-tag><el-tooltip v-if="!isHistoricalDriver(row.task) && row.task.result?.has_access_token && String(row.task.result?.plan_check_status || '').toLowerCase() === 'failed'" content="重新查询套餐" placement="top" :show-after="250"><el-button link size="small" :icon="Refresh" :loading="planBusy === String(row.task.task_id || row.task.row_id)" :disabled="Boolean(planBusy)" aria-label="重新查询套餐" @click.stop="refreshPlan(row.task)" /></el-tooltip></template>
+                <span v-else class="muted">-</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="凭据" :width="taskColWidth('凭据', 170)">
+              <template #default="{ row }">
+                <div v-if="row.task" class="credential-cell"><StateDot :tone="taskTwofaType(row.task)" :label="`2FA ${taskTwofaLabel(row.task)}`" /><StateDot :tone="taskPasswordType(row.task)" :label="`密码 ${taskPasswordLabel(row.task)}`" /></div>
+                <span v-else class="muted">-</span>
+              </template>
+            </el-table-column>
             <el-table-column label="错误" :min-width="taskColWidth('错误', 320)">
               <template #default="{ row }">
-                <el-tooltip placement="top" :disabled="!taskFailureDetails(row).length" :show-after="250">
-                  <template #content><div class="failure-tooltip"><span v-for="item in taskFailureDetails(row)" :key="item">{{ item }}</span></div></template>
-                  <div class="failure-cell">
-                    <span class="failure-summary"><template v-if="isRetryResolved(row.retry_resolved)"><strong class="resolved-text">已由重试解决</strong></template><template v-else-if="taskIsAccountBanned(row)"><strong>{{ ACCOUNT_BANNED_DISPLAY_MESSAGE }}<code>{{ taskFailureNode(row).code || 'account_banned' }}</code></strong></template><template v-else><strong v-if="taskFailureNode(row).label || taskFailureNode(row).code">{{ taskFailureNode(row).label || taskFailureNode(row).code }}<code v-if="taskFailureNode(row).showCode">{{ taskFailureNode(row).code }}</code></strong><span>{{ taskFailureCause(row) }}</span><span v-if="taskNeedsExistingPassword(row)" class="failure-action-hint">需补录真实密码后再处理；不会使用注册默认密码</span></template></span>
-                  </div>
-                </el-tooltip>
+                <template v-if="row.task">
+                  <el-tooltip placement="top" :disabled="!taskFailureDetails(row.task).length" :show-after="250">
+                    <template #content><div class="failure-tooltip"><span v-for="item in taskFailureDetails(row.task)" :key="item">{{ item }}</span></div></template>
+                    <div class="failure-cell">
+                      <span class="failure-summary"><template v-if="isRetryResolved(row.task.retry_resolved)"><strong class="resolved-text">已由重试解决</strong></template><template v-else-if="taskIsAccountBanned(row.task)"><strong>{{ ACCOUNT_BANNED_DISPLAY_MESSAGE }}<code>{{ taskFailureNode(row.task).code || 'account_banned' }}</code></strong></template><template v-else><strong v-if="taskFailureNode(row.task).label || taskFailureNode(row.task).code">{{ taskFailureNode(row.task).label || taskFailureNode(row.task).code }}<code v-if="taskFailureNode(row.task).showCode">{{ taskFailureNode(row.task).code }}</code></strong><span>{{ taskFailureCause(row.task) }}</span><span v-if="taskNeedsExistingPassword(row.task)" class="failure-action-hint">需补录真实密码后再处理；不会使用注册默认密码</span></template></span>
+                    </div>
+                  </el-tooltip>
+                </template>
+                <div v-else class="failure-cell">
+                  <span class="failure-summary"><strong v-if="row.job?.failure?.node_label || row.job?.failure?.node_code">{{ row.job?.failure?.node_label || row.job?.failure?.node_code }}</strong><span>{{ row.job?.failure?.public_message || row.job?.failure?.technical_summary || '测活未产生错误详情' }}</span></span>
+                </div>
               </template>
             </el-table-column>
             <el-table-column label="操作" :width="taskColWidth('操作', 64)" align="center" fixed="right">
               <template #default="{ row }">
-                <el-dropdown trigger="click" @command="(command: string) => handleTaskAction(command, row)">
+                <el-dropdown v-if="!row.task" trigger="click" @command="(command: string) => handleRunAction(command, row)">
+                  <el-button link class="row-action-button" aria-label="打开测活操作菜单" title="打开测活操作菜单"><el-icon><MoreFilled /></el-icon></el-button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item command="live_log"><el-icon><Document /></el-icon>查看测活日志</el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+                <el-dropdown v-else trigger="click" @command="(command: string) => handleTaskAction(command, row.task)">
                   <el-button link class="row-action-button" aria-label="打开任务操作菜单" title="打开任务操作菜单"><el-icon><MoreFilled /></el-icon></el-button>
                   <template #dropdown>
                     <el-dropdown-menu>
@@ -570,12 +724,12 @@ onMounted(async () => {
             background
             layout="total, sizes, prev, pager, next"
             :page-sizes="[25, 50, 100]"
-            :total="filteredTasks.length"
+            :total="filteredRuns.length"
           />
         </div>
       </WorkspacePanel>
     </div>
-    <FreeTaskLogDialog ref="logDialog" v-model="logDialogOpen" :task="selectedTask" />
+    <FreeTaskLogDialog ref="logDialog" v-model="logDialogOpen" :task="dialogTask" />
   </div>
 </template>
 
@@ -638,6 +792,8 @@ onMounted(async () => {
 .task-driver-filter { width: 118px; flex: 0 0 auto; }
 .task-actions { display: flex; align-items: center; gap: var(--workspace-gap); margin-left: auto; min-width: 0; justify-content: flex-end; }
 .task-panel :deep(.el-table) { min-height: 0; }
+.task-panel :deep(.el-table td.el-table__cell),
+.task-panel :deep(.el-table th.el-table__cell) { padding-top: 3px; padding-bottom: 3px; }
 .task-panel :deep(.el-table .cell) { line-height: 18px; }
 .account-cell { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .account-subline { display: block; overflow: hidden; color: var(--el-text-color-secondary); font-size: 11px; line-height: 15px; text-overflow: ellipsis; white-space: nowrap; }
