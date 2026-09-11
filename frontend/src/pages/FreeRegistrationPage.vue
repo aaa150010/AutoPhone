@@ -222,8 +222,11 @@ function markQuickRunDirty() {
 }
 
 async function refresh() {
-  try {
-    const result = await getFreeState()
+  // 注册任务与测活任务并行拉取：合并列表一次性渲染，避免两路数据
+  // 先后到达时行数跳变。
+  const [stateSettled, liveSettled] = await Promise.allSettled([getFreeState(), getFreeLiveCheckState()])
+  if (stateSettled.status === 'fulfilled') {
+    const result = stateSettled.value
     const serverRunning = Boolean(result.state?.running)
     if (serverRunning) quickRunDirty.value = false
     mergeConfig(result.config, serverRunning)
@@ -231,17 +234,16 @@ async function refresh() {
     if (logDialogOpen.value && selectedTaskId.value) {
       await logDialog.value?.refresh({ silent: true })
     }
-  } catch (error) {
-    if (!loading.value) ElMessage.error(errorMessage(error) || 'Free 状态刷新失败')
+  } else if (!loading.value) {
+    ElMessage.error(errorMessage(stateSettled.reason) || 'Free 状态刷新失败')
   }
-  try {
-    const live = await getFreeLiveCheckState()
-    liveState.value = live.state || liveState.value
+  if (liveSettled.status === 'fulfilled') {
+    liveState.value = liveSettled.value.state || liveState.value
     if (logDialogOpen.value && liveLogTask.value) {
       await logDialog.value?.refresh({ silent: true })
     }
-  } catch (error) {
-    if (liveState.value.running) ElMessage.error(errorMessage(error) || 'Free 测活状态刷新失败')
+  } else if (liveState.value.running) {
+    ElMessage.error(errorMessage(liveSettled.reason) || 'Free 测活状态刷新失败')
   }
 }
 
