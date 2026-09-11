@@ -10,6 +10,11 @@ import hmac
 import json
 import re
 import struct
+
+try:
+    from .mailbox_code_parser import EMAIL_PATTERN as _EMAIL_PATTERN
+except ImportError:  # pragma: no cover - top-level recovery import
+    from mailbox_code_parser import EMAIL_PATTERN as _EMAIL_PATTERN  # type: ignore[no-redef]
 import threading
 import time
 from typing import Any, Callable, Iterator
@@ -48,9 +53,6 @@ except ImportError:  # Loaded as a top-level override module by the Mac launcher
     )
 
 
-_EMAIL_PATTERN = re.compile(
-    r"(?i)[a-z0-9][a-z0-9._%+-]*@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}"
-)
 _TOTP_SEPARATOR_PATTERNS = tuple(
     re.compile(pattern)
     for pattern in (

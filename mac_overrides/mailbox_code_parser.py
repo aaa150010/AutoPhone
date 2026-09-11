@@ -11,6 +11,12 @@ from typing import Any, Callable
 import unicodedata
 import urllib.parse
 
+# Single source of truth for the mailbox email shape; every row parser and
+# the URL/pickup runtimes match the same grammar.
+EMAIL_PATTERN = re.compile(
+    r"(?i)[a-z0-9][a-z0-9._%+-]*@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}"
+)
+
 
 OPENAI_PATTERN = re.compile(r"(?i)open\s*ai|chat\s*gpt")
 OTP_CONTEXT = (
@@ -167,6 +173,7 @@ def extract_mailbox_code(
 
 
 __all__ = [
+    "EMAIL_PATTERN",
     "MailboxCodeMatch",
     "OPENAI_PATTERN",
     "OTP_CONTEXT_PATTERN",

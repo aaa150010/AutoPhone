@@ -398,6 +398,7 @@ class OpenAIAuthConnectivityRuntime:
                 if self.failure_times[origin]
             )
     def _apply_proxy_locked(self, proxy: str, *, persist: bool = True) -> bool:
+        self._close_probe_sessions()
         fingerprint = proxy_fingerprint(proxy)
         previous = self._proxy_fingerprint
         self._proxy = str(proxy or "").strip()
@@ -685,11 +686,8 @@ class OpenAIAuthConnectivityRuntime:
             except Exception:
                 return ProbeResult(origin, False, reason_code="probe_transport_error")
 
-        session = None
         try:
-            session = (self.session_factory or self._default_session_factory)()
-            if hasattr(session, "trust_env"):
-                session.trust_env = False
+            session = self._probe_session_for(origin, probe_proxy)
             cookies = getattr(session, "cookies", None)
             clear_cookies = getattr(cookies, "clear", None)
             if callable(clear_cookies):
@@ -711,14 +709,49 @@ class OpenAIAuthConnectivityRuntime:
             )
         except Exception:
             return ProbeResult(origin, False, reason_code="probe_transport_error")
-        finally:
+
+    def _probe_session_for(self, origin: str, probe_proxy: str) -> Any:
+        """Keep-alive probe session keyed by (origin, proxy).
+
+        Every round used to pay a fresh TCP+TLS handshake per origin. One
+        session per origin also keeps the two concurrent probes off a shared
+        cookie jar; the cookie clear per probe preserves per-request state.
+        """
+        cache = getattr(self, "_probe_sessions", None)
+        if cache is None:
+            cache = {}
+            self._probe_sessions = cache
+        key = (str(origin), str(probe_proxy))
+        session = cache.get(key)
+        if session is None:
+            session = (self.session_factory or self._default_session_factory)()
+            if hasattr(session, "trust_env"):
+                session.trust_env = False
+            cache[key] = session
+            # Origins and proxies are few; drop stale entries FIFO.
+            if len(cache) > 8:
+                for stale_key in list(cache)[: len(cache) - 8]:
+                    stale_session = cache.pop(stale_key, None)
+                    close = getattr(stale_session, "close", None)
+                    if callable(close):
+                        try:
+                            close()
+                        except Exception as exc:
+                            _note_stderr("probe_session_prune_close", exc)
+        return session
+
+    def _close_probe_sessions(self) -> None:
+        cache = getattr(self, "_probe_sessions", None)
+        if not cache:
+            return
+        for session in cache.values():
             close = getattr(session, "close", None)
             if callable(close):
                 try:
                     close()
                 except Exception as exc:
-                    # Best-effort transport close during recovery.
-                    _note_stderr("L718", exc)
+                    _note_stderr("probe_session_close", exc)
+        cache.clear()
 
     def _coerce_probe_result(self, origin: str, value: Any) -> ProbeResult:
         if isinstance(value, ProbeResult):
@@ -767,12 +800,15 @@ class OpenAIAuthConnectivityRuntime:
                     self.event_id,
                     self.revision,
                 )
-            with ThreadPoolExecutor(max_workers=2, thread_name_prefix="openai-probe") as pool:
-                futures = {
-                    origin: pool.submit(self._probe_endpoint, origin, probe_proxy)
-                    for origin in OPENAI_CONNECTIVITY_ORIGINS
-                }
-                results = [futures[origin].result() for origin in OPENAI_CONNECTIVITY_ORIGINS]
+            pool = getattr(self, "_probe_executor", None)
+            if pool is None:
+                pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="openai-probe")
+                self._probe_executor = pool
+            futures = {
+                origin: pool.submit(self._probe_endpoint, origin, probe_proxy)
+                for origin in OPENAI_CONNECTIVITY_ORIGINS
+            }
+            results = [futures[origin].result() for origin in OPENAI_CONNECTIVITY_ORIGINS]
 
             callback: _PendingCallback | None = None
             recovered = False
@@ -894,6 +930,11 @@ class OpenAIAuthConnectivityRuntime:
                 self._closed = True
                 self.condition.notify_all()
             self._worker_wake.set()
+        self._close_probe_sessions()
+        executor = getattr(self, "_probe_executor", None)
+        if executor is not None:
+            executor.shutdown(wait=False)
+            self._probe_executor = None
 
     report_failure = observe_failure
     report_success = observe_success

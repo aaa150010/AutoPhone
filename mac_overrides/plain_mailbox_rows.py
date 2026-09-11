@@ -5,10 +5,10 @@ from __future__ import annotations
 from typing import Any
 import re
 
-
-_EMAIL_PATTERN = re.compile(
-    r"(?i)[a-z0-9][a-z0-9._%+-]*@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}"
-)
+try:
+    from .mailbox_code_parser import EMAIL_PATTERN as _EMAIL_PATTERN
+except ImportError:  # pragma: no cover - top-level recovery import
+    from mailbox_code_parser import EMAIL_PATTERN as _EMAIL_PATTERN  # type: ignore[no-redef]
 _DASH_SEPARATOR = re.compile(r"(?<!-)(?P<separator>-{2,})(?!-)")
 
 

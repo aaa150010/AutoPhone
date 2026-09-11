@@ -172,6 +172,21 @@ class MailboxHttpTransport:
             session = session_factory(trust_env=False)
         if hasattr(session, "trust_env"):
             session.trust_env = False
+        # Constant request envelope frozen once; the per-attempt loop below
+        # only varies the timeout (and proxies for configured policies).
+        self._base_headers = {
+            "Accept": "application/json,text/plain,text/html,*/*",
+            "User-Agent": "gptphone-mailbox/2.0",
+            "Cache-Control": "no-cache, no-store, max-age=0",
+            "Pragma": "no-cache",
+        }
+        self._base_kwargs: dict[str, Any] = {
+            "headers": self._base_headers,
+            "allow_redirects": False,
+            "impersonate": "chrome",
+            "verify": True,
+            "stream": True,
+        }
         self.session = session
         self.policy = policy
         self.sleep_fn = sleep_fn
@@ -285,19 +300,8 @@ class MailboxHttpTransport:
                     # retain a small floor so a request is not handed a zero
                     # timeout due to clock rounding.
                     request_timeout = min(request_timeout, max(0.2, remaining))
-                kwargs: dict[str, Any] = {
-                    "headers": {
-                        "Accept": "application/json,text/plain,text/html,*/*",
-                        "User-Agent": "gptphone-mailbox/2.0",
-                        "Cache-Control": "no-cache, no-store, max-age=0",
-                        "Pragma": "no-cache",
-                    },
-                    "timeout": request_timeout,
-                    "allow_redirects": False,
-                    "impersonate": "chrome",
-                    "verify": True,
-                    "stream": True,
-                }
+                kwargs = dict(self._base_kwargs)
+                kwargs["timeout"] = request_timeout
                 proxy = self.policy.effective_proxy
                 if proxy:
                     kwargs["proxies"] = {"http": proxy, "https": proxy}

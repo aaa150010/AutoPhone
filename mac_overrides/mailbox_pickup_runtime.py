@@ -22,6 +22,7 @@ import urllib.parse
 
 try:
     from .mailbox_code_parser import (
+        EMAIL_PATTERN as _EMAIL_PATTERN,
         OPENAI_PATTERN as _OPENAI_PATTERN,
         decode_bytes as _decode_bytes,
         decode_mail_body as _decode_mail_body,
@@ -37,6 +38,7 @@ try:
     from .mail_code_envelope import parse_mail_code_envelope
 except ImportError:
     from mailbox_code_parser import (  # type: ignore[no-redef]
+        EMAIL_PATTERN as _EMAIL_PATTERN,
         OPENAI_PATTERN as _OPENAI_PATTERN,
         decode_bytes as _decode_bytes,
         decode_mail_body as _decode_mail_body,
@@ -52,9 +54,6 @@ except ImportError:
     from mail_code_envelope import parse_mail_code_envelope
 
 
-_EMAIL_PATTERN = re.compile(
-    r"(?i)[a-z0-9][a-z0-9._%+-]*@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}"
-)
 _ACTION_PATTERN = re.compile(
     r"(?i)(?:^|[/_.?&=-])(delete|remove|destroy|clear|trash|logout|unsubscribe)(?:$|[/_.?&=-])"
 )

@@ -15,6 +15,7 @@ import urllib.request
 
 try:
     from .mailbox_code_parser import (
+        EMAIL_PATTERN as _EMAIL_PATTERN,
         OPENAI_PATTERN as _OPENAI_PATTERN,
         decode_bytes as _decode_bytes,
     )
@@ -44,6 +45,7 @@ try:
     )
 except ImportError:  # Loaded as a top-level runtime override.
     from mailbox_code_parser import (  # type: ignore[no-redef]
+        EMAIL_PATTERN as _EMAIL_PATTERN,
         OPENAI_PATTERN as _OPENAI_PATTERN,
         decode_bytes as _decode_bytes,
     )
@@ -211,9 +213,6 @@ BASELINE_FALLBACK_POLL_MILESTONES = (10, 20, 30)
 _CLIENT_MAILBOX_REFRESH_INTERVAL_SECONDS = 5
 _CLIENT_MAILBOX_DEEP_REFRESH_AFTER_SECONDS = 15
 _MAX_PARSED_MESSAGES = MAX_MESSAGES * 4
-_EMAIL_PATTERN = re.compile(
-    r"(?i)[a-z0-9][a-z0-9._%+-]*@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}"
-)
 _URL_ROW_PATTERN = re.compile(
     r"^\s*(?P<email>[a-z0-9][a-z0-9._%+-]*@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24})"
     r"\s*(?P<separator>-{3,}|\||｜)\s*(?P<url>https?://\S+)\s*$",

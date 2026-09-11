@@ -294,6 +294,10 @@ class AuthConnectivityRuntimeTests(unittest.TestCase):
         self.assertTrue(result.reachable)
         self.assertFalse(sessions[0].trust_env)
         self.assertTrue(sessions[0].cookies.cleared)
+        # Probe sessions are keep-alive per (origin, proxy); the runtime
+        # closes them on close()/proxy switches instead of per request.
+        self.assertFalse(sessions[0].closed)
+        runtime.close()
         self.assertTrue(sessions[0].closed)
         url, kwargs = sessions[0].calls[0]
         self.assertEqual(url, "https://auth.openai.com/")
