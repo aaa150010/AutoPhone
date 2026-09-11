@@ -126,6 +126,12 @@ class AsyncDiagnosticWriter(DiagnosticEventWriter):
             return incident
         with self._lock:
             self._incident_by_task[task_id] = incident
+            # The map has no terminal-state hook in every embedding, so cap
+            # it FIFO: reuse only matters for the most recent tasks.
+            overflow = len(self._incident_by_task) - 4096
+            if overflow > 0:
+                for stale_task_id in list(self._incident_by_task)[:overflow]:
+                    self._incident_by_task.pop(stale_task_id, None)
         return incident
 
     def record(self, fields: Mapping[str, Any] | None = None, **kwargs: Any) -> str:
@@ -179,7 +185,18 @@ class AsyncDiagnosticWriter(DiagnosticEventWriter):
         # Errors first so a first real business failure lands before the
         # informational tail if the process dies mid-batch.
         batch.sort(key=lambda item: not item[0])
-        for _priority, projected, _hint in batch:
+        projected_batch = [projected for _priority, projected, _hint in batch]
+        batch_writer = getattr(self.store, "record_batch", None)
+        if callable(batch_writer):
+            try:
+                batch_writer(projected_batch)
+                return
+            except Exception:
+                # The whole batch rolled back; per-event writes isolate the
+                # failing row and preserve the historical drain semantics.
+                if not self.best_effort:
+                    raise
+        for projected in projected_batch:
             try:
                 self.store.record(projected)
             except Exception as exc:

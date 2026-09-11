@@ -118,13 +118,22 @@ class AsyncDiagnosticWriterTests(unittest.TestCase):
         seen: list[dict] = []
         writer = self._writer()
         try:
-            original = writer.store.record
+            # The drain may deliver through the batched writer or the
+            # per-event fallback; both entry points receive the same
+            # redacted projection, so the spy covers both.
+            original_record = writer.store.record
+            original_batch = writer.store.record_batch
 
             def spy(fields):
                 seen.append(dict(fields))
-                return original(fields)
+                return original_record(fields)
+
+            def spy_batch(fields_list):
+                seen.extend(dict(fields) for fields in fields_list)
+                return original_batch(fields_list)
 
             writer.store.record = spy
+            writer.store.record_batch = spy_batch
             writer.record({
                 "task_id": "task-e", "node_code": "free_email_otp_wait",
                 "outcome": "error", "message": "code=123456",

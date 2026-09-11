@@ -591,6 +591,24 @@ class DiagnosticStore(DiagnosticExportMixin, DiagnosticSummaryMixin):
         Events with a task ID share an incident so retries can be inspected as
         one record. Non-task errors receive their own stable incident.
         """
+        context = self._prepare_record(fields)
+        if context is None:
+            return ""
+        with self._lock, self._connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                incident_id = self._record_transaction(db, context)
+                db.execute("COMMIT")
+                return incident_id
+            except BaseException:
+                try:
+                    db.execute("ROLLBACK")
+                except sqlite3.Error:
+                    pass
+                raise
+
+    def _prepare_record(self, fields: Mapping[str, Any]) -> dict[str, Any] | None:
+        """Sanitize one event payload before it reaches the write transaction."""
         now = utc_now()
         level = _safe_text(fields.get("level") or fields.get("outcome") or "info", 24).lower()
         outcome = _safe_text(fields.get("outcome") or ("error" if level in {"error", "danger"} else level), 32).lower()
@@ -612,212 +630,271 @@ class DiagnosticStore(DiagnosticExportMixin, DiagnosticSummaryMixin):
         # of the high-volume GUI log.
         is_error = outcome in {"error", "failed", "failure", "stopped"} or level in {"error", "danger"}
         if not is_error and not task_id:
-            return ""
+            return None
         message = _safe_message(fields.get("message"), 800)
         failure = _safe_failure_mapping(fields.get("failure"))
         transport = _safe_transport_mapping(fields.get("transport"))
         incident_hint = _safe_id(fields.get("incident_id"), 64).upper()
         if not re.fullmatch(r"LOG-\d{8}-[A-Z0-9]{8}", incident_hint):
             incident_hint = ""
-        with self._lock, self._connection() as db:
-            db.execute("BEGIN IMMEDIATE")
-            # Event IDs are globally idempotent. Check before allocating an
-            # incident so a retried write cannot create a phantom archive.
-            supplied_event_id = _safe_id(fields.get("event_id"), 80)
-            if supplied_event_id:
-                duplicate = db.execute(
-                    "SELECT incident_id FROM diagnostic_events WHERE event_id=?",
-                    (supplied_event_id,),
-                ).fetchone()
-                if duplicate:
-                    db.execute("COMMIT")
-                    return str(duplicate[0])
-            incident_id = self._incident_for(
-                db,
-                task_id=task_id,
-                subject_ref=subject_ref,
-                incident_id=incident_hint,
-                run_id=run_id,
-                batch_id=batch_id,
-                chain=_safe_id(fields.get("chain") or "unknown", 48),
-                workflow=_safe_id(fields.get("workflow") or "run", 64),
-                driver=_safe_id(fields.get("driver") or "unknown", 48),
-                now=now,
-            )
-            existing = db.execute("SELECT * FROM diagnostic_incidents WHERE incident_id=?", (incident_id,)).fetchone()
-            if existing is None:
-                db.execute(
-                    "INSERT INTO diagnostic_incidents (incident_id,created_at,updated_at,chain,workflow,driver,run_id,batch_id,task_id,subject_kind,subject_ref,subject_display,status,outcome,integrity_status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (
-                        incident_id, now, now, _safe_id(fields.get("chain") or "unknown", 48),
-                        _safe_id(fields.get("workflow") or "run", 64), _safe_id(fields.get("driver") or "unknown", 48),
-                        run_id, batch_id, task_id, subject_kind,
-                        subject_ref, subject_display,
-                        _status_for_outcome(outcome), outcome, "verified",
-                    ),
-                )
-            elif subject_ref and not str(existing["subject_ref"] or ""):
-                # A task's early informational events may not carry an account
-                # reference. Enrich that same incident when its terminal
-                # failure arrives, without ever persisting the raw value.
-                db.execute(
-                    "UPDATE diagnostic_incidents SET subject_kind=?, subject_ref=?, subject_display=? WHERE incident_id=?",
-                    (subject_kind, subject_ref, subject_display, incident_id),
-                )
-            if task_id:
-                db.execute(
-                    "INSERT INTO diagnostic_tasks(task_id,incident_id,run_id,batch_id,created_at,updated_at) VALUES(?,?,?,?,?,?) "
-                    "ON CONFLICT(task_id,incident_id) DO UPDATE SET run_id=excluded.run_id,batch_id=excluded.batch_id,updated_at=excluded.updated_at",
-                    (task_id, incident_id, run_id, batch_id, now, now),
-                )
-            previous_row = db.execute(
-                "SELECT event_hash FROM diagnostic_events WHERE incident_id=? ORDER BY rowid DESC LIMIT 1",
-                (incident_id,),
+        return {
+            "fields": fields,
+            "now": now,
+            "outcome": outcome,
+            "node_code": node_code,
+            "task_id": task_id,
+            "batch_id": batch_id,
+            "run_id": run_id,
+            "subject_ref": subject_ref,
+            "subject_kind": subject_kind,
+            "subject_display": subject_display,
+            "message": message,
+            "failure": failure,
+            "transport": transport,
+            "incident_hint": incident_hint,
+        }
+
+    def _record_transaction(self, db: sqlite3.Connection, context: Mapping[str, Any]) -> str:
+        """Append one prepared event inside the caller's transaction."""
+        # Hashes and root-cause selection follow append order (rowid).
+        fields = context["fields"]
+        now = context["now"]
+        outcome = context["outcome"]
+        node_code = context["node_code"]
+        task_id = context["task_id"]
+        batch_id = context["batch_id"]
+        run_id = context["run_id"]
+        subject_ref = context["subject_ref"]
+        subject_kind = context["subject_kind"]
+        subject_display = context["subject_display"]
+        message = context["message"]
+        failure = context["failure"]
+        transport = context["transport"]
+        incident_hint = context["incident_hint"]
+
+        # Event IDs are globally idempotent. Check before allocating an
+        # incident so a retried write cannot create a phantom archive.
+        supplied_event_id = _safe_id(fields.get("event_id"), 80)
+        if supplied_event_id:
+            duplicate = db.execute(
+                "SELECT incident_id FROM diagnostic_events WHERE event_id=?",
+                (supplied_event_id,),
             ).fetchone()
-            previous_hash = str(previous_row[0]) if previous_row else ""
-            history_fully_pruned = False
-            # Retention can remove every earlier event. Keep that missing
-            # prefix visible when the next event is appended, rather than
-            # making the truncated incident appear fully verified.
-            if (
-                previous_row is None
-                and existing is not None
-                and str(existing["integrity_status"] or "") == "unverified"
-            ):
-                previous_hash = _MISSING_HISTORY_HASH
-                history_fully_pruned = True
-            event_id = supplied_event_id or uuid.uuid4().hex
-            if db.execute("SELECT 1 FROM diagnostic_events WHERE event_id=?", (event_id,)).fetchone():
-                db.execute("COMMIT")
-                return incident_id
-            try:
-                sequence = int(fields.get("sequence") or 0)
-            except (TypeError, ValueError):
-                sequence = 0
-            try:
-                attempt = int(fields.get("attempt") or 0)
-            except (TypeError, ValueError):
-                attempt = 0
-            try:
-                elapsed_ms = int(fields.get("duration_ms") or fields.get("elapsed_ms"))
-            except (TypeError, ValueError):
-                elapsed_ms = None
-            event_payload = {
-                "schema_version": SCHEMA_VERSION,
-                "event_id": event_id,
-                "incident_id": incident_id,
-                "occurred_at": _safe_occurred_at(fields.get("occurred_at") or now, now),
-                "received_at": now,
-                "chain": _safe_id(fields.get("chain") or "unknown", 48),
-                "workflow": _safe_id(fields.get("workflow") or "run", 64),
-                "driver": _safe_id(fields.get("driver") or "unknown", 48),
-                "run_id": run_id,
-                "batch_id": batch_id,
-                "task_id": task_id,
-                "subject_kind": subject_kind,
-                "subject_ref": subject_ref,
-                "subject_display": subject_display,
-                "stage_group": _safe_id(fields.get("stage_group"), 64),
-                "node_code": node_code,
-                "node_label": _safe_message(fields.get("node_label"), 160),
-                "sequence": max(0, sequence),
-                "attempt": max(0, attempt),
-                "attempt_group": _safe_id(fields.get("attempt_group"), 120),
-                "outcome": outcome,
-                "parent_event_id": _safe_id(fields.get("parent_event_id"), 80),
-                "root_cause_event_id": _safe_id(fields.get("root_cause_event_id"), 80),
-                "elapsed_ms": elapsed_ms,
-                "failure": failure,
-                "transport": transport,
-                "message": message,
-                "redaction_applied": True,
-            }
-            event_hash = self._hash_event(event_payload, previous_hash)
+            if duplicate:
+                return str(duplicate[0])
+        incident_id = self._incident_for(
+            db,
+            task_id=task_id,
+            subject_ref=subject_ref,
+            incident_id=incident_hint,
+            run_id=run_id,
+            batch_id=batch_id,
+            chain=_safe_id(fields.get("chain") or "unknown", 48),
+            workflow=_safe_id(fields.get("workflow") or "run", 64),
+            driver=_safe_id(fields.get("driver") or "unknown", 48),
+            now=now,
+        )
+        existing = db.execute("SELECT * FROM diagnostic_incidents WHERE incident_id=?", (incident_id,)).fetchone()
+        if existing is None:
             db.execute(
-                "INSERT INTO diagnostic_events (event_id,schema_version,incident_id,occurred_at,received_at,chain,workflow,driver,run_id,batch_id,task_id,subject_kind,subject_ref,subject_display,stage_group,node_code,node_label,sequence,attempt,attempt_group,outcome,parent_event_id,root_cause_event_id,elapsed_ms,failure_json,transport_json,message,redaction_applied,previous_event_hash,event_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO diagnostic_incidents (incident_id,created_at,updated_at,chain,workflow,driver,run_id,batch_id,task_id,subject_kind,subject_ref,subject_display,status,outcome,integrity_status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
-                    event_id, SCHEMA_VERSION, incident_id, event_payload["occurred_at"], event_payload["received_at"], event_payload["chain"], event_payload["workflow"],
-                    event_payload["driver"], run_id, batch_id, task_id, subject_kind, subject_ref,
-                    subject_display, event_payload["stage_group"], node_code,
-                    event_payload["node_label"], event_payload["sequence"], event_payload["attempt"], event_payload["attempt_group"],
-                    outcome, event_payload["parent_event_id"], event_payload["root_cause_event_id"], elapsed_ms,
-                    json.dumps(failure, ensure_ascii=False, sort_keys=True), json.dumps(transport, ensure_ascii=False, sort_keys=True),
-                    message, 1, previous_hash, event_hash,
+                    incident_id, now, now, _safe_id(fields.get("chain") or "unknown", 48),
+                    _safe_id(fields.get("workflow") or "run", 64), _safe_id(fields.get("driver") or "unknown", 48),
+                    run_id, batch_id, task_id, subject_kind,
+                    subject_ref, subject_display,
+                    _status_for_outcome(outcome), outcome, "verified",
                 ),
             )
-            current_outcome = str(existing["outcome"] or "") if existing is not None else ""
-            incoming_status = _status_for_outcome(outcome)
-            next_status = incoming_status
-            next_outcome = outcome
-            if existing is not None:
-                if current_outcome in _FAILURE_OUTCOMES and outcome not in _SUCCESS_OUTCOMES | _PARTIAL_OUTCOMES:
-                    # Keep a real failure terminal until an explicit success
-                    # or partial result resolves it.
+        elif subject_ref and not str(existing["subject_ref"] or ""):
+            # A task's early informational events may not carry an account
+            # reference. Enrich that same incident when its terminal
+            # failure arrives, without ever persisting the raw value.
+            db.execute(
+                "UPDATE diagnostic_incidents SET subject_kind=?, subject_ref=?, subject_display=? WHERE incident_id=?",
+                (subject_kind, subject_ref, subject_display, incident_id),
+            )
+        if task_id:
+            db.execute(
+                "INSERT INTO diagnostic_tasks(task_id,incident_id,run_id,batch_id,created_at,updated_at) VALUES(?,?,?,?,?,?) "
+                "ON CONFLICT(task_id,incident_id) DO UPDATE SET run_id=excluded.run_id,batch_id=excluded.batch_id,updated_at=excluded.updated_at",
+                (task_id, incident_id, run_id, batch_id, now, now),
+            )
+        previous_row = db.execute(
+            "SELECT event_hash FROM diagnostic_events WHERE incident_id=? ORDER BY rowid DESC LIMIT 1",
+            (incident_id,),
+        ).fetchone()
+        previous_hash = str(previous_row[0]) if previous_row else ""
+        history_fully_pruned = False
+        # Retention can remove every earlier event. Keep that missing
+        # prefix visible when the next event is appended, rather than
+        # making the truncated incident appear fully verified.
+        if (
+            previous_row is None
+            and existing is not None
+            and str(existing["integrity_status"] or "") == "unverified"
+        ):
+            previous_hash = _MISSING_HISTORY_HASH
+            history_fully_pruned = True
+        event_id = supplied_event_id or uuid.uuid4().hex
+        if not supplied_event_id and db.execute(
+            "SELECT 1 FROM diagnostic_events WHERE event_id=?", (event_id,)
+        ).fetchone():
+            # uuid4-generated ids only; supplied ids were already checked
+            # above inside this same write-locked transaction.
+            return incident_id
+        try:
+            sequence = int(fields.get("sequence") or 0)
+        except (TypeError, ValueError):
+            sequence = 0
+        try:
+            attempt = int(fields.get("attempt") or 0)
+        except (TypeError, ValueError):
+            attempt = 0
+        try:
+            elapsed_ms = int(fields.get("duration_ms") or fields.get("elapsed_ms"))
+        except (TypeError, ValueError):
+            elapsed_ms = None
+        event_payload = {
+            "schema_version": SCHEMA_VERSION,
+            "event_id": event_id,
+            "incident_id": incident_id,
+            "occurred_at": _safe_occurred_at(fields.get("occurred_at") or now, now),
+            "received_at": now,
+            "chain": _safe_id(fields.get("chain") or "unknown", 48),
+            "workflow": _safe_id(fields.get("workflow") or "run", 64),
+            "driver": _safe_id(fields.get("driver") or "unknown", 48),
+            "run_id": run_id,
+            "batch_id": batch_id,
+            "task_id": task_id,
+            "subject_kind": subject_kind,
+            "subject_ref": subject_ref,
+            "subject_display": subject_display,
+            "stage_group": _safe_id(fields.get("stage_group"), 64),
+            "node_code": node_code,
+            "node_label": _safe_message(fields.get("node_label"), 160),
+            "sequence": max(0, sequence),
+            "attempt": max(0, attempt),
+            "attempt_group": _safe_id(fields.get("attempt_group"), 120),
+            "outcome": outcome,
+            "parent_event_id": _safe_id(fields.get("parent_event_id"), 80),
+            "root_cause_event_id": _safe_id(fields.get("root_cause_event_id"), 80),
+            "elapsed_ms": elapsed_ms,
+            "failure": failure,
+            "transport": transport,
+            "message": message,
+            "redaction_applied": True,
+        }
+        event_hash = self._hash_event(event_payload, previous_hash)
+        db.execute(
+            "INSERT INTO diagnostic_events (event_id,schema_version,incident_id,occurred_at,received_at,chain,workflow,driver,run_id,batch_id,task_id,subject_kind,subject_ref,subject_display,stage_group,node_code,node_label,sequence,attempt,attempt_group,outcome,parent_event_id,root_cause_event_id,elapsed_ms,failure_json,transport_json,message,redaction_applied,previous_event_hash,event_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                event_id, SCHEMA_VERSION, incident_id, event_payload["occurred_at"], event_payload["received_at"], event_payload["chain"], event_payload["workflow"],
+                event_payload["driver"], run_id, batch_id, task_id, subject_kind, subject_ref,
+                subject_display, event_payload["stage_group"], node_code,
+                event_payload["node_label"], event_payload["sequence"], event_payload["attempt"], event_payload["attempt_group"],
+                outcome, event_payload["parent_event_id"], event_payload["root_cause_event_id"], elapsed_ms,
+                json.dumps(failure, ensure_ascii=False, sort_keys=True), json.dumps(transport, ensure_ascii=False, sort_keys=True),
+                message, 1, previous_hash, event_hash,
+            ),
+        )
+        current_outcome = str(existing["outcome"] or "") if existing is not None else ""
+        incoming_status = _status_for_outcome(outcome)
+        next_status = incoming_status
+        next_outcome = outcome
+        if existing is not None:
+            if current_outcome in _FAILURE_OUTCOMES and outcome not in _SUCCESS_OUTCOMES | _PARTIAL_OUTCOMES:
+                # Keep a real failure terminal until an explicit success
+                # or partial result resolves it.
+                next_outcome = current_outcome
+                next_status = _status_for_outcome(current_outcome)
+            elif incoming_status == "open":
+                # Informational/lifecycle events after a terminal
+                # success/partial result must not downgrade the incident
+                # outcome to ``info``. A later explicit failure can still
+                # change the outcome because it has a non-open status.
+                if current_outcome in _SUCCESS_OUTCOMES | _PARTIAL_OUTCOMES:
                     next_outcome = current_outcome
                     next_status = _status_for_outcome(current_outcome)
-                elif incoming_status == "open":
-                    # Informational/lifecycle events after a terminal
-                    # success/partial result must not downgrade the incident
-                    # outcome to ``info``. A later explicit failure can still
-                    # change the outcome because it has a non-open status.
-                    if current_outcome in _SUCCESS_OUTCOMES | _PARTIAL_OUTCOMES:
-                        next_outcome = current_outcome
-                        next_status = _status_for_outcome(current_outcome)
-                    else:
-                        next_status = str(existing["status"] or "open")
-                        if next_status in {"success", "partial", "failed", "stopped"}:
-                            next_outcome = next_status
+                else:
+                    next_status = str(existing["status"] or "open")
+                    if next_status in {"success", "partial", "failed", "stopped"}:
+                        next_outcome = next_status
 
-            # Chain status is carried forward instead of re-hashing the whole
-            # event chain on every append (that O(N) re-verification made
-            # steady-state appends quadratic). The append-only chain keeps the
-            # linkage intact by construction here; a previously detected
-            # ``failed``/``unverified`` state stays sticky, and startup
-            # ``rebuild_incident_summaries`` remains the whole-chain verifier.
-            existing_status = str(existing["integrity_status"] or "") if existing is not None else ""
-            if history_fully_pruned or (existing is not None and existing_status == "unverified"):
-                integrity_status = "unverified"
-            elif existing_status == "failed":
-                integrity_status = "failed"
-            else:
-                integrity_status = "verified"
-            # Derive first-failure columns incrementally (O(1) per append).
-            # The persisted summary is authoritative: the append-only chain
-            # means the earliest business failure never changes, so at most
-            # the new event can enrich it. A ``failed`` chain keeps the last
-            # known summary, mirroring the former whole-verify behavior.
-            existing_node = str(existing["first_node_code"] or "") if existing is not None else ""
-            existing_label = str(existing["first_node_label"] or "") if existing is not None else ""
-            existing_error_code = _safe_id(existing["first_error_code"], 120) if existing is not None else ""
-            existing_retryable = bool(existing["retryable"]) if existing is not None else False
-            existing_failure = _parse_failure(existing["failure_json"]) if existing is not None else {}
-            # A pre-migration incident may have selected a cleanup event as
-            # its root; cleanup is never a business cause. The single row
-            # carries that evidence in its outcome/label, so the check stays
-            # O(1) without loading the whole history.
-            existing_is_cleanup_root = existing is not None and (
-                _is_cleanup_event(existing)
-                or any(
-                    _is_cleanup_node(str(existing[key] or ""))
-                    for key in ("first_node_code",)
-                )
+        # Chain status is carried forward instead of re-hashing the whole
+        # event chain on every append (that O(N) re-verification made
+        # steady-state appends quadratic). The append-only chain keeps the
+        # linkage intact by construction here; a previously detected
+        # ``failed``/``unverified`` state stays sticky, and startup
+        # ``rebuild_incident_summaries`` remains the whole-chain verifier.
+        existing_status = str(existing["integrity_status"] or "") if existing is not None else ""
+        if history_fully_pruned or (existing is not None and existing_status == "unverified"):
+            integrity_status = "unverified"
+        elif existing_status == "failed":
+            integrity_status = "failed"
+        else:
+            integrity_status = "verified"
+        # Derive first-failure columns incrementally (O(1) per append).
+        # The persisted summary is authoritative: the append-only chain
+        # means the earliest business failure never changes, so at most
+        # the new event can enrich it. A ``failed`` chain keeps the last
+        # known summary, mirroring the former whole-verify behavior.
+        existing_node = str(existing["first_node_code"] or "") if existing is not None else ""
+        existing_label = str(existing["first_node_label"] or "") if existing is not None else ""
+        existing_error_code = _safe_id(existing["first_error_code"], 120) if existing is not None else ""
+        existing_retryable = bool(existing["retryable"]) if existing is not None else False
+        existing_failure = _parse_failure(existing["failure_json"]) if existing is not None else {}
+        # A pre-migration incident may have selected a cleanup event as
+        # its root; cleanup is never a business cause. The single row
+        # carries that evidence in its outcome/label, so the check stays
+        # O(1) without loading the whole history.
+        existing_is_cleanup_root = existing is not None and (
+            _is_cleanup_event(existing)
+            or any(
+                _is_cleanup_node(str(existing[key] or ""))
+                for key in ("first_node_code",)
             )
-            new_is_business_failure = (
-                _is_business_failure_event(event_payload)
-                and not _is_cleanup_event(event_payload)
+        )
+        new_is_business_failure = (
+            _is_business_failure_event(event_payload)
+            and not _is_cleanup_event(event_payload)
+        )
+        if integrity_status == "failed" or history_fully_pruned:
+            # A broken chain is not trustworthy input for repairing the
+            # denormalized root-cause summary; a fully pruned history
+            # proves nothing about the previously recorded root cause.
+            first_node_code = "" if history_fully_pruned else existing_node
+            first_node_label = "" if history_fully_pruned else existing_label
+            first_error_code = "" if history_fully_pruned else existing_error_code
+            first_retryable = False if history_fully_pruned else existing_retryable
+            first_failure = {} if history_fully_pruned else dict(existing_failure)
+        elif existing_is_cleanup_root and new_is_business_failure:
+            # Repair the legacy cleanup root from the first real business
+            # failure, matching the former whole-history realtime pass.
+            first_node_code = str(event_payload["node_code"] or "")
+            first_node_label = str(event_payload["node_label"] or "")
+            first_failure = dict(event_payload["failure"])
+            first_error_code = _safe_id(first_failure.get("error_code"), 120)
+            first_retryable = (
+                _retryable_value(first_failure.get("retryable"))
+                if "retryable" in first_failure
+                else False
             )
-            if integrity_status == "failed" or history_fully_pruned:
-                # A broken chain is not trustworthy input for repairing the
-                # denormalized root-cause summary; a fully pruned history
-                # proves nothing about the previously recorded root cause.
-                first_node_code = "" if history_fully_pruned else existing_node
-                first_node_label = "" if history_fully_pruned else existing_label
-                first_error_code = "" if history_fully_pruned else existing_error_code
-                first_retryable = False if history_fully_pruned else existing_retryable
-                first_failure = {} if history_fully_pruned else dict(existing_failure)
-            elif existing_is_cleanup_root and new_is_business_failure:
-                # Repair the legacy cleanup root from the first real business
-                # failure, matching the former whole-history realtime pass.
+        elif existing_is_cleanup_root:
+            # A legacy release could persist a cleanup-only event as the
+            # root; clear that invalid summary as soon as the incident is
+            # touched, while leaving ordinary informational incidents
+            # untouched (same semantics as the former realtime pass).
+            first_node_code = first_node_label = first_error_code = ""
+            first_retryable = False
+            first_failure = {}
+        elif not existing_node:
+            first_node_code = existing_node
+            first_node_label = existing_label
+            first_error_code = existing_error_code
+            first_retryable = existing_retryable
+            first_failure = dict(existing_failure)
+            if new_is_business_failure:
                 first_node_code = str(event_payload["node_code"] or "")
                 first_node_label = str(event_payload["node_label"] or "")
                 first_failure = dict(event_payload["failure"])
@@ -827,72 +904,78 @@ class DiagnosticStore(DiagnosticExportMixin, DiagnosticSummaryMixin):
                     if "retryable" in first_failure
                     else False
                 )
-            elif existing_is_cleanup_root:
-                # A legacy release could persist a cleanup-only event as the
-                # root; clear that invalid summary as soon as the incident is
-                # touched, while leaving ordinary informational incidents
-                # untouched (same semantics as the former realtime pass).
-                first_node_code = first_node_label = first_error_code = ""
-                first_retryable = False
-                first_failure = {}
-            elif not existing_node:
-                first_node_code = existing_node
-                first_node_label = existing_label
-                first_error_code = existing_error_code
-                first_retryable = existing_retryable
-                first_failure = dict(existing_failure)
-                if new_is_business_failure:
-                    first_node_code = str(event_payload["node_code"] or "")
+        else:
+            first_node_code = existing_node
+            first_node_label = existing_label
+            first_error_code = existing_error_code
+            first_failure = dict(existing_failure)
+            if new_is_business_failure and str(event_payload["node_code"] or "") == existing_node:
+                # Merge only keys missing from the persisted summary; the
+                # cumulative effect equals the former whole-history merge
+                # because every earlier same-node enrichment is already
+                # persisted in ``failure_json``.
+                first_failure = _merge_missing_failure_fields(
+                    existing_failure,
+                    [dict(event_payload["failure"])],
+                )
+                if not first_node_label:
                     first_node_label = str(event_payload["node_label"] or "")
-                    first_failure = dict(event_payload["failure"])
-                    first_error_code = _safe_id(first_failure.get("error_code"), 120)
-                    first_retryable = (
-                        _retryable_value(first_failure.get("retryable"))
-                        if "retryable" in first_failure
-                        else False
-                    )
+            if "retryable" in existing_failure:
+                first_retryable = _retryable_value(existing_failure.get("retryable"))
+            elif existing_retryable:
+                first_retryable = True
             else:
-                first_node_code = existing_node
-                first_node_label = existing_label
-                first_error_code = existing_error_code
-                first_failure = dict(existing_failure)
-                if new_is_business_failure and str(event_payload["node_code"] or "") == existing_node:
-                    # Merge only keys missing from the persisted summary; the
-                    # cumulative effect equals the former whole-history merge
-                    # because every earlier same-node enrichment is already
-                    # persisted in ``failure_json``.
-                    first_failure = _merge_missing_failure_fields(
-                        existing_failure,
-                        [dict(event_payload["failure"])],
-                    )
-                    if not first_node_label:
-                        first_node_label = str(event_payload["node_label"] or "")
-                if "retryable" in existing_failure:
-                    first_retryable = _retryable_value(existing_failure.get("retryable"))
-                elif existing_retryable:
-                    first_retryable = True
-                else:
-                    first_retryable = (
-                        _retryable_value(first_failure.get("retryable"))
-                        if "retryable" in first_failure
-                        else False
-                    )
-                if not first_error_code:
-                    first_error_code = _safe_id(first_failure.get("error_code"), 120)
-            db.execute(
-                "UPDATE diagnostic_incidents SET updated_at=?, status=?, outcome=?, first_node_code=?, first_node_label=?, first_error_code=?, retryable=?, failure_json=?, event_count=event_count+1, integrity_status=? WHERE incident_id=?",
-                (
-                    now, next_status, next_outcome, first_node_code, first_node_label,
-                    first_error_code, int(first_retryable), json.dumps(first_failure, ensure_ascii=False, sort_keys=True),
-                    integrity_status, incident_id,
-                ),
-            )
-            aliases = [("task", task_id), ("batch", batch_id), ("run", run_id), (subject_kind, subject_ref)]
-            for alias_type, alias_ref in aliases:
-                if alias_type and alias_ref:
-                    db.execute("INSERT OR IGNORE INTO diagnostic_aliases(alias_type,alias_ref,incident_id,created_at) VALUES(?,?,?,?)", (alias_type, alias_ref, incident_id, now))
+                first_retryable = (
+                    _retryable_value(first_failure.get("retryable"))
+                    if "retryable" in first_failure
+                    else False
+                )
+            if not first_error_code:
+                first_error_code = _safe_id(first_failure.get("error_code"), 120)
+        db.execute(
+            "UPDATE diagnostic_incidents SET updated_at=?, status=?, outcome=?, first_node_code=?, first_node_label=?, first_error_code=?, retryable=?, failure_json=?, event_count=event_count+1, integrity_status=? WHERE incident_id=?",
+            (
+                now, next_status, next_outcome, first_node_code, first_node_label,
+                first_error_code, int(first_retryable), json.dumps(first_failure, ensure_ascii=False, sort_keys=True),
+                integrity_status, incident_id,
+            ),
+        )
+        aliases = [("task", task_id), ("batch", batch_id), ("run", run_id), (subject_kind, subject_ref)]
+        for alias_type, alias_ref in aliases:
+            if alias_type and alias_ref:
+                db.execute("INSERT OR IGNORE INTO diagnostic_aliases(alias_type,alias_ref,incident_id,created_at) VALUES(?,?,?,?)", (alias_type, alias_ref, incident_id, now))
+        return incident_id
+
+    def record_batch(self, fields_list: Sequence[Mapping[str, Any]]) -> list[str]:
+        """Append a batch of prepared events inside one write transaction.
+
+        The async writer drains up to ``max_batch`` events per wake-up; one
+        transaction per batch removes the per-event BEGIN IMMEDIATE/COMMIT
+        cycle. Input order is preserved (the writer sorts errors first). On
+        any failure the whole batch rolls back and the exception surfaces to
+        the caller, which falls back to per-event ``record`` writes.
+        """
+        prepared: list[dict[str, Any]] = []
+        for fields in fields_list:
+            context = self._prepare_record(fields)
+            if context is not None:
+                prepared.append(context)
+        if not prepared:
+            return []
+        results: list[str] = []
+        with self._lock, self._connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                for context in prepared:
+                    results.append(self._record_transaction(db, context))
+            except BaseException:
+                try:
+                    db.execute("ROLLBACK")
+                except sqlite3.Error:
+                    pass
+                raise
             db.execute("COMMIT")
-            return incident_id
+        return results
 
     def record(self, fields: Mapping[str, Any]) -> str:
         """Append one event and retain a safe health signal on write failure."""
