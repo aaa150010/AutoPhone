@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { errorMessage } from '../utils/errorMessage'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleCheck, CopyDocument, Refresh, View } from '@element-plus/icons-vue'
 import { ApiError, getFreeConfig, getFreeProxies, preflightFree, preflightFreeProxies, saveFreeConfig, type FreeConfig, type FreeState, type FreeProxyPool, type FreeProxyPreflightRow, type FreeProxyRow } from '../api/client'
 import type { TaskFailure } from '../types/api'
@@ -95,6 +95,18 @@ async function load() {
 
 async function save() {
   if (!loaded.value) throw new Error('Free 配置仍在加载，请稍后再保存')
+  // Saving always overwrites the whole pool with the textarea content, so an
+  // accidental paste below pre-filled rows must be visible before it lands.
+  const pasted = proxyText.value.split('\n').filter(line => line.trim()).length
+  const savedCount = Number(state.value.pool?.proxies || 0)
+  const overwriteMessage = pasted
+    ? `保存将以输入框中的 ${pasted} 条代理整体覆盖 Free 代理池；当前已保存 ${savedCount} 条，不在输入框内的条目会被移除。继续吗？`
+    : `输入框为空，保存将清空 Free 代理池（当前 ${savedCount} 条）。继续吗？`
+  try {
+    await ElMessageBox.confirm(overwriteMessage, '覆盖保存 Free 代理池', { type: 'warning', confirmButtonText: '覆盖保存', cancelButtonText: '取消' })
+  } catch {
+    return
+  }
   busy.value = 'save'
   try {
     // The selector is the user-facing editor for the persisted default used
