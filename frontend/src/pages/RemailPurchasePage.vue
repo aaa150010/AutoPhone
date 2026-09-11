@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { errorMessage } from '../utils/errorMessage'
 import { ElMessage } from 'element-plus'
-import { getRemailProjects, getRemailWallet, purchaseRemail, type RemailProject, type RemailProjectProduct, type RemailWallet } from '../api/client'
+import { getRemailProjects, getRemailWallet, purchaseRemail, ApiError, type RemailProject, type RemailProjectProduct, type RemailWallet } from '../api/client'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 
 const loading = ref(false)
@@ -62,7 +62,12 @@ async function purchase() {
     else ElMessage.success('订单已创建，可在订单查询中确认并导入 Free 池')
     await load()
   }
-  catch (error) { ElMessage.error(errorMessage(error) || 'Remail 购买失败') } finally { loading.value = false }
+  catch (error) {
+    // A client-side timeout does not cancel the paid order server-side;
+    // the user must confirm on the orders page before retrying.
+    if (error instanceof ApiError && error.status === 0) ElMessage.error('请求超时：订单可能已在 Remail 侧创建，请先到订单查询页确认，勿直接重复下单')
+    else ElMessage.error(errorMessage(error) || 'Remail 购买失败')
+  } finally { loading.value = false }
 }
 onMounted(load)
 </script>

@@ -71,8 +71,15 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T>(path: string, body?: JsonRecord): Promise<T> {
-  const options: RequestInit = body === undefined
+export interface ApiRequestOptions {
+  /** Optional per-request timeout in ms; absent means wait indefinitely. */
+  timeoutMs?: number
+}
+
+export async function api<T>(path: string, body?: JsonRecord, options: ApiRequestOptions = {}): Promise<T> {
+  const controller = options.timeoutMs && options.timeoutMs > 0 ? new AbortController() : null
+  const timer = controller ? setTimeout(() => controller.abort(), options.timeoutMs) : null
+  const requestInit: RequestInit = body === undefined
     ? { cache: 'no-store' }
     : {
         method: 'POST',
@@ -80,12 +87,23 @@ export async function api<T>(path: string, body?: JsonRecord): Promise<T> {
         body: JSON.stringify(body),
         cache: 'no-store',
       }
-  const response = await fetch(path, options)
-  const payload = await response.json().catch(() => ({}))
-  if (!response.ok || payload.ok === false) {
-    throw new ApiError(payload.error || '操作失败', response.status, payload)
+  try {
+    const response = await fetch(path, { ...requestInit, signal: controller?.signal })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok || payload.ok === false) {
+      throw new ApiError(payload.error || '操作失败', response.status, payload)
+    }
+    return payload
+  } catch (error) {
+    // status 0 marks an aborted request; the server may still have completed
+    // the action, so callers must confirm before retrying non-idempotent ops.
+    if (controller !== null && error instanceof DOMException && error.name === 'AbortError') {
+      throw new ApiError('请求超时', 0, {})
+    }
+    throw error
+  } finally {
+    if (timer !== null) clearTimeout(timer)
   }
-  return payload
 }
 
 // ---------------------------------------------------------------------------
@@ -152,7 +170,10 @@ export const getFreeMailboxes = () => api<{ ok: true; pool: 'free'; rows: FreeMa
 export const getRemailProjects = () => api<{ ok: true; projects: RemailProject[] | { items?: RemailProject[] } }>('/api/remail/projects')
 export const getRemailWallet = () => api<{ ok: true; wallet: RemailWallet }>('/api/remail/wallet')
 export const getRemailOrders = (query: { page?: number; page_size?: number; imported?: boolean | 'all'; search?: string; include_failed?: boolean } = {}) => api<{ ok: true; orders: RemailOrder[]; remote_count?: number; total: number; page: number; page_size: number; has_more: boolean }>(`/api/remail/orders?${new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined && value !== '').map(([key, value]) => [key, String(value)]))}`)
-export const purchaseRemail = (data: { project_id: number; email_suffix: string; quantity: number; supply?: string }) => api<{ ok: true; result: Record<string, unknown>; imported?: Array<{ order_no: string; row_id: string }>; skipped?: Array<{ order_no: string; reason: string }>; state?: FreeState }>('/api/remail/purchase', data)
+// 180s covers the configured upstream timeout ceiling (120s) plus local
+// persistence and pool import; a client abort does NOT cancel the paid order
+// server-side, so the page must tell users to confirm before re-ordering.
+export const purchaseRemail = (data: { project_id: number; email_suffix: string; quantity: number; supply?: string }) => api<{ ok: true; result: Record<string, unknown>; imported?: Array<{ order_no: string; row_id: string }>; skipped?: Array<{ order_no: string; reason: string }> }>('/api/remail/purchase', data, { timeoutMs: 180_000 })
 export const importRemailOrders = (order_nos: string[]) => api<{ ok: true; imported: Array<{ order_no: string; row_id: string }>; skipped: Array<{ order_no: string; reason: string }> }>('/api/remail/orders/import', { order_nos })
 export const hideRemailOrders = (order_nos: string[]) => api<{ ok: true; hidden: number }>('/api/remail/orders/hide', { order_nos })
 export const getRemailConfig = () => api<{ ok: true; config: FreeConfig['remail']; state: FreeState }>('/api/remail/config')
