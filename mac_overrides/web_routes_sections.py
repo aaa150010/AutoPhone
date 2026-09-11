@@ -627,6 +627,24 @@ def build_free_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]:
 
     def free_mutation_conflict(action: str):
         """Return a consistent conflict response while Free work owns its pools."""
+        manager = scope.free_manager
+        if manager is not None:
+            running_check = getattr(manager, "is_running", None)
+            if callable(running_check):
+                try:
+                    if running_check():
+                        # The cheap check says busy; the 409 body still needs a
+                        # state payload, so build it only in this rare branch.
+                        return scope.module.jsonify(
+                            ok=False,
+                            error=f"Free 注册运行中，暂不能{action}，请停止当前批次后重试",
+                            state=free_state(),
+                        ), 409
+                    return None
+                except Exception as exc:
+                    return free_state_failure_response(exc)
+        # Injected managers without the cheap projection keep the historical
+        # full-state check, failing closed on read errors.
         try:
             current_state = free_state()
         except Exception as exc:

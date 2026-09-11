@@ -2152,7 +2152,7 @@ _PUBLIC_STATE = _public_state_runtime_ext.PublicStateRuntime(
     public_tasks_view=lambda tasks: _public_tasks_view(tasks),
     runtime_summary_view=lambda tasks: _sms_cost_history_ext.with_historical_sms_cost(_runtime_summary(tasks), _RUNTIME_DATA_DIR),
     notification_public_status_view=lambda: _notification_public_status(),
-    public_logs_view=lambda logs, tasks: _public_logs(logs, tasks),
+    public_logs_view=lambda logs, tasks, local_config=None: _public_logs(logs, tasks, local_config),
     mailbox_pool_summary_getter=lambda: _MAILBOX_ADMIN_REF.get("service"),
 )
 

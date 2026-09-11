@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import copy
 import sys
+import inspect
 import json
 import math
 import re
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 
 _OPENAI_CONNECTIVITY_STATUSES = frozenset(
@@ -224,6 +225,15 @@ class PublicStateRuntime:
             notification_public_status_view or self.notification_public_status
         )
         self.public_logs_view = public_logs_view or self.public_logs
+        # Injected views may predate the optional local_config parameter.
+        try:
+            view_params = inspect.signature(self.public_logs_view).parameters
+            self._logs_view_accepts_config = any(
+                name == "local_config" or parameter.kind is inspect.Parameter.VAR_KEYWORD
+                for name, parameter in view_params.items()
+            )
+        except (TypeError, ValueError):
+            self._logs_view_accepts_config = True
         self.phone_binding_metrics_getter = phone_binding_metrics_getter
         self.mailbox_pool_summary_getter = mailbox_pool_summary_getter
 
@@ -501,10 +511,12 @@ class PublicStateRuntime:
             result["error"] = str(status.get("error") or "邮件通知发送失败：服务未返回具体原因")
         return result
 
-    def public_logs(self, logs: Any, tasks: Any) -> Any:
+    def public_logs(self, logs: Any, tasks: Any, local_config: Mapping[str, Any] | None = None) -> Any:
         if not isinstance(logs, list):
             return logs
-        local = self.read_local_config()
+        # ``masked_state`` already read the local config for this request;
+        # reusing it avoids a second disk read + migration pass per poll.
+        local = local_config if isinstance(local_config, Mapping) else self.read_local_config()
         sub2api = dict(local.get("sub2api") or {})
         notification = dict(local.get("email_notification") or {})
         online_mailbox = dict(local.get("online_mailbox") or {})
@@ -623,10 +635,14 @@ class PublicStateRuntime:
 
     def masked_state(self, data: Any) -> dict[str, Any]:
         snapshot = json.loads(json.dumps(data if isinstance(data, dict) else {}))
+        # One local-config read per request: the settings projection, the
+        # concurrency snapshot and the log redaction all need the same file,
+        # which cannot change mid-request.
+        local_config = self.read_local_config()
         settings = snapshot.get("settings")
         if isinstance(settings, dict):
             snapshot["settings"] = self.masked_local_config_view(
-                {**settings, **self.read_local_config()}
+                {**settings, **local_config}
             )
         provider_registry = self.sms_provider_registry_getter()
         statuses = provider_registry.public_statuses()
@@ -723,7 +739,6 @@ class PublicStateRuntime:
                 except Exception as exc:
                     # A missing inflight snapshot leaves the state field absent.
                     self._note_quiet("inflight_snapshot", exc)
-            local_config = self.read_local_config()
             concurrency["protocol"] = self.protocol_gate_getter().snapshot(
                 local_config.get("proxy")
             )
@@ -812,10 +827,15 @@ class PublicStateRuntime:
             runtime["tasks"] = self.public_tasks_view(raw_tasks)
             runtime["summary"] = self.runtime_summary_view(runtime["tasks"])
             runtime["notification"] = self.notification_public_status_view()
-            if isinstance(runtime.get("logs"), list):
-                runtime["logs"] = self.public_logs_view(runtime.get("logs"), raw_tasks)
-            if isinstance(snapshot.get("logs"), list):
-                snapshot["logs"] = self.public_logs_view(snapshot.get("logs"), raw_tasks)
+            runtime_logs = runtime.get("logs")
+            snapshot_logs = snapshot.get("logs")
+            same_logs = snapshot_logs is runtime_logs
+            if isinstance(runtime_logs, list):
+                runtime["logs"] = self.public_logs_view(runtime_logs, raw_tasks, local_config) if self._logs_view_accepts_config else self.public_logs_view(runtime_logs, raw_tasks)
+                if same_logs:
+                    snapshot["logs"] = runtime["logs"]
+            elif isinstance(snapshot_logs, list):
+                snapshot["logs"] = self.public_logs_view(snapshot_logs, raw_tasks, local_config) if self._logs_view_accepts_config else self.public_logs_view(snapshot_logs, raw_tasks)
         return snapshot
 
 

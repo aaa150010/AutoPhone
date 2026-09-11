@@ -1130,8 +1130,16 @@ class FreeRegisterProjectionMixin:
                 },
             }
 
-    def camoufox_debug_state(self) -> dict[str, Any]:
-        """Return the secret-free state of retained Camoufox debug pages."""
+    def _debug_state_config(self) -> Mapping[str, Any]:
+        """Config for the display-only debug bar, cached for one second.
+
+        The dashboard polls this projection every second; start/stop and the
+        mutating close helper keep reading the live config unchanged.
+        """
+        cache = getattr(self, "_debug_config_cache", None)
+        now = time.monotonic()
+        if cache is not None and now - cache[0] < 1.0:
+            return cache[1]
         config: Mapping[str, Any] = {}
         if callable(self.config_provider):
             try:
@@ -1142,6 +1150,12 @@ class FreeRegisterProjectionMixin:
                 config = self._last_config
         if not config:
             config = self._last_config
+        self._debug_config_cache = (now, config)
+        return config
+
+    def camoufox_debug_state(self) -> dict[str, Any]:
+        """Return the secret-free state of retained Camoufox debug pages."""
+        config = self._debug_state_config()
         runtime = _runtime_module()
         return runtime.camoufox_debug_state(self._camoufox_state_config(config))
 
