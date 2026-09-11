@@ -692,7 +692,7 @@ onMounted(async () => {
           @selection-change="selected = $event" size="small">
           <el-table-column type="selection" width="42" reserve-selection />
           <el-table-column type="index" label="序号" width="58" align="center" :index="(index: number) => index + 1 + (currentPage - 1) * pageSize" />
-          <el-table-column label="邮箱" :min-width="poolColWidth('邮箱', 280)" show-overflow-tooltip>
+          <el-table-column label="邮箱" :width="poolColWidth('邮箱', 240)" show-overflow-tooltip>
             <template #default="{ row }">
               <div class="mailbox-account-cell">
                 <el-tooltip :content="`点击复制邮箱${row.email ? `：${row.email}` : ''}`" placement="top" :show-after="250"><el-button link class="email-copy" :loading="loadingEmail.includes(row.row_id)" @click.stop="copyEmail(row)"><span>{{ row.email }}</span><el-icon v-if="!loadingEmail.includes(row.row_id)"><CopyDocument /></el-icon></el-button></el-tooltip>
@@ -703,17 +703,17 @@ onMounted(async () => {
           <el-table-column label="是否注册" :width="poolColWidth('是否注册', 90)" align="center">
             <template #default="{ row }"><el-tag size="small" :type="mailboxRegisteredType(row)" effect="plain">{{ mailboxRegisteredLabel(row) }}</el-tag></template>
           </el-table-column>
-          <el-table-column label="阶段" :min-width="poolColWidth('阶段', 150)" align="center" show-overflow-tooltip><template #default="{ row }"><el-tooltip :content="mailboxStageTooltip(row)" placement="top" :show-after="250"><span class="mailbox-stage-cell"><el-tag size="small" effect="light" :type="mailboxStageType(row)">{{ mailboxStageLabel(row) }}</el-tag></span></el-tooltip></template></el-table-column>
+          <el-table-column label="阶段" :width="poolColWidth('阶段', 140)" align="center" show-overflow-tooltip><template #default="{ row }"><el-tooltip :content="mailboxStageTooltip(row)" placement="top" :show-after="250"><span class="mailbox-stage-cell"><el-tag size="small" effect="light" :type="mailboxStageType(row)">{{ mailboxStageLabel(row) }}</el-tag></span></el-tooltip></template></el-table-column>
           <el-table-column label="套餐" :width="poolColWidth('套餐', 96)" align="center" show-overflow-tooltip>
             <template #default="{ row }"><div class="mailbox-plan-cell"><el-tag size="small" :type="mailboxPlanTagType(row)" effect="plain">{{ mailboxPlanLabel(row) }}</el-tag><el-tag v-if="row.plus_trial_eligible && String(row.subscription_plan || row.plan_type || '').toLowerCase() !== 'free'" size="small" type="success" effect="plain" class="trial-tag">Plus 试用</el-tag></div></template>
           </el-table-column>
-          <el-table-column label="账号测活" :min-width="poolColWidth('账号测活', 120)" align="center" show-overflow-tooltip>
+          <el-table-column label="账号测活" :width="poolColWidth('账号测活', 110)" align="center" show-overflow-tooltip>
             <template #default="{ row }"><div class="mailbox-live-cell"><el-tag size="small" :type="liveStatusType(row.live_check_status)">{{ liveStatusLabel(row.live_check_status) }}</el-tag><small v-if="row.live_check_mode">{{ row.live_check_mode === 'deep' ? '深度' : '快速' }}</small></div></template>
           </el-table-column>
-          <el-table-column label="凭据" :width="poolColWidth('凭据', 170)">
+          <el-table-column label="凭据" :width="poolColWidth('凭据', 120)">
             <template #default="{ row }"><div class="credential-cell"><StateDot :tone="mailboxTwofaType(row)" :label="`2FA ${mailboxTwofaLabel(row)}`" /><StateDot :tone="mailboxPasswordType(row)" :label="`密码 ${mailboxPasswordLabel(row)}`" /></div></template>
           </el-table-column>
-          <el-table-column label="错误" :min-width="poolColWidth('错误', 320)">
+          <el-table-column label="错误" :min-width="poolColWidth('错误', 260)">
             <template #default="{ row }">
               <el-tooltip placement="top" :disabled="!mailboxFailureDetails(row).length" :show-after="250">
                 <template #content><div class="failure-tooltip"><span v-for="item in mailboxFailureDetails(row)" :key="item">{{ item }}</span></div></template>

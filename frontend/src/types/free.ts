@@ -438,11 +438,13 @@ export interface FreeLiveCheckState {
     email_masked?: string
     subject_ref_fingerprint?: string
     created_at?: number
+    started_at?: number
     mode: 'fast' | 'deep' | string
     status: string
     stage?: string
     stage_label?: string
     checked_at?: number
+    timing?: TaskTiming
     failure?: FreeMailboxRow['live_check_failure']
   }>
 }

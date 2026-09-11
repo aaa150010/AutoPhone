@@ -69,7 +69,7 @@ const quickConcurrency = ref(defaultConfig.concurrency)
 const quickRunDirty = ref(false)
 const running = computed(() => Boolean(state.value.running))
 const debugWindowsOpen = computed(() => Number(state.value.camoufox_debug?.open_contexts || 0) > 0)
-const nowSeconds = useTaskProgressClock(() => state.value.tasks || [], () => Boolean(state.value.running))
+const nowSeconds = useTaskProgressClock(() => state.value.tasks || [], () => Boolean(state.value.running || liveState.value.running))
 const { colWidth: taskColWidth, handleHeaderDragend: onTaskHeaderDragend, resetWidths: resetTaskWidths } = useColumnWidths('gptphone.table.widths.free-register', { autoResetOnce: true })
 function automaticOtpRemaining(task: FreeTaskRow) {
   return automaticOtpRemainingPure(task, nowSeconds.value)
@@ -117,6 +117,16 @@ function runKindOfTask(task: FreeTaskRow): RunKind {
   if (mode === 'password') return 'password_retry'
   if (task.retry_of) return 'register_rerun'
   return 'register'
+}
+
+function liveRunProgress(job: NonNullable<UnifiedRunRow['job']>) {
+  return {
+    code: String(job.stage || ''),
+    label: job.stage_label || liveStatusLabel(job.status),
+    group: 'free' as const,
+    entered_at: Number(job.created_at || 0),
+    finished_at: job.checked_at ?? null,
+  }
 }
 
 const unifiedRuns = computed<UnifiedRunRow[]>(() => {
@@ -632,10 +642,10 @@ onMounted(async () => {
           <el-table ref="taskTable" v-loading="loading" :data="pagedRuns" row-key="key" height="100%" size="small" border :row-class-name="runRowClass" @header-dragend="(newWidth: number, oldWidth: number, column: DragColumn) => onTaskHeaderDragend(newWidth, oldWidth, column)" @selection-change="handleTaskSelection">
             <el-table-column type="selection" width="42" reserve-selection :selectable="runSelectable" />
             <el-table-column type="index" label="序号" width="58" align="center" :index="(index: number) => index + 1 + (taskPage - 1) * taskPageSize" />
-            <el-table-column label="类型" :width="taskColWidth('类型', 104)" align="center">
+            <el-table-column label="类型" :width="taskColWidth('类型', 88)" align="center">
               <template #default="{ row }"><el-tag size="small" :type="kindTagType(row.kind)" effect="plain">{{ row.kindLabel }}</el-tag></template>
             </el-table-column>
-            <el-table-column label="账号" :min-width="taskColWidth('账号', 280)" show-overflow-tooltip>
+            <el-table-column label="账号" :width="taskColWidth('账号', 240)" show-overflow-tooltip>
               <template #default="{ row }">
                 <div v-if="row.task" class="account-cell">
                   <el-tooltip v-if="row.task.email" :content="`${String(row.task.email)}${row.task.task_id ? ` · 任务 ${row.task.task_id}` : ''}`" placement="top" :show-after="250"><el-button link class="email-copy" :loading="loadingEmailTaskIds.includes(String(row.task.task_id || ''))" @click.stop="copyTaskEmail(row.task)"><strong>{{ row.task.email }}</strong><el-icon v-if="!loadingEmailTaskIds.includes(String(row.task.task_id || ''))"><CopyDocument /></el-icon></el-button></el-tooltip>
@@ -648,19 +658,20 @@ onMounted(async () => {
                 </div>
               </template>
             </el-table-column>
-            <el-table-column label="验证码" :width="taskColWidth('验证码', 110)" align="center">
+            <el-table-column label="验证码" :width="taskColWidth('验证码', 96)" align="center">
               <template #default="{ row }">
                 <template v-if="row.task"><TaskVerificationInput v-if="!isHistoricalDriver(row.task) && row.task.manual_verification?.can_submit" :task-id="row.task.task_id" :request="row.task.manual_verification" :now-seconds="nowSeconds" /><span v-else-if="!isHistoricalDriver(row.task) && row.task.mailbox_verification?.phase === 'automatic'" class="automatic-otp-wait">自动取码 <strong>{{ automaticOtpRemaining(row.task) }}s</strong></span><span v-else class="muted">-</span></template>
                 <span v-else class="muted">-</span>
               </template>
             </el-table-column>
-            <el-table-column label="阶段 / 耗时" :min-width="taskColWidth('阶段 / 耗时', 230)">
+            <el-table-column label="阶段 / 耗时" :width="taskColWidth('阶段 / 耗时', 210)">
               <template #default="{ row }">
                 <TaskProgressCell v-if="row.task" :progress="row.task.progress" :timing="row.task.timing" :now-seconds="nowSeconds" :status="row.task.status" />
-                <span v-else class="muted">{{ row.job?.stage_label || liveStatusLabel(row.job?.status) }}<template v-if="row.job?.checked_at"> · {{ formatShortDateTime(row.job.checked_at) }}</template></span>
+                <TaskProgressCell v-else-if="row.job" :progress="liveRunProgress(row.job)" :timing="row.job.timing" :now-seconds="nowSeconds" :status="row.job.status" />
+                <span v-else class="muted">-</span>
               </template>
             </el-table-column>
-            <el-table-column label="状态" :width="taskColWidth('状态', 122)" align="center" show-overflow-tooltip>
+            <el-table-column label="状态" :width="taskColWidth('状态', 100)" align="center" show-overflow-tooltip>
               <template #default="{ row }">
                 <el-tag v-if="!row.task" size="small" :type="liveStatusType(row.job?.status)">{{ liveStatusLabel(row.job?.status) }}</el-tag>
                 <el-tag v-else size="small" :type="isRetryResolved(row.task.retry_resolved) ? 'success' : taskStatusType(row.task.status)">{{ displayTaskStatus(row.task) }}</el-tag>
@@ -672,13 +683,13 @@ onMounted(async () => {
                 <span v-else class="muted">-</span>
               </template>
             </el-table-column>
-            <el-table-column label="凭据" :width="taskColWidth('凭据', 170)">
+            <el-table-column label="凭据" :width="taskColWidth('凭据', 120)">
               <template #default="{ row }">
                 <div v-if="row.task" class="credential-cell"><StateDot :tone="taskTwofaType(row.task)" :label="`2FA ${taskTwofaLabel(row.task)}`" /><StateDot :tone="taskPasswordType(row.task)" :label="`密码 ${taskPasswordLabel(row.task)}`" /></div>
                 <span v-else class="muted">-</span>
               </template>
             </el-table-column>
-            <el-table-column label="错误" :min-width="taskColWidth('错误', 320)">
+            <el-table-column label="错误" :min-width="taskColWidth('错误', 260)">
               <template #default="{ row }">
                 <template v-if="row.task">
                   <el-tooltip placement="top" :disabled="!taskFailureDetails(row.task).length" :show-after="250">
