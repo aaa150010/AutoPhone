@@ -249,15 +249,19 @@ async function refresh() {
 
 async function load() {
   loading.value = true
-  try {
-    const result = await getFreeConfig()
-    mergeConfig(result.config, true)
-    state.value = result.state || state.value
-  } catch (error) {
-    ElMessage.error(errorMessage(error) || 'Free 配置加载失败')
-  } finally {
-    loading.value = false
+  // 首次进入同样并行拉取测活任务，避免页面先渲染注册任务、轮询到达
+  // 之后再补入测活行的行数跳变。
+  const [configResult, liveResult] = await Promise.allSettled([getFreeConfig(), getFreeLiveCheckState()])
+  if (configResult.status === 'fulfilled') {
+    mergeConfig(configResult.value.config, true)
+    state.value = configResult.value.state || state.value
+  } else {
+    ElMessage.error(errorMessage(configResult.reason) || 'Free 配置加载失败')
   }
+  if (liveResult.status === 'fulfilled') {
+    liveState.value = liveResult.value.state || liveState.value
+  }
+  loading.value = false
 }
 
 async function preflight() {
