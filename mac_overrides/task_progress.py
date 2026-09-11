@@ -24,6 +24,22 @@ SEGMENTS = {
 }
 
 
+def _copy_json_value(value: Any) -> Any:
+    """Deep-copy plain JSON data without ``copy.deepcopy``'s memo overhead.
+
+    Progress payloads are JSON-shaped (dict/list/scalars) because they are
+    persisted verbatim; the hand-rolled copy keeps the per-state-poll cost
+    linear and allocation-light.
+    """
+    if isinstance(value, dict):
+        return {key: _copy_json_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_copy_json_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_copy_json_value(item) for item in value)
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class StageDefinition:
     code: str
@@ -340,7 +356,7 @@ class TaskProgressTracker:
                 break
 
     def _public_progress(self, current: dict[str, Any], timestamp: int) -> dict[str, Any]:
-        value = copy.deepcopy(current)
+        value = _copy_json_value(current)
         timing = value.get("timing") if isinstance(value.get("timing"), dict) else {}
         started_at = int(timing.get("started_at") or value.get("entered_at") or timestamp)
         queued_at = int(timing.get("queued_at") or started_at)

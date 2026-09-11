@@ -184,6 +184,7 @@ class PublicStateRuntime:
         transport_registry_getter: Callable[[], Any] | None = None,
         masked_local_config_view: Callable[[Any], dict[str, Any]] | None = None,
         public_task_view: Callable[[Any], dict[str, Any]] | None = None,
+        public_tasks_view: Callable[[list[Any]], list[dict[str, Any]]] | None = None,
         runtime_summary_view: Callable[[Any], dict[str, Any]] | None = None,
         notification_public_status_view: Callable[[], dict[str, Any]] | None = None,
         public_logs_view: Callable[[Any, Any], Any] | None = None,
@@ -217,6 +218,7 @@ class PublicStateRuntime:
         self.public_log_input_limit = public_log_input_limit
         self.masked_local_config_view = masked_local_config_view or self.masked_local_config
         self.public_task_view = public_task_view or self.public_task
+        self.public_tasks_view = public_tasks_view or self._default_public_tasks_view
         self.runtime_summary_view = runtime_summary_view or self.runtime_summary
         self.notification_public_status_view = (
             notification_public_status_view or self.notification_public_status
@@ -229,7 +231,11 @@ class PublicStateRuntime:
         return self.secret_mask if self.clean(value) else ""
 
     def masked_local_config(self, data: Any) -> dict[str, Any]:
-        value = json.loads(json.dumps(data if isinstance(data, dict) else {}))
+        # Top-level copy only: every nested mutation below builds its own
+        # dict first, so the historical full JSON round-trip per state poll
+        # bought no extra isolation for callers that pass freshly decoded
+        # configs (the only documented callers).
+        value = dict(data) if isinstance(data, dict) else {}
         value.pop("nvtoken", None)
         value.pop("nvtoken_upload", None)
         value.pop("pixel_upload_enabled", None)
@@ -268,6 +274,9 @@ class PublicStateRuntime:
             online_mailbox["api_token"] = self._mask_secret(online_mailbox.get("api_token"))
             value["online_mailbox"] = online_mailbox
         return value
+
+    def _default_public_tasks_view(self, tasks: list[Any]) -> list[dict[str, Any]]:
+        return [self.public_task_view(task) for task in tasks]
 
     def public_task(self, task: Any) -> dict[str, Any]:
         if not isinstance(task, dict):
@@ -800,7 +809,7 @@ class PublicStateRuntime:
                 pool = existing_pool if isinstance(existing_pool, dict) else {}
                 runtime["pool"] = {**copy.deepcopy(pool), **mailbox_pool}
             raw_tasks = runtime.get("tasks") if isinstance(runtime.get("tasks"), list) else []
-            runtime["tasks"] = [self.public_task_view(task) for task in raw_tasks]
+            runtime["tasks"] = self.public_tasks_view(raw_tasks)
             runtime["summary"] = self.runtime_summary_view(runtime["tasks"])
             runtime["notification"] = self.notification_public_status_view()
             if isinstance(runtime.get("logs"), list):

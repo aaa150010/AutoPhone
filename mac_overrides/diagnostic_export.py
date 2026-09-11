@@ -40,6 +40,63 @@ def _search_bound(value: Any, *, end_of_day: bool = False) -> str:
 class DiagnosticExportMixin:
     """Mixin providing incident search and redacted export for ``DiagnosticStore``."""
 
+    def search_task_incidents(self, task_ids: Sequence[str], batch_ids: Mapping[str, str] | None = None) -> dict[str, str]:
+        """Return ``task_id -> newest matching incident_id`` for many tasks.
+
+        Winners replicate the per-task ``search({"task_id": ..., "limit": 1})``
+        selection exactly: failure outcomes outrank other outcomes, then the
+        most recent ``updated_at`` wins. When ``batch_ids`` supplies a task's
+        batch, the batch-scoped winner is preferred and the unscoped winner
+        only serves as the legacy fallback, mirroring the historical two-step
+        lookup in one pair of indexed queries.
+        """
+        unique_ids: list[str] = []
+        seen: set[str] = set()
+        for task_id in task_ids:
+            value = _safe_text(task_id, 500)
+            if value and value not in seen:
+                seen.add(value)
+                unique_ids.append(value)
+        if not unique_ids:
+            return {}
+        placeholders = ",".join("?" for _ in unique_ids)
+        rank = "CASE WHEN i.outcome IN ('error','failed','failure') THEN 0 ELSE 1 END, i.updated_at DESC"
+        scoped: dict[str, dict[str, str]] = {}
+        unscoped: dict[str, str] = {}
+        with self._lock, self._connection() as db:
+            rows = db.execute(
+                "SELECT task_id, batch_id, incident_id FROM ("
+                "SELECT i.task_id AS task_id, i.batch_id AS batch_id, i.incident_id AS incident_id, "
+                f"ROW_NUMBER() OVER (PARTITION BY i.task_id, i.batch_id ORDER BY {rank}) AS rn "
+                f"FROM diagnostic_incidents i WHERE i.task_id IN ({placeholders})"
+                ") WHERE rn=1",
+                unique_ids,
+            ).fetchall()
+            for row in rows:
+                scoped.setdefault(str(row[0] or ""), {})[str(row[1] or "")] = str(row[2] or "")
+            rows = db.execute(
+                "SELECT task_id, incident_id FROM ("
+                "SELECT i.task_id AS task_id, i.incident_id AS incident_id, "
+                f"ROW_NUMBER() OVER (PARTITION BY i.task_id ORDER BY {rank}) AS rn "
+                f"FROM diagnostic_incidents i WHERE i.task_id IN ({placeholders})"
+                ") WHERE rn=1",
+                unique_ids,
+            ).fetchall()
+            for row in rows:
+                unscoped[str(row[0] or "")] = str(row[1] or "")
+        winners: dict[str, str] = {}
+        for task_id in unique_ids:
+            wanted_batch = str((batch_ids or {}).get(task_id) or "")
+            if wanted_batch:
+                winner = scoped.get(task_id, {}).get(wanted_batch)
+                if winner:
+                    winners[task_id] = winner
+                    continue
+            winner = unscoped.get(task_id)
+            if winner:
+                winners[task_id] = winner
+        return winners
+
     def search_task_nodes(self, task_ids: Sequence[str], node_code: str) -> dict[str, str]:
         """Return ``task_id -> incident_id`` for the newest matching incident.
 

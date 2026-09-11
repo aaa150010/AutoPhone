@@ -92,7 +92,9 @@ class FreeControlRouteController:
         if self.manager is None or self.config_store is None or not self.request_lock.acquire(blocking=False):
             return self.module.jsonify(ok=False, error="Free 配置请求正在处理中", state=self.state()), 409
         try:
-            if self.manager.public_state().get("running"):
+            running_check = getattr(self.manager, "is_running", None)
+            running = running_check() if callable(running_check) else bool(self.manager.public_state().get("running"))
+            if running:
                 return self.module.jsonify(ok=False, error="Free 任务运行中，停止后才能修改配置", state=self.state()), 409
             payload = save_free_config_bundle(self.config_store, self.manager, data)
             return self.module.jsonify(ok=True, state=self.state(), **payload)

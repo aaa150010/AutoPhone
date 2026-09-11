@@ -207,12 +207,22 @@ def build_core_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]:
 
     frontend_dist = scope.context.app_dir / "frontend" / "dist"
 
+    vite_probe_cache: dict[str, tuple[float, bool]] = {}
+
     def _vite_dev_server_alive() -> bool:
+        # Every SPA deep-link request otherwise pays a full TCP probe; a
+        # one-second cache keeps dev-server start/stop perception intact.
+        cached = vite_probe_cache.get("alive")
+        now = time.monotonic()
+        if cached is not None and now - cached[0] < 1.0:
+            return cached[1]
         try:
             with socket.create_connection(("127.0.0.1", 5173), timeout=0.25):
-                return True
+                alive = True
         except OSError:
-            return False
+            alive = False
+        vite_probe_cache["alive"] = (now, alive)
+        return alive
 
     def spa_index():
         # While the start.command Vite dev server is running, the browser

@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 import re
 import socket
-from threading import RLock
+from threading import Lock, RLock
 import time
 from typing import Any, Callable, Iterable, Mapping, Protocol, Sequence
 import urllib.parse
@@ -82,6 +82,21 @@ class RequestsTransport:
     def __init__(self, *, proxy: str = "", session: Any = None) -> None:
         self.proxy = str(proxy or "").strip()
         self.session = session
+        # Lazy session creation must not race between batch workers sharing
+        # one transport.
+        self._session_lock = Lock()
+
+    def _ensure_session(self) -> Any:
+        if self.session is None:
+            with self._session_lock:
+                if self.session is None:
+                    import requests
+
+                    # Mirrors the top-level ``requests.request`` shortcut
+                    # (same trust_env behavior) but reuses the connection
+                    # pool across the batch.
+                    self.session = requests.Session()
+        return self.session
 
     def request(
         self,
@@ -95,7 +110,7 @@ class RequestsTransport:
     ) -> HttpResponse:
         import requests
 
-        sender = self.session.request if self.session is not None else requests.request
+        sender = self._ensure_session().request
         kwargs: dict[str, Any] = {
             "headers": dict(headers),
             "json": dict(json_body),

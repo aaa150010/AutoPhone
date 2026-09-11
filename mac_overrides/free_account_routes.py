@@ -117,7 +117,7 @@ class FreeAccountRouteController:
         task_id = str(data.get("task_id") or "").strip() if isinstance(data, Mapping) else ""
         try:
             with self.manager._lock:
-                task = copy.deepcopy(self.manager._tasks.get(task_id))
+                task = dict(self.manager._tasks.get(task_id) or {})
             if not task:
                 raise FreeRegisterError("free_mailbox_latest_code", "读取 Free 邮箱验证码", "Free 任务不存在", retryable=False)
             row_id = str(task.get("row_id") or "")

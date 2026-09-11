@@ -625,9 +625,12 @@ def _remember_task_failure(task_id, failure):
 
 
 def _known_task_failure(task_id):
+    # Callers treat the failure view as read-only; a shallow copy keeps the
+    # per-log-row hot path off the deep-copy cost while holding the shared
+    # lock. Nested values are treated as immutable by contract.
     with _TASK_FAILURES_LOCK:
         value = _TASK_FAILURES.get(str(task_id or "").strip())
-        return copy.deepcopy(value) if isinstance(value, dict) else None
+        return dict(value) if isinstance(value, dict) else None
 
 
 def _clear_known_node_failure(task_id):
@@ -2146,6 +2149,7 @@ _PUBLIC_STATE = _public_state_runtime_ext.PublicStateRuntime(
     public_log_input_limit=_PUBLIC_LOG_INPUT_LIMIT,
     masked_local_config_view=lambda data: _masked_local_config(data),
     public_task_view=lambda task: _public_task(task),
+    public_tasks_view=lambda tasks: _public_tasks_view(tasks),
     runtime_summary_view=lambda tasks: _sms_cost_history_ext.with_historical_sms_cost(_runtime_summary(tasks), _RUNTIME_DATA_DIR),
     notification_public_status_view=lambda: _notification_public_status(),
     public_logs_view=lambda logs, tasks: _public_logs(logs, tasks),
@@ -2156,27 +2160,56 @@ _PUBLIC_STATE = _public_state_runtime_ext.PublicStateRuntime(
 _masked_local_config = _PUBLIC_STATE.masked_local_config
 
 
-def _public_task(task):
-    public = _PUBLIC_STATE.public_task(task)
-    task_id = str((task or {}).get("task_id") or "").strip() if isinstance(task, dict) else ""
-    if task_id and not public.get("incident_id"):
+def _public_tasks_view(tasks):
+    """Enrich a whole task list with one batched incident lookup."""
+    task_ids: list[str] = []
+    batch_ids: dict[str, str] = {}
+    for task in tasks if isinstance(tasks, list) else []:
+        if not isinstance(task, dict):
+            continue
+        task_id = str(task.get("task_id") or "").strip()
+        if not task_id:
+            continue
+        if task_id not in batch_ids:
+            task_ids.append(task_id)
+        batch_ids.setdefault(task_id, str(task.get("batch_id") or "").strip())
+    bulk = getattr(_DIAGNOSTIC_STORE, "search_task_incidents", None)
+    incident_map: dict = {}
+    if task_ids and callable(bulk):
         try:
-            lookup = {"task_id": task_id, "limit": 1}
-            batch_id = str((task or {}).get("batch_id") or "").strip() if isinstance(task, dict) else ""
-            if batch_id:
-                lookup["batch_id"] = batch_id
-            matches = _DIAGNOSTIC_STORE.search(lookup)
-            if not matches and batch_id:
-                # Legacy ordinary log events may predate batch_id metadata;
-                # retain the stable task join without crossing to another
-                # task.
-                matches = _DIAGNOSTIC_STORE.search({"task_id": task_id, "limit": 1})
-            if matches:
-                public["incident_id"] = str(matches[0].get("incident_id") or "")
+            incident_map = bulk(task_ids, batch_ids) or {}
         except Exception as exc:
             # A diagnostic index outage must never make the main task state
             # unavailable; the log center health endpoint reports the outage.
-            _note_stderr("task_incident_lookup", exc)
+            _note_stderr("task_incidents_bulk", exc)
+            incident_map = {}
+    return [_public_task(task, incident_map) for task in tasks]
+
+
+def _public_task(task, task_incidents=None):
+    public = _PUBLIC_STATE.public_task(task)
+    task_id = str((task or {}).get("task_id") or "").strip() if isinstance(task, dict) else ""
+    if task_id and not public.get("incident_id"):
+        batch_id = str((task or {}).get("batch_id") or "").strip() if isinstance(task, dict) else ""
+        if isinstance(task_incidents, dict) and task_id in task_incidents:
+            public["incident_id"] = str(task_incidents[task_id] or "")
+        else:
+            try:
+                lookup = {"task_id": task_id, "limit": 1}
+                if batch_id:
+                    lookup["batch_id"] = batch_id
+                matches = _DIAGNOSTIC_STORE.search(lookup)
+                if not matches and batch_id:
+                    # Legacy ordinary log events may predate batch_id metadata;
+                    # retain the stable task join without crossing to another
+                    # task.
+                    matches = _DIAGNOSTIC_STORE.search({"task_id": task_id, "limit": 1})
+                if matches:
+                    public["incident_id"] = str(matches[0].get("incident_id") or "")
+            except Exception as exc:
+                # A diagnostic index outage must never make the main task state
+                # unavailable; the log center health endpoint reports the outage.
+                _note_stderr("task_incident_lookup", exc)
     prompt = _MANUAL_VERIFICATION.public(task_id) if task_id else {}
     if isinstance(prompt, dict) and prompt and prompt.get("input_kind"):
         public["manual_verification"] = prompt

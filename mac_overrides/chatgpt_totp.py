@@ -282,13 +282,12 @@ def _replacement_for_row(
     state_keys: set[str],
     compatible_key: Callable[..., str],
 ) -> tuple[Any, str] | None:
-    """Build the replacement pool entry for one raw row, if any format matches."""
+    """Build the replacement pool entry for one raw row, if any format matches.
+
+    Parsers run lazily in the if-chain order below; at most one format can
+    match a row, so eager evaluation only wasted five parser runs per row.
+    """
     parsed_password_url = parse_mailbox_password_url_row(raw)
-    parsed_oauth = parse_oauth_mailbox_row(raw)
-    parsed_url_totp = parse_mailbox_url_totp_row(raw)
-    parsed_totp = parse_chatgpt_totp_row(raw)
-    parsed_url = parse_mailbox_url_row(raw)
-    parsed_plain = parse_plain_password_mailbox_row(raw)
     if parsed_password_url:
         email = parsed_password_url.email
         password = parsed_password_url.password
@@ -312,6 +311,7 @@ def _replacement_for_row(
             oauth_refresh_token="",
             source_row=raw,
         ), identity
+    parsed_oauth = parse_oauth_mailbox_row(raw)
     if parsed_oauth:
         email, password, oauth_client_id, oauth_refresh_token = parsed_oauth
         identity = f"outlook:{oauth_client_id}:{oauth_refresh_token or password}"
@@ -337,6 +337,7 @@ def _replacement_for_row(
             oauth_refresh_token=oauth_refresh_token,
             source_row=raw,
         ), identity
+    parsed_url_totp = parse_mailbox_url_totp_row(raw)
     if parsed_url_totp:
         email, mailbox_url, totp_secret = parsed_url_totp
         identity = f"url:{mailbox_url}:totp:{totp_secret}"
@@ -352,6 +353,7 @@ def _replacement_for_row(
             oauth_refresh_token=totp_secret,
             source_row=raw,
         ), identity
+    parsed_totp = parse_chatgpt_totp_row(raw)
     if parsed_totp:
         email, password, totp_secret = parsed_totp
         identity = f"outlook:chatgpt_totp:{totp_secret}"
@@ -367,6 +369,7 @@ def _replacement_for_row(
             oauth_refresh_token=totp_secret,
             source_row=raw,
         ), identity
+    parsed_url = parse_mailbox_url_row(raw)
     if parsed_url:
         current = existing_by_line.get(line_no)
         identity = f"url:{parsed_url.mailbox_url}"
@@ -398,6 +401,7 @@ def _replacement_for_row(
             oauth_refresh_token="",
             source_row=raw,
         ), identity
+    parsed_plain = parse_plain_password_mailbox_row(raw)
     if parsed_plain:
         email, password, _delimiter = parsed_plain
         identity = plain_password_identity(email, password)
