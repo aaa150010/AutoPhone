@@ -693,6 +693,9 @@ class FreeLiveCheckTests(unittest.TestCase):
         oauth_module._continue_url = lambda response: response.get("continue_url", "")
         oauth_module._is_success_response = lambda response: response.get("ok", True)
         context = service._context({"task_id": "free-live-deep-test", "row_id": pool.entries()[0].row_id})
+        # The executor injects the pool-allocated proxy before the runner;
+        # direct runner calls mirror that step here.
+        context["proxy"] = str(pool.result(context["row_id"]).get("proxy") or "")
 
         with patch.dict(sys.modules, {"codex_chain_runner": runner_module, "codex_oauth_chain": oauth_module}), patch(
             "mac_overrides.free_live_check.MailboxUrlOtpProvider", FakeOtp
@@ -708,6 +711,84 @@ class FreeLiveCheckTests(unittest.TestCase):
         self.assertEqual(calls[:6], ["start", "mark_sent", "submit", "wait_code", "verify:123456", "callback"])
         self.assertIn("session_close", calls)
         self.assertIn("transport_close", calls)
+
+    def test_deep_context_carries_remail_fields_for_otp_provider(self):
+        pool, proxies, logs = self._resources(2)
+        remail_row, url_row = (entry.row_id for entry in pool.entries())
+        pool.update(remail_row, source="remail", service_token="rk-test-token")
+        service = self._service(pool, proxies, logs)
+        remail_context = service._context({"task_id": "free-live-deep-remail", "row_id": remail_row})
+        self.assertEqual(remail_context["mailbox_source"], "remail")
+        self.assertEqual(remail_context["service_token"], "rk-test-token")
+        url_context = service._context({"task_id": "free-live-deep-url", "row_id": url_row})
+        self.assertEqual(url_context["mailbox_source"], "url")
+        self.assertEqual(url_context["service_token"], "")
+
+    def test_live_check_allocates_shared_pool_proxy_without_bound_row_proxy(self):
+        pool, proxies, logs = self._resources(1)
+        row_id = pool.entries()[0].row_id
+        pool.update(row_id, proxy="", proxy_id="", proxy_scheme="", proxy_masked="")
+        captured: dict[str, str] = {}
+
+        def fast_runner(context, _config):
+            captured["proxy"] = str(context.get("proxy") or "")
+            return {"status": "live"}
+
+        service = self._service(pool, proxies, logs, fast_runner=fast_runner)
+        service.enqueue([row_id], "fast")
+        self._wait(service)
+        self.assertEqual(pool.result(row_id)["live_check_status"], "live")
+        self.assertTrue(captured["proxy"])
+
+    def test_deep_deactivated_result_deletes_pool_row(self):
+        pool, proxies, logs = self._resources(1)
+        row_id = pool.entries()[0].row_id
+
+        def deep_runner(_context, _config):
+            return {
+                "status": "deactivated",
+                "failure": {"node_code": "free_live_deactivated", "error_code": "account_deactivated", "retryable": False},
+            }
+
+        service = self._service(pool, proxies, logs, deep_runner=deep_runner)
+        service.enqueue([row_id], "deep")
+        self._wait(service)
+        self.assertIsNone(pool.entry(row_id))
+
+    def test_deep_retries_with_fresh_proxy_on_retryable_failure(self):
+        pool, proxies, logs = self._resources(2)
+        row_id = pool.entries()[0].row_id
+        attempts: list[str] = []
+
+        def deep_runner(context, _config):
+            attempts.append(str(context.get("proxy") or ""))
+            if len(attempts) == 1:
+                raise FreeRegisterError(
+                    "free_live_deep", "深度测活", "代理连接失败",
+                    retryable=True, error_code="proxy_connect_failed",
+                )
+            return {"status": "live", "access_token": "retry-token"}
+
+        service = self._service(pool, proxies, logs, deep_runner=deep_runner)
+        service.enqueue([row_id], "deep")
+        self._wait(service)
+        self.assertEqual(pool.result(row_id)["live_check_status"], "live")
+        self.assertEqual(len(attempts), 2)
+        self.assertTrue(attempts[0])
+        self.assertNotEqual(attempts[0], attempts[1])
+
+    def test_fast_deactivated_result_keeps_pool_row(self):
+        pool, proxies, logs = self._resources(1)
+        row_id = pool.entries()[0].row_id
+
+        def fast_runner(_context, _config):
+            return {"status": "deactivated"}
+
+        service = self._service(pool, proxies, logs, fast_runner=fast_runner)
+        service.enqueue([row_id], "fast")
+        self._wait(service)
+        self.assertIsNotNone(pool.entry(row_id))
+        self.assertEqual(pool.result(row_id)["live_check_status"], "deactivated")
 
 
 if __name__ == "__main__":

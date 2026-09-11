@@ -543,10 +543,6 @@ class FreeLiveCheckService:
                 if not result.get("access_token"):
                     skipped.append({"row_id": row_id, "reason": "该账号没有可用 Token"})
                     continue
-                proxy = str(result.get("proxy") or registration_state.get("proxy") or "").strip()
-                if not proxy:
-                    skipped.append({"row_id": row_id, "reason": "该账号缺少可用代理"})
-                    continue
                 now = int(time.time())
                 task_id = f"free-live-{selected_mode}-{now}-{secrets.token_hex(4)}"
                 job = {
@@ -606,22 +602,28 @@ class FreeLiveCheckService:
             raise FreeRegisterError("free_live_account", "读取 Free 测活账号", "Free 邮箱行不存在或已变化", retryable=False)
         result = self.pool.result(row_id)
         private_state = self.pool._row_state(row_id)
-        proxy = str(result.get("proxy") or private_state.get("proxy") or "").strip()
         registration_ip = str(result.get("registration_ip") or private_state.get("registration_ip") or "").strip()
-        if not proxy:
-            raise FreeRegisterError("free_live_network_error", "Free 测活网络异常", "账号没有可用的绑定代理", retryable=False)
+        # The proxy recorded at registration is history only.  Every check
+        # allocates a healthy proxy from the shared pool at execution time
+        # (see ``_allocate_proxy``); the fields below are placeholders that
+        # the executor overwrites with the allocated binding.
         return {
             "task_id": str(job.get("task_id") or ""),
             "row_id": row_id,
             "email": entry.email,
             "mailbox_url": entry.mailbox_url,
-            "proxy": proxy,
-            "proxy_id": str(result.get("proxy_id") or private_state.get("proxy_id") or ""),
-            "proxy_scheme": str(result.get("proxy_scheme") or private_state.get("proxy_scheme") or ""),
-            "proxy_country": str(result.get("proxy_country") or private_state.get("proxy_country") or ""),
-            "proxy_group": str(result.get("proxy_group") or private_state.get("proxy_group") or ""),
-            "proxy_masked": mask_proxy(proxy),
-            "proxy_fingerprint": fingerprint(proxy),
+            # Remail mailboxes must resolve through the shared OTP provider's
+            # remail branch; without these fields the pickup URL is fetched as
+            # a plain URL and the provider rejects it with HTTP 400.
+            "mailbox_source": str(private_state.get("source") or "url").strip().lower() or "url",
+            "service_token": str(private_state.get("service_token") or private_state.get("serviceToken") or ""),
+            "proxy": "",
+            "proxy_id": "",
+            "proxy_scheme": "",
+            "proxy_country": "",
+            "proxy_group": "",
+            "proxy_masked": "",
+            "proxy_fingerprint": "",
             "registration_ip": registration_ip,
             "live_check_ip": str(result.get("live_check_ip") or "").strip(),
             "expected_exit_ip": str(result.get("expected_exit_ip") or "").strip(),
@@ -633,18 +635,33 @@ class FreeLiveCheckService:
             "saved_result": result,
         }
 
-    @staticmethod
-    def _binding(context: Mapping[str, Any]) -> ProxyBinding:
-        return ProxyBinding(
-            str(context.get("proxy") or ""),
-            str(context.get("proxy_fingerprint") or ""),
-            str(context.get("proxy_masked") or ""),
-            str(context.get("exit_ip") or context.get("registration_ip") or ""),
-            proxy_id=str(context.get("proxy_id") or ""),
-            scheme=str(context.get("proxy_scheme") or ""),
-            country=str(context.get("proxy_country") or ""),
-            group=str(context.get("proxy_group") or ""),
+    def _allocate_proxy(self, config: Mapping[str, Any], owner: str, task_id: str, exclude_proxy_ids: Sequence[str] = ()) -> ProxyBinding:
+        """Allocate one healthy proxy from the shared pool for this check.
+
+        Live checks never pin the proxy recorded at registration: that value
+        may be stale or rejected by OpenAI edge hosts, while every Free
+        workflow shares the same healthy_random pool (mirrors rebind).
+        ``exclude_proxy_ids`` keeps proxy-swapping retries off exits that
+        already failed in this run.
+        """
+        binder = getattr(self.proxies, "bind", None)
+        if not callable(binder):
+            raise FreeRegisterError("free_live_network_error", "Free 账号测活", "共享 Free 代理池不可用", retryable=False)
+        bindings = binder(
+            1,
+            probe=self.proxy_probe,
+            probe_url=str(config.get("proxy_probe_url") or "https://chatgpt.com/"),
+            driver="protocol",
+            exclude_proxy_ids=exclude_proxy_ids,
+            perform_probe=False,
         )
+        if not bindings:
+            raise FreeRegisterError("free_live_network_error", "Free 账号测活", "共享 Free 代理池没有健康代理", retryable=False)
+        binding = bindings[0]
+        lease = getattr(self.proxies, "lease", None)
+        if callable(lease) and str(getattr(binding, "proxy_id", "") or ""):
+            lease(binding, owner=owner, batch_id=owner, task_id=task_id)
+        return binding
 
     def _set_job(self, task_id: str, **values: Any) -> dict[str, Any]:
         with self._lock:
@@ -712,25 +729,57 @@ class FreeLiveCheckService:
         job = self._set_job(task_id, status="running", stage="free_live_fast" if mode == "fast" else "free_live_deep")
         if not job:
             return
-        binding: ProxyBinding | None = None
         lease_owner = task_id
         context: dict[str, Any] = {}
         try:
             config = self._config()
             context = self._context(job)
-            binding = self._binding(context)
-            if binding.proxy_id:
-                self.proxies.lease(binding, owner=lease_owner, batch_id=lease_owner, task_id=task_id)
             mode = str(job.get("mode") or "fast")
             stage = "free_live_fast" if mode == "fast" else "free_live_deep"
             # Fast and deep checks enter their real authenticated transport
             # directly.  An exit-IP-style observation is neither required
             # for authentication nor evidence of token validity, so it is not
             # a hidden preflight step.
+            # Deep re-logins sample the shared pool: one dead or edge-blocked
+            # exit must not fail the run while other healthy proxies exist,
+            # so retryable failures swap to a fresh, unused proxy (bounded).
+            max_attempts = 5 if mode == "deep" else 1
+            tried_proxy_ids: list[str] = []
             live_ip = ""
             self._set_job(task_id, stage=stage)
             runner = self.fast_runner if mode == "fast" else self.deep_runner
-            checked = dict(runner(context, config))
+            checked: dict[str, Any] = {}
+            while True:
+                binding = self._allocate_proxy(config, lease_owner, task_id, exclude_proxy_ids=tried_proxy_ids)
+                tried_proxy_ids.append(str(binding.proxy_id or ""))
+                context.update({
+                    "proxy": str(binding.proxy),
+                    "proxy_id": str(binding.proxy_id or ""),
+                    "proxy_scheme": str(binding.scheme or ""),
+                    "proxy_country": str(binding.country or ""),
+                    "proxy_group": str(binding.group or ""),
+                    "proxy_masked": str(binding.masked or ""),
+                    "proxy_fingerprint": str(binding.fingerprint or fingerprint(str(binding.proxy))),
+                })
+                try:
+                    checked = dict(runner(context, config))
+                    break
+                except FreeRegisterError as exc:
+                    attempt_failure = _failure(exc, default_code=stage, default_label=LIVE_STAGE_LABELS[stage])
+                    if len(tried_proxy_ids) >= max_attempts or not bool(attempt_failure.get("retryable")):
+                        raise
+                    self._log(
+                        task_id, stage,
+                        f"第 {len(tried_proxy_ids)} 次尝试未通过（{attempt_failure.get('node_code')}），换代理重试",
+                        "warn",
+                    )
+                finally:
+                    if binding.proxy_id:
+                        try:
+                            self.proxies.release(binding, owner=lease_owner)
+                        except Exception as exc:
+                            self._note_quiet("proxy_release", exc)
+                    binding = None
             status = str(checked.get("status") or "").strip().lower()
             if status not in TERMINAL_LIVE_STATUSES:
                 raise FreeRegisterError(stage, LIVE_STAGE_LABELS[stage], "测活执行器未返回有效状态")
@@ -778,14 +827,43 @@ class FreeLiveCheckService:
                 "failed": "测活失败",
             }.get(status, "测活完成")
             self._log(task_id, "free_live_result", label, "success" if status == "live" else "warn" if status == "token_expired" else "error")
+            if mode == "deep" and status == "deactivated":
+                # A confirmed re-login deactivation means the account is gone;
+                # drop it from the reusable pool per the 401-rerun contract.
+                self._delete_deactivated_row(task_id, str(context["row_id"]))
         except Exception as exc:
             self._finish_exception(task_id, exc, row_id=str(context.get("row_id") or job.get("row_id") or ""))
-        finally:
-            if binding is not None and binding.proxy_id:
-                try:
-                    self.proxies.release(binding, owner=lease_owner)
-                except Exception as exc:
-                    self._log(task_id, "free_live_result", f"测活代理租约释放失败（{type(exc).__name__}）", "warn")
+
+    def _delete_deactivated_row(self, task_id: str, row_id: str) -> None:
+        """Remove a row the deep re-login confirmed as deactivated.
+
+        The confirmation uses the same explicit ``account_banned`` classifier
+        as the SMS chain (``runtime_policy.is_account_banned_failure`` via
+        ``_is_deactivated``), so ambiguous 403/proxy failures never reach this
+        path.  The mailbox row leaves the reusable pool; registration results
+        and diagnostic events stay as the audit trail.  When the row cannot
+        be removed it is marked unavailable instead, mirroring the SMS
+        mark-damaged fallback.
+        """
+        remover = getattr(self.pool, "delete", None)
+        if not callable(remover):
+            return
+        try:
+            removed = int(remover([row_id]) or 0)
+        except Exception as exc:
+            # Deletion must never overwrite the confirmed deactivated result.
+            self._note_quiet("deactivated_row_delete", exc)
+            removed = 0
+        if removed:
+            self._log(task_id, "free_live_result", "账号已停用，已自动从 Free 邮箱池移除（注册结果与日志保留）", "warn")
+            return
+        marker = getattr(self.pool, "update", None)
+        if callable(marker):
+            try:
+                marker(row_id, status="unavailable")
+                self._log(task_id, "free_live_result", "账号已停用，邮箱行移除失败，已标记为不可用", "warn")
+            except Exception as exc:
+                self._note_quiet("deactivated_row_mark", exc)
 
     def _finish_exception(self, task_id: str, exc: BaseException, *, row_id: str = "", code: str = "free_live_check", label: str = "Free 账号测活") -> None:
         failure = _failure(exc, default_code=code, default_label=label)
