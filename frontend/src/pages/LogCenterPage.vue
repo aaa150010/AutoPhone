@@ -25,6 +25,7 @@ import {
 import { copyText as copyTextToClipboard } from '../utils/clipboard'
 import { formatDateTimeOrDash } from '../utils/datetime'
 import { freeDriverLabel } from '../utils/freeDriverLabel'
+import { browserDownload } from '../utils/browserDownload'
 
 const props = defineProps<{ locationKey?: string }>()
 
@@ -179,13 +180,7 @@ async function copyGpt(row: DiagnosticIncident) {
 async function downloadJson(row: DiagnosticIncident) {
   try {
     const result = await exportDiagnostics([row.incident_id], 'json')
-    const blob = new Blob([result.content], { type: 'application/json;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = `${row.incident_id}.json`
-    anchor.click()
-    URL.revokeObjectURL(url)
+    browserDownload(result.content, 'application/json;charset=utf-8', `${row.incident_id}.json`)
   } catch (error) {
     ElMessage.error(errorMessage(error) || 'JSON 下载失败')
   }

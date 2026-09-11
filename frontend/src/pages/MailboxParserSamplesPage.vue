@@ -18,6 +18,7 @@ import WorkspacePanel from '../components/WorkspacePanel.vue'
 import type { MailboxParserSample, MailboxParserSampleReparse } from '../types/api'
 import { parseTimestamp } from '../utils/datetime'
 import { freeDriverLabel } from '../utils/freeDriverLabel'
+import { browserDownload } from '../utils/browserDownload'
 
 const loading = ref(false)
 const samples = ref<MailboxParserSample[]>([])
@@ -124,9 +125,7 @@ async function cleanup() {
 function downloadFixture() {
   if (!detail.value) return
   void exportMailboxParserSample(detail.value.sample_id, 'sanitized', detail.value.scope).then(result => {
-    const blob = new Blob([result.content], { type: 'application/json;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${detail.value?.sample_id || 'sample'}.json`; anchor.click(); URL.revokeObjectURL(url)
+    browserDownload(result.content, 'application/json;charset=utf-8', `${detail.value?.sample_id || 'sample'}.json`)
   }).catch((error: unknown) => ElMessage.error(errorMessage(error) || '夹具下载失败'))
 }
 function downloadSample(format: 'sanitized' | 'fixture') {
@@ -138,9 +137,7 @@ function downloadSample(format: 'sanitized' | 'fixture') {
     }
     try {
       const result = await exportMailboxParserSample(sample.sample_id, format, sample.scope)
-      const blob = new Blob([result.content], { type: 'application/json;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-      const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${sample.sample_id || 'sample'}-${format}.json`; anchor.click(); URL.revokeObjectURL(url)
+      browserDownload(result.content, 'application/json;charset=utf-8', `${sample.sample_id || 'sample'}-${format}.json`)
     } catch (error) { ElMessage.error(errorMessage(error) || '夹具下载失败') }
   }
   void run()

@@ -15,6 +15,7 @@ import {
 import { syncLegacySmsFields } from '../utils/smsPools'
 import { errorMessage } from '../utils/errorMessage'
 import { formatDateTimeZh } from '../utils/datetime'
+import { browserDownload } from '../utils/browserDownload'
 
 const emit = defineEmits<{ navigate: [string] }>()
 const props = defineProps<{ initialAnchor?: string }>()
@@ -149,13 +150,7 @@ async function exportConfig() {
   }
   try {
     const result = await controller.exportConfig()
-    const blob = new Blob([JSON.stringify(result.config || {}, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = 'gptphone-config.json'
-    link.click()
-    URL.revokeObjectURL(url)
+    browserDownload(JSON.stringify(result.config || {}, null, 2), 'application/json', 'gptphone-config.json')
     ElMessage.success('配置已导出')
   } catch (error) {
     ElMessage.error(messageFor(error))

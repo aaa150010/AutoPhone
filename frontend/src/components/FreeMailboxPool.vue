@@ -14,6 +14,7 @@ import { ACCOUNT_BANNED_DISPLAY_MESSAGE, isRetryResolved } from '../utils/freeFa
 import { useRowClipboard } from '../composables/useRowClipboard'
 import { freeRowSecretLookup } from '../utils/freeSecretLookup'
 import { safeMailboxUrl } from '../utils/safeMailboxUrl'
+import { browserDownload } from '../utils/browserDownload'
 import {
   isHistoricalMailboxDriver,
   liveStatusLabel,
@@ -635,12 +636,7 @@ async function handleMailboxAction(command: string, row: FreeMailboxRow) {
 async function exportResults() {
   try {
     const result = await exportFreeResults(selected.value.map(row => row.row_id))
-    const blob = new Blob([result.content || ''], { type: 'text/plain;charset=utf-8' })
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = result.filename || 'free-results.txt'
-    link.click()
-    URL.revokeObjectURL(link.href)
+    browserDownload(result.content || '', 'text/plain;charset=utf-8', result.filename || 'free-results.txt')
     ElMessage.success(`已导出 ${Number(result.count || 0)} 条 Free 结果`)
   } catch (error) { ElMessage.error(errorMessage(error) || 'Free 结果导出失败') }
 }

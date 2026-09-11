@@ -5,6 +5,7 @@ import WorkspacePanel from '../components/WorkspacePanel.vue'
 import { useMailboxSplitter } from '../composables/useMailboxSplitter'
 import { mailboxSplitFilename } from '../utils/mailboxSplitter'
 import { copyText as copyTextToClipboard } from '../utils/clipboard'
+import { browserDownload } from '../utils/browserDownload'
 
 const { state, result, clear } = useMailboxSplitter()
 
@@ -14,12 +15,7 @@ function copyText(value: string) {
 
 function downloadText(value: string, filename: string) {
   if (!value) return
-  const url = URL.createObjectURL(new Blob([value], { type: 'text/plain;charset=utf-8' }))
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  link.click()
-  URL.revokeObjectURL(url)
+  browserDownload(value, 'text/plain;charset=utf-8', filename)
 }
 
 async function clearSource() {
