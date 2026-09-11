@@ -1,6 +1,9 @@
 import { createApp } from 'vue'
 import './styles/base.css'
+// Component JS resolves on demand via unplugin-vue-components/AutoImport, but
+// imperative APIs (ElMessage/ElMessageBox/ElNotification) are imported
+// directly in 27+ files, which bypasses the resolvers; the full stylesheet is
+// required or those popups render unstyled.
+import 'element-plus/dist/index.css'
 import App from './App.vue'
-// Element Plus resolves on demand via unplugin-vue-components/AutoImport in
-// vite.config.ts; no full-library import here keeps the bundle to used parts.
 createApp(App).mount('#app')
