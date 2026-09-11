@@ -335,7 +335,12 @@ class FreeStorageSchemaMixin:
                         "CREATE INDEX IF NOT EXISTS idx_remail_orders_page "
                         "ON remail_orders(hidden, imported, created_at DESC, order_no DESC)"
                     )
-                    self._migrate_payload_sidecars(db)
+                    # The partition pass is deterministic and current-code
+                    # writes always persist already-partitioned payloads, so
+                    # the startup full-table rescan is gated on a one-time
+                    # marker instead of repeating on every boot.
+                    if self._meta("payload_sidecar_migration") != "v1_done":
+                        self._migrate_payload_sidecars(db)
                     # ``executescript`` manages DDL in autocommit mode when
                     # isolation_level=None; use a short explicit transaction
                     # for the metadata write instead of committing a vanished
@@ -346,6 +351,11 @@ class FreeStorageSchemaMixin:
                         "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                         (str(SCHEMA_VERSION),),
                     )
+                    if self._meta("payload_sidecar_migration") != "v1_done":
+                        db.execute(
+                            "INSERT INTO storage_meta(key,value) VALUES('payload_sidecar_migration','v1_done') "
+                            "ON CONFLICT(key) DO UPDATE SET value=excluded.value"
+                        )
                     db.execute("COMMIT")
                 except BaseException:
                     try:

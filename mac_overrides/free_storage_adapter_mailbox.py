@@ -145,7 +145,21 @@ class SQLiteFreeMailboxPool(_LegacyMailboxPool):
 
     def entry(self, row_id: str) -> FreeMailbox | None:
         target = str(row_id or "").strip()
-        return next((item for item in self.entries() if item.row_id == target), None)
+        if not target:
+            return None
+        # Primary-key lookup instead of rebuilding the whole ordered pool for
+        # one row.  ``index`` is only meaningful on the ordered ``entries()``
+        # view; no caller resolves a single entry's display position.
+        row = self.storage.get_mailbox(target)
+        if row is None:
+            return None
+        payload = _row_payload(row)
+        return FreeMailbox(
+            str(payload.get("row_id") or target),
+            0,
+            str(payload.get("email") or ""),
+            str(payload.get("mailbox_url") or ""),
+        )
 
     def mailbox_index(self) -> dict[str, FreeMailbox]:
         """Return every pool entry keyed by ``row_id`` in one storage read.
@@ -199,7 +213,9 @@ class SQLiteFreeMailboxPool(_LegacyMailboxPool):
         skipped = 0
         with self._lock:
             existing_orders: list[int] = []
+            existing_ids: set[str] = set()
             for row in self.storage.list_mailboxes(limit=10_000):
+                existing_ids.add(str(row.get("row_id") or ""))
                 payload = row.get("payload") if isinstance(row.get("payload"), Mapping) else {}
                 try:
                     existing_orders.append(int(payload.get("_pool_order")))
@@ -209,8 +225,7 @@ class SQLiteFreeMailboxPool(_LegacyMailboxPool):
             # the input order is preserved within the batch.
             next_order = min(existing_orders, default=0) - len(incoming)
             for entry in incoming:
-                existing = self.storage.get_mailbox(entry.row_id)
-                if existing is not None:
+                if entry.row_id in existing_ids:
                     skipped += 1
                     continue
                 self.storage.upsert_mailbox(
@@ -662,12 +677,18 @@ class SQLiteFreeMailboxPool(_LegacyMailboxPool):
             "unavailable": 0,
             "twofa_pending": 0,
         }
-        for row in self.storage.list_mailboxes(limit=10_000):
-            counts["total"] += 1
-            status = str(row.get("status") or "available")
+        # The status column always wins over the payload JSON in the row
+        # projection, so the aggregation can run in SQLite instead of
+        # materializing and decoding every row in Python.
+        grouped: dict[str, int] = {}
+        with self.storage._connection() as db:  # noqa: SLF001 - adapter boundary
+            for row in db.execute("SELECT status, COUNT(*) FROM mailboxes GROUP BY status").fetchall():
+                grouped[str(row[0] or "available")] = int(row[1])
+        for status, total in grouped.items():
+            counts["total"] += total
             key = "running" if status in _ACTIVE_MAILBOX_STATUSES else status
             if key in counts:
-                counts[key] += 1
+                counts[key] += total
         return counts
 
     def public_rows(self) -> list[dict[str, Any]]:
@@ -695,10 +716,12 @@ class SQLiteFreeMailboxPool(_LegacyMailboxPool):
             if str(value or "").strip()
         }
         values: list[str] = []
-        for row in self.entries():
+        pool_rows = self.entries()
+        bulk_results = self.results_bulk([row.row_id for row in pool_rows])
+        for row in pool_rows:
             if selected and row.row_id not in selected:
                 continue
-            result = self.result(row.row_id)
+            result = bulk_results.get(row.row_id) or {}
             if result.get("status") not in (None, "", "success") and not result.get("access_token"):
                 continue
             credential = _account_material_line(row.email, row.mailbox_url, result)
@@ -735,6 +758,7 @@ class SQLiteFreeMailboxPool(_LegacyMailboxPool):
         selected = set(requested)
         rows = self.entries()
         known = {row.row_id for row in rows}
+        bulk_results = self.results_bulk([row.row_id for row in rows])
         lines: list[str] = []
         skipped: list[dict[str, str]] = []
         for row in rows:
@@ -751,7 +775,7 @@ class SQLiteFreeMailboxPool(_LegacyMailboxPool):
                     "reason": "该 Free 邮箱仍在注册或测活任务中",
                 })
                 continue
-            result = self.result(row.row_id)
+            result = bulk_results.get(row.row_id) or {}
             live_status = str(result.get("live_check_status") or "").strip().lower()
             if live_status in {"queued", "running"}:
                 skipped.append({

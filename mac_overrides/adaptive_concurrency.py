@@ -42,6 +42,10 @@ def _notify(observer: Any, value: dict[str, Any]) -> None:
 class AdaptiveConcurrencyGate:
     """Bound active work and adjust capacity from redacted health signals."""
 
+    #: FIFO cap for the duplicate-report dedupe books (see
+    #: ``_bound_bookkeeping_locked``).
+    BOOKKEEPING_LIMIT = 4096
+
     def __init__(
         self,
         base_limit: int = 5,
@@ -129,6 +133,23 @@ class AdaptiveConcurrencyGate:
             for observed, key in self.pressure_events
             if 0 <= now - observed <= self.pressure_window_seconds
         ]
+
+    def _bound_bookkeeping_locked(self) -> None:
+        """Cap the dedupe books; long-lived processes must not grow forever.
+
+        ``finished_tasks`` and ``seen_pressure_levels`` only guard against
+        duplicate terminal/pressure reports, which always arrive close to the
+        original event, so FIFO eviction of the oldest keys keeps the dedupe
+        semantics intact while bounding memory.
+        """
+        overflow = len(self.finished_tasks) - self.BOOKKEEPING_LIMIT
+        if overflow > 0:
+            for key in list(self.finished_tasks)[:overflow]:
+                self.finished_tasks.discard(key)
+        overflow = len(self.seen_pressure_levels) - self.BOOKKEEPING_LIMIT
+        if overflow > 0:
+            for key in list(self.seen_pressure_levels)[:overflow]:
+                self.seen_pressure_levels.pop(key, None)
 
     def _prune_banned_locked(self, now: float) -> None:
         self.banned_events = [
@@ -287,6 +308,7 @@ class AdaptiveConcurrencyGate:
                 limit = self.limit
             else:
                 self.finished_tasks.add(identifier)
+                self._bound_bookkeeping_locked()
                 self.success_count += 1
                 self._prune_pressure_locked(now)
                 pressure_free = (
@@ -336,6 +358,7 @@ class AdaptiveConcurrencyGate:
                 limit = self.limit
             else:
                 self.finished_tasks.add(identifier)
+                self._bound_bookkeeping_locked()
                 self.failure_count += 1
                 self.success_streak = 0
                 limit = self.limit
@@ -355,6 +378,7 @@ class AdaptiveConcurrencyGate:
                 limit = self.limit
             else:
                 self.finished_tasks.add(identifier)
+                self._bound_bookkeeping_locked()
                 self.failure_count += 1
                 self.success_streak = 0
                 self._prune_pressure_locked(now)
@@ -442,6 +466,7 @@ class AdaptiveConcurrencyGate:
             else:
                 old_limit = self.limit
                 self.seen_pressure_levels[pressure_key] = severity
+                self._bound_bookkeeping_locked()
                 self.pressure_count += 1
                 self.success_streak = 0
                 self.last_pressure_at = now

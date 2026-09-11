@@ -36,8 +36,19 @@ class SQLiteFreeProxyPool(_LegacyProxyPool):
 
     def _load(self) -> list[dict[str, Any]]:
         output: list[dict[str, Any]] = []
+        now_epoch = time.time()
         with self.storage._connection() as db:  # noqa: SLF001 - adapter boundary
             rows = db.execute("SELECT * FROM proxies ORDER BY updated_at DESC,proxy_id ASC").fetchall()
+            # One grouped lease read replaces the per-proxy subquery; the PK
+            # (resource_type, resource_id, owner) keeps the same owner ordering
+            # the per-row query produced.
+            leases_by_proxy: dict[str, list[sqlite3.Row]] = {}
+            for lease in db.execute(
+                "SELECT resource_id,owner,lease_until FROM resource_leases "
+                "WHERE resource_type='proxy' AND lease_until>? ORDER BY resource_id,owner",
+                (now_epoch,),
+            ).fetchall():
+                leases_by_proxy.setdefault(str(lease["resource_id"]), []).append(lease)
             for row in rows:
                 try:
                     payload = self.storage._row_payload(row)  # noqa: SLF001 - adapter boundary
@@ -53,6 +64,7 @@ class SQLiteFreeProxyPool(_LegacyProxyPool):
                     for item in (payload.get("leases") or [])
                     if isinstance(item, Mapping) and str(item.get("owner") or "").strip()
                 }
+                proxy_id = str(row["proxy_id"])
                 leases = [
                     {
                         "owner": str(item["owner"]),
@@ -68,11 +80,7 @@ class SQLiteFreeProxyPool(_LegacyProxyPool):
                             or ""
                         ),
                     }
-                    for item in db.execute(
-                        "SELECT owner,lease_until FROM resource_leases "
-                        "WHERE resource_type='proxy' AND resource_id=? AND lease_until>?",
-                        (str(row["proxy_id"]), time.time()),
-                    ).fetchall()
+                    for item in leases_by_proxy.get(proxy_id, [])
                 ]
                 status = str(row["status"] or "unknown")
                 if status == "healthy":

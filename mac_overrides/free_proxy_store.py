@@ -631,17 +631,19 @@ class FreeProxyPool:
     def entries(self) -> list[dict[str, Any]]:
         """Compatibility view used by the existing Free manager."""
         with self._lock:
-            return copy.deepcopy(self._load())
+            # ``_load`` builds a fresh object graph on every call, so the
+            # historical deepcopy only duplicated already-private data.
+            return self._load()
 
     def available(self, count: int, *, country: str | None = None, group: str | None = None, driver: str = "protocol") -> list[dict[str, Any]]:
         driver = _normalize_driver(driver)
         with self._lock:
-            return copy.deepcopy(self._eligible(country=country, group=group, driver=driver)[:max(0, int(count))])
+            return self._eligible(country=country, group=group, driver=driver)[:max(0, int(count))]
 
     def records(self, *, country: str | None = None, group: str | None = None, driver: str = "protocol") -> list[dict[str, Any]]:
         driver = _normalize_driver(driver)
         with self._lock:
-            return copy.deepcopy(self._eligible(country=country, group=group, driver=driver))
+            return self._eligible(country=country, group=group, driver=driver)
 
     def public(self) -> dict[str, Any]:
         with self._lock:
@@ -657,8 +659,8 @@ class FreeProxyPool:
                 # Keep one unclassified aggregate for response compatibility.
                 # Its empty labels are intentional: historical country/group
                 # values are never restored and cannot become selectors.
-                "groups": self.group_summaries(),
-                "countries": self.country_summaries(),
+                "groups": self.group_summaries(rows),
+                "countries": self.country_summaries(rows),
             }
 
     def _public_health_state(self, row: Mapping[str, Any], now: float | None = None) -> dict[str, Any]:
@@ -758,8 +760,11 @@ class FreeProxyPool:
         }
         return value
 
-    def group_summaries(self) -> list[dict[str, Any]]:
-        rows = self._load()
+    def group_summaries(self, rows: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+        # Callers that already hold a ``_load`` snapshot (e.g. ``public``)
+        # pass it in to avoid re-reading the whole pool per aggregate.
+        if rows is None:
+            rows = self._load()
         grouped: dict[tuple[str, str], dict[str, Any]] = {}
         now = time.time()
         for row in rows:
@@ -782,9 +787,9 @@ class FreeProxyPool:
             for _key, value in sorted(grouped.items())
         ]
 
-    def country_summaries(self) -> list[dict[str, Any]]:
+    def country_summaries(self, rows: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
         grouped: dict[str, dict[str, int]] = {}
-        for value in self.group_summaries():
+        for value in self.group_summaries(rows):
             current = grouped.setdefault(value["country"], {"total": 0, "enabled": 0, "available": 0, "quarantined": 0, "leased": 0, "leased_proxies": 0})
             for key in ("total", "enabled", "available", "quarantined", "leased", "leased_proxies"):
                 current[key] += int(value[key])
@@ -1316,11 +1321,15 @@ class FreeProxyPool:
     def lease(self, binding: ProxyBinding, *, owner: str, batch_id: str, task_id: str, lease_seconds: int = 180) -> None:
         with self._lock:
             rows = self._load()
+            # The transport projection of the binding is row-independent;
+            # computing it once keeps the match loop free of repeated
+            # normalization/quote work.
+            binding_transport = proxy_transport_value(str(binding.proxy), driver="protocol")
             target = next((
                 row for row in rows
                 if str(row.get("proxy_id")) == str(binding.proxy_id)
                 or row.get("_normalized") == binding.proxy
-                or proxy_transport_value(str(row.get("_normalized") or ""), driver="protocol") == str(binding.proxy)
+                or proxy_transport_value(str(row.get("_normalized") or ""), driver="protocol") == binding_transport
             ), None)
             if target is None:
                 raise FreeRegisterError("free_proxy_lease", "租用 Free 代理", "固定代理已不存在", retryable=False)
