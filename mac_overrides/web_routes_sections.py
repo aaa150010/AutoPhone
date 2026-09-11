@@ -15,6 +15,7 @@ except ImportError:  # pragma: no cover - top-level recovery import
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import socket
 import threading
 import time
 from typing import Any
@@ -206,8 +207,27 @@ def build_core_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]:
 
     frontend_dist = scope.context.app_dir / "frontend" / "dist"
 
+    def _vite_dev_server_alive() -> bool:
+        try:
+            with socket.create_connection(("127.0.0.1", 5173), timeout=0.25):
+                return True
+        except OSError:
+            return False
+
     def spa_index():
-        return scope.context.send_from_directory(str(frontend_dist), "index.html")
+        # While the start.command Vite dev server is running, the browser
+        # entry always follows hot-reload: never serve a stale built bundle
+        # over it. When Vite is down, fall back to the last build with a
+        # no-cache entry so a fresh bundle is picked up after every rebuild.
+        if _vite_dev_server_alive():
+            request = scope.module.request
+            current_url = str(request.url)
+            target = current_url.replace(f":{request.port}/", ":5173/", 1)
+            if target != current_url:
+                return scope.module.redirect(target)
+        response = scope.context.send_from_directory(str(frontend_dist), "index.html")
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
     def spa_asset(filename):
         return scope.context.send_from_directory(str(frontend_dist / "assets"), filename)
