@@ -1178,7 +1178,7 @@ def failure_result_payload(
 class FreeFailureRuntimeMixin:
     """Persist one failure identity across task and mailbox result stores."""
 
-    def _save_task_state_safely(self, context: str = "Free 任务状态") -> bool:
+    def _save_task_state_safely(self, context: str = "Free 任务状态", *, only_dirty: bool = False) -> bool:
         """Persist task state without turning a storage outage into a new failure.
 
         ``FreeRegisterManager`` supplies the richer diagnostic-aware helper.
@@ -1188,6 +1188,13 @@ class FreeFailureRuntimeMixin:
         saver = getattr(self, "_save_tasks_safely", None)
         if callable(saver):
             try:
+                if only_dirty:
+                    try:
+                        return bool(saver(context, only_dirty=True))
+                    except TypeError:
+                        # A injected saver without the dirty-only keyword
+                        # still accepts the plain full snapshot.
+                        return bool(saver(context))
                 return bool(saver(context))
             except Exception:
                 return False
@@ -1306,7 +1313,10 @@ class FreeFailureRuntimeMixin:
                     current["incident_id"] = incident_id
                 persist = True
         if persist:
-            self._save_task_state_safely("记录任务失败")
+            marker = getattr(self, "_mark_task_dirty", None)
+            if callable(marker):
+                marker(task_id)
+            self._save_task_state_safely("记录任务失败", only_dirty=True)
         row_id = str(context.get("row_id") or "")
         if row_id:
             self.pool.save_result(row_id, payload)

@@ -90,7 +90,7 @@ class FreeRegisterPreflightMixin:
 
     def preflight(self, config: Mapping[str, Any], *, proxy_content: str = "") -> dict[str, Any]:
         with self._lock:
-            if self.public_state().get("running"):
+            if self.is_running():
                 raise FreeRegisterError(
                     "free_run_preflight",
                     "预检 Free 注册",

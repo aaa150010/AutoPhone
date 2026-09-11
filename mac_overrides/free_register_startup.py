@@ -100,7 +100,7 @@ class FreeRegisterStartupMixin:
             with self._lock:
                 # Keep the production manager boundary aligned with the Free
                 # contract even for callers that bypass the HTTP config store.
-                if self.public_state().get("running"):
+                if self.is_running():
                     raise FreeRegisterError("free_run_start", "启动 Free 注册", "已有 Free 注册任务运行中", retryable=False)
                 start_attempted = True
                 self._last_config = copy.deepcopy(normalized_config)
@@ -535,6 +535,7 @@ class FreeRegisterStartupMixin:
             # twice.
             self._futures.discard(future)
             self._future_drivers.pop(future, None)
+            completed_task_id = str(self._future_task_ids.pop(future, "") or "")
             is_last = not self._futures
             if is_last:
                 self._shutdown_pending = True
@@ -543,8 +544,14 @@ class FreeRegisterStartupMixin:
                 heartbeat_stop.set()
             # Completion callbacks must always continue into Future and
             # executor cleanup even when the task store is temporarily
-            # unavailable.
-            self._save_tasks_safely("任务完成回调")
+            # unavailable. Per-task completion only rewrites its own row;
+            # the last completion keeps the full snapshot so the adapter's
+            # terminal-row pruning still sees every id.
+            if is_last:
+                self._save_tasks_safely("任务完成回调")
+            elif completed_task_id:
+                self._mark_task_dirty(completed_task_id)
+                self._save_tasks_safely("任务完成回调", only_dirty=True)
         if not is_last:
             return
         # Wait outside the manager lock. Other executor workers may still be

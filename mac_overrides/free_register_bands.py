@@ -174,7 +174,8 @@ class FreeRegisterTimingMixin:
                 # Progress telemetry must not break band evaluation.
                 self._note_quiet("band_execution_started", exc)
         if changed and persist:
-            self._save_tasks_safely("任务开始执行计时")
+            self._mark_task_dirty(task_id)
+            self._save_tasks_safely("任务开始执行计时", only_dirty=True)
         return True
 
     def _record_timing_substep(
@@ -429,7 +430,11 @@ class FreeRegisterTimingMixin:
                 task_timing["elapsed_seconds"] = round(task_timing["elapsed_ms"] / 1000.0, 3)
                 persist = True
         if persist:
-            self._save_tasks_safely("阶段状态更新")
+            # Per-task stage transitions only need their own row; marking the
+            # touched tasks keeps the partial snapshot from rewriting every
+            # sibling in the batch on every protocol node switch.
+            self._mark_task_dirty(task_id)
+            self._save_tasks_safely("阶段状态更新", only_dirty=True)
         if changed:
             if previous_code and previous_code != code:
                 duration_ms = None
@@ -557,7 +562,13 @@ class FreeRegisterProjectionMixin:
                 persist = True
                 self._timing_checkpoint_mono.pop(task_id, None)
         if persist:
-            self._save_tasks_safely("阶段进度完成")
+            # The child row and (for retry continuations) the parent row are
+            # the only tasks mutated here; save just those two.
+            self._mark_task_dirty(task_id)
+            parent_id = str(task.get("retry_of") or "").strip()
+            if parent_id and parent_id in self._tasks:
+                self._mark_task_dirty(parent_id)
+            self._save_tasks_safely("阶段进度完成", only_dirty=True)
         if final_stage:
             self._log(
                 f"[{task_id}/{final_label}/{final_stage}] 完成",
@@ -976,6 +987,23 @@ class FreeRegisterProjectionMixin:
         if existing:
             self.log_store.delete_tasks(existing)
         return len(existing)
+
+    def is_running(self) -> bool:
+        """Cheap start-guard check mirroring ``public_state()["running"]``.
+
+        Start/preflight guards only need the executor/heartbeat liveness;
+        building the full public projection (task sanitize + bulk storage
+        reads) for that single boolean made every start attempt pay the
+        dashboard's cost.
+        """
+        with self._lock:
+            return bool(
+                self._executor
+                or (
+                    self._heartbeat_thread is not None
+                    and self._heartbeat_thread.is_alive()
+                )
+            )
 
     def public_state(self) -> dict[str, Any]:
         with self._lock:

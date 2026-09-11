@@ -193,7 +193,12 @@ class SQLiteFreeTaskStore(_LegacyTaskStoreBase):
         merged = copy.deepcopy(dict(payload))
         # Use the parent class's pure monotonic timing merge; it performs no
         # filesystem access and keeps stage/substep history from rolling back.
-        merged["timing"] = self._merge_timing(merged.get("timing"), timing)
+        merged_timing = self._merge_timing(merged.get("timing"), timing)
+        if merged_timing == merged.get("timing"):
+            # The checkpoint carries nothing new; skip the full-row rewrite
+            # (serialize + UPDATE + revision bump) entirely.
+            return True
+        merged["timing"] = merged_timing
         try:
             self.storage.save_task(
                 target,

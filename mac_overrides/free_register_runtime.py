@@ -244,6 +244,9 @@ class FreeRegisterManager(
         # Keep the driver on each Future so terminal cleanup never follows the
         # previous batch's global configuration.
         self._future_drivers: dict[Future[Any], str] = {}
+        # Worker submissions record their task id so the Future completion
+        # callback can persist just that row instead of the whole batch.
+        self._future_task_ids: dict[Future[Any], str] = {}
         self._tasks: dict[str, dict[str, Any]] = self.task_store.load()
         if self.mailbox_leases is not None:
             # Expired claims are recovered before dispatch.  This only clears
@@ -698,10 +701,13 @@ class FreeRegisterManager(
         try:
             self._futures.add(future)
             self._future_drivers[future] = str(driver or "protocol").strip().lower()
+            if getattr(callback, "__name__", "") == "_worker" and args:
+                self._future_task_ids[future] = str(args[0] or "")
             future.add_done_callback(self._future_done)
         except Exception:
             self._futures.discard(future)
             self._future_drivers.pop(future, None)
+            self._future_task_ids.pop(future, None)
             future.cancel()
             raise
         finally:
@@ -722,6 +728,8 @@ class FreeRegisterManager(
                     ),
                     None,
                 )
+                if task is not None:
+                    task_id = str(task.get("task_id") or "")
             if not isinstance(task, dict):
                 return
             task["result"] = copy.deepcopy(dict(result))
@@ -731,7 +739,8 @@ class FreeRegisterManager(
                 task.pop("failure", None)
             changed = True
         if changed:
-            self._save_tasks_safely("套餐检查结果同步")
+            self._mark_task_dirty(task_id)
+            self._save_tasks_safely("套餐检查结果同步", only_dirty=True)
 
     def import_mailboxes(
         self,
@@ -791,7 +800,8 @@ class FreeRegisterManager(
             ).strip().lower()
             workers = max(1, min(int(base_config.get("concurrency") or 3), 16))
             for row in added_rows:
-                if str(self.pool._row_state(row.row_id).get("status") or "available") != "available":
+                row_state = self.pool._row_state(row.row_id)
+                if str(row_state.get("status") or "available") != "available":
                     result["skipped_items"].append({"row_id": row.row_id, "reason": "邮箱当前不可用"})
                     continue
                 binding: ProxyBinding | None = None
@@ -813,7 +823,8 @@ class FreeRegisterManager(
                     ordinal = max((int(item.get("ordinal") or 0) for item in self._tasks.values()), default=0) + 1
                     task_id = f"{batch_id}-import-{secrets.token_hex(3)}"
                     now = int(time.time())
-                    row_state = self.pool._row_state(row.row_id)
+                    # Reuse the pre-reserve row state: reserve() only mutates
+                    # status/lease fields, never source/service_token.
                     mailbox_source = str(row_state.get("source") or "url").strip().lower()
                     task = {
                         "task_id": task_id,
@@ -889,7 +900,8 @@ class FreeRegisterManager(
                     # fast custom runner can finish before the request thread
                     # reaches its final save, so the completion callback must
                     # never observe an unknown task on disk.
-                    self._save_tasks_safely("运行中导入任务初始状态")
+                    self._mark_task_dirty(task_id)
+                    self._save_tasks_safely("运行中导入任务初始状态", only_dirty=True)
                     self._submit_registered_worker(
                         self._worker,
                         task_id,
@@ -1360,7 +1372,8 @@ class FreeRegisterManager(
             if current is not None:
                 current["cleanup_status"] = cleanup_status
                 current["updated_at"] = int(time.time())
-        self._save_tasks_safely("代理租约释放后")
+        self._mark_task_dirty(task_id)
+        self._save_tasks_safely("代理租约释放后", only_dirty=True)
         if release_error is not None:
             self._log(
                 f"[{task_id}/释放 Free 代理/free_proxy_release] 代理租约释放失败（{type(release_error).__name__}）",
@@ -1532,7 +1545,8 @@ class FreeRegisterManager(
                     "at": int(time.time()),
                 })
                 current["proxy_attempts"] = attempts[-10:]
-                self._save_tasks_safely("记录代理失败")
+                self._mark_task_dirty(task_id)
+                self._save_tasks_safely("记录代理失败", only_dirty=True)
         node_code = str(getattr(exc, "node_code", "free_proxy"))
         if proxy_id and is_proxy_health_failure(exc):
             try:
@@ -1905,7 +1919,8 @@ class FreeRegisterManager(
                         current = self._tasks.get(task_id)
                         if current is not None:
                             current.setdefault("proxy_attempts", []).append({"proxy_id": failed_proxy_id, "stage": exc.node_code, "error_code": str(getattr(exc, "error_code", "") or ""), "retryable": True, "message": _safe_log_message(exc), "http_status": getattr(exc, "provider_status", None), "attempt": attempt, "switched": switched, "at": int(time.time())})
-                            self._save_tasks_safely("记录代理切换")
+                            self._mark_task_dirty(task_id)
+                            self._save_tasks_safely("记录代理切换", only_dirty=True)
                     if bool(getattr(exc, "proxy_retryable", False)) and not switched:
                         # A route-level access denial must not replay against
                         # the same proxy when no healthy replacement exists.
