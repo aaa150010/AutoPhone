@@ -628,7 +628,7 @@ class FreeRegisterProjectionMixin:
         identifier_fields = {
             "task_id", "incident_id", "slot_id", "batch_id", "run_mode",
             "driver", "row_id", "stage", "proxy_fingerprint", "proxy_id",
-            "retry_of", "retry_task_id",
+            "retry_of", "retry_task_id", "retry_mode",
         }
         status_fields = {"status", "cleanup_status", "retry_status"}
         number_fields = {
