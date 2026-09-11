@@ -11,14 +11,15 @@ import {
   Upload,
 } from '@element-plus/icons-vue'
 import {
-  api,
   ApiError,
+  deleteMailboxRows,
   getMailboxes,
   importWebsiteMailboxes,
   moveMailboxRowsToDraft,
   queryMailboxQuotas,
   reloginMailboxRows,
   restoreMailboxDraftRows,
+  restoreMailboxRows,
   setMailboxRowsUnavailable,
 } from '../api/client'
 import { usePolling } from '../composables/usePolling'
@@ -289,9 +290,8 @@ function applyImportedMailboxes(result: MailboxMutationResult) {
 }
 
 async function mutate(
-  path: string,
   message: string,
-  action?: (rows: Array<{ row_id: string; line_no: number }>) => Promise<MailboxMutationResult>,
+  action: (rows: Array<{ row_id: string; line_no: number }>) => Promise<MailboxMutationResult>,
   successMessage: string | ((result: MailboxMutationResult) => string) = '操作完成',
 ) {
   if (!selectedRows.value.length) {
@@ -307,13 +307,10 @@ async function mutate(
   mutating.value = true
   refreshGuard.invalidate()
   const selected = selectedRows.value.map(row => ({ row_id: row.row_id, line_no: row.line_no }))
-  const lineNumbers = selected.map(row => row.line_no)
   try {
     mailboxTable.value?.clearSelection()
     selectedRows.value = []
-    const result = action
-      ? await action(selected)
-      : await api<MailboxMutationResult>(path, { line_nos: lineNumbers, rows: selected })
+    const result = await action(selected)
     applyMailboxPayload(result)
     await nextTick()
     mailboxTable.value?.clearSelection()
@@ -330,7 +327,6 @@ async function setUnavailable() {
   settingUnavailable.value = true
   try {
     await mutate(
-      '',
       '将选中的邮箱设置为不可用？源邮箱行和历史结果会保留。',
       setMailboxRowsUnavailable,
       result => `已设置为不可用 ${Number(result?.unavailable || 0)} 条`,
@@ -344,7 +340,6 @@ async function moveToDraft() {
   settingDraft.value = true
   try {
     await mutate(
-      '',
       '将选中的邮箱放入草稿箱？放入后不会参与运行。',
       moveMailboxRowsToDraft,
       result => `已放入草稿箱 ${Number(result?.drafted || 0)} 条`,
@@ -548,13 +543,13 @@ onUnmounted(() => {
           :unavailable-loading="settingUnavailable"
           :draft-loading="settingDraft"
           @relogin="startRelogin"
-          @restore="mutate('/api/mailboxes/restore', '将选中邮箱恢复为可用状态？')"
+          @restore="mutate('将选中邮箱恢复为可用状态？', restoreMailboxRows)"
           @draft="moveToDraft"
           @unavailable="setUnavailable"
           @export="exportSub2"
           @source-export="exportSource"
           @website="uploadWebsiteMailboxes"
-          @delete="mutate('/api/mailboxes/delete', '确定删除选中的邮箱？')"
+          @delete="mutate('确定删除选中的邮箱？', deleteMailboxRows)"
           />
           <el-tooltip content="撤销本表拖拽保存的列宽，恢复默认列宽" placement="top" :show-after="250">
             <el-button size="small" :icon="RefreshLeft" aria-label="重置列宽" @click="mailboxTable?.resetWidths()">重置列宽</el-button>

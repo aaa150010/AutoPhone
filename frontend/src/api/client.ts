@@ -17,6 +17,7 @@ import type {
   MailboxParserSampleReparse,
   DiagnosticsHealth,
   RuntimeTask,
+  MailboxMutationResult,
 } from '../types/api'
 export type { DiagnosticsHealth } from '../types/api'
 import type {
@@ -339,6 +340,15 @@ export const markMailboxRowsManualUsed = (rows: Array<{ row_id: string; line_no:
     '/api/mailboxes/manual-used',
     { rows, line_nos: rows.map(row => row.line_no) },
   )
+)
+export const getMailboxPassword = (row: { row_id: string; line_no: number }) => (
+  api<{ password: string }>('/api/mailboxes/password', row)
+)
+export const restoreMailboxRows = (rows: Array<{ row_id: string; line_no: number }>) => (
+  api<MailboxMutationResult>('/api/mailboxes/restore', { rows, line_nos: rows.map(row => row.line_no) })
+)
+export const deleteMailboxRows = (rows: Array<{ row_id: string; line_no: number }>) => (
+  api<MailboxMutationResult>('/api/mailboxes/delete', { rows, line_nos: rows.map(row => row.line_no) })
 )
 export const restoreMailboxRowsManualUsed = (rows: Array<{ row_id: string; line_no: number }>) => (
   api<{ ok: true; restored: number; mailboxes?: MailboxPayload; state?: AppState }>(

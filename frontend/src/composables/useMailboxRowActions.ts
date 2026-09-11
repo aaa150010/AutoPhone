@@ -2,14 +2,16 @@ import { nextTick } from 'vue'
 import { errorMessage } from '../utils/errorMessage'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  api,
   ApiError,
   getMailboxTotp,
   getMailboxLatestCode,
+  getMailboxPassword,
   getMailboxUrl,
+  deleteMailboxRows,
   markMailboxRowsManualUsed,
   moveMailboxRowsToDraft,
   reloginMailboxRows,
+  restoreMailboxRows,
   restoreMailboxRowsManualUsed,
   setMailboxRowsUnavailable,
 } from '../api/client'
@@ -41,10 +43,7 @@ export function useMailboxRowActions(options: MailboxRowActionOptions) {
     }
     options.loadingPasswords.value = [...options.loadingPasswords.value, row.row_id]
     try {
-      const result: { password: string } = await api('/api/mailboxes/password', {
-        row_id: row.row_id,
-        line_no: row.line_no,
-      })
+      const result = await getMailboxPassword({ row_id: row.row_id, line_no: row.line_no })
       await navigator.clipboard.writeText(String(result.password || ''))
       ElMessage.success('已复制密码')
     } catch (error) {
@@ -231,7 +230,7 @@ export function useMailboxRowActions(options: MailboxRowActionOptions) {
       restore: () => runMutation(
         row,
         '确认将该邮箱恢复为可运行状态？',
-        () => api('/api/mailboxes/restore', { rows: bindings, line_nos: [row.line_no] }),
+        () => restoreMailboxRows(bindings),
         '已恢复为可运行',
       ),
       unavailable: () => runMutation(
@@ -255,7 +254,7 @@ export function useMailboxRowActions(options: MailboxRowActionOptions) {
       delete: () => runMutation(
         row,
         '确定删除该邮箱？源邮箱行和历史结果会保留。',
-        () => api('/api/mailboxes/delete', { rows: bindings, line_nos: [row.line_no] }),
+        () => deleteMailboxRows(bindings),
         '已删除邮箱',
       ),
     }
