@@ -61,6 +61,24 @@ def _resolve_worker_script(script_path: str) -> Path:
     return _BRIDGE_SOURCE_DIR / "sentinel_worker.js"
 
 
+def _ensure_python_helper_env() -> None:
+    """Expose the host interpreter to resident pool workers.
+
+    Pool workers copy ``os.environ`` at spawn time.  Without ``PYTHON`` /
+    ``CODEX_PYTHON`` the worker falls back to plain ``python``/``py`` lookups,
+    which do not exist on a macOS service PATH, and every ``real`` Sentinel
+    request fails with spawnSync ENOENT.  Mirror the recovered one-shot bridge
+    path, including the packaged-helper contract.
+    """
+    if not os.path.exists(sys.executable):
+        return
+    os.environ.setdefault("PYTHON", sys.executable)
+    os.environ.setdefault("CODEX_PYTHON", sys.executable)
+    helper_exe = getattr(sys, "frozen", False) or Path(sys.executable).stem.lower().startswith("plusbindtool")
+    if helper_exe:
+        os.environ.setdefault("CODEX_SENTINEL_PY_ARGS_PREFIX_JSON", json.dumps(["--sentinel-http"]))
+
+
 def _run_via_pool(bridge_module: Any, args: tuple, kwargs: Dict[str, Any]) -> dict[str, Any] | None:
     """Attempt one Sentinel request through the resident pool.
 
@@ -70,6 +88,7 @@ def _run_via_pool(bridge_module: Any, args: tuple, kwargs: Dict[str, Any]) -> di
     """
     if sentinel_worker_pool is None:
         return None
+    _ensure_python_helper_env()
     bridge_dir = getattr(bridge_module, "__file__", "") or ""
     node = getattr(bridge_module, "_node_binary", None)
     if not callable(node):
@@ -180,6 +199,10 @@ def apply_sentinel_pool_patch(bridge_module: Any) -> bool:
 
     Idempotent: repeated calls on the same module object are no-ops.
     """
+    # Set the helper env on the host process once, before any resident pool
+    # (this patch's or the recovered bridge's internal one) copies os.environ
+    # to spawn workers.
+    _ensure_python_helper_env()
     module_id = id(bridge_module)
     if module_id in _PATCHED_MODULES:
         return True
