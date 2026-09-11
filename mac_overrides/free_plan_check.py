@@ -17,6 +17,12 @@ import secrets
 import threading
 import time
 from typing import Any, Callable, Mapping, Sequence
+from urllib.parse import urlsplit
+
+try:
+    from .free_batch_concurrency import ProxyPoolConcurrencyGate
+except ImportError:  # pragma: no cover - top-level recovery import
+    from free_batch_concurrency import ProxyPoolConcurrencyGate  # type: ignore[no-redef]
 
 try:
     from .free_account_service import (
@@ -115,6 +121,7 @@ class FreePlanCheckService:
         proxies: Any = None,
         proxy_probe: Callable[[str, str], str] | None = None,
         workers: int = 2,
+        max_concurrency: int = 16,
         queue_limit: int = 500,
         recover: bool = True,
     ) -> None:
@@ -127,14 +134,26 @@ class FreePlanCheckService:
         self.task_updater = task_updater
         self.proxies = proxies
         self.proxy_probe = proxy_probe
+        # ``workers`` is the fallback ceiling; the live ceiling follows the
+        # shared healthy pool so plan queries scale with available proxies.
         self.workers = max(1, min(int(workers), 5))
+        self.max_concurrency = max(self.workers, min(int(max_concurrency), 64))
         self.queue_limit = max(self.workers, min(int(queue_limit), 5000))
         self._lock = threading.RLock()
         self._jobs = self._load()
-        self._executor = ThreadPoolExecutor(max_workers=self.workers, thread_name_prefix="free-plan-check")
+        self._executor = ThreadPoolExecutor(max_workers=self.max_concurrency, thread_name_prefix="free-plan-check")
+        self._gate = ProxyPoolConcurrencyGate(self._dynamic_concurrency)
         self._futures: set[Future[Any]] = set()
         if recover:
             self._recover()
+
+    def _dynamic_concurrency(self) -> int:
+        """In-flight ceiling: one slot per healthy proxy, capped."""
+        try:
+            healthy = int(self.proxies.healthy_count())
+        except Exception:
+            return self.workers
+        return max(1, min(healthy, self.max_concurrency))
 
     def _load(self) -> dict[str, dict[str, Any]]:
         try:
@@ -204,7 +223,7 @@ class FreePlanCheckService:
         with self._lock:
             jobs = [self._public(job) for job in sorted(self._jobs.values(), key=lambda item: int(item.get("created_at") or 0), reverse=True)]
         active = sum(1 for item in jobs if item.get("status") in ACTIVE_STATUSES)
-        return {"running": active > 0, "workers": self.workers, "queue_limit": self.queue_limit, "active": active, "jobs": jobs}
+        return {"running": active > 0, "workers": self._gate.current_limit(), "max_concurrency": self.max_concurrency, "queue_limit": self.queue_limit, "active": active, "jobs": jobs}
 
     def _config(self) -> dict[str, Any]:
         try:
@@ -463,6 +482,12 @@ class FreePlanCheckService:
         self.task_store.save(tasks)
 
     def _worker(self, task_id: str) -> None:
+        # One healthy proxy backs each in-flight query; wait outside the
+        # running state so queued rows stay visible as queued.
+        with self._gate:
+            self._worker_locked(task_id)
+
+    def _worker_locked(self, task_id: str) -> None:
         job = self._set_job(task_id, status="running")
         if not job:
             return

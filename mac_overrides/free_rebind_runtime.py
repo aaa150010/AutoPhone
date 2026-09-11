@@ -20,6 +20,11 @@ from typing import Any, Callable, Mapping, Sequence
 from urllib.parse import urljoin
 
 try:
+    from .free_batch_concurrency import ProxyPoolConcurrencyGate
+except ImportError:  # pragma: no cover - top-level recovery import
+    from free_batch_concurrency import ProxyPoolConcurrencyGate  # type: ignore[no-redef]
+
+try:
     from .free_failure_runtime import canonical_failure, exception_to_failure, sanitize_failure_text, sanitize_log_message
     from .free_mailbox_otp import build_free_mailbox_otp_provider
     from .free_subject_fingerprint import subject_fingerprint
@@ -234,6 +239,7 @@ class FreeRebindService:
         transport_factory: Callable[..., Any] | None = None,
         otp_provider_factory: Callable[..., Any] | None = None,
         workers: int = 1,
+        max_concurrency: int = 8,
         diagnostic_store: Any = None,
         diagnostic_writer: Any = None,
     ) -> None:
@@ -246,7 +252,11 @@ class FreeRebindService:
         self.log_fn = log_fn
         self.transport_factory = transport_factory
         self.otp_provider_factory = otp_provider_factory
+        # ``workers`` is the fallback ceiling; the live ceiling follows the
+        # shared healthy pool so rebind fan-out scales with available proxies.
         self.workers = max(1, min(2, int(workers or 1)))
+        self.max_concurrency = max(self.workers, min(int(max_concurrency), 64))
+        self._gate = ProxyPoolConcurrencyGate(self._dynamic_concurrency)
         # Rebind has a separate workflow identity even though it shares the
         # process-wide diagnostic SQLite database with Free registration.  A
         # bound writer keeps every event on the same append-only path while
@@ -643,10 +653,21 @@ class FreeRebindService:
                 rows.append(public)
             return rows
 
+    def _dynamic_concurrency(self) -> int:
+        """In-flight ceiling: one slot per healthy proxy, capped."""
+        proxies = getattr(self.free_manager, "proxies", None)
+        try:
+            healthy = int(proxies.healthy_count())
+        except Exception:
+            return self.workers
+        return max(1, min(healthy, self.max_concurrency))
+
     def public_state(self) -> dict[str, Any]:
         tasks = self.public_tasks()
         return {
             "running": any(task.get("status") in ACTIVE_REBIND_STATUSES for task in tasks),
+            "workers": self._gate.current_limit(),
+            "max_concurrency": self.max_concurrency,
             "tasks": tasks,
             "sources": self.public_sources(),
             "mailboxes": self.pool.public_rows(),
@@ -753,7 +774,7 @@ class FreeRebindService:
                 self._save_tasks()
                 self._stop.clear()
                 if self._executor is None:
-                    self._executor = ThreadPoolExecutor(max_workers=self.workers, thread_name_prefix="free-rebind")
+                    self._executor = ThreadPoolExecutor(max_workers=self.max_concurrency, thread_name_prefix="free-rebind")
                 future = self._executor.submit(self._worker, task_id)
             except Exception:
                 self._tasks.pop(task_id, None)
@@ -784,7 +805,7 @@ class FreeRebindService:
                 self._save_tasks()
                 self._stop.clear()
                 if self._executor is None:
-                    self._executor = ThreadPoolExecutor(max_workers=self.workers, thread_name_prefix="free-rebind")
+                    self._executor = ThreadPoolExecutor(max_workers=self.max_concurrency, thread_name_prefix="free-rebind")
                 future = self._executor.submit(self._worker, str(task["task_id"]))
             except Exception:
                 task.update({"status": "failed", "stage": "free_rebind_result", "error": "换绑任务未能重新排队"})
@@ -1130,6 +1151,11 @@ class FreeRebindService:
             self._close_transport(new_transport or transport)
 
     def _worker(self, task_id: str) -> None:
+        # One healthy proxy backs each in-flight rebind login.
+        with self._gate:
+            self._worker_locked(task_id)
+
+    def _worker_locked(self, task_id: str) -> None:
         task = self._set_task(task_id, status="running", stage="free_rebind_proxy")
         if not task:
             return

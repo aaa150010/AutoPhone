@@ -13,6 +13,11 @@ from typing import Any, Callable, Mapping, Sequence
 from urllib.parse import urlsplit
 
 try:
+    from .free_batch_concurrency import ProxyPoolConcurrencyGate
+except ImportError:  # pragma: no cover - top-level recovery import
+    from free_batch_concurrency import ProxyPoolConcurrencyGate  # type: ignore[no-redef]
+
+try:
     from .free_failure_runtime import canonical_failure, exception_to_failure
     from .free_mailbox_otp import MailboxUrlOtpProvider, build_free_mailbox_otp_provider
     from .free_subject_fingerprint import subject_fingerprint
@@ -373,6 +378,7 @@ class FreeLiveCheckService:
         fast_runner: Callable[[Mapping[str, Any], Mapping[str, Any]], Mapping[str, Any]] | None = None,
         deep_runner: Callable[[Mapping[str, Any], Mapping[str, Any]], Mapping[str, Any]] | None = None,
         workers: int = 3,
+        max_concurrency: int = 16,
         queue_limit: int = 500,
         recover: bool = True,
     ) -> None:
@@ -387,14 +393,30 @@ class FreeLiveCheckService:
         self.proxy_probe = proxy_probe
         self.fast_runner = fast_runner or self._run_fast
         self.deep_runner = deep_runner or self._run_deep
+        # ``workers`` is the fallback ceiling for environments where the
+        # proxy store cannot answer; the live ceiling follows the shared
+        # healthy pool so a larger pool automatically runs more checks.
         self.workers = max(1, min(int(workers), 5))
+        self.max_concurrency = max(self.workers, min(int(max_concurrency), 64))
         self.queue_limit = max(self.workers, min(int(queue_limit), 5_000))
         self._lock = threading.RLock()
-        self._executor = ThreadPoolExecutor(max_workers=self.workers, thread_name_prefix="free-live-check")
+        self._executor = ThreadPoolExecutor(max_workers=self.max_concurrency, thread_name_prefix="free-live-check")
+        self._gate = ProxyPoolConcurrencyGate(self._dynamic_concurrency)
         self._futures: set[Future[Any]] = set()
         self._jobs = self._load_jobs()
         if recover:
             self._recover_jobs()
+
+    def _dynamic_concurrency(self) -> int:
+        """In-flight ceiling: one slot per healthy proxy, capped."""
+        try:
+            healthy = int(self.proxies.healthy_count())
+        except Exception as exc:
+            # Pool introspection is advisory; keep the configured fallback
+            # ceiling when the store cannot answer.
+            _note_stderr("dynamic_concurrency", exc)
+            return self.workers
+        return max(1, min(healthy, self.max_concurrency))
 
     def _load_jobs(self) -> dict[str, dict[str, Any]]:
         import json
@@ -532,7 +554,10 @@ class FreeLiveCheckService:
         active = sum(1 for job in jobs if job.get("status") in ACTIVE_LIVE_STATUSES)
         return {
             "running": active > 0,
-            "workers": self.workers,
+            # Effective parallelism: the dynamic healthy-pool ceiling rather
+            # than the static fallback, so the UI reflects real throughput.
+            "workers": self._gate.current_limit(),
+            "max_concurrency": self.max_concurrency,
             "queue_limit": self.queue_limit,
             "active": active,
             "jobs": jobs,
@@ -778,6 +803,12 @@ class FreeLiveCheckService:
         return current
 
     def _worker(self, task_id: str) -> None:
+        # One healthy proxy backs each in-flight check: queue the job (keep
+        # the queued stage visible) until a pool slot frees up.
+        with self._gate:
+            self._worker_locked(task_id)
+
+    def _worker_locked(self, task_id: str) -> None:
         with self._lock:
             initial_job = dict(self._jobs.get(task_id) or {})
         mode = str(initial_job.get("mode") or "fast")

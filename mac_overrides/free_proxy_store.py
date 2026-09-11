@@ -550,6 +550,14 @@ class FreeProxyPool:
             rows.append(row)
         return rows
 
+    def healthy_count(self, *, driver: str = "protocol") -> int:
+        """Number of dispatchable proxies in the shared healthy pool.
+
+        Batch services size their in-flight ceiling from this so account
+        operations never outpace the proxy pool they depend on.
+        """
+        return len(self._eligible(driver=driver))
+
     def _pool_health_summary(self, *, driver: str = "protocol", candidates: Iterable[Mapping[str, Any]] = ()) -> dict[str, Any]:
         """Summarize why a saved pool cannot currently satisfy a bind.
 
