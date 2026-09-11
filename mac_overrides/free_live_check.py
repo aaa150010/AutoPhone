@@ -476,10 +476,11 @@ class FreeLiveCheckService:
     def _public_job(self, job: Mapping[str, Any]) -> dict[str, Any]:
         keys = (
             "task_id", "row_id", "mode", "status", "stage", "created_at",
-            "updated_at", "checked_at",
+            "updated_at", "checked_at", "started_at",
             "token_refreshed", "recovered",
         )
         result = {key: copy.deepcopy(job[key]) for key in keys if key in job}
+        result["timing"] = self._job_timing(job)
         # Live-check jobs share the same public-state boundary as registration
         # tasks. Keep the historical ``email`` key for existing clients, but
         # expose only a masked value and a short subject reference; the raw
@@ -492,6 +493,38 @@ class FreeLiveCheckService:
         if isinstance(job.get("failure"), Mapping):
             result["failure"] = canonical_failure(job["failure"])
         return result
+
+    @staticmethod
+    def _job_timing(job: Mapping[str, Any]) -> dict[str, Any]:
+        """Project job milestones into the TaskTiming contract used by the UI."""
+        created_at = int(job.get("created_at") or 0)
+        started_at = int(job.get("started_at") or 0)
+        checked_at = job.get("checked_at")
+        end = int(checked_at) if checked_at else int(time.time())
+        execution_start = started_at or created_at
+        stages = job.get("stages") if isinstance(job.get("stages"), list) else []
+        stage_rows = []
+        for span in stages:
+            if not isinstance(span, Mapping):
+                continue
+            span_start = int(span.get("started_at") or 0)
+            span_end = int(span.get("finished_at") or end)
+            stage_rows.append({
+                "code": str(span.get("code") or ""),
+                "label": str(span.get("label") or span.get("code") or ""),
+                "elapsed_seconds": max(0, span_end - span_start),
+                "visits": 1,
+            })
+        return {
+            "queued_at": created_at,
+            "started_at": created_at,
+            "execution_started_at": execution_start,
+            "finished_at": checked_at,
+            "elapsed_seconds": max(0, end - created_at),
+            "queue_elapsed_seconds": max(0, execution_start - created_at),
+            "execution_elapsed_seconds": max(0, end - execution_start),
+            "stages": stage_rows,
+        }
 
     def public_state(self) -> dict[str, Any]:
         with self._lock:
@@ -554,6 +587,8 @@ class FreeLiveCheckService:
                     "stage": "free_live_queued",
                     "created_at": now,
                     "updated_at": now,
+                    "started_at": 0,
+                    "stages": [],
                     "device_id": f"free-live-{secrets.token_hex(16)}",
                     "token_refreshed": False,
                 }
@@ -668,8 +703,28 @@ class FreeLiveCheckService:
             job = self._jobs.get(task_id)
             if job is None:
                 return {}
+            previous_stage = str(job.get("stage") or "")
             job.update(values)
-            job["updated_at"] = int(time.time())
+            now = int(time.time())
+            job["updated_at"] = now
+            # Track per-stage spans so the run-log popover can show the same
+            # 节点耗时 breakdown as registration tasks.
+            new_stage = str(job.get("stage") or "")
+            stages = job.get("stages") if isinstance(job.get("stages"), list) else []
+            if new_stage != previous_stage or not stages:
+                if stages and isinstance(stages[-1], dict) and stages[-1].get("finished_at") is None:
+                    stages[-1]["finished_at"] = now
+                stages.append({
+                    "code": new_stage or "free_live_queued",
+                    "label": LIVE_STAGE_LABELS.get(new_stage, new_stage or "排队"),
+                    "started_at": now,
+                    "finished_at": None,
+                })
+            job["stages"] = stages
+            if job.get("checked_at") is not None:
+                for span in stages:
+                    if isinstance(span, dict) and span.get("finished_at") is None:
+                        span["finished_at"] = int(job["checked_at"])
             self._save_jobs()
             return dict(job)
 
@@ -726,7 +781,12 @@ class FreeLiveCheckService:
         with self._lock:
             initial_job = dict(self._jobs.get(task_id) or {})
         mode = str(initial_job.get("mode") or "fast")
-        job = self._set_job(task_id, status="running", stage="free_live_fast" if mode == "fast" else "free_live_deep")
+        job = self._set_job(
+            task_id,
+            status="running",
+            stage="free_live_fast" if mode == "fast" else "free_live_deep",
+            started_at=int(time.time()),
+        )
         if not job:
             return
         lease_owner = task_id
