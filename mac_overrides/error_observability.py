@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 import json
 import re
+from functools import lru_cache
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
@@ -419,11 +420,18 @@ def _protect_generated_identifiers(text: str) -> tuple[str, list[str]]:
 
 def sanitize_failure_detail(value: Any, *, secrets: Sequence[Any] = (), limit: int = 500) -> str:
     """Return a short diagnostic summary with credential-shaped values removed."""
-
     text = _diagnostic_text(value)[:8192]
     if not text:
         return ""
-    for secret in secrets:
+    # Pure string projection: identical (text, secrets, limit) inputs recur
+    # several times per classified failure (best summary + public fields),
+    # so the regex chain runs once per distinct input.
+    return _sanitize_failure_detail_cached(text, tuple(str(secret or "") for secret in secrets), int(limit))
+
+
+@lru_cache(maxsize=4096)
+def _sanitize_failure_detail_cached(text: str, secrets_key: tuple[str, ...], limit: int) -> str:
+    for secret in secrets_key:
         item = str(secret or "")
         if len(item) >= 3 and not set(item).issubset({"*"}):
             text = text.replace(item, "********")
@@ -464,8 +472,16 @@ def _failure_sources(result: Any, error: Any) -> list[Any]:
     return values
 
 
-def _combined_search_text(values: Sequence[Any]) -> str:
-    return " ".join(_diagnostic_text(value) for value in values if value not in (None, "")).lower()
+def _diagnostic_texts(values: Sequence[Any]) -> list[str]:
+    """Project every failure source once; callers reuse the texts."""
+    return [_diagnostic_text(value) for value in values]
+
+
+def _combined_search_text(values: Sequence[Any], *, texts: Sequence[str] | None = None) -> str:
+    projected = texts if texts is not None else _diagnostic_texts(values)
+    return " ".join(
+        text for value, text in zip(values, projected) if value not in (None, "")
+    ).lower()
 
 
 def _last_chain_state(result: Any) -> str:
@@ -501,8 +517,9 @@ def _current_node(result: Any, progress: Any) -> str:
     return _CHAIN_NEXT_NODE.get(state, "unexpected")
 
 
-def _extract_http_status(values: Sequence[Any]) -> int | None:
-    for value in values:
+def _extract_http_status(values: Sequence[Any], *, texts: Sequence[str] | None = None) -> int | None:
+    projected = texts if texts is not None else _diagnostic_texts(values)
+    for value, text in zip(values, projected):
         if isinstance(value, Mapping):
             for key in ("status_code", "http_status", "status"):
                 try:
@@ -511,7 +528,6 @@ def _extract_http_status(values: Sequence[Any]) -> int | None:
                     continue
                 if 100 <= status <= 599:
                     return status
-        text = _diagnostic_text(value)
         for pattern in _HTTP_STATUS_RES:
             match = pattern.search(text)
             if match:
@@ -519,14 +535,15 @@ def _extract_http_status(values: Sequence[Any]) -> int | None:
     return None
 
 
-def _extract_provider_code(values: Sequence[Any]) -> str:
-    for value in values:
+def _extract_provider_code(values: Sequence[Any], *, texts: Sequence[str] | None = None) -> str:
+    projected = texts if texts is not None else _diagnostic_texts(values)
+    for value, text in zip(values, projected):
         if isinstance(value, Mapping):
             for key in ("error_code", "provider_code", "code", "type"):
                 candidate = str(value.get(key) or "").strip()
                 if re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{1,79}", candidate):
                     return candidate.lower().replace("-", "_").replace(".", "_")
-        match = _PROVIDER_CODE_RE.search(_diagnostic_text(value))
+        match = _PROVIDER_CODE_RE.search(text)
         if match:
             return match.group(1).lower().replace("-", "_").replace(".", "_")
     return ""
@@ -696,7 +713,8 @@ def classify_failure(
     """Normalize a runtime failure into a stable and safe public contract."""
 
     values = _failure_sources(result, error)
-    search_text = _combined_search_text(values)
+    value_texts = _diagnostic_texts(values)
+    search_text = _combined_search_text(values, texts=value_texts)
     current_node = _current_node(result, progress)
     rule = _rule_for(search_text)
     # Keep session expiry at the operation where it surfaced. It is not proof
@@ -725,7 +743,7 @@ def classify_failure(
 
     if rule is None:
         node_code = current_node
-        error_code = _extract_provider_code(values) or f"{node_code}_failed"
+        error_code = _extract_provider_code(values, texts=value_texts) or f"{node_code}_failed"
         cause = ""
         retryable = node_code not in {"email_password", "account_banned"}
     else:
@@ -734,8 +752,8 @@ def classify_failure(
     if node_code not in NODE_LABELS:
         node_code = "unexpected"
     node_label = NODE_LABELS[node_code]
-    http_status = _extract_http_status(values)
-    provider_code = _extract_provider_code(values)
+    http_status = _extract_http_status(values, texts=value_texts)
+    provider_code = _extract_provider_code(values, texts=value_texts)
     if (
         isinstance(result, Mapping)
         and str(result.get("run_mode") or "").strip().lower() == "relogin"

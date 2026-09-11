@@ -793,7 +793,8 @@ class MailboxUrlClient:
                             self._client_mailbox_refresh_pending = False
                             self._client_mailbox_refresh_forced = False
 
-        listing_messages = len(_merge_messages(combined))
+        listing_merged = _merge_messages(combined)
+        listing_messages = len(listing_merged)
         active_detail_urls = list(dict.fromkeys(detail_urls[:MAX_MESSAGES]))
         active_set = set(active_detail_urls)
         for stale_url in tuple(self._detail_cache):
@@ -827,9 +828,14 @@ class MailboxUrlClient:
             detail_outcome = "partial"
         if detail_targets:
             self._timing("mailbox_detail_refresh", detail_started, detail_outcome)
-        for detail_url in active_detail_urls:
-            combined.extend(self._detail_cache.get(detail_url, ()))
-        merged = _merge_messages(combined)
+        if active_detail_urls:
+            for detail_url in active_detail_urls:
+                combined.extend(self._detail_cache.get(detail_url, ()))
+            merged = _merge_messages(combined)
+        else:
+            # No detail payloads joined this poll: the final merge equals the
+            # listing merge, so reuse it instead of re-reducing.
+            merged = listing_merged
         page_fingerprint = listing_digest
         openai_messages = sum(
             1
