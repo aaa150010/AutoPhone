@@ -10,6 +10,7 @@ existing tests can keep patching ``mac_overrides.free_register_runtime.<name>``.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Mapping
 from urllib.parse import urlsplit
 
@@ -185,7 +186,8 @@ class FreeRegisterPreflightMixin:
                 continue
         diagnostics: list[dict[str, Any]] = []
         pool_health_write_errors: list[dict[str, str]] = []
-        for index, value in enumerate(values, 1):
+
+        def probe_row(index: int, value: str) -> dict[str, Any]:
             try:
                 layered = None
                 if layered_probe and self.proxy_probe is None:
@@ -370,7 +372,25 @@ class FreeRegisterPreflightMixin:
                                 workflow="cleanup",
                             )
             row["index"] = index
-            diagnostics.append(row)
+            return row
+
+        # Probes are independent per-row TLS round trips; running them
+        # concurrently keeps large-pool manual checks from scaling linearly
+        # with the saved proxy count. Results are re-ordered by index so the
+        # public row contract stays stable.
+        rows_by_index: dict[int, dict[str, Any]] = {}
+        if len(values) == 1:
+            rows_by_index[1] = probe_row(1, values[0])
+        else:
+            probe_workers = min(8, max(2, len(values)))
+            with ThreadPoolExecutor(max_workers=probe_workers, thread_name_prefix="free-proxy-preflight") as probe_pool:
+                pending = {
+                    probe_pool.submit(probe_row, index, value): index
+                    for index, value in enumerate(values, 1)
+                }
+                for future in as_completed(pending):
+                    rows_by_index[pending[future]] = future.result()
+        diagnostics = [rows_by_index[index] for index in sorted(rows_by_index)]
         result: dict[str, Any] = {
             **runtime_info(),
             "proxies": len([row for row in diagnostics if row.get("available")]),
