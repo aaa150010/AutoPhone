@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { errorMessage } from '../utils/errorMessage'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElNotification } from 'element-plus'
 import { getRemailProjects, getRemailWallet, purchaseRemail, ApiError, type RemailProject, type RemailProjectProduct, type RemailWallet } from '../api/client'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 
@@ -57,9 +57,11 @@ async function purchase() {
     const result = await purchaseRemail({ project_id: projectId.value, email_suffix: suffix.value, quantity: quantity.value, supply: supply.value })
     const imported = result.imported?.length || 0
     const skipped = result.skipped?.length || 0
-    if (imported) ElMessage.success(`订单已创建，${imported} 个邮箱已自动导入 Free 邮箱池${skipped ? `，${skipped} 个待凭证下发后手动导入` : ''}`)
-    else if (skipped) ElMessage.warning(`订单已创建，${skipped} 个邮箱暂缺服务凭证，可在订单查询页手动导入`)
-    else ElMessage.success('订单已创建，可在订单查询中确认并导入 Free 池')
+    // A paid order must not be confirmed by an auto-dismissing toast only;
+    // the notification stays until manually closed.
+    if (imported) ElNotification({ title: '购买成功', message: `订单已创建，${imported} 个邮箱已自动导入 Free 邮箱池${skipped ? `，${skipped} 个待凭证下发后手动导入` : ''}`, type: 'success', duration: 0 })
+    else if (skipped) ElNotification({ title: '购买成功', message: `订单已创建，${skipped} 个邮箱暂缺服务凭证，可在订单查询页手动导入`, type: 'warning', duration: 0 })
+    else ElNotification({ title: '购买成功', message: '订单已创建，可在订单查询中确认并导入 Free 池', type: 'success', duration: 0 })
     await load()
   }
   catch (error) {
