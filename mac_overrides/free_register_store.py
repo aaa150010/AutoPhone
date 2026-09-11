@@ -264,16 +264,19 @@ class FreeMailboxPool:
         with self._lock:
             state = self._state()["rows"]
             now = time.time()
+            state_dirty = False
             available = []
             for row in self.entries():
                 row_state = state.get(row.row_id, {})
                 if str(row_state.get("source") or "").strip().lower() == "remail" and remail_order_expired(row_state, now=now):
                     if str(row_state.get("status") or "available") not in ACTIVE_POOL_STATUSES:
                         row_state.update({"status": "unavailable", "remail_expired": True, "error": "Remail 订单已过期"})
+                        state_dirty = True
                     continue
                 if str(row_state.get("status") or "available") == "available" and _cooldown_timestamp(row_state.get("cooldown_until")) <= now:
                     available.append(row)
-            atomic_write(self.state_path, {"version": 2, "rows": state})
+            if state_dirty:
+                atomic_write(self.state_path, {"version": 2, "rows": state})
             if any(state.get(row.row_id, {}).get("next_batch_priority") for row in available):
                 original_order = {row.row_id: index for index, row in enumerate(available)}
                 def priority(row: FreeMailbox) -> int:
@@ -485,6 +488,7 @@ class FreeMailboxPool:
             state = state_doc["rows"]
             output = []
             entries = self.entries()
+            state_dirty = False
             for position, row in enumerate(entries):
                 current = state.get(row.row_id, {})
                 if not isinstance(current, Mapping):
@@ -493,6 +497,7 @@ class FreeMailboxPool:
                     current = dict(current)
                     current["created_at"] = time.time() - position
                     state[row.row_id] = current
+                    state_dirty = True
                 result = self.result(row.row_id)
                 current_status = sanitize_public_status(current.get("status"), default="available")
                 if result:
@@ -612,7 +617,8 @@ class FreeMailboxPool:
             output.sort(key=lambda item: (_timestamp_number(item.get("created_at"), 0), str(item.get("row_id") or "")), reverse=True)
             for index, item in enumerate(output, 1):
                 item["display_index"] = index
-            atomic_write(self.state_path, state_doc)
+            if state_dirty:
+                atomic_write(self.state_path, state_doc)
             return output
 
     def export_success(self, row_ids: Sequence[str] = ()) -> str:

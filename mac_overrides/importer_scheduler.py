@@ -546,8 +546,13 @@ def start_bounded_importer(
                 return
             try:
                 with importer.lock:
-                    task = copy.deepcopy(importer.tasks.get(task_id) or {})
-                observer(task.get("status"), task.get("result"))
+                    task = importer.tasks.get(task_id) or {}
+                    # Copy only the two observed fields: deepcopying the whole
+                    # task (progress/timing/attempts) under the shared lock
+                    # stalled every other scheduler operation.
+                    status = task.get("status")
+                    result = copy.deepcopy(task.get("result"))
+                observer(status, result)
             except Exception as exc:
                 # Rollback telemetry must never change task outcome semantics.
                 _note_failure(importer, _QUEUE_NODE, "执行中结果上报失败", exc)

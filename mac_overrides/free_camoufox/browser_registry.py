@@ -1242,7 +1242,24 @@ class CamoufoxBrowserPool:
                         ),
                     )
                     break
-                await asyncio.sleep(0.05)
+                # Sleep until a candidate slot reports idle instead of
+                # rebuilding the whole candidate list every 50 ms; the 0.25s
+                # timeout keeps the recovery branch below reachable.
+                waiters = [
+                    asyncio.ensure_future(item.idle_event.wait())
+                    for item in available
+                    if item.idle_event is not None
+                ]
+                if waiters:
+                    _done, pending = await asyncio.wait(
+                        waiters,
+                        timeout=0.25,
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                    for waiter in pending:
+                        waiter.cancel()
+                else:
+                    await asyncio.sleep(0.05)
                 continue
             # A disconnect callback or registration-limit cleanup can already
             # be rebuilding every slot.  Treat that as a transient admission
