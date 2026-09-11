@@ -237,6 +237,10 @@ class MailboxAdminService(MailboxImportMixin, MailboxSourceLockMixin):
         result_index: MailboxResultIndex | None = None,
     ) -> None:
         self.store = store
+        # The mailbox listing renders several formatted errors per row per
+        # poll; identical (error, secrets) pairs recur every tick, so memoize
+        # the pure formatter+redaction projection.
+        self._format_error_cache: dict[tuple[str, tuple[str, ...]], str] = {}
         self.validate_pool = validate_pool
         self.imap_poller_factory = imap_poller_factory
         self.runtime_status = runtime_status
@@ -304,11 +308,21 @@ class MailboxAdminService(MailboxImportMixin, MailboxSourceLockMixin):
             self.log_fn(message, level)
 
     def _format_error(self, error: Any, secrets: Sequence[Any] = ()) -> str:
+        key = (str(error or ""), tuple(str(secret) for secret in secrets))
+        cached = self._format_error_cache.get(key)
+        if cached is not None:
+            return cached
         try:
             value = self.error_formatter(error)
         except Exception:
             value = str(error)
-        return redact_mailbox_credentials(value, secrets)
+        result = redact_mailbox_credentials(value, secrets)
+        cache = self._format_error_cache
+        cache[key] = result
+        if len(cache) > 4096:
+            for stale_key in list(cache)[:1024]:
+                cache.pop(stale_key, None)
+        return result
 
     @staticmethod
     def _row_secrets(row: str) -> tuple[str, ...]:
@@ -510,14 +524,14 @@ class MailboxAdminService(MailboxImportMixin, MailboxSourceLockMixin):
             "message": "已找到最新 OpenAI 邮箱验证码",
         }
 
-    def _latest_results_by_email(self, results_dir: Path) -> dict[str, dict[str, Any]]:
-        config = self._config()
-        enabled = config.get("mailbox_result_index_cache") is not False
+    def _latest_results_by_email(self, results_dir: Path, config: Mapping[str, Any] | None = None) -> dict[str, dict[str, Any]]:
+        resolved_config = config if isinstance(config, Mapping) else self._config()
+        enabled = resolved_config.get("mailbox_result_index_cache") is not False
         return self.result_index.snapshot(results_dir, enabled=enabled).latest_results
 
-    def _latest_sub2_accounts_by_email(self, results_dir: Path) -> dict[str, dict[str, Any]]:
-        config = self._config()
-        enabled = config.get("mailbox_result_index_cache") is not False
+    def _latest_sub2_accounts_by_email(self, results_dir: Path, config: Mapping[str, Any] | None = None) -> dict[str, dict[str, Any]]:
+        resolved_config = config if isinstance(config, Mapping) else self._config()
+        enabled = resolved_config.get("mailbox_result_index_cache") is not False
         return self.result_index.snapshot(results_dir, enabled=enabled).latest_sub2_accounts
 
     def _sub2_status_for(self, account_id: str) -> dict[str, Any]:
@@ -971,7 +985,7 @@ class MailboxAdminService(MailboxImportMixin, MailboxSourceLockMixin):
         with self._locked_pool_config() as config:
             lines = self._read_pool_lines(config)
             accounts_by_email = self._latest_sub2_accounts_by_email(
-                self._path(config, "results_dir")
+                self._path(config, "results_dir"), config
             )
             resolved: list[dict[str, Any]] = []
             for line_no, expected_row_id in bindings:
@@ -1088,7 +1102,7 @@ class MailboxAdminService(MailboxImportMixin, MailboxSourceLockMixin):
                         "email": email_from_row(row),
                     }
                 )
-            accounts_by_email = self._latest_sub2_accounts_by_email(results_dir)
+            accounts_by_email = self._latest_sub2_accounts_by_email(results_dir, config)
             for item in resolved:
                 account = accounts_by_email.get(item["email"]) or {}
                 item["sub2api_account_id"] = str(account.get("account_id") or "")
@@ -1136,7 +1150,7 @@ class MailboxAdminService(MailboxImportMixin, MailboxSourceLockMixin):
                 resolved = resolve_source_rows(value, lines, row_id_from_source)
             if not resolved.get("ok"):
                 return resolved
-            latest = self._latest_results_by_email(self._path(config, "results_dir"))
+            latest = self._latest_results_by_email(self._path(config, "results_dir"), config)
             items: list[dict[str, Any]] = []
             skipped_items: list[dict[str, Any]] = []
             for selected_row in resolved["rows"]:

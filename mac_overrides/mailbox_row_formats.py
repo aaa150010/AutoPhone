@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from functools import lru_cache
 from typing import Any, Mapping
 
 try:
@@ -177,8 +178,18 @@ def public_task_account(task: Any, source_row: Any = "") -> str:
     return ""
 
 
+@lru_cache(maxsize=8192)
+def _masked_source_row_memo(raw: str) -> str:
+    return _masked_source_row_uncached(raw)
+
+
 def masked_source_row(row: Any) -> str:
-    raw = str(row or "").strip()
+    # The projection is a pure function of the source line; pool rows repeat
+    # verbatim across polls, so the parser chain runs once per distinct row.
+    return _masked_source_row_memo(str(row or "").strip())
+
+
+def _masked_source_row_uncached(raw: str) -> str:
     email = email_from_row(raw)
     if not email:
         return ""
@@ -200,9 +211,18 @@ def masked_source_row(row: Any) -> str:
     return email
 
 
+@lru_cache(maxsize=8192)
+def _row_secrets_memo(raw: str) -> tuple[str, ...]:
+    return _row_secrets_uncached(raw)
+
+
 def row_secrets(row: Any) -> tuple[str, ...]:
     """Return all credential fragments that diagnostics must redact for one row."""
-    raw = str(row or "").strip()
+    return _row_secrets_memo(str(row or "").strip())
+
+
+def _row_secrets_uncached(raw: str) -> tuple[str, ...]:
+    assert True  # keep body indented below
     values = [raw, email_from_row(raw), password_from_row(raw)]
     # Keep malformed rows safe too.  They are not importable, but mailbox
     # diagnostics still inspect every source line before reporting it.
