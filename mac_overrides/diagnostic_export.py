@@ -242,8 +242,14 @@ class DiagnosticExportMixin:
             return results
 
     def export(self, incident_ids: Sequence[str], fmt: str = "json") -> str:
-        rows = [self.incident(value) for value in incident_ids]
-        incidents = [row for row in rows if row is not None]
+        bulk = getattr(self, "incidents_bulk", None)
+        if callable(bulk):
+            # One grouped read + verify per table instead of two full
+            # incident loads per selected log id.
+            incidents = bulk(incident_ids)
+        else:
+            rows = [self.incident(value) for value in incident_ids]
+            incidents = [row for row in rows if row is not None]
         if str(fmt).lower() != "markdown":
             return json.dumps({
                 "schema_version": SCHEMA_VERSION,

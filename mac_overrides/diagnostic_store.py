@@ -1114,6 +1114,64 @@ class DiagnosticStore(DiagnosticExportMixin, DiagnosticSummaryMixin):
             events = db.execute("SELECT * FROM diagnostic_events WHERE incident_id=? ORDER BY rowid ASC", (incident_id,)).fetchall()
             return [self._row(event) for event in events]
 
+    def incidents_bulk(self, incident_ids: Sequence[str]) -> list[dict[str, Any]]:
+        """Return full incident payloads for many ids with two indexed reads.
+
+        ``export`` previously re-ran ``incident`` per id, re-querying and
+        re-verifying every event twice; grouping the reads keeps the exact
+        per-incident payload (including chain verification) at one query per
+        table.
+        """
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for value in incident_ids:
+            incident_id = _safe_text(value, 80).upper()
+            if incident_id and incident_id not in seen:
+                seen.add(incident_id)
+                normalized.append(incident_id)
+        if not normalized:
+            return []
+        placeholders = ",".join("?" for _ in normalized)
+        with self._lock, self._connection() as db:
+            incident_rows = db.execute(
+                f"SELECT * FROM diagnostic_incidents WHERE incident_id IN ({placeholders}) ORDER BY rowid ASC",
+                tuple(normalized),
+            ).fetchall()
+            event_rows = db.execute(
+                f"SELECT * FROM diagnostic_events WHERE incident_id IN ({placeholders}) ORDER BY rowid ASC",
+                tuple(normalized),
+            ).fetchall()
+            events_by_incident: dict[str, list[sqlite3.Row]] = {}
+            for event in event_rows:
+                events_by_incident.setdefault(str(event["incident_id"] or ""), []).append(event)
+            integrity: dict[str, str] = {
+                str(row["incident_id"] or ""): self._verify_event_rows(
+                    db, str(row["incident_id"] or ""), events_by_incident.get(str(row["incident_id"] or ""), [])
+                )
+                for row in incident_rows
+            }
+        payloads: list[dict[str, Any]] = []
+        for row in incident_rows:
+            incident_id = str(row["incident_id"] or "")
+            events = events_by_incident.get(incident_id, [])
+            payload = self._row(row)
+            payload["events"] = [self._row(event) for event in events]
+            payload["root_cause_event_id"] = next(
+                (
+                    str(event["event_id"])
+                    for event in events
+                    if str(event["node_code"] or "") == str(row["first_node_code"] or "")
+                    and _is_business_failure_event(event)
+                    and not _is_cleanup_event(event)
+                ),
+                "",
+            )
+            payload["integrity_status"] = integrity.get(incident_id, "failed")
+            payloads.append(payload)
+        # Preserve the caller-facing selection order (export input order).
+        by_id = {str(item.get("incident_id") or ""): item for item in payloads}
+        return [by_id[key] for key in normalized if key in by_id]
+
     def verify_incident(self, db: sqlite3.Connection, incident_id: str) -> str:
         rows = db.execute("SELECT * FROM diagnostic_events WHERE incident_id=? ORDER BY rowid ASC", (incident_id,)).fetchall()
         return self._verify_event_rows(db, incident_id, rows)
