@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-FREE_RUNTIME_VERSION = "1.6.122"
+FREE_RUNTIME_VERSION = "1.6.123"
 try:
     from .mailbox_parser_sample_store import MAILBOX_PARSER_REVISION
 except ImportError:  # pragma: no cover - top-level runtime loading
