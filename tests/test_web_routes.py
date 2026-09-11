@@ -2350,8 +2350,10 @@ class WebRouteTests(unittest.TestCase):
         class FakePurchaseManager:
             def __init__(self):
                 self.pool = FakePool()
+                self.state_reads = 0
 
             def public_state(self):
+                self.state_reads += 1
                 return {"running": False, "tasks": [], "summary": {}}
 
         class FakeRemailClient:
@@ -2380,6 +2382,10 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertTrue(payload["ok"])
+        # The purchase response must not read manager state: public_state()
+        # holds the manager lock and froze paid purchases behind busy batches.
+        self.assertNotIn("state", payload)
+        self.assertEqual(manager.state_reads, 0)
         self.assertEqual([order["orderNo"] for order in manager.pool.imported], ["ORD-AUTO-1", "ORD-AUTO-2"])
         self.assertEqual([row["row_id"] for row in payload["imported"]], ["row-1", "row-2"])
         self.assertEqual(payload["skipped"], [])
@@ -2435,10 +2441,96 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertTrue(payload["ok"])
+        self.assertNotIn("state", payload)
         self.assertEqual(payload["imported"], [])
         self.assertEqual(len(payload["skipped"]), 1)
         self.assertEqual(payload["skipped"][0]["order_no"], "ORD-PENDING")
         self.assertEqual(manager.pool.imported[0]["orderNo"], "ORD-PENDING")
+
+    def test_remail_purchase_records_success_diagnostic_event(self):
+        from mac_overrides.diagnostic_store import DiagnosticStore
+
+        class FakePool:
+            def import_remail_order(self, order):
+                return {"row_id": "row-1"}
+
+        class FakePurchaseManager:
+            def __init__(self):
+                self.pool = FakePool()
+
+        class FakeRemailClient:
+            def create_order(self, project_id, email_suffix, *, supply="private_first", idempotency_key=None):
+                return {"orderNo": "ORD-DIAG-1", "status": "active", "deliveryEmail": f"diag1@{email_suffix}", "serviceToken": "tok-1"}
+
+        import mac_overrides.remail_api as remail_api
+        manager = FakePurchaseManager()
+        store = DiagnosticStore(Path(self.tempdir.name) / "diagnostics")
+        original_client = remail_api.RemailClient
+        remail_api.RemailClient = lambda *args, **kwargs: FakeRemailClient()
+        try:
+            app = self._app(replace(self.context, free_register_manager=manager, diagnostic_store=store))
+            response = app.test_client().post(
+                "/api/remail/purchase",
+                json={"project_id": 1, "email_suffix": "icloud.com", "quantity": 1},
+            )
+        finally:
+            remail_api.RemailClient = original_client
+
+        self.assertEqual(response.status_code, 200)
+        results = store.search({"chain": "free", "workflow": "route", "outcome": "success"})
+        self.assertEqual(len(results), 1)
+        incident = store.incident(results[0]["incident_id"])
+        self.assertIsNotNone(incident)
+        events = incident["events"]
+        self.assertEqual(len(events), 1)
+        event = events[0]
+        self.assertEqual(event["node_code"], "free_remail_purchase")
+        self.assertEqual(event["outcome"], "success")
+        self.assertIn("数量 1", event["message"])
+        self.assertIn("导入 1", event["message"])
+
+    def test_remail_purchase_failure_omits_manager_state_but_keeps_incident(self):
+        from mac_overrides.diagnostic_store import DiagnosticStore
+
+        class FakePool:
+            pass
+
+        class FakePurchaseManager:
+            def __init__(self):
+                self.pool = FakePool()
+                self.state_reads = 0
+
+            def public_state(self):
+                self.state_reads += 1
+                return {"running": False, "tasks": [], "summary": {}}
+
+        class FakeRemailClient:
+            def create_order(self, project_id, email_suffix, *, supply="private_first", idempotency_key=None):
+                raise RuntimeError("Remail 上游不可用")
+
+        import mac_overrides.remail_api as remail_api
+        manager = FakePurchaseManager()
+        store = DiagnosticStore(Path(self.tempdir.name) / "diagnostics")
+        original_client = remail_api.RemailClient
+        remail_api.RemailClient = lambda *args, **kwargs: FakeRemailClient()
+        try:
+            app = self._app(replace(self.context, free_register_manager=manager, diagnostic_store=store))
+            response = app.test_client().post(
+                "/api/remail/purchase",
+                json={"project_id": 1, "email_suffix": "icloud.com", "quantity": 1},
+            )
+        finally:
+            remail_api.RemailClient = original_client
+
+        self.assertEqual(response.status_code, 400)
+        payload = response.get_json()
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["node_code"], "free_remail_purchase")
+        self.assertNotIn("state", payload)
+        self.assertEqual(manager.state_reads, 0)
+        results = store.search({"chain": "free", "workflow": "route", "outcome": "error"})
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["first_node_code"], "free_remail_purchase")
 
 
 if __name__ == "__main__":

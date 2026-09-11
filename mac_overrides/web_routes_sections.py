@@ -606,11 +606,16 @@ def build_free_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]:
             return scope.module.jsonify(ok=False, error=f"Free 注册运行中，暂不能{action}，请停止当前批次后重试", state=current_state), 409
         return None
 
-    def free_failure_response(exc: Exception, *, default_code: str, default_label: str, status: int = 400):
-        try:
-            current_state = free_state()
-        except Exception as state_exc:
-            return free_state_failure_response(state_exc)
+    def free_failure_response(exc: Exception, *, default_code: str, default_label: str, status: int = 400, include_state: bool = True):
+        # ``state`` is built under the Free manager lock.  Payload builders
+        # that never surface it (Remail upstream routes) must skip the lock
+        # entirely, or a busy manager freezes the error response as well.
+        current_state: dict[str, Any] | None = None
+        if include_state:
+            try:
+                current_state = free_state()
+            except Exception as state_exc:
+                return free_state_failure_response(state_exc)
         code = str(getattr(exc, "node_code", "") or default_code)
         label = str(getattr(exc, "node_label", "") or default_label)
         cause = _free_error_detail(exc, code)
@@ -646,8 +651,9 @@ def build_free_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]:
             "error_code": failure.get("error_code") or code,
             "error": failure.get("public_message") or cause,
             "failure": failure,
-            "state": current_state,
         }
+        if current_state is not None:
+            payload["state"] = current_state
         if provider_status is not None:
             payload["provider_status"] = provider_status
         incident_id = ""
@@ -913,12 +919,13 @@ def build_free_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]:
             return _safe_free_message(exc) or "Free 注册失败"
         return scope.context.safe_runtime_error(exc)
 
-    def free_error_response(exc: Exception, *, default_code: str, default_label: str, status: int = 400):
+    def free_error_response(exc: Exception, *, default_code: str, default_label: str, status: int = 400, include_state: bool = True):
         return free_failure_response(
             exc,
             default_code=default_code,
             default_label=default_label,
             status=status,
+            include_state=include_state,
         )
 
     free_pool_routes = FreePoolRouteController(
@@ -1006,7 +1013,7 @@ def build_remail_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]
             profile = _remail_whitelisted(_remail_client().profile(), _REMAIL_PROFILE_FIELDS)
             return scope.module.jsonify(ok=True, profile=profile)
         except Exception as exc:
-            return ns["free_error_response"](exc, default_code="free_remail_profile", default_label="读取 Remail API Key")
+            return ns["free_error_response"](exc, default_code="free_remail_profile", default_label="读取 Remail API Key", include_state=False)
 
     def api_remail_config():
         if scope.free_config_store is None:
@@ -1055,14 +1062,14 @@ def build_remail_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]
             data = _remail_client().projects(status="listed", search="chatgpt")
             return scope.module.jsonify(ok=True, projects=data)
         except Exception as exc:
-            return ns["free_error_response"](exc, default_code="free_remail_projects", default_label="读取 Remail 项目")
+            return ns["free_error_response"](exc, default_code="free_remail_projects", default_label="读取 Remail 项目", include_state=False)
 
     def api_remail_wallet():
         try:
             wallet = _remail_whitelisted(_remail_client().wallet(), _REMAIL_WALLET_FIELDS)
             return scope.module.jsonify(ok=True, wallet=wallet)
         except Exception as exc:
-            return ns["free_error_response"](exc, default_code="free_remail_wallet", default_label="读取 Remail 钱包")
+            return ns["free_error_response"](exc, default_code="free_remail_wallet", default_label="读取 Remail 钱包", include_state=False)
 
     def _auto_import_remail_orders(pool, orders: list[Mapping[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Import freshly purchased orders into the Free pool right away.
@@ -1083,7 +1090,37 @@ def build_remail_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]
                 skipped.append({"order_no": order_no, "reason": _safe_free_message(exc) or "订单凭证不可用"})
         return imported, skipped
 
+    def _record_remail_purchase_success(*, quantity: int, supply: str, imported: list[dict[str, Any]], skipped: list[dict[str, Any]], duration_ms: int) -> None:
+        """Persist one success diagnostic for the purchase route.
+
+        The route used to stay silent on success, so a frozen response left
+        no trace in the log center.  The store drops taskless info events, so
+        each purchase gets a synthetic per-call execution id; counts stay
+        aggregated with no order numbers, emails, or tokens recorded here.
+        """
+        store = scope.diagnostic_store
+        if store is None:
+            return
+        try:
+            writer = DiagnosticEventWriter(store, context=LogContext(chain="free", workflow="route", driver="free"))
+            writer.record({
+                "level": "info",
+                "outcome": "success",
+                "chain": "free",
+                "workflow": "route",
+                "driver": "free",
+                "task_id": f"remail-purchase-{uuid.uuid4().hex[:12]}",
+                "node_code": "free_remail_purchase",
+                "node_label": "购买 Remail 邮箱",
+                "message": f"Remail 购买订单已创建：数量 {quantity}，导入 {len(imported)}，待凭证 {len(skipped)}，库存策略 {supply}",
+                "duration_ms": int(duration_ms),
+            })
+        except Exception as exc:
+            # Telemetry must not change the purchase response.
+            _note_stderr("L1113", exc)
+
     def api_remail_purchase():
+        started = time.monotonic()
         data = scope.module.request.get_json(silent=True) or {}
         if not isinstance(data, Mapping):
             return scope.module.jsonify(ok=False, error="购买参数必须是 JSON 对象"), 400
@@ -1110,9 +1147,19 @@ def build_remail_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]
             # response keeps skip reasons so orders still waiting on Remail
             # side credentials stay visible on the manual order page.
             imported, skipped = _auto_import_remail_orders(manager.pool, normalized_orders) if manager is not None else ([], [])
-            return scope.module.jsonify(ok=True, result=result, imported=imported, skipped=skipped, state=manager.public_state() if manager is not None else {})
+            # The response must not read manager state: public_state() runs
+            # under the manager lock, so a busy batch would freeze the purchase
+            # response after the upstream order was already created and paid.
+            _record_remail_purchase_success(
+                quantity=quantity,
+                supply=supply,
+                imported=imported,
+                skipped=skipped,
+                duration_ms=int((time.monotonic() - started) * 1000),
+            )
+            return scope.module.jsonify(ok=True, result=result, imported=imported, skipped=skipped)
         except Exception as exc:
-            return ns["free_error_response"](exc, default_code="free_remail_purchase", default_label="购买 Remail 邮箱")
+            return ns["free_error_response"](exc, default_code="free_remail_purchase", default_label="购买 Remail 邮箱", include_state=False)
 
     def api_remail_orders():
         if scope.free_manager is None:
@@ -1178,7 +1225,7 @@ def build_remail_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]
                 total = remote_total
             return scope.module.jsonify(ok=True, orders=rows, remote_count=remote_count, total=total, page=page, page_size=page_size, has_more=(page * page_size < total))
         except Exception as exc:
-            return ns["free_error_response"](exc, default_code="free_remail_orders", default_label="同步 Remail 订单")
+            return ns["free_error_response"](exc, default_code="free_remail_orders", default_label="同步 Remail 订单", include_state=False)
 
     def api_remail_hide_orders():
         """Dismiss wrong-parameter orders locally; re-sync never resurfaces them."""
@@ -1193,7 +1240,7 @@ def build_remail_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]
             hidden = storage.hide_remail_orders(order_nos)
             return scope.module.jsonify(ok=True, hidden=hidden)
         except Exception as exc:
-            return ns["free_error_response"](exc, default_code="free_remail_hide", default_label="删除 Remail 订单记录")
+            return ns["free_error_response"](exc, default_code="free_remail_hide", default_label="删除 Remail 订单记录", include_state=False)
 
     def api_remail_import_orders():
         if scope.free_manager is None:
@@ -1231,7 +1278,7 @@ def build_remail_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]
                     skipped.append({"order_no": order.get("order_no"), "reason": _safe_free_message(exc) or "订单凭证不可用"})
             return scope.module.jsonify(ok=True, imported=imported, skipped=skipped, rows=pool.public_rows())
         except Exception as exc:
-            return ns["free_error_response"](exc, default_code="free_remail_import", default_label="导入 Remail 订单")
+            return ns["free_error_response"](exc, default_code="free_remail_import", default_label="导入 Remail 订单", include_state=False)
 
     def mailbox_manager():
         if ns["frontend_dist"].exists():
