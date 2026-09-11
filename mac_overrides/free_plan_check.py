@@ -112,6 +112,8 @@ class FreePlanCheckService:
         log_store: Any = None,
         config_provider: Callable[[], Mapping[str, Any]] | None = None,
         task_updater: Callable[[str, Mapping[str, Any], bool], None] | None = None,
+        proxies: Any = None,
+        proxy_probe: Callable[[str, str], str] | None = None,
         workers: int = 2,
         queue_limit: int = 500,
         recover: bool = True,
@@ -123,6 +125,8 @@ class FreePlanCheckService:
         self.log_store = log_store
         self.config_provider = config_provider
         self.task_updater = task_updater
+        self.proxies = proxies
+        self.proxy_probe = proxy_probe
         self.workers = max(1, min(int(workers), 5))
         self.queue_limit = max(self.workers, min(int(queue_limit), 5000))
         self._lock = threading.RLock()
@@ -322,29 +326,55 @@ class FreePlanCheckService:
             )
         return {"ok": 200 <= status < 300, "status": status, "payload": _json(response), "retry_after": retry}
 
+    def _allocate_proxy(self, config: Mapping[str, Any], row_id: str) -> tuple[str, Any | None]:
+        """Allocate one healthy shared-pool proxy for this query.
+
+        The proxy recorded at registration is history only; post-registration
+        account queries must not pin it (mirrors rebind and live check).
+        Returns ``("", None)`` when no pool is wired so injected/legacy
+        managers keep their direct-connection behavior.
+        """
+        binder = getattr(self.proxies, "bind", None) if self.proxies is not None else None
+        if not callable(binder):
+            return "", None
+        bindings = binder(
+            1,
+            probe=self.proxy_probe,
+            probe_url=str(config.get("proxy_probe_url") or "https://chatgpt.com/"),
+            driver="protocol",
+            perform_probe=False,
+        )
+        if not bindings:
+            raise FreePlanCheckError(PLAN_STAGE, PLAN_LABEL, "共享 Free 代理池没有健康代理", retryable=True, error_code="free_proxy_pool_empty")
+        binding = bindings[0]
+        lease = getattr(self.proxies, "lease", None)
+        if callable(lease) and str(getattr(binding, "proxy_id", "") or ""):
+            lease(binding, owner=row_id, batch_id=row_id, task_id=row_id)
+        return str(binding.proxy), binding
+
     def _query(self, row_id: str) -> dict[str, Any]:
         result = self.pool.result(row_id)
         token = str(result.get("access_token") or "").strip()
-        proxy = str(result.get("proxy") or self.pool._row_state(row_id).get("proxy") or "").strip()
         if not token:
             raise FreePlanCheckError(PLAN_STAGE, PLAN_LABEL, "账号没有已保存 Token", retryable=False, error_code="free_plan_token_missing")
-        try:
-            from curl_cffi import requests as curl_requests
-            session = curl_requests.Session(impersonate="chrome")
-        except Exception:
-            import requests as fallback_requests
-            session = fallback_requests.Session()
-        session.trust_env = False
         config = self._config()
-        transport_proxy = proxy_transport_value(
-            proxy,
-            driver="protocol",
-            socks5_dns_mode=str(config.get("proxy_socks5_dns_mode") or "remote"),
-        )
-        if transport_proxy:
-            session.proxies = {"http": transport_proxy, "https": transport_proxy}
-        accounts_url = CHATGPT_ACCOUNTS_URL + f"?timezone_offset_min={timezone_offset_minutes()}"
+        proxy, binding = self._allocate_proxy(config, row_id)
         try:
+            try:
+                from curl_cffi import requests as curl_requests
+                session = curl_requests.Session(impersonate="chrome")
+            except Exception:
+                import requests as fallback_requests
+                session = fallback_requests.Session()
+            session.trust_env = False
+            transport_proxy = proxy_transport_value(
+                proxy,
+                driver="protocol",
+                socks5_dns_mode=str(config.get("proxy_socks5_dns_mode") or "remote"),
+            )
+            if transport_proxy:
+                session.proxies = {"http": transport_proxy, "https": transport_proxy}
+            accounts_url = CHATGPT_ACCOUNTS_URL + f"?timezone_offset_min={timezone_offset_minutes()}"
             accounts = self._request(session, accounts_url, token)
             eligibility = self._request(session, CHATGPT_ELIGIBILITY_URL, token)
             fallbacks: list[tuple[str, Any]] = []
@@ -371,6 +401,12 @@ class FreePlanCheckService:
             close = getattr(session, "close", None)
             if callable(close):
                 close()
+            releaser = getattr(self.proxies, "release", None)
+            if binding is not None and callable(releaser):
+                try:
+                    releaser(binding, owner=row_id)
+                except Exception as exc:
+                    _note_stderr("proxy_release", exc)
 
     def _save_success(self, row_id: str, values: Mapping[str, Any], task_id: str) -> None:
         current = self.pool.result(row_id)
@@ -446,8 +482,8 @@ class FreePlanCheckService:
         self._executor.shutdown(wait=wait, cancel_futures=False)
 
 
-def build_free_plan_check_service(data_dir: Any, *, pool: Any, task_store: Any = None, log_store: Any = None, config_provider: Callable[[], Mapping[str, Any]] | None = None, task_updater: Callable[[str, Mapping[str, Any], bool], None] | None = None) -> FreePlanCheckService:
-    return FreePlanCheckService(data_dir, pool=pool, task_store=task_store, log_store=log_store, config_provider=config_provider, task_updater=task_updater)
+def build_free_plan_check_service(data_dir: Any, *, pool: Any, task_store: Any = None, log_store: Any = None, config_provider: Callable[[], Mapping[str, Any]] | None = None, task_updater: Callable[[str, Mapping[str, Any], bool], None] | None = None, proxies: Any = None, proxy_probe: Callable[[str, str], str] | None = None) -> FreePlanCheckService:
+    return FreePlanCheckService(data_dir, pool=pool, task_store=task_store, log_store=log_store, config_provider=config_provider, task_updater=task_updater, proxies=proxies, proxy_probe=proxy_probe)
 
 
 __all__ = ["FreePlanCheckError", "FreePlanCheckService", "build_free_plan_check_service"]

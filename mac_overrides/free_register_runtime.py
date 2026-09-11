@@ -310,6 +310,8 @@ class FreeRegisterManager(
             log_store=self.log_store,
             config_provider=self._plan_config,
             task_updater=self._sync_plan_task_snapshot,
+            proxies=self.proxies,
+            proxy_probe=self.proxy_probe,
         )
 
     def _plan_config(self) -> Mapping[str, Any]:
