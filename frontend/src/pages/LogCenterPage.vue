@@ -34,6 +34,7 @@ const incidents = ref<DiagnosticIncident[]>([])
 const selected = ref<DiagnosticIncident[]>([])
 const detail = ref<DiagnosticIncident | null>(null)
 const detailOpen = ref(false)
+const resultsFingerprint = ref('')
 const health = ref<DiagnosticsHealth>({})
 const searchError = ref('')
 let refreshTimer = 0
@@ -139,8 +140,13 @@ async function runSearch() {
   try {
     const payload = Object.fromEntries(Object.entries(query.value).filter(([, value]) => value !== ''))
     const result = await searchDiagnostics(payload)
-    incidents.value = Array.isArray(result.results) ? result.results : []
-    selected.value = []
+    const nextResults = Array.isArray(result.results) ? result.results : []
+    const nextFingerprint = nextResults.map(row => `${row.incident_id || ''}:${row.updated_at || ''}`).join('|')
+    if (nextFingerprint !== resultsFingerprint.value) {
+      resultsFingerprint.value = nextFingerprint
+      incidents.value = nextResults
+      selected.value = []
+    }
   } catch (error) {
     searchError.value = errorMessage(error) || '日志检索失败'
     ElMessage.error(errorMessage(error) || '日志检索失败')
@@ -228,7 +234,9 @@ onMounted(() => {
   void refreshHealth()
   refreshTimer = window.setInterval(() => {
     if (document.hidden) return
-    if (!loading.value) void runSearch()
+    // An open incident drawer must keep its exact rendered snapshot;
+    // background result swaps would reshuffle it under the reader.
+    if (!detailOpen.value && !loading.value) void runSearch()
     if (!healthLoading.value) void refreshHealth()
   }, 15000)
 })
@@ -268,7 +276,7 @@ watch(() => props.locationKey, (value, previous) => {
       </template>
       <el-alert v-if="searchError" class="search-error" type="error" :closable="false" show-icon :title="searchError" />
       <div v-else class="table-wrap">
-        <el-table class="incident-table" :data="pagedIncidents" v-loading="loading" height="100%" stripe border @selection-change="selectRows" size="small">
+        <el-table class="incident-table" :data="pagedIncidents" row-key="incident_id" v-loading="loading" height="100%" stripe border @selection-change="selectRows" size="small">
         <el-table-column type="selection" width="46" fixed="left" />
         <el-table-column type="index" label="序号" width="58" align="center" fixed="left" :index="(index: number) => index + 1 + (incidentPage - 1) * incidentPageSize" />
         <el-table-column label="日志 ID" width="230" fixed="left"><template #default="{ row }"><div class="incident-id"><el-link type="primary" @click="openIncident(row)">{{ row.incident_id }}</el-link><el-tooltip content="复制日志 ID" placement="top" :show-after="250"><el-button text size="small" :icon="CopyDocument" aria-label="复制日志 ID" @click="copyIncidentId(row)" /></el-tooltip></div></template></el-table-column>

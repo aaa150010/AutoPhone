@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { freeLiveStateFingerprint, freeStateFingerprint } from '../utils/fingerprint'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { errorMessage } from '../utils/errorMessage'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -85,6 +86,9 @@ const {
   copyTaskLatestCode,
 } = useFreeTaskRowActions()
 
+const stateFingerprint = ref('')
+const liveStateFingerprint = ref('')
+
 const visibleTasks = computed(() => (state.value.tasks || []).slice().sort((a, b) => {
   const batchOrder = Number(b.created_at || 0) - Number(a.created_at || 0)
   if (batchOrder) return batchOrder
@@ -154,16 +158,21 @@ function runStatusBucket(row: UnifiedRunRow): string {
 }
 
 const runCounts = computed(() => {
-  const count = (bucket: string) => unifiedRuns.value.filter(row => runStatusBucket(row) === bucket).length
+  // Single pass over the runs: eight filters per poll tick reduced to one.
+  const buckets: Record<string, number> = {}
+  for (const row of unifiedRuns.value) {
+    const bucket = runStatusBucket(row)
+    buckets[bucket] = (buckets[bucket] || 0) + 1
+  }
   return {
     total: unifiedRuns.value.length,
-    active: count('active'),
-    success: count('success') + count('partial_success'),
-    partial: count('partial_success'),
-    failed: count('failed'),
-    twofa: count('twofa_pending'),
-    rerun: count('pending_rerun'),
-    stopped: count('stopped'),
+    active: buckets.active || 0,
+    success: (buckets.success || 0) + (buckets.partial_success || 0),
+    partial: buckets.partial_success || 0,
+    failed: buckets.failed || 0,
+    twofa: buckets.twofa_pending || 0,
+    rerun: buckets.pending_rerun || 0,
+    stopped: buckets.stopped || 0,
   }
 })
 const statusFilters = computed(() => [
@@ -240,7 +249,13 @@ async function refresh() {
     const serverRunning = Boolean(result.state?.running)
     if (serverRunning) quickRunDirty.value = false
     mergeConfig(result.config, serverRunning)
-    state.value = result.state || state.value
+    // Skip the reactive assignment (and the whole derived computed/render
+    // chain) when the polled payload equals the rendered one.
+    const nextFingerprint = freeStateFingerprint(result.state)
+    if (nextFingerprint !== stateFingerprint.value) {
+      stateFingerprint.value = nextFingerprint
+      state.value = result.state || state.value
+    }
     if (logDialogOpen.value && selectedTaskId.value) {
       await logDialog.value?.refresh({ silent: true })
     }
@@ -248,7 +263,11 @@ async function refresh() {
     ElMessage.error(errorMessage(stateSettled.reason) || 'Free 状态刷新失败')
   }
   if (liveSettled.status === 'fulfilled') {
-    liveState.value = liveSettled.value.state || liveState.value
+    const nextLiveFingerprint = freeLiveStateFingerprint(liveSettled.value.state)
+    if (nextLiveFingerprint !== liveStateFingerprint.value) {
+      liveStateFingerprint.value = nextLiveFingerprint
+      liveState.value = liveSettled.value.state || liveState.value
+    }
     if (logDialogOpen.value && liveLogTask.value) {
       await logDialog.value?.refresh({ silent: true })
     }

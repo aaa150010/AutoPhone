@@ -33,6 +33,7 @@ import { useMailboxBatchOperations } from '../composables/useMailboxBatchOperati
 import { useMailboxExports } from '../composables/useMailboxExports'
 import { useMailboxRowActions } from '../composables/useMailboxRowActions'
 import type { MailboxMutationResult, MailboxOperationKind, MailboxPayload, MailboxRow } from '../types/api'
+import { mailboxRowsFingerprint } from '../utils/fingerprint'
 import {
   latestMailboxBatchId,
   mailboxBatchCandidates,
@@ -132,13 +133,18 @@ function applyMailboxPayload(payload: MailboxMutationResult | MailboxPayload) {
   mailboxBatch.sync(payload)
   const next = ('mailboxes' in payload && payload.mailboxes) ? payload.mailboxes : payload
   if (next && 'rows' in next && Array.isArray(next.rows)) {
-    data.value = {
-      ok: next.ok,
-      counts: next.counts || {},
-      rows: mergeMailboxOperationUpdates(
-        next.rows,
-        mailboxBatch.operation.value?.row_updates || [],
-      ),
+    const merged = mergeMailboxOperationUpdates(
+      next.rows,
+      mailboxBatch.operation.value?.row_updates || [],
+    )
+    // Polling re-delivers the same table every tick; skip the reactive swap
+    // (and the per-row spread in pageRows) when nothing actually changed.
+    if (mailboxRowsFingerprint(merged) !== mailboxRowsFingerprint(data.value.rows)) {
+      data.value = {
+        ok: next.ok,
+        counts: next.counts || {},
+        rows: merged,
+      }
     }
   }
   if ('state' in payload && payload.state) controller.syncState(payload.state)

@@ -38,6 +38,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{ 'update:modelValue': [boolean] }>()
 
+const logsTailFingerprint = ref('')
 const logs = ref<FreeLogEntry[]>([])
 const loading = ref(false)
 const levelFilter = ref<FreeLogLevelFilter>('all')
@@ -130,7 +131,16 @@ async function refresh(options: { forceLatest?: boolean; silent?: boolean } = {}
   try {
     const result = await getFreeLogs(id)
     if (generation !== requestGeneration || id !== taskId.value) return
-    logs.value = Array.isArray(result.logs) ? result.logs : []
+    const nextLogs = Array.isArray(result.logs) ? result.logs : []
+    // Log slices are append-only; when the tail fingerprint (task scoped) is
+    // unchanged the per-second refresh reuses the rendered array instead of
+    // re-running the filter/reduce chain over an identical copy.
+    const last = nextLogs[nextLogs.length - 1]
+    const nextTail = `${id}:${nextLogs.length}:${last?.time || ''}:${last?.message || ''}`
+    if (nextTail !== logsTailFingerprint.value) {
+      logsTailFingerprint.value = nextTail
+      logs.value = nextLogs
+    }
     windowStart.value = followLatest
       ? latestFreeLogWindowStart(filteredLogs.value.length)
       : clampFreeLogWindowStart(filteredLogs.value.length, windowStart.value)

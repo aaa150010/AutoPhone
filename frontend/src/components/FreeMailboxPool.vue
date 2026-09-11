@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { freeMailboxRowsFingerprint } from '../utils/fingerprint'
 import { computed, onMounted, ref } from 'vue'
 import { errorMessage } from '../utils/errorMessage'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -65,6 +66,7 @@ const joinCurrentBatch = ref(false)
 const freeState = ref<FreeState>({ running: false, tasks: [], summary: {}, pool: {} })
 const runBusy = ref(false)
 const liveState = ref<FreeLiveCheckState>({ running: false, workers: 3, queue_limit: 500, active: 0, jobs: [] })
+const rowsFingerprint = ref('')
 const logDialogOpen = ref(false)
 const logRow = ref<FreeMailboxRow | null>(null)
 const logDialog = ref<{ refresh: (options?: { forceLatest?: boolean; silent?: boolean }) => Promise<void> }>()
@@ -84,8 +86,16 @@ const filteredRows = computed(() => rows.value.filter(row => {
 }))
 const pageRows = computed(() => filteredRows.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value))
 const metrics = computed(() => {
-  const count = (status: string) => rows.value.filter(row => row.status === status).length
-  const live = (status: string) => rows.value.filter(row => row.live_check_status === status).length
+  // One pass instead of eleven filters per poll tick.
+  const statuses: Record<string, number> = {}
+  const liveStatuses: Record<string, number> = {}
+  for (const row of rows.value) {
+    statuses[row.status] = (statuses[row.status] || 0) + 1
+    const liveStatus = row.live_check_status || ''
+    if (liveStatus) liveStatuses[liveStatus] = (liveStatuses[liveStatus] || 0) + 1
+  }
+  const count = (status: string) => statuses[status] || 0
+  const live = (status: string) => liveStatuses[status] || 0
   return { total: rows.value.length, available: count('available'), running: count('running'), success: count('success'), failed: count('failed'), pending: count('twofa_pending'), rerun: count('pending_rerun'), live: live('live'), deactivated: live('deactivated'), checking: live('queued') + live('running') }
 })
 
@@ -183,7 +193,13 @@ async function refresh() {
   loading.value = true
   try {
     const result = await getFreeMailboxes()
-    rows.value = result.rows || []
+    // Skip the reactive assignment when the polled rows equal the rendered
+    // ones; the 1.2s poll otherwise re-renders the whole table.
+    const nextFingerprint = freeMailboxRowsFingerprint(result.rows)
+    if (nextFingerprint !== rowsFingerprint.value) {
+      rowsFingerprint.value = nextFingerprint
+      rows.value = result.rows || []
+    }
     freeState.value = result.state || freeState.value
   } catch (error) {
     ElMessage.error(errorMessage(error) || 'Free 邮箱池刷新失败')
@@ -196,8 +212,12 @@ async function refreshLiveState() {
   try {
     const result = await getFreeLiveCheckState()
     liveState.value = result.state || liveState.value
-    rows.value = result.rows || rows.value
-    if (logRow.value?.row_id) logRow.value = rows.value.find(row => row.row_id === logRow.value?.row_id) || logRow.value
+    const nextFingerprint = freeMailboxRowsFingerprint(result.rows)
+    if (nextFingerprint !== rowsFingerprint.value) {
+      rowsFingerprint.value = nextFingerprint
+      rows.value = result.rows || rows.value
+      if (logRow.value?.row_id) logRow.value = rows.value.find(row => row.row_id === logRow.value?.row_id) || logRow.value
+    }
     if (logDialogOpen.value && logRow.value?.live_check_task_id) {
       await logDialog.value?.refresh({ silent: true })
     }
@@ -626,8 +646,9 @@ async function exportResults() {
 }
 
 onMounted(async () => {
-  await refresh()
-  await refreshLiveState()
+  // The two payloads are independent; fetching them concurrently halves the
+  // time to first paint of the pool table.
+  await Promise.all([refresh(), refreshLiveState()])
   scheduleRefresh()
 })
 </script>

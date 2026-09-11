@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, ref, watch, onUnmounted } from 'vue'
 import { errorMessage } from '../utils/errorMessage'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, RefreshLeft } from '@element-plus/icons-vue'
@@ -26,7 +26,16 @@ async function deleteFailed(row: RemailOrder) {
     await load(false)
   } catch (error) { ElMessage.error(errorMessage(error) || '失败订单删除失败') } finally { loading.value = false }
 }
-watch([filter, importedFilter, includeFailed, pageSize], () => { currentPage.value = 1; void load(false) })
+// Typing in the search box must not fire one request per keystroke; the
+// other filter controls keep their immediate reload.
+watch([importedFilter, includeFailed, pageSize], () => { currentPage.value = 1; void load(false) })
+let filterDebounce = 0
+watch(filter, () => {
+  currentPage.value = 1
+  window.clearTimeout(filterDebounce)
+  filterDebounce = window.setTimeout(() => { void load(false) }, 300)
+})
+onUnmounted(() => window.clearTimeout(filterDebounce))
 watch(currentPage, () => void load(false))
 onMounted(() => void load(false))
 </script>

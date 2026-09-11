@@ -64,9 +64,13 @@ function markSaved() {
   emit('dirtyChange', false)
 }
 
-watch([config, proxyText, proxyScheme], () => {
+// The signature is computed inside a non-deep watcher over a computed:
+// reactive dependency tracking already fires on any nested config mutation,
+// so the recursive deep traversal plus per-keystroke serialization of the
+// deep variant is unnecessary.
+watch(computed(draftSignature), () => {
   if (loaded.value) emit('dirtyChange', draftSignature() !== savedSignature.value)
-}, { deep: true })
+})
 
 async function loadProxies() {
   try {
