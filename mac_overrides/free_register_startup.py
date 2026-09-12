@@ -31,6 +31,7 @@ try:
         has_account_result,
         merge_account_result_fields,
     )
+    from .free_camoufox.pool_sizing import derive_camoufox_pool_sizing
     from .free_runtime_info import runtime_info
 except ImportError:  # macOS launcher imports overrides as top-level modules.
     from free_register_common import (  # type: ignore[no-redef]
@@ -45,6 +46,7 @@ except ImportError:  # macOS launcher imports overrides as top-level modules.
         has_account_result,
         merge_account_result_fields,
     )
+    from free_camoufox.pool_sizing import derive_camoufox_pool_sizing  # type: ignore[no-redef]
     from free_runtime_info import runtime_info  # type: ignore[no-redef]
 
 
@@ -95,6 +97,16 @@ class FreeRegisterStartupMixin:
                 error_code="free_driver_unsupported",
             )
         normalized_config["driver"] = requested_driver
+        # Auto pool sizing: derive the Camoufox browser-pool parameters from
+        # the real worker width so the quick bar only needs target count and
+        # concurrency.  Manual values stay authoritative when auto is off.
+        if requested_driver == "camoufox":
+            sizing = derive_camoufox_pool_sizing(normalized_config)
+            if sizing is not None:
+                camoufox_config = dict(normalized_config.get("camoufox") or {})
+                camoufox_config["pool_size"] = sizing.pool_size
+                camoufox_config["max_contexts_per_browser"] = sizing.max_contexts
+                normalized_config["camoufox"] = camoufox_config
         start_attempted = False
         try:
             with self._lock:

@@ -116,6 +116,10 @@ DEFAULT_FREE_CONFIG: dict[str, Any] = {
         "headless": True,
         "pool_size": 2,
         "max_contexts_per_browser": 3,
+        # Auto mode derives pool_size/max_contexts from the batch's real
+        # worker width at start; the persisted values remain the manual
+        # fallback used when the toggle is off.
+        "camoufox_pool_auto": True,
         "context_start_interval_ms": 175,
         "startup_concurrency": 4,
         "block_images": True,
@@ -368,6 +372,9 @@ class FreeConfigStore:
         }
         for key in ("debug_mode", "headless", "block_images", "existing_account_login"):
             camoufox[key] = _as_bool(camoufox.get(key), bool(camoufox_defaults[key]))
+        camoufox["camoufox_pool_auto"] = _as_bool(
+            camoufox.get("camoufox_pool_auto"), bool(camoufox_defaults["camoufox_pool_auto"])
+        )
         camoufox["pool_size"] = _int(camoufox.get("pool_size"), 2, 1, 16)
         camoufox["max_contexts_per_browser"] = _int(camoufox.get("max_contexts_per_browser"), 3, 1, 32)
         camoufox["context_start_interval_ms"] = _int(camoufox.get("context_start_interval_ms"), 175, 0, 10_000)
