@@ -416,6 +416,10 @@ defineExpose({ save })
 .danger-note { margin: 2px 0 0; color: var(--el-color-danger); font-size: 12px; line-height: 18px; font-weight: 650; }
 .sticky-warn-alert { margin-bottom: 8px; }
 .breaker-alert { margin-bottom: 10px; }
+.sticky-warn-alert :deep(.el-alert__title),
+.sticky-warn-alert :deep(.el-alert__description),
+.breaker-alert :deep(.el-alert__title),
+.breaker-alert :deep(.el-alert__description) { font-size: 12px; line-height: 18px; }
 .breaker-actions { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
 .breaker-actions span { margin-right: auto; color: var(--el-text-color-regular); font-size: 12px; line-height: 18px; }
 </style>
