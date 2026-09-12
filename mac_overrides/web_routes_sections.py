@@ -15,6 +15,7 @@ except ImportError:  # pragma: no cover - top-level recovery import
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from flask import redirect as _flask_redirect
 import socket
 import threading
 import time
@@ -250,7 +251,9 @@ def build_core_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]:
             current_url = str(scope.module.request.url)
             target = _vite_redirect_target(current_url)
             if target != current_url:
-                return scope.module.redirect(target)
+                # The recovered module does not re-export flask.redirect, so
+                # import it directly instead of going through ``scope.module``.
+                return _flask_redirect(target)
         response = scope.context.send_from_directory(str(frontend_dist), "index.html")
         response.headers["Cache-Control"] = "no-cache"
         return response
