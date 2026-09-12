@@ -402,7 +402,13 @@ def reconcile_finished_batch(host, importer, context):
     if manifest is None or not batch_id:
         return None
     with importer.lock:
-        tasks = copy.deepcopy(dict(importer.tasks))
+        # finalize() consumes only task_id/status per row; the flat projection
+        # avoids deepcopying every full task (result/timing/attempts) under
+        # the shared lock at batch teardown.
+        tasks = {
+            str(task_id): {"task_id": str(task_id), "status": str((task or {}).get("status") or "")}
+            for task_id, task in importer.tasks.items()
+        }
     summary = manifest.finalize(
         batch_id,
         tasks=tasks,

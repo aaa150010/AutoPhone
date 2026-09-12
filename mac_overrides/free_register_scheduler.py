@@ -14,6 +14,28 @@ except ImportError:
 class FreeRegisterSchedulerMixin:
     """Methods shared by the Free manager's worker scheduler."""
 
+    def _persist_tasks_with_fallback(self, context: str) -> None:
+        """Persist task state through the diagnostic-aware saver chain.
+
+        ``_save_task_state_safely`` already falls back to
+        ``_save_tasks_safely`` and then to a direct store save; the two
+        hand-rolled copies of that chain in this mixin used the same order
+        and the same swallow-on-failure semantics.
+        """
+        saver = getattr(self, "_save_task_state_safely", None)
+        if callable(saver):
+            saver(context)
+            return
+        saver = getattr(self, "_save_tasks_safely", None)
+        if callable(saver):
+            saver(context)
+            return
+        try:
+            self.task_store.save(self._tasks)
+        except Exception as exc:
+            # Task persistence must not mask the scheduling outcome.
+            self._note_quiet("recovery_task_persist" if context == "进程恢复任务状态" else "proxy_switch_persist", exc)
+
     def _recover_interrupted_tasks(self) -> None:
         """Reconcile persisted active work after an unclean process exit."""
         try:
@@ -53,19 +75,7 @@ class FreeRegisterSchedulerMixin:
             # The production manager exposes a safe persistence helper so a
             # disk outage cannot abort recovery of the remaining leases. Keep
             # the direct fallback for older mixin hosts used by integrations.
-            saver = getattr(self, "_save_task_state_safely", None)
-            if callable(saver):
-                saver("进程恢复任务状态")
-            else:
-                saver = getattr(self, "_save_tasks_safely", None)
-                if callable(saver):
-                    saver("进程恢复任务状态")
-                else:
-                    try:
-                        self.task_store.save(self._tasks)
-                    except Exception as exc:
-                        # Task persistence must not mask the scheduling outcome.
-                        self._note_quiet("recovery_task_persist", exc)
+            self._persist_tasks_with_fallback("进程恢复任务状态")
 
     def _switch_pre_profile_proxy(self, task: dict[str, Any], config: Mapping[str, Any]) -> bool:
         """Replace a failed pre-profile proxy while the account is still uncommitted."""
@@ -124,19 +134,7 @@ class FreeRegisterSchedulerMixin:
                 current["proxy_attempts"] = current["proxy_attempts"][-10:]
                 persist = True
         if persist:
-            saver = getattr(self, "_save_task_state_safely", None)
-            if callable(saver):
-                saver("记录代理切换")
-            else:
-                saver = getattr(self, "_save_tasks_safely", None)
-                if callable(saver):
-                    saver("记录代理切换")
-                else:
-                    try:
-                        self.task_store.save(self._tasks)
-                    except Exception as exc:
-                        # Task persistence must not mask the scheduling outcome.
-                        self._note_quiet("proxy_switch_persist", exc)
+            self._persist_tasks_with_fallback("记录代理切换")
         task.update(updates)
         self.pool.update(
             str(task.get("row_id") or ""), status="running", proxy=replacement.proxy,

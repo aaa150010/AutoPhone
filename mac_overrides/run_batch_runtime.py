@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 try:
+    from .callable_introspect import accepts_keyword as _accepts_keyword
     from .numeric_coerce import coerce_int as _coerce_int_impl
 except ImportError:  # pragma: no cover - top-level recovery import
+    from callable_introspect import accepts_keyword as _accepts_keyword  # type: ignore[no-redef]
     from numeric_coerce import coerce_int as _coerce_int_impl  # type: ignore[no-redef]
 
 from collections.abc import Callable, Iterable, Mapping
@@ -75,17 +77,7 @@ def _row_fingerprint(value: Any) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def _accepts_keyword(callback: Callable[..., Any], name: str) -> bool:
-    try:
-        parameters = inspect.signature(callback).parameters
-    except (TypeError, ValueError):
-        return False
-    parameter = parameters.get(name)
-    return bool(
-        parameter
-        and parameter.kind
-        in {inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY}
-    ) or any(item.kind == inspect.Parameter.VAR_KEYWORD for item in parameters.values())
+
 
 
 try:

@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+try:
+    from .callable_introspect import accepts_keyword as _accepts_keyword
+except ImportError:  # pragma: no cover - top-level recovery import
+    from callable_introspect import accepts_keyword as _accepts_keyword  # type: ignore[no-redef]
+
 import copy
 from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -44,17 +49,7 @@ def _is_sha256_row_id(value: str) -> bool:
     return len(value) == 64 and all(character in "0123456789abcdef" for character in value)
 
 
-def _accepts_keyword(callback: Callable[..., Any], name: str) -> bool:
-    try:
-        parameters = inspect.signature(callback).parameters
-    except (TypeError, ValueError):
-        return False
-    parameter = parameters.get(name)
-    return bool(
-        parameter
-        and parameter.kind
-        in {inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY}
-    ) or any(item.kind == inspect.Parameter.VAR_KEYWORD for item in parameters.values())
+
 
 
 class ObservedPhaseGate:
