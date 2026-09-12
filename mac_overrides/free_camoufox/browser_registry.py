@@ -2423,11 +2423,12 @@ class CamoufoxRegistrationRunner:
         *,
         twofa_retry: bool = False,
         password_retry: bool = False,
+        plan_recheck: bool = False,
     ) -> Mapping[str, Any]:
-        if twofa_retry and password_retry:
+        if sum(1 for flag in (twofa_retry, password_retry, plan_recheck) if flag) > 1:
             raise _host_mod().FreeRegisterError(
                 "free_retry", "重试 Free 任务",
-                "2FA 重试和密码重试不能同时提交",
+                "2FA 重试、密码重试和套餐重查不能同时提交",
                 retryable=False, error_code="free_retry_modes_conflict",
             )
         task_id = str(task.get("task_id") or "")
@@ -2455,13 +2456,14 @@ class CamoufoxRegistrationRunner:
             if str(candidate or "").strip():
                 existing_password = str(candidate).strip()
                 break
-        if twofa_retry and not existing_password:
+        if (twofa_retry or plan_recheck) and not existing_password:
             # Passwordless accounts never save a credential. Falling back to
             # the mailbox verification-code login inside the browser flow is
             # the supported continuation, so do not reject here anymore.
             log(
                 "已有账号未保存密码，将尝试邮箱验证码登录", "warn",
             )
+        existing_totp_secret = str(private_result.get("totp_secret") or "").strip()
         browser_config = dict(config.get("camoufox") or {})
         if self.debug_artifact_dir:
             browser_config["_debug_artifact_dir"] = self.debug_artifact_dir
@@ -2482,7 +2484,7 @@ class CamoufoxRegistrationRunner:
             # Controller attachment is optional scheduling telemetry.
             self._note_quiet("deadline_controller_attach", exc)
         try:
-            stage(task_id, "free_password_enroll" if password_retry else "free_camoufox_signup")
+            stage(task_id, "free_password_enroll" if password_retry else "free_plan_recheck" if plan_recheck else "free_camoufox_signup")
             if stop_event.is_set():
                 raise _host_mod().FreeRegisterError("free_run_stop", "停止 Free 注册", "任务在启动 Camoufox 前已停止", retryable=False)
             def callback(
@@ -2511,7 +2513,7 @@ class CamoufoxRegistrationRunner:
                 # Existing-login and password-continuation adapters retain the
                 # historical empty argument shape; _host_mod()._browser_flow resolves the
                 # configured value before submitting a signup/password page.
-                password="" if (twofa_retry or password_retry) else _host_mod().configured_free_password(config),
+                password="" if (twofa_retry or password_retry or plan_recheck) else _host_mod().configured_free_password(config),
                 proxy=str(task.get("proxy") or ""), otp_callback=callback,
                 otp_prepare=otp.prepare, otp_mark_sent=otp.mark_sent,
                 config={
@@ -2521,11 +2523,18 @@ class CamoufoxRegistrationRunner:
                     "proxy_fingerprint": str(task.get("proxy_fingerprint") or ""),
                     "_host_mod()._stop_requested": stop_event.is_set,
                     "_deadline_controller": task_deadline_controller,
+                    # Plan re-check credential gating: already-enabled
+                    # password/2FA are skipped, only missing ones supplement.
+                    "plan_recheck_password_status": str(private_result.get("password_status") or ""),
+                    "plan_recheck_twofa_status": str(private_result.get("twofa_status") or ""),
+                    "plan_recheck_has_totp": bool(str(private_result.get("totp_secret") or "").strip()),
                 }, log=log,
                 stage_fn=stage,
                 timing_fn=config.get("_timing_substep"),
-                force_existing_login=twofa_retry,
+                force_existing_login=twofa_retry or plan_recheck,
                 existing_password=existing_password,
+                existing_totp_secret=existing_totp_secret,
+                plan_recheck=plan_recheck,
                 password_retry=password_retry,
                 password_retry_token=saved_password_token,
                 deadline_controller=task_deadline_controller,

@@ -4,8 +4,8 @@ import { computed, onMounted, ref } from 'vue'
 import { errorMessage } from '../utils/errorMessage'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, CircleCheck, Collection, CopyDocument, Delete, Document, DocumentCopy, Download, Key, Link, Lock, MoreFilled, Plus, PriceTag, Refresh, RefreshLeft, RefreshRight, Tickets, Upload, VideoPlay, Warning } from '@element-plus/icons-vue'
-import { deleteFreeMailboxes, exportFreeResults, formatFreeMailboxes, getFreeLiveCheckState, getFreeMailboxLatestCode, getFreeMailboxUrl, getFreeMailboxes, getFreeSecret, getFreeTotp, importFreeMailboxes, retryFreePassword, retryFreeTwofa, setFreeMailboxStatus, startFree, startFreeLiveCheck, startFreePlanCheck, transferFreeMailboxes } from '../api/client'
-import type { FreeLiveCheckState, FreeMailboxRow, FreeState } from '../api/client'
+import { deleteFreeMailboxes, exportFreeResults, formatFreeMailboxes, getFreeLiveCheckState, getFreeMailboxLatestCode, getFreeMailboxUrl, getFreeMailboxes, getFreePlanCheckState, getFreeSecret, getFreeTotp, importFreeMailboxes, retryFreePassword, retryFreeTwofa, setFreeMailboxStatus, startFree, startFreeLiveCheck, startFreePlanCheck, transferFreeMailboxes } from '../api/client'
+import type { FreeLiveCheckState, FreeMailboxRow, FreePlanCheckState, FreeState } from '../api/client'
 import ContentEmptyState from './ContentEmptyState.vue'
 import FreeTaskLogDialog from './FreeTaskLogDialog.vue'
 import WorkspacePanel from './WorkspacePanel.vue'
@@ -43,6 +43,7 @@ import { usePolling } from '../composables/usePolling'
 
 const FAST_LIVE_CHECK_TIP = '用注册时保存的 Token，通过代理池分配的代理查询一次账号状态：正常 / Token 失效 / 已停用 / 被出口或安全策略拒绝。不重新登录、不收取邮件。'
 const DEEP_LIVE_CHECK_TIP = '通过代理池分配的代理完整重新登录确认账号状态：可能收取一封邮箱 OTP 验证码，并按需校验密码 / 2FA。成功后刷新 Token 并同步套餐与 Plus 资格；确认封禁的账号会自动移出邮箱池。'
+const PLAN_RECHECK_TIP = '按账号各自链路重查 Plus 套餐：Token 有效直接查询；失效或缺失时全协议账号走协议重新登录，Camoufox 账号打开浏览器重新登录（可能收取一封邮箱验证码）。确认停用的账号会自动移出邮箱池。'
 
 const rows = ref<FreeMailboxRow[]>([])
 const selected = ref<FreeMailboxRow[]>([])
@@ -66,6 +67,8 @@ const joinCurrentBatch = ref(false)
 const freeState = ref<FreeState>({ running: false, tasks: [], summary: {}, pool: {} })
 const runBusy = ref(false)
 const liveState = ref<FreeLiveCheckState>({ running: false, workers: 3, queue_limit: 500, active: 0, jobs: [] })
+const planState = ref<FreePlanCheckState>({ running: false, workers: 2, queue_limit: 500, active: 0, jobs: [] })
+const planBatchBusy = ref(false)
 const rowsFingerprint = ref('')
 const logDialogOpen = ref(false)
 const logRow = ref<FreeMailboxRow | null>(null)
@@ -228,6 +231,21 @@ async function refreshLiveState() {
   }
 }
 
+async function refreshPlanState() {
+  try {
+    const result = await getFreePlanCheckState()
+    planState.value = result.state || planState.value
+    const nextFingerprint = freeMailboxRowsFingerprint(result.rows)
+    if (nextFingerprint !== rowsFingerprint.value) {
+      rowsFingerprint.value = nextFingerprint
+      rows.value = result.rows || rows.value
+      if (logRow.value?.row_id) logRow.value = rows.value.find(row => row.row_id === logRow.value?.row_id) || logRow.value
+    }
+  } catch (error) {
+    if (planState.value.running) ElMessage.error(errorMessage(error) || 'Free 套餐查询状态刷新失败')
+  }
+}
+
 function canLiveCheck(row: FreeMailboxRow) {
   return Boolean(row.has_access_token)
     && !['queued', 'running'].includes(String(row.live_check_status || ''))
@@ -304,6 +322,40 @@ async function startLiveCheckAction(mode: 'fast' | 'deep', row: FreeMailboxRow) 
   await startLiveCheck(mode, [row])
 }
 
+function canPlanRecheck(row: FreeMailboxRow) {
+  if (isHistoricalMailboxDriver(row)) return false
+  return !['queued', 'running'].includes(String(row.plan_check_status || ''))
+}
+
+async function startPlanRecheck(selection = selected.value) {
+  const eligible = selection.filter(canPlanRecheck)
+  if (!eligible.length) {
+    ElMessage.warning('请选择可重查套餐的 Free 账号')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `将为 ${eligible.length} 个账号重查 Plus 套餐：Token 失效或缺失的账号会按各自链路重新登录（Camoufox 账号会打开浏览器，可能收取一封邮箱验证码）；确认停用的账号会自动移出邮箱池。确定继续吗？`,
+      '批量重查套餐',
+      { type: 'warning', confirmButtonText: '开始重查', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  planBatchBusy.value = true
+  try {
+    const result = await startFreePlanCheck(eligible.map(row => row.row_id), { mode: 'recheck' })
+    rows.value = result.rows || rows.value
+    planState.value = result.state || planState.value
+    const skipped = Number(result.skipped_count || 0)
+    ElMessage.success(`已加入套餐重查 ${Number(result.accepted_count || 0)} 个${skipped ? `，跳过 ${skipped} 个` : ''}`)
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || '批量重查套餐启动失败')
+  } finally {
+    planBatchBusy.value = false
+  }
+}
+
 async function copyEmail(row: FreeMailboxRow) {
   const rowId = String(row.row_id || '').trim()
   await copyEmailRow({
@@ -321,7 +373,10 @@ async function copyEmail(row: FreeMailboxRow) {
   })
 }
 
-const polling = usePolling(refreshLiveState, () => (liveState.value.running || logDialogOpen.value ? 1200 : 5000))
+const polling = usePolling(async () => {
+  await refreshLiveState()
+  await refreshPlanState()
+}, () => (liveState.value.running || planState.value.running || logDialogOpen.value ? 1200 : 5000))
 const scheduleRefresh = polling.schedule
 
 async function importPools() {
@@ -568,11 +623,11 @@ async function retryMailboxPassword(row: FreeMailboxRow) {
 }
 
 async function retryPlan(row: FreeMailboxRow) {
-  if (isHistoricalMailboxDriver(row) || !row.row_id || !row.has_access_token || String(row.plan_check_status || '').toLowerCase() !== 'failed' || planBusy.value) return
+  if (isHistoricalMailboxDriver(row) || !row.row_id || String(row.plan_check_status || '').toLowerCase() !== 'failed' || planBusy.value) return
   planBusy.value = row.row_id
   try {
-    await startFreePlanCheck([row.row_id])
-    ElMessage.info('套餐查询已加入队列')
+    await startFreePlanCheck([row.row_id], { mode: 'recheck' })
+    ElMessage.info('套餐重查已加入队列')
     await refresh()
   } catch (error) {
     ElMessage.error(errorMessage(error) || '重新查询套餐失败')
@@ -583,7 +638,6 @@ async function retryPlan(row: FreeMailboxRow) {
 
 async function retryMailboxPlan(row: FreeMailboxRow) {
   if (isHistoricalMailboxDriver(row)) return unavailableMailboxAction('历史链路邮箱不支持套餐重查')
-  if (!row.has_access_token) return unavailableMailboxAction('该邮箱暂无账号 Token，无法查询套餐')
   if (String(row.plan_check_status || '').toLowerCase() !== 'failed') return unavailableMailboxAction('该邮箱当前没有失败的套餐查询')
   await retryPlan(row)
 }
@@ -644,9 +698,9 @@ async function exportResults() {
 }
 
 onMounted(async () => {
-  // The two payloads are independent; fetching them concurrently halves the
+  // The three payloads are independent; fetching them concurrently halves the
   // time to first paint of the pool table.
-  await Promise.all([refresh(), refreshLiveState()])
+  await Promise.all([refresh(), refreshLiveState(), refreshPlanState()])
   scheduleRefresh()
 })
 </script>
@@ -679,6 +733,7 @@ onMounted(async () => {
             <span>已选 {{ selected.length }} 条</span>
             <el-tooltip placement="top" :show-after="250"><template #content><div class="live-check-tip">{{ FAST_LIVE_CHECK_TIP }}</div></template><el-button size="small" type="success" plain :icon="CircleCheck" :loading="liveBusy === 'fast'" :disabled="!selected.some(canLiveCheck) || Boolean(liveBusy)" @click="startLiveCheck('fast')">快速测活</el-button></el-tooltip>
             <el-tooltip placement="top" :show-after="250"><template #content><div class="live-check-tip">{{ DEEP_LIVE_CHECK_TIP }}</div></template><el-button size="small" type="warning" plain :icon="RefreshRight" :loading="liveBusy === 'deep'" :disabled="!selected.some(canLiveCheck) || Boolean(liveBusy)" @click="startLiveCheck('deep')">深度测活</el-button></el-tooltip>
+            <el-tooltip placement="top" :show-after="250"><template #content><div class="live-check-tip">{{ PLAN_RECHECK_TIP }}</div></template><el-button size="small" type="primary" plain :icon="PriceTag" :loading="planBatchBusy" :disabled="!selected.some(canPlanRecheck) || Boolean(planBatchBusy)" @click="startPlanRecheck()">重查套餐</el-button></el-tooltip>
             <el-button size="small" :icon="Upload" :disabled="!selected.length || loading" @click="transferSelected">传输至接码邮箱</el-button>
             <el-button size="small" :icon="Download" :disabled="loading" @click="exportResults">导出</el-button>
             <el-button size="small" type="danger" plain :icon="Delete" :disabled="!selected.length || loading" @click="deleteSelected">删除选中</el-button>

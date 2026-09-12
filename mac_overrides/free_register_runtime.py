@@ -77,6 +77,7 @@ try:
     from .free_register_preflight import FreeRegisterPreflightMixin
     from .free_register_startup import FreeRegisterStartupMixin
     from .free_register_retry import FreeRegisterRetryMixin
+    from .free_camoufox.plan_recheck import build_camoufox_plan_recheck
     from .free_camoufox.runner import CamoufoxRunner
     from .free_camoufox_runtime import (
         CamoufoxRegistrationRunner,
@@ -139,6 +140,7 @@ except ImportError:  # pragma: no cover - top-level recovery import
     from free_register_preflight import FreeRegisterPreflightMixin  # type: ignore[no-redef]
     from free_register_startup import FreeRegisterStartupMixin  # type: ignore[no-redef]
     from free_register_retry import FreeRegisterRetryMixin  # type: ignore[no-redef]
+    from free_camoufox.plan_recheck import build_camoufox_plan_recheck  # type: ignore[no-redef]
     from free_camoufox.runner import CamoufoxRunner  # type: ignore[no-redef]
     from free_camoufox_runtime import (  # type: ignore[no-redef]
         CamoufoxRegistrationRunner,
@@ -315,6 +317,10 @@ class FreeRegisterManager(
             task_updater=self._sync_plan_task_snapshot,
             proxies=self.proxies,
             proxy_probe=self.proxy_probe,
+            browser_recheck=build_camoufox_plan_recheck(
+                config_provider=self._plan_config,
+                debug_artifact_dir=str(self.data_dir / "camoufox_debug"),
+            ),
         )
 
     def _plan_config(self) -> Mapping[str, Any]:

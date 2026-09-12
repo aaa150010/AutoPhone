@@ -78,7 +78,7 @@ PROFILE_SUBMIT_SELECTORS = (
 )
 _POST_ENTRY_AUTH_STATES = frozenset({
     "otp", "otp_wait", "email_verification", "signup_password",
-    "login_password", "profile", "oauth_callback", "home",
+    "login_password", "login_totp", "profile", "oauth_callback", "home",
 })
 
 __all__ = [

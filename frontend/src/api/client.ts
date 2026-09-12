@@ -213,14 +213,15 @@ export const startFreeLiveCheck = (mode: 'fast' | 'deep', rowIds: string[]) => a
   rows: FreeMailboxRow[]
 }>('/api/free/live-check', { mode, row_ids: rowIds })
 export const getFreeLiveCheckState = () => api<{ ok: true; state: FreeLiveCheckState; rows: FreeMailboxRow[] }>('/api/free/live-check/state')
-export const startFreePlanCheck = (rowIds: string[]) => api<{
+export const startFreePlanCheck = (rowIds: string[], options?: { mode?: 'token' | 'recheck' }) => api<{
   ok: true
   accepted_count: number
   skipped_count: number
   skipped: Array<{ row_id: string; reason: string }>
   state: FreePlanCheckState
   rows: FreeMailboxRow[]
-}>('/api/free/plan-check', { row_ids: rowIds })
+}>('/api/free/plan-check', { row_ids: rowIds, ...(options?.mode ? { mode: options.mode } : {}) })
+export const getFreePlanCheckState = () => api<{ ok: true; state: FreePlanCheckState; rows: FreeMailboxRow[] }>('/api/free/plan-check/state')
 export const exportFreeResults = (rowIds: string[] = []) => api<{ ok: true; count: number; filename: string; content: string }>('/api/free/mailboxes/export', { row_ids: rowIds })
 export const formatFreeMailboxes = (mode: 'mailbox' | 'full', rowIds: string[]) => api<{
   ok: true

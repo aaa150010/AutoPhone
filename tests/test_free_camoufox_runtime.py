@@ -4043,5 +4043,205 @@ class CamoufoxRuntimeTests(unittest.TestCase):
         self.assertEqual(details["plan_failure"]["http_status"], 429)
 
 
+class CamoufoxPlanRecheckTests(unittest.TestCase):
+    """Plan re-check flow: TOTP login branch and the gated credential finisher."""
+
+    def test_page_state_classifies_authentication_app_page_as_login_totp(self):
+        class Page(_FakePage):
+            url = "https://auth.openai.com/log-in/two-factor"
+
+            async def title(self):
+                return "Verify your identity"
+
+            def locator(self, selector):
+                if selector == "body":
+                    class Body:
+                        async def inner_text(self, **_kwargs):
+                            return "Enter the code from your authentication app."
+
+                    return Body()
+                return _FakeLocator(visible="code" in selector)
+
+        self.assertEqual(asyncio.run(runtime._page_state(Page())), "login_totp")
+
+    def test_login_totp_branch_submits_saved_secret_code(self):
+        submitted: list[str] = []
+        clock = [100.0]
+
+        async def fake_sleep(seconds):
+            clock[0] += float(seconds or 0.0)
+
+        with (
+            patch.object(runtime.time, "monotonic", side_effect=lambda: clock[0]),
+            patch.object(runtime.asyncio, "sleep", side_effect=fake_sleep),
+            patch.object(runtime, "_goto_with_retry", new=AsyncMock()),
+            patch.object(runtime, "_wait_for_any_selector", new=AsyncMock(return_value="input")),
+            patch.object(runtime, "_submit_email_form_stable", new=AsyncMock(return_value={
+                "ok": True, "reason": "form_request_submit", "form_present": True,
+                "input_selector": "input", "submit_selector": "submit",
+            })),
+            patch.object(runtime, "_submit_visible_form", new=AsyncMock(return_value=True)),
+            patch.object(runtime, "_page_state", new=AsyncMock(side_effect=("login_totp", "home"))),
+            patch.object(runtime, "_login_totp_code", side_effect=lambda _secret: "654321"),
+            patch.object(runtime, "_submit_existing_login_totp", new=AsyncMock(side_effect=lambda _page, code: submitted.append(code) or True)),
+            patch.object(runtime, "browser_session", new=AsyncMock(return_value={"accessToken": "recheck-token"})),
+            patch.object(runtime, "browser_plan_details", new=AsyncMock(return_value={"plan_check_status": "success", "plan_type": "free"})),
+            patch.object(runtime, "finalize_registration_result", side_effect=lambda result, **_kwargs: result),
+        ):
+            result = asyncio.run(
+                runtime._browser_flow(
+                    _FakePage(), email="user@example.test", password="",
+                    force_existing_login=True, plan_recheck=True,
+                    existing_totp_secret="JBSWY3DPEHPK3PXP",
+                    otp_callback=lambda: "", config={
+                        "registration_timeout_seconds": 60,
+                        "auto_set_password": False, "auto_set_2fa": False,
+                        "plan_recheck_password_status": "enabled",
+                        "plan_recheck_twofa_status": "enabled",
+                    },
+                    log=lambda *_args: None, otp_prepare=Mock(), otp_mark_sent=Mock(),
+                )
+            )
+
+        self.assertEqual(submitted, ["654321"])
+        self.assertEqual(result["plan_type"], "free")
+        self.assertEqual(result["access_token"], "recheck-token")
+        self.assertEqual(result["twofa_status"], "enabled")
+        self.assertEqual(result["password_status"], "enabled")
+
+    def test_login_totp_branch_fails_without_saved_secret(self):
+        clock = [100.0]
+
+        async def fake_sleep(seconds):
+            clock[0] += float(seconds or 0.0)
+
+        with (
+            patch.object(runtime.time, "monotonic", side_effect=lambda: clock[0]),
+            patch.object(runtime.asyncio, "sleep", side_effect=fake_sleep),
+            patch.object(runtime, "_goto_with_retry", new=AsyncMock()),
+            patch.object(runtime, "_wait_for_any_selector", new=AsyncMock(return_value="input")),
+            patch.object(runtime, "_submit_email_form_stable", new=AsyncMock(return_value={
+                "ok": True, "reason": "form_request_submit", "form_present": True,
+                "input_selector": "input", "submit_selector": "submit",
+            })),
+            patch.object(runtime, "_submit_visible_form", new=AsyncMock(return_value=True)),
+            patch.object(runtime, "_page_state", new=AsyncMock(return_value="login_totp")),
+            patch.object(runtime, "_submit_existing_login_totp", new=AsyncMock()) as submit_totp,
+        ):
+            with self.assertRaises(runtime.CamoufoxBrowserError) as raised:
+                asyncio.run(
+                    runtime._browser_flow(
+                        _FakePage(), email="user@example.test", password="",
+                        force_existing_login=True, plan_recheck=True,
+                        existing_totp_secret="",
+                        otp_callback=lambda: "", config={"registration_timeout_seconds": 60},
+                        log=lambda *_args: None, otp_prepare=Mock(), otp_mark_sent=Mock(),
+                    )
+                )
+
+        self.assertEqual(raised.exception.error_code, "free_existing_login_totp_missing")
+        self.assertFalse(raised.exception.retryable)
+        submit_totp.assert_not_called()
+
+    def test_plan_recheck_finisher_skips_already_enabled_credentials(self):
+        add_password = AsyncMock()
+        twofa = AsyncMock()
+        with (
+            patch.object(runtime, "browser_session", new=AsyncMock(return_value={"accessToken": "fresh-token"})),
+            patch.object(runtime, "browser_plan_details", new=AsyncMock(return_value={"plan_check_status": "success", "plan_type": "plus"})),
+            patch.object(runtime, "browser_add_password", new=add_password),
+            patch.object(runtime, "browser_twofa", new=twofa),
+            patch.object(runtime, "finalize_registration_result", side_effect=lambda result, **_kwargs: result),
+        ):
+            result = asyncio.run(
+                runtime._finish_plan_recheck_flow(
+                    _FakePage(),
+                    email="user@example.test", password="configured-pass",
+                    config={}, controller=None, deadline_fn=lambda: 0.0,
+                    login_password_submitted=False,
+                    saved_password_status="enabled", saved_twofa_status="enabled",
+                    saved_has_totp=False,
+                    otp_callback=lambda: "", otp_prepare=Mock(), otp_mark_sent=Mock(),
+                    timing_fn=None, set_stage=lambda _code: None,
+                )
+            )
+
+        add_password.assert_not_called()
+        twofa.assert_not_called()
+        self.assertEqual(result["password_status"], "enabled")
+        self.assertEqual(result["twofa_status"], "enabled")
+        self.assertEqual(result["plan_type"], "plus")
+        self.assertEqual(result["access_token"], "fresh-token")
+
+    def test_plan_recheck_finisher_supplements_missing_credentials_per_config(self):
+        add_password = AsyncMock(return_value={
+            "password_status": "enabled", "password_set_after_registration": True,
+            "access_token": "pwd-token",
+        })
+        twofa = AsyncMock(return_value={
+            "totp_secret": "NEWSECRET", "twofa_status": "enabled",
+            "access_token": "twofa-token",
+        })
+        config = {
+            "auto_set_password": True, "auto_set_2fa": True,
+            "task_id": "recheck-task", "device_id": "device-1",
+        }
+        with (
+            patch.object(runtime, "browser_session", new=AsyncMock(return_value={"accessToken": "fresh-token"})),
+            patch.object(runtime, "browser_plan_details", new=AsyncMock(return_value={"plan_check_status": "success", "plan_type": "free"})),
+            patch.object(runtime, "browser_add_password", new=add_password),
+            patch.object(runtime, "browser_twofa", new=twofa),
+            patch.object(runtime, "finalize_registration_result", side_effect=lambda result, **_kwargs: result),
+        ):
+            result = asyncio.run(
+                runtime._finish_plan_recheck_flow(
+                    _FakePage(),
+                    email="user@example.test", password="configured-pass",
+                    config=config, controller=None, deadline_fn=lambda: 0.0,
+                    login_password_submitted=False,
+                    saved_password_status="", saved_twofa_status="",
+                    saved_has_totp=False,
+                    otp_callback=lambda: "", otp_prepare=Mock(), otp_mark_sent=Mock(),
+                    timing_fn=None, set_stage=lambda _code: None,
+                )
+            )
+
+        add_password.assert_awaited_once()
+        twofa.assert_awaited_once()
+        self.assertEqual(result["password_status"], "enabled")
+        self.assertTrue(result["password_set_after_registration"])
+        self.assertEqual(result["twofa_status"], "enabled")
+        self.assertEqual(result["access_token"], "twofa-token")
+
+    def test_plan_recheck_finisher_skips_password_when_login_used_saved_password(self):
+        add_password = AsyncMock()
+        twofa = AsyncMock()
+        with (
+            patch.object(runtime, "browser_session", new=AsyncMock(return_value={"accessToken": "fresh-token"})),
+            patch.object(runtime, "browser_plan_details", new=AsyncMock(return_value={"plan_check_status": "success", "plan_type": "free"})),
+            patch.object(runtime, "browser_add_password", new=add_password),
+            patch.object(runtime, "browser_twofa", new=twofa),
+            patch.object(runtime, "finalize_registration_result", side_effect=lambda result, **_kwargs: result),
+        ):
+            result = asyncio.run(
+                runtime._finish_plan_recheck_flow(
+                    _FakePage(),
+                    email="user@example.test", password="",
+                    config={"auto_set_password": False, "auto_set_2fa": False},
+                    controller=None, deadline_fn=lambda: 0.0,
+                    login_password_submitted=True,
+                    saved_password_status="", saved_twofa_status="",
+                    saved_has_totp=False,
+                    otp_callback=lambda: "", otp_prepare=Mock(), otp_mark_sent=Mock(),
+                    timing_fn=None, set_stage=lambda _code: None,
+                )
+            )
+
+        add_password.assert_not_called()
+        twofa.assert_not_called()
+        self.assertEqual(result["password_status"], "enabled")
+        self.assertEqual(result["twofa_status"], "disabled")
+
+
 if __name__ == "__main__":
     unittest.main()

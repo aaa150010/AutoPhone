@@ -265,6 +265,166 @@ class FreePlanCheckTests(unittest.TestCase):
         finally:
             service.shutdown()
 
+    def test_recheck_rejects_unknown_mode(self):
+        service = FreePlanCheckService(self.temp.name, pool=self.pool, workers=1, recover=False)
+        try:
+            with self.assertRaises(FreePlanCheckError):
+                service.enqueue([self.row.row_id], "browser")
+        finally:
+            service.shutdown()
+
+    def test_token_mode_still_skips_rows_without_token(self):
+        service = FreePlanCheckService(self.temp.name, pool=self.pool, workers=1, recover=False)
+        try:
+            result = service.enqueue([self.row.row_id])
+            self.assertEqual(result["accepted_count"], 0)
+            self.assertIn("Token", result["skipped"][0]["reason"])
+        finally:
+            service.shutdown()
+
+    def test_recheck_without_token_relogins_and_refreshes_plan(self):
+        # The row deliberately has no access_token: only the recheck mode may
+        # pick it up, and it must re-establish the account first.
+        relogin_rows: list[str] = []
+        service = FreePlanCheckService(self.temp.name, pool=self.pool, workers=1)
+
+        def fake_relogin(row_id, _result, _task_id):
+            relogin_rows.append(row_id)
+            self.pool.save_result(row_id, {"access_token": "fresh-token", "has_access_token": True})
+            return {"plan_check_status": "success", "plan_type": "plus", "subscription_plan": "plus", "has_active_subscription": True, "plan_http_status": 200}
+
+        service._protocol_relogin_query = fake_relogin
+        try:
+            result = service.enqueue([self.row.row_id], "recheck")
+            self.assertEqual(result["accepted_count"], 1)
+            deadline = time.time() + 2
+            while service.public_state()["active"] and time.time() < deadline:
+                time.sleep(0.01)
+            self.assertEqual(relogin_rows, [self.row.row_id])
+            saved = self.pool.result(self.row.row_id)
+            self.assertEqual(saved["plan_check_status"], "success")
+            self.assertEqual(saved["plan_type"], "plus")
+            self.assertEqual(saved["access_token"], "fresh-token")
+        finally:
+            service.shutdown()
+
+    def test_recheck_401_falls_back_to_protocol_relogin(self):
+        self.pool.save_result(self.row.row_id, {"access_token": "stale-token", "driver": "protocol"})
+        service = FreePlanCheckService(self.temp.name, pool=self.pool, workers=1)
+        attempts: list[str] = []
+        relogin_rows: list[str] = []
+
+        def fake_query(row_id, **_kwargs):
+            attempts.append(row_id)
+            raise FreePlanCheckError(
+                "free_plan_check", "查询 Free 套餐资格", "Token 已失效",
+                provider_status=401, error_code="free_plan_accounts_response_invalid",
+            )
+
+        def fake_relogin(row_id, _result, _task_id):
+            relogin_rows.append(row_id)
+            return {"plan_check_status": "success", "plan_type": "free", "plan_http_status": 200}
+
+        service._query = fake_query
+        service._protocol_relogin_query = fake_relogin
+        try:
+            result = service.enqueue([self.row.row_id], "recheck")
+            self.assertEqual(result["accepted_count"], 1)
+            deadline = time.time() + 2
+            while service.public_state()["active"] and time.time() < deadline:
+                time.sleep(0.01)
+            self.assertEqual(attempts, [self.row.row_id])
+            self.assertEqual(relogin_rows, [self.row.row_id])
+            self.assertEqual(self.pool.result(self.row.row_id)["plan_check_status"], "success")
+        finally:
+            service.shutdown()
+
+    def test_recheck_camoufox_row_uses_browser_callback_and_saves_account_fields(self):
+        self.pool.save_result(self.row.row_id, {"access_token": "stale-token", "driver": "camoufox", "password": "saved-pass"})
+        browser_calls: list[tuple[str, dict]] = []
+
+        def browser_recheck(row_id, context, _log_fn):
+            browser_calls.append((row_id, dict(context)))
+            return {
+                "plan_check_status": "success", "plan_type": "plus",
+                "has_active_subscription": True, "plan_http_status": 200,
+                "access_token": "browser-token", "has_access_token": True,
+                "twofa_status": "enabled",
+            }
+
+        service = FreePlanCheckService(self.temp.name, pool=self.pool, workers=1, browser_recheck=browser_recheck)
+
+        def fake_query(_row_id, **_kwargs):
+            raise FreePlanCheckError(
+                "free_plan_check", "查询 Free 套餐资格", "Token 已失效",
+                provider_status=401, error_code="free_plan_accounts_response_invalid",
+            )
+
+        service._query = fake_query
+        try:
+            result = service.enqueue([self.row.row_id], "recheck")
+            self.assertEqual(result["accepted_count"], 1)
+            deadline = time.time() + 2
+            while service.public_state()["active"] and time.time() < deadline:
+                time.sleep(0.01)
+            self.assertEqual(len(browser_calls), 1)
+            row_id, context = browser_calls[0]
+            self.assertEqual(row_id, self.row.row_id)
+            self.assertEqual(context["email"], self.row.email)
+            self.assertTrue(context["mailbox_url"])
+            self.assertEqual(context["password"], "saved-pass")
+            saved = self.pool.result(self.row.row_id)
+            self.assertEqual(saved["plan_check_status"], "success")
+            self.assertEqual(saved["access_token"], "browser-token")
+            self.assertEqual(saved["twofa_status"], "enabled")
+        finally:
+            service.shutdown()
+
+    def test_recheck_camoufox_row_with_valid_token_never_opens_browser(self):
+        self.pool.save_result(self.row.row_id, {"access_token": "valid-token", "driver": "camoufox"})
+
+        def browser_recheck(_row_id, _context, _log_fn):
+            raise AssertionError("a valid token must answer without the browser")
+
+        service = FreePlanCheckService(self.temp.name, pool=self.pool, workers=1, browser_recheck=browser_recheck)
+        service._query = lambda _row_id, **_kwargs: {"plan_check_status": "success", "plan_type": "free", "plan_http_status": 200}
+        try:
+            result = service.enqueue([self.row.row_id], "recheck")
+            self.assertEqual(result["accepted_count"], 1)
+            deadline = time.time() + 2
+            while service.public_state()["active"] and time.time() < deadline:
+                time.sleep(0.01)
+            self.assertEqual(self.pool.result(self.row.row_id)["plan_check_status"], "success")
+        finally:
+            service.shutdown()
+
+    def test_recheck_skips_rows_with_active_registration(self):
+        self.pool.update(self.row.row_id, status="running")
+        service = FreePlanCheckService(self.temp.name, pool=self.pool, workers=1, recover=False)
+        try:
+            result = service.enqueue([self.row.row_id], "recheck")
+            self.assertEqual(result["accepted_count"], 0)
+            self.assertIn("注册", result["skipped"][0]["reason"])
+        finally:
+            service.shutdown()
+
+    def test_recheck_confirmed_deactivation_deletes_pool_row(self):
+        self.pool.save_result(self.row.row_id, {"access_token": "stale-token", "driver": "protocol"})
+        service = FreePlanCheckService(self.temp.name, pool=self.pool, workers=1)
+        service._recheck_query = lambda _row_id, _task_id: (_ for _ in ()).throw(FreePlanCheckError(
+            "free_plan_relogin", "重查套餐重新登录", "重新登录明确返回账号已停用",
+            retryable=False, error_code="account_deactivated",
+        ))
+        try:
+            result = service.enqueue([self.row.row_id], "recheck")
+            self.assertEqual(result["accepted_count"], 1)
+            deadline = time.time() + 2
+            while service.public_state()["active"] and time.time() < deadline:
+                time.sleep(0.01)
+            self.assertIsNone(self.pool.entry(self.row.row_id))
+        finally:
+            service.shutdown()
+
 
 if __name__ == "__main__":
     unittest.main()

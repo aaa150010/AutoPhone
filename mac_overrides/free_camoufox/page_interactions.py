@@ -1716,6 +1716,15 @@ def _is_chatgpt_entry_url(host, value: str) -> bool:
     )
 
 
+_LOGIN_TOTP_PAGE_MARKERS = (
+    "authentication app",
+    "authenticator app",
+    "two-factor",
+    "two-step",
+    "enter the code from your",
+)
+
+
 async def _page_state(host, page: Any) -> str:
     raw_url = str(getattr(page, "url", "") or "")
     parsed = urlsplit(raw_url)
@@ -1750,6 +1759,15 @@ async def _page_state(host, page: Any) -> str:
         return "external_auth"
     if any(marker in body for marker in ("cloudflare", "verify you are human", "turnstile", "just a moment", "安全验证")):
         return "security"
+    # A TOTP challenge asks for the authentication-app code; classifying it
+    # as the email OTP state would wait for a mailbox code that never
+    # arrives. The text markers are the discriminator; the code input only
+    # confirms the shell.
+    if url_host in {"auth.openai.com", "chatgpt.com"} and any(
+        marker in f"{title} {body}" for marker in _LOGIN_TOTP_PAGE_MARKERS
+    ):
+        if await host._visible(page, OTP_SELECTORS, 250):
+            return "login_totp"
     # Auth shells can keep the email input mounted while the submitted email
     # request has already transitioned to the verification step.  The page
     # title/body is the stronger signal in that race; checking the email
@@ -1893,6 +1911,35 @@ async def _click_passwordless_login_switch(host, page: Any) -> bool:
     if await host._click_first(page, PASSWORDLESS_SELECTORS, timeout=6):
         return True
     return False
+
+
+def _login_totp_code(secret: str) -> str:
+    """Compute the current TOTP code from the saved secret."""
+    try:
+        from ..free_protocol_runtime import FreeProtocolMixin
+    except ImportError:  # pragma: no cover - top-level recovery import
+        from free_protocol_runtime import FreeProtocolMixin  # type: ignore[no-redef]
+    return FreeProtocolMixin._totp_code(secret)
+
+
+async def _submit_existing_login_totp(host, page: Any, code: str) -> bool:
+    """Fill and submit a TOTP code for an already-existing Free account.
+
+    The challenge must be answered with the saved secret's current code;
+    there is deliberately no fallback that bypasses the second factor.
+    Resolve the live locator on every call because the auth shell can
+    re-render the form while React hydrates.
+    """
+    value = str(code or "").strip()
+    if not value:
+        return False
+    selector = await host._wait_for_any_selector(page, OTP_SELECTORS, timeout=15)
+    if not selector or not await host._fill_input_like_user(page, selector, value):
+        return False
+    if await host._click_first(page, LOGIN_PASSWORD_SUBMIT_SELECTORS, timeout=6):
+        return True
+    fresh_selector = await host._find_visible_selector(page, OTP_SELECTORS)
+    return bool(fresh_selector and await host._submit_visible_form(page, fresh_selector))
 
 
 def _stop_requested(host, value: Any) -> bool:

@@ -301,7 +301,8 @@ class FreeAccountRouteController:
                 default_label="重新查询 Free 套餐",
             )
         try:
-            result = self._plan_service().enqueue(row_ids)
+            mode = str(data.get("mode") or "token") if isinstance(data, Mapping) else "token"
+            result = self._plan_service().enqueue(row_ids, mode)
             if not result.get("accepted_count"):
                 skipped = result.get("skipped") if isinstance(result.get("skipped"), list) else []
                 reason = str((skipped[0] if skipped else {}).get("reason") or "没有符合条件的 Free 账号")

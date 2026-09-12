@@ -602,6 +602,7 @@ _ACTION_HINTS = {
     "proxy_tls_certificate_error": "确认代理证书链和TLS配置",
     "proxy_connect_failed": "确认代理地址、端口和认证信息",
     "free_plan_check": "保留已注册账号，稍后重新查询套餐状态",
+    "free_plan_relogin": "确认账号凭据（密码/2FA/邮箱验证码）后重新发起套餐重查",
     "free_twofa_enroll": "保留已注册账号和 Token，稍后重试 2FA",
     "free_twofa_activate": "保留已注册账号和 Token，稍后重试 2FA",
     "free_password_mfa_required": "确认账号已保存 TOTP 后重试密码设置",

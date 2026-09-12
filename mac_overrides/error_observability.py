@@ -87,6 +87,8 @@ NODE_LABELS = {
     "free_oauth_callback": "Free OAuth 回调",
     "free_access_token": "获取 Free access token",
     "free_plan_check": "查询 Free 套餐资格",
+    "free_plan_relogin": "重查套餐重新登录",
+    "free_existing_login_totp": "已有账号登录两步验证",
     "free_twofa_enroll": "注册 Free 账号 2FA",
     "free_twofa_activate": "激活 Free 账号 2FA",
     "free_twofa_retry": "重试 Free 账号 2FA",

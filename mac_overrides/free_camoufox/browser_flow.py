@@ -73,6 +73,233 @@ _STATE_STUCK_POLLS = 8
 
 
 
+async def _apply_password_supplement(
+    host,
+    page: Any,
+    *,
+    result: dict[str, Any],
+    token: str,
+    email: str,
+    password: str,
+    config: Mapping[str, Any],
+    controller: Any,
+    deadline_fn: Callable[[], float],
+    otp_callback: Callable[[], str],
+    otp_prepare: Callable[..., Any] | None,
+    otp_mark_sent: Callable[..., Any] | None,
+    timing_fn: Callable[..., Any] | None,
+    set_stage: Callable[[str], None],
+) -> str:
+    """Run browser_add_password and merge its outcome into ``result``.
+
+    Returns the (possibly refreshed) access token; only a run-stop request
+    propagates, every other failure is recorded as a pending password status.
+    """
+    try:
+        password_result = await host.browser_add_password(
+            page,
+            token,
+            email,
+            password,
+            otp_callback=otp_callback,
+            otp_prepare=otp_prepare,
+            otp_mark_sent=otp_mark_sent,
+            stage_fn=set_stage,
+            task_id=str(config.get("task_id") or ""),
+            device_id=str(config.get("device_id") or ""),
+            deadline_monotonic=deadline_fn(),
+            deadline_controller=controller,
+            stop_requested=config.get("host._stop_requested"),
+            timing_fn=timing_fn,
+        )
+        result.update(password_result)
+        return str(password_result.get("access_token") or token)
+    except host.FreeRegisterError as exc:
+        if exc.error_code == "free_run_stop" or exc.node_code == "free_run_stop":
+            raise
+        detail = host.clean(str(exc), 300)
+        result.update({
+            "password_status": "pending",
+            "password_error": detail,
+            "password_failure": {
+                "node_code": exc.node_code,
+                "node_label": exc.node_label,
+                "error_code": exc.error_code,
+                "public_message": f"{exc.node_label} [{exc.node_label}/{exc.node_code}]：{detail}",
+                "technical_summary": detail,
+                "retryable": bool(exc.retryable),
+                "provider_code": str(exc.provider_code or ""),
+            },
+        })
+        return token
+
+
+async def _apply_twofa_supplement(
+    host,
+    page: Any,
+    *,
+    result: dict[str, Any],
+    token: str,
+    email: str,
+    config: Mapping[str, Any],
+    controller: Any,
+    deadline_fn: Callable[[], float],
+    otp_callback: Callable[[], str],
+    otp_prepare: Callable[..., Any] | None,
+    otp_mark_sent: Callable[..., Any] | None,
+    timing_fn: Callable[..., Any] | None,
+    set_stage: Callable[[str], None],
+) -> str:
+    """Run browser_twofa and merge its outcome into ``result``."""
+    set_stage("free_twofa_enroll")
+    try:
+        twofa_result = await host.browser_twofa(
+            page,
+            token,
+            email,
+            otp_callback=otp_callback,
+            otp_prepare=otp_prepare,
+            otp_mark_sent=otp_mark_sent,
+            stage_fn=lambda code: set_stage(code),
+            task_id=str(config.get("task_id") or ""),
+            device_id=str(config.get("device_id") or ""),
+            deadline_monotonic=deadline_fn(),
+            deadline_controller=controller,
+            stop_requested=config.get("host._stop_requested"),
+            timing_fn=timing_fn,
+        )
+        if isinstance(twofa_result, Mapping):
+            result.update(twofa_result)
+            token = str(twofa_result.get("access_token") or token)
+        else:  # pragma: no cover - compatibility with old adapters
+            result.update({"totp_secret": str(twofa_result or "")})
+        set_stage("free_twofa_activate")
+        result["twofa_status"] = "enabled"
+        return token
+    except host.FreeRegisterError as exc:
+        if exc.error_code == "free_run_stop" or exc.node_code == "free_run_stop":
+            raise
+        result.update({
+            "twofa_status": "pending",
+            "twofa_error": host.clean(str(exc), 300),
+            "twofa_failure": {
+                "node_code": exc.node_code, "node_label": exc.node_label,
+                "error_code": exc.error_code,
+                "public_message": f"{exc.node_label} [{exc.node_label}/{exc.node_code}]：{host.clean(str(exc), 300)}",
+                "retryable": bool(exc.retryable), "provider_code": exc.provider_code,
+            },
+        })
+        return token
+
+
+async def _finish_plan_recheck_flow(
+    host,
+    page: Any,
+    *,
+    email: str,
+    password: str,
+    config: Mapping[str, Any],
+    controller: Any,
+    deadline_fn: Callable[[], float],
+    login_password_submitted: bool,
+    saved_password_status: str,
+    saved_twofa_status: str,
+    saved_has_totp: bool,
+    otp_callback: Callable[[], str],
+    otp_prepare: Callable[..., Any] | None,
+    otp_mark_sent: Callable[..., Any] | None,
+    timing_fn: Callable[..., Any] | None,
+    set_stage: Callable[[str], None],
+) -> dict[str, Any]:
+    """Finalize a plan re-check session into a refreshed token + plan result.
+
+    Credential supplements follow the corrected existing-login semantics:
+    already-enabled password/2FA are skipped, and only missing ones are set
+    per the auto_set_password / auto_set_2fa configuration.
+    """
+    if callable(timing_fn):
+        session = await host.browser_session(
+            page,
+            timing_fn=timing_fn,
+            timing_stage="free_access_token",
+        )
+    else:
+        session = await host.browser_session(page)
+    set_stage("free_access_token")
+    token = str(session.get("accessToken") or "")
+    if callable(timing_fn):
+        plan = await host.browser_plan_details(
+            page,
+            token,
+            timing_fn=timing_fn,
+            timing_stage="free_access_token",
+        )
+    else:
+        plan = await host.browser_plan_details(page, token)
+    set_stage("free_plan_check")
+    result: dict[str, Any] = {
+        "access_token": token,
+        "has_access_token": bool(token),
+        "account_flow": "existing_login",
+        "registration_password_used": False,
+        **plan,
+    }
+    if saved_password_status == "enabled" or login_password_submitted:
+        # The credential is already in place (or just authenticated with);
+        # never re-run the enrollment flow for it.
+        result.update({
+            "password_status": "enabled",
+            "password_set_after_registration": False,
+        })
+    elif host._runtime_bool(config.get("auto_set_password"), False):
+        token = await _apply_password_supplement(
+            host,
+            page,
+            result=result,
+            token=token,
+            email=email,
+            password=password,
+            config=config,
+            controller=controller,
+            deadline_fn=deadline_fn,
+            otp_callback=otp_callback,
+            otp_prepare=otp_prepare,
+            otp_mark_sent=otp_mark_sent,
+            timing_fn=timing_fn,
+            set_stage=set_stage,
+        )
+    else:
+        result["password_status"] = "disabled"
+    if saved_twofa_status == "enabled" or saved_has_totp:
+        result["twofa_status"] = "enabled"
+    elif host._runtime_bool(config.get("auto_set_2fa"), True):
+        token = await _apply_twofa_supplement(
+            host,
+            page,
+            result=result,
+            token=token,
+            email=email,
+            config=config,
+            controller=controller,
+            deadline_fn=deadline_fn,
+            otp_callback=otp_callback,
+            otp_prepare=otp_prepare,
+            otp_mark_sent=otp_mark_sent,
+            timing_fn=timing_fn,
+            set_stage=set_stage,
+        )
+    else:
+        result["twofa_status"] = "disabled"
+    result["access_token"] = token
+    result["has_access_token"] = bool(token)
+    return host.finalize_registration_result(
+        result,
+        driver="camoufox",
+        email=email,
+        password_used=bool(result.get("password_set_after_registration")),
+    )
+
+
 async def _finish_home_flow(
     host,
     page: Any,
@@ -134,88 +361,46 @@ async def _finish_home_flow(
             "password_set_after_registration": False,
         })
     elif host._runtime_bool(config.get("auto_set_password"), False):
-        try:
-            password_result = await host.browser_add_password(
-                page,
-                token,
-                email,
-                password,
-                otp_callback=otp_callback,
-                otp_prepare=otp_prepare,
-                otp_mark_sent=otp_mark_sent,
-                stage_fn=set_stage,
-                task_id=str(config.get("task_id") or ""),
-                device_id=str(config.get("device_id") or ""),
-                deadline_monotonic=deadline_fn(),
-                deadline_controller=controller,
-                stop_requested=config.get("host._stop_requested"),
-                timing_fn=timing_fn,
-            )
-            result.update(password_result)
-            token = str(password_result.get("access_token") or token)
-            password_set_after_registration = bool(
-                password_result.get("password_set_after_registration")
-            )
-        except host.FreeRegisterError as exc:
-            if exc.error_code == "free_run_stop" or exc.node_code == "free_run_stop":
-                raise
-            detail = host.clean(str(exc), 300)
-            result.update({
-                "password_status": "pending",
-                "password_error": detail,
-                "password_failure": {
-                    "node_code": exc.node_code,
-                    "node_label": exc.node_label,
-                    "error_code": exc.error_code,
-                    "public_message": f"{exc.node_label} [{exc.node_label}/{exc.node_code}]：{detail}",
-                    "technical_summary": detail,
-                    "retryable": bool(exc.retryable),
-                    "provider_code": str(exc.provider_code or ""),
-                },
-            })
+        token = await _apply_password_supplement(
+            host,
+            page,
+            result=result,
+            token=token,
+            email=email,
+            password=password,
+            config=config,
+            controller=controller,
+            deadline_fn=deadline_fn,
+            otp_callback=otp_callback,
+            otp_prepare=otp_prepare,
+            otp_mark_sent=otp_mark_sent,
+            timing_fn=timing_fn,
+            set_stage=set_stage,
+        )
+        password_set_after_registration = bool(
+            result.get("password_set_after_registration")
+        )
     else:
         result["password_status"] = "disabled"
 
     # Keep the two security operations independent. Each helper owns its
     # own mailbox baseline and therefore consumes a distinct OTP.
     if host._runtime_bool(config.get("auto_set_2fa"), True):
-        set_stage("free_twofa_enroll")
-        try:
-            twofa_result = await host.browser_twofa(
-                page,
-                token,
-                email,
-                otp_callback=otp_callback,
-                otp_prepare=otp_prepare,
-                otp_mark_sent=otp_mark_sent,
-                stage_fn=lambda code: set_stage(code),
-                task_id=str(config.get("task_id") or ""),
-                device_id=str(config.get("device_id") or ""),
-                deadline_monotonic=deadline_fn(),
-                deadline_controller=controller,
-                stop_requested=config.get("host._stop_requested"),
-                timing_fn=timing_fn,
-            )
-            if isinstance(twofa_result, Mapping):
-                result.update(twofa_result)
-                token = str(twofa_result.get("access_token") or token)
-            else:  # pragma: no cover - compatibility with old adapters
-                result.update({"totp_secret": str(twofa_result or "")})
-            set_stage("free_twofa_activate")
-            result["twofa_status"] = "enabled"
-        except host.FreeRegisterError as exc:
-            if exc.error_code == "free_run_stop" or exc.node_code == "free_run_stop":
-                raise
-            result.update({
-                "twofa_status": "pending",
-                "twofa_error": host.clean(str(exc), 300),
-                "twofa_failure": {
-                    "node_code": exc.node_code, "node_label": exc.node_label,
-                    "error_code": exc.error_code,
-                    "public_message": f"{exc.node_label} [{exc.node_label}/{exc.node_code}]：{host.clean(str(exc), 300)}",
-                    "retryable": bool(exc.retryable), "provider_code": exc.provider_code,
-                },
-            })
+        token = await _apply_twofa_supplement(
+            host,
+            page,
+            result=result,
+            token=token,
+            email=email,
+            config=config,
+            controller=controller,
+            deadline_fn=deadline_fn,
+            otp_callback=otp_callback,
+            otp_prepare=otp_prepare,
+            otp_mark_sent=otp_mark_sent,
+            timing_fn=timing_fn,
+            set_stage=set_stage,
+        )
     else:
         result["twofa_status"] = "disabled"
     result["access_token"] = token
@@ -351,6 +536,8 @@ async def _browser_flow(
     timing_fn: host.TimingCallback | None = None,
     force_existing_login: bool = False,
     existing_password: str = "",
+    existing_totp_secret: str = "",
+    plan_recheck: bool = False,
     password_retry: bool = False,
     password_retry_token: str = "",
     startup_gate: asyncio.Semaphore | None = None,
@@ -403,6 +590,9 @@ async def _browser_flow(
     login_password_submitted = False
     login_password_submitted_at = 0.0
     login_password_submit_retried = False
+    login_totp_submitted = False
+    login_totp_submitted_at = 0.0
+    login_totp_submit_retried = False
     passwordless_login_switch_used = False
     email_verification_started_at = 0.0
     email_verification_retried = False
@@ -965,8 +1155,8 @@ async def _browser_flow(
             if state == "security":
                 transition_outcome = "security_challenge"
             elif state in {
-                "signup_password", "login_password", "email_verification",
-                "profile", "oauth_callback", "home",
+                "signup_password", "login_password", "login_totp",
+                "email_verification", "profile", "oauth_callback", "home",
             }:
                 transition_outcome = "success"
             else:
@@ -979,7 +1169,7 @@ async def _browser_flow(
         record_profile_timing(state)
         seen[state] = seen.get(state, 0) + 1
         if (
-            state not in {"signup_password", "login_password", "otp", "otp_wait", "email_verification", "profile", "security"}
+            state not in {"signup_password", "login_password", "login_totp", "otp", "otp_wait", "email_verification", "profile", "security"}
             and seen[state] > _STATE_STUCK_POLLS
         ):
             now = time.monotonic()
@@ -1178,6 +1368,25 @@ async def _browser_flow(
         if state == "security":
             await host._wait_challenge_then_stop(page, timeout=30)
         if state == "home":
+            if plan_recheck:
+                return await _finish_plan_recheck_flow(
+                    host,
+                    page,
+                    email=email,
+                    password=password,
+                    config=config,
+                    controller=controller,
+                    deadline_fn=current_deadline,
+                    login_password_submitted=login_password_submitted,
+                    saved_password_status=str(config.get("plan_recheck_password_status") or ""),
+                    saved_twofa_status=str(config.get("plan_recheck_twofa_status") or ""),
+                    saved_has_totp=bool(config.get("plan_recheck_has_totp")),
+                    otp_callback=otp_callback,
+                    otp_prepare=otp_prepare,
+                    otp_mark_sent=otp_mark_sent,
+                    timing_fn=timing_fn,
+                    set_stage=set_stage,
+                )
             return await _finish_home_flow(
                 host,
                 page,
@@ -1267,6 +1476,45 @@ async def _browser_flow(
                     await host._submit_existing_login_password(page, saved_password)
                     login_password_submit_retried = True
                     log("已有账号登录密码页未跳转，已使用同一密码重试提交", "warn")
+            await asyncio.sleep(_STATE_POLL_SECONDS)
+            continue
+
+        if state == "login_totp":
+            # A TOTP-enabled existing account lands here after the password
+            # (or verification-code) step. The challenge is answered with the
+            # saved secret; there is deliberately no bypass path.
+            if not str(existing_totp_secret or "").strip():
+                raise host.CamoufoxBrowserError(
+                    "free_existing_login_totp", "已有账号登录两步验证",
+                    "账号已启用两步验证，但没有保存动态口令密钥",
+                    retryable=False, error_code="free_existing_login_totp_missing",
+                    safe_page=host._safe_url(page), page_type="login_totp",
+                )
+            set_stage("free_existing_login_totp")
+            now = time.monotonic()
+            if not login_totp_submitted:
+                if not await host._submit_existing_login_totp(page, host._login_totp_code(existing_totp_secret)):
+                    raise host.CamoufoxBrowserError(
+                        "free_existing_login_totp", "已有账号登录两步验证",
+                        "两步验证码输入或提交失败", retryable=False,
+                        error_code="free_camoufox_login_totp_page",
+                        safe_page=host._safe_url(page), page_type="login_totp",
+                    )
+                login_totp_submitted = True
+                login_totp_submitted_at = now
+            else:
+                elapsed = now - (login_totp_submitted_at or now)
+                if elapsed >= 45:
+                    raise host.CamoufoxBrowserError(
+                        "free_existing_login_totp", "已有账号登录两步验证",
+                        "两步验证码提交后页面未继续", retryable=False,
+                        error_code="free_camoufox_login_totp_transition_timeout",
+                        safe_page=host._safe_url(page), page_type="login_totp",
+                    )
+                if elapsed >= 12 and not login_totp_submit_retried:
+                    await host._submit_existing_login_totp(page, host._login_totp_code(existing_totp_secret))
+                    login_totp_submit_retried = True
+                    log("已有账号两步验证页未跳转，已使用新验证码重试提交", "warn")
             await asyncio.sleep(_STATE_POLL_SECONDS)
             continue
 

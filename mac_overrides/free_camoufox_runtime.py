@@ -944,6 +944,21 @@ async def _click_passwordless_login_switch(
         page=page,
     )
 
+def _login_totp_code(
+    secret,
+) -> str:
+    return _camoufox_page._login_totp_code(secret)
+
+async def _submit_existing_login_totp(
+    page,
+    code,
+) -> bool:
+    return await _camoufox_page._submit_existing_login_totp(
+        _host_module(),
+        page=page,
+        code=code,
+    )
+
 def _stop_requested(
     value,
 ) -> bool:
@@ -1020,6 +1035,8 @@ async def _browser_flow(
     timing_fn=None,
     force_existing_login=False,
     existing_password='',
+    existing_totp_secret='',
+    plan_recheck=False,
     password_retry=False,
     password_retry_token='',
     startup_gate=None,
@@ -1040,10 +1057,49 @@ async def _browser_flow(
         timing_fn=timing_fn,
         force_existing_login=force_existing_login,
         existing_password=existing_password,
+        existing_totp_secret=existing_totp_secret,
+        plan_recheck=plan_recheck,
         password_retry=password_retry,
         password_retry_token=password_retry_token,
         startup_gate=startup_gate,
         deadline_controller=deadline_controller,
+    )
+
+async def _finish_plan_recheck_flow(
+    page,
+    *,
+    email,
+    password,
+    config,
+    controller,
+    deadline_fn,
+    login_password_submitted,
+    saved_password_status,
+    saved_twofa_status,
+    saved_has_totp,
+    otp_callback,
+    otp_prepare=None,
+    otp_mark_sent=None,
+    timing_fn=None,
+    set_stage,
+) -> dict[str, Any]:
+    return await _camoufox_flow._finish_plan_recheck_flow(
+        _host_module(),
+        page=page,
+        email=email,
+        password=password,
+        config=config,
+        controller=controller,
+        deadline_fn=deadline_fn,
+        login_password_submitted=login_password_submitted,
+        saved_password_status=saved_password_status,
+        saved_twofa_status=saved_twofa_status,
+        saved_has_totp=saved_has_totp,
+        otp_callback=otp_callback,
+        otp_prepare=otp_prepare,
+        otp_mark_sent=otp_mark_sent,
+        timing_fn=timing_fn,
+        set_stage=set_stage,
     )
 
 def _proxy_config(

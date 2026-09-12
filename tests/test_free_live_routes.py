@@ -62,8 +62,8 @@ class FreeLiveRouteTests(unittest.TestCase):
         calls = []
 
         class PlanChecks:
-            def enqueue(self, row_ids):
-                calls.append(list(row_ids))
+            def enqueue(self, row_ids, mode="token"):
+                calls.append((list(row_ids), mode))
                 return {"accepted": [{"task_id": "free-plan-1"}], "accepted_count": 1, "skipped": [], "skipped_count": 0, "state": self.public_state(), "rows": [{"row_id": "free-row-a"}]}
 
             def public_state(self):
@@ -88,7 +88,7 @@ class FreeLiveRouteTests(unittest.TestCase):
         self.assertEqual(started.status_code, 200)
         self.assertEqual(started.get_json()["accepted_count"], 1)
         self.assertEqual(state.get_json()["state"]["workers"], 2)
-        self.assertEqual(calls, [["free-row-a"]])
+        self.assertEqual(calls, [(["free-row-a"], "token")])
 
 
 if __name__ == "__main__":

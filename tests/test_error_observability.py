@@ -23,6 +23,12 @@ class ErrorObservabilityTests(unittest.TestCase):
     def test_existing_free_login_password_has_a_public_diagnostic_label(self):
         self.assertEqual(NODE_LABELS["free_existing_login_password"], "验证已有 Free 账号密码")
 
+    def test_plan_relogin_failure_has_a_public_diagnostic_label(self):
+        self.assertEqual(NODE_LABELS["free_plan_relogin"], "重查套餐重新登录")
+
+    def test_existing_login_totp_challenge_has_a_public_diagnostic_label(self):
+        self.assertEqual(NODE_LABELS["free_existing_login_totp"], "已有账号登录两步验证")
+
     def test_node_labels_define_free_existing_login_otp_once(self):
         self.assertEqual(NODE_LABELS["free_existing_login_otp"], "等待已有 Free 账号登录验证码")
 

@@ -54,6 +54,27 @@ except ImportError:
         timezone_offset_minutes,
     )
 
+try:
+    from .free_protocol_relogin import (
+        ProtocolReloginDeactivated,
+        is_deactivated_response as _is_deactivated,
+        live_failure_is_transient as _live_failure_is_transient,
+        live_response_received as _live_response_received,
+        protocol_relogin_proxy,
+        run_protocol_relogin,
+        wrap_session_transient_retry as _wrap_session_transient_retry,
+    )
+except ImportError:  # pragma: no cover - top-level recovery import
+    from free_protocol_relogin import (  # type: ignore[no-redef]
+        ProtocolReloginDeactivated,
+        is_deactivated_response as _is_deactivated,
+        live_failure_is_transient as _live_failure_is_transient,
+        live_response_received as _live_response_received,
+        protocol_relogin_proxy,
+        run_protocol_relogin,
+        wrap_session_transient_retry as _wrap_session_transient_retry,
+    )
+
 
 LIVE_MODES = frozenset({"fast", "deep"})
 _ORIGINAL_MAILBOX_URL_OTP_PROVIDER = MailboxUrlOtpProvider
@@ -198,51 +219,6 @@ def _live_request_headers(token: str, device_id: str, path: str) -> dict[str, st
     }
 
 
-def _live_failure_is_transient(exc: BaseException) -> bool:
-    """Pre-response transport failure (TLS handshake, connection reset, proxy connect)."""
-    text = f"{type(exc).__name__} {exc}".lower()
-    if any(marker in text for marker in ("timeout", "timed out", "connection", "proxy", "tls", "ssl", "reset", "curl:", "handshake")):
-        return not _live_response_received(exc)
-    return False
-
-
-def _live_response_received(exc: BaseException) -> bool:
-    if getattr(exc, "response", None) is not None:
-        return True
-    status = getattr(exc, "status_code", None)
-    return isinstance(status, int) and status > 0
-
-
-def _wrap_session_transient_retry(session: Any) -> None:
-    """Retry one-off pre-response transport failures on the same session.
-
-    A session rebuild would drop the oai-did cookie that authenticates the
-    live-check request, so the single retry must reuse this session object.
-    Failures carrying an HTTP response (server answered) are never retried.
-    """
-    for name in ("get", "post"):
-        original = getattr(session, name, None)
-        if not callable(original) or getattr(original, "_gptphone_retry_wrapped", False):
-            continue
-
-        def wrapped(*args: Any, __original: Callable[..., Any] = original, **kwargs: Any) -> Any:
-            try:
-                return __original(*args, **kwargs)
-            except Exception as first:
-                if not _live_failure_is_transient(first):
-                    raise
-                try:
-                    return __original(*args, **kwargs)
-                except Exception as second:
-                    raise second from first
-
-        wrapped._gptphone_retry_wrapped = True
-        try:
-            setattr(session, name, wrapped)
-        except Exception:
-            continue
-
-
 def _prepare_live_session(session: Any, device_id: str) -> Any:
     """Apply task-scoped device cookies and environment isolation to a session."""
     try:
@@ -335,23 +311,53 @@ def _plus_eligible(value: Any) -> bool:
     return any(_plus_eligible(item) for item in value.values() if isinstance(item, (Mapping, list, tuple)))
 
 
-def _is_deactivated(value: Any) -> bool:
-    try:
-        from .runtime_policy import is_account_banned_failure
-    except ImportError:
-        from runtime_policy import is_account_banned_failure  # type: ignore[no-redef]
-    try:
-        return bool(is_account_banned_failure(value))
-    except Exception:
-        return False
-
-
 def _failure(exc: BaseException, *, default_code: str, default_label: str) -> dict[str, Any]:
     return exception_to_failure(
         exc,
         node_code=str(getattr(exc, "node_code", "") or default_code),
         node_label=str(getattr(exc, "node_label", "") or default_label),
     )
+
+
+def delete_deactivated_pool_row(
+    pool: Any,
+    row_id: str,
+    *,
+    log_fn: Callable[[str, str], None] | None = None,
+    origin: str = "free_live_check",
+) -> bool:
+    """Remove a row the deep re-login confirmed as deactivated.
+
+    The confirmation uses the same explicit ``account_banned`` classifier
+    as the SMS chain (``runtime_policy.is_account_banned_failure`` via
+    ``is_deactivated_response``), so ambiguous 403/proxy failures never
+    reach this path.  The mailbox row leaves the reusable pool; registration
+    results and diagnostic events stay as the audit trail.  When the row
+    cannot be removed it is marked unavailable instead, mirroring the SMS
+    mark-damaged fallback.
+    """
+    remover = getattr(pool, "delete", None)
+    if not callable(remover):
+        return False
+    try:
+        removed = int(remover([row_id]) or 0)
+    except Exception as exc:
+        # Deletion must never overwrite the confirmed deactivated result.
+        _note_stderr(f"{origin}/deactivated_row_delete", exc)
+        removed = 0
+    if removed:
+        if log_fn is not None:
+            log_fn("账号已停用，已自动从 Free 邮箱池移除（注册结果与日志保留）", "warn")
+        return True
+    marker = getattr(pool, "update", None)
+    if callable(marker):
+        try:
+            marker(row_id, status="unavailable")
+            if log_fn is not None:
+                log_fn("账号已停用，邮箱行移除失败，已标记为不可用", "warn")
+        except Exception as exc:
+            _note_stderr(f"{origin}/deactivated_row_mark", exc)
+    return False
 
 
 class FreeLiveCheckService:
@@ -952,35 +958,11 @@ class FreeLiveCheckService:
             self._finish_exception(task_id, exc, row_id=str(context.get("row_id") or job.get("row_id") or ""))
 
     def _delete_deactivated_row(self, task_id: str, row_id: str) -> None:
-        """Remove a row the deep re-login confirmed as deactivated.
-
-        The confirmation uses the same explicit ``account_banned`` classifier
-        as the SMS chain (``runtime_policy.is_account_banned_failure`` via
-        ``_is_deactivated``), so ambiguous 403/proxy failures never reach this
-        path.  The mailbox row leaves the reusable pool; registration results
-        and diagnostic events stay as the audit trail.  When the row cannot
-        be removed it is marked unavailable instead, mirroring the SMS
-        mark-damaged fallback.
-        """
-        remover = getattr(self.pool, "delete", None)
-        if not callable(remover):
-            return
-        try:
-            removed = int(remover([row_id]) or 0)
-        except Exception as exc:
-            # Deletion must never overwrite the confirmed deactivated result.
-            self._note_quiet("deactivated_row_delete", exc)
-            removed = 0
-        if removed:
-            self._log(task_id, "free_live_result", "账号已停用，已自动从 Free 邮箱池移除（注册结果与日志保留）", "warn")
-            return
-        marker = getattr(self.pool, "update", None)
-        if callable(marker):
-            try:
-                marker(row_id, status="unavailable")
-                self._log(task_id, "free_live_result", "账号已停用，邮箱行移除失败，已标记为不可用", "warn")
-            except Exception as exc:
-                self._note_quiet("deactivated_row_mark", exc)
+        delete_deactivated_pool_row(
+            self.pool,
+            row_id,
+            log_fn=lambda message, level: self._log(task_id, "free_live_result", message, str(level)),
+        )
 
     def _finish_exception(self, task_id: str, exc: BaseException, *, row_id: str = "", code: str = "free_live_check", label: str = "Free 账号测活") -> None:
         failure = _failure(exc, default_code=code, default_label=label)
@@ -1181,244 +1163,78 @@ class FreeLiveCheckService:
             if callable(close):
                 close()
 
-    @staticmethod
-    def _page_type(module: Any, response: Any) -> str:
-        try:
-            return str(module._page_type(response) or "").strip().lower()
-        except Exception:
-            return ""
-
-    @staticmethod
-    def _continue_url(module: Any, response: Any) -> str:
-        try:
-            return str(module._continue_url(response) or "").strip()
-        except Exception:
-            return ""
-
     def _run_deep(self, context: Mapping[str, Any], config: Mapping[str, Any]) -> Mapping[str, Any]:
-        import codex_chain_runner
-        import codex_oauth_chain
-
-        email = str(context["email"])
         task_id = str(context["task_id"])
-        proxy = proxy_transport_value(
-            str(context["proxy"]),
-            driver="protocol",
-            socks5_dns_mode=str(config.get("proxy_socks5_dns_mode") or "remote"),
-        )
-        if not proxy:
-            raise FreeRegisterError("proxy_connect_failed", "代理连接失败", "深度测活代理格式无效", retryable=False, error_code="proxy_connect_failed")
+        proxy = protocol_relogin_proxy(str(context.get("proxy") or ""), config, stage_label="深度测活")
         device_id = str(context.get("device_id") or f"free-live-{secrets.token_hex(16)}")
-        auth_session_logging_id = f"free-live-auth-{secrets.token_hex(12)}"
-        oauth_url, _code_verifier, _state = codex_chain_runner.build_oauth_url(
-            login_hint=email,
-            screen_hint="login_or_signup",
-            prompt="login",
-        )
-        try:
-            from .free_protocol_runtime import _ensure_oauth_context_params
-        except ImportError:
-            from free_protocol_runtime import _ensure_oauth_context_params  # type: ignore[no-redef]
-        oauth_url = _ensure_oauth_context_params(
-            oauth_url,
-            device_id=device_id,
-            auth_session_logging_id=auth_session_logging_id,
-        )
-        oauth_params = codex_oauth_chain.parse_oauth_url(oauth_url)
-        protocol = config.get("protocol") if isinstance(config.get("protocol"), Mapping) else {}
-        chain_config = dict(config)
-        chain_config.update({
-            "run_mode": "free_live_check",
-            "codex_chain_mode": "real",
-            "free_protocol_state_machine": True,
-            "free_register_no_phone": True,
-            "codex_node_runner": str(protocol.get("node_runner") or ""),
-            "_auth_account_email": email,
-        })
         log_fn = lambda message, level="info": self._log(task_id, "free_live_deep", str(message), str(level))
-        sentinel = codex_oauth_chain.RealNodeSentinelProvider(
-            config=chain_config,
-            device_id=device_id,
-            proxy_label=str(context.get("proxy_fingerprint") or ""),
-            proxy=proxy,
-            log_fn=log_fn,
-        )
-        transport = codex_oauth_chain.RealCodexTransport(
-            chain_config,
-            oauth_params=oauth_params,
-            proxy=proxy,
-            sentinel_provider=sentinel,
-            device_id=device_id,
-            log_fn=log_fn,
-        )
-        # Deep checks use the same bounded protocol bootstrap as registration:
-        # fixed proxy, device cookie, anonymous warmup and Sentinel preflight.
-        # Test doubles without an HTTP ``get`` remain transport-only tests and
-        # do not attempt network calls.
-        transport_session = getattr(transport, "session", None)
-        if callable(getattr(transport_session, "get", None)):
-            try:
-                try:
-                    from .free_protocol_bootstrap import (
-                        anonymous_warmup,
-                        network_preflight,
-                        prepare_reference_session,
-                    )
-                except ImportError:
-                    from free_protocol_bootstrap import (  # type: ignore[no-redef]
-                        anonymous_warmup,
-                        network_preflight,
-                        prepare_reference_session,
-                    )
-                prepare_reference_session(transport)
-                network_preflight(transport, chain_config, log=log_fn)
-                anonymous_warmup(transport, chain_config, log=log_fn)
-            except FreeRegisterError:
-                raise
-            except Exception as exc:
-                raise FreeRegisterError(
-                    "free_live_deep",
-                    "深度测活",
-                    f"深度测活协议预检异常（{type(exc).__name__}）",
-                    retryable=True,
-                    error_code="free_live_deep_preflight_failed",
-                ) from exc
+
+        def stage_fn(code: str) -> None:
+            if "mfa" in code:
+                self._set_job(task_id, stage="free_live_mfa")
+            elif "email" in code:
+                self._set_job(task_id, stage="free_live_email")
+            else:
+                self._set_job(task_id, stage="free_live_deep")
+
+        otp = self._build_deep_otp_provider(context, config, proxy, log_fn, task_id)
+
+        def post_login(transport: Any, token: str) -> Mapping[str, Any]:
+            checked = dict(
+                self._query_account(
+                    getattr(transport, "session", None),
+                    token,
+                    device_id=device_id,
+                    failure_node="free_live_session_rejected",
+                    proxy=proxy,
+                )
+            )
+            if checked.get("status") == "live":
+                checked["access_token"] = token
+            return checked
+
+        try:
+            return dict(
+                run_protocol_relogin(
+                    context,
+                    config,
+                    proxy=proxy,
+                    otp=otp,
+                    log_fn=log_fn,
+                    stage_fn=stage_fn,
+                    device_id=device_id,
+                    post_login=post_login,
+                    error_context_fn=lambda exc: _live_transport_context(proxy, "https://auth.openai.com/", exc),
+                )
+            )
+        except ProtocolReloginDeactivated as exc:
+            return self._deactivated_result(exc.http_status)
+
+    def _build_deep_otp_provider(
+        self,
+        context: Mapping[str, Any],
+        config: Mapping[str, Any],
+        proxy: str,
+        log_fn: Callable[..., Any],
+        task_id: str,
+    ) -> Any:
         stage_fn = lambda _task_id, code: self._set_job(task_id, stage="free_live_email" if "email" in code else "free_live_deep")
         if MailboxUrlOtpProvider is _ORIGINAL_MAILBOX_URL_OTP_PROVIDER:
-            otp = build_free_mailbox_otp_provider(
+            return build_free_mailbox_otp_provider(
                 str(context["mailbox_url"]), proxy, config,
                 log_fn=log_fn, task_id=task_id, stage_fn=stage_fn,
                 mailbox_source=str(context.get("mailbox_source") or "url"),
                 mailbox_email=str(context.get("email") or ""),
                 service_token=str(context.get("service_token") or ""),
             )
-        else:
-            # Preserve the historic module-level injection point used by
-            # tests and integrations while keeping production on the shared
-            # Free mailbox network policy above.
-            otp = MailboxUrlOtpProvider(
-                str(context["mailbox_url"]), proxy,
-                timeout=int(config.get("email_code_timeout") or 90),
-                log_fn=log_fn, task_id=task_id, stage_fn=stage_fn,
-            )
-        try:
-            response = transport.start_chatgpt_signup_authorize(email)
-            if _is_deactivated(response):
-                return self._deactivated_result(_status(response))
-            otp.mark_sent()
-            response = transport.submit_email_identifier(email)
-            for _attempt in range(10):
-                if _is_deactivated(response):
-                    return self._deactivated_result(_status(response))
-                page_type = self._page_type(codex_oauth_chain, response)
-                continue_url = self._continue_url(codex_oauth_chain, response)
-                if page_type in {"email_otp", "email_otp_verification", "email_verification"}:
-                    if not bool(getattr(transport, "_gptphone_initial_email_otp_send_confirmed", False)):
-                        otp.mark_sent()
-                        sent = transport.send_email_otp(continue_url)
-                        if not bool(codex_oauth_chain._is_success_response(sent)):
-                            raise FreeRegisterError("free_live_email", "深度测活邮箱验证", "登录 OTP 发送失败")
-                    self._set_job(task_id, stage="free_live_email")
-                    code = otp.wait_code(email)
-                    response = transport.verify_email_otp(code)
-                    continue
-                if page_type in {"password", "password_verification", "email_password"}:
-                    password = str(context.get("password") or "")
-                    try:
-                        try:
-                            from .free_protocol_flow import _password_context
-                        except ImportError:
-                            from free_protocol_flow import _password_context  # type: ignore[no-redef]
-                        password_context = str(_password_context(response) or "unknown")
-                    except Exception:
-                        password_context = "unknown"
-                    if password_context == "login" and password:
-                        response = transport.verify_password(password)
-                        continue
-                    if password_context == "unknown" and password:
-                        raise FreeRegisterError(
-                            "free_live_password_context_unknown",
-                            "识别深度测活密码页面",
-                            "服务端返回通用密码页面，无法确认是否为已有账号登录，已停止避免误提交",
-                            retryable=False,
-                            error_code="free_live_password_context_unknown",
-                        )
-                    # A passwordless account must first use the email OTP
-                    # branch above. A real password is accepted only when the
-                    # server explicitly identifies the page as existing-login.
-                    if password_context in {"login", "signup", "unknown"}:
-                        raise FreeRegisterError(
-                            "free_live_password_required",
-                            "深度测活需要真实账号密码",
-                            "服务端进入密码页面，但本地没有可用的真实 OpenAI 账号密码",
-                            retryable=False,
-                            error_code="free_live_password_required",
-                            action_hint="该账号注册时走 passwordless 邮箱 OTP；不要填入固定注册密码",
-                        )
-                if page_type in {"mfa_otp", "mfa_challenge", "mfa_otp_verification"}:
-                    secret = str(context.get("totp_secret") or "")
-                    if not secret:
-                        raise FreeRegisterError("free_live_mfa", "深度测活动态口令验证", "账号已启用 2FA，但没有保存动态口令密钥", retryable=False)
-                    try:
-                        from .free_protocol_runtime import FreeProtocolMixin
-                    except ImportError:
-                        from free_protocol_runtime import FreeProtocolMixin  # type: ignore[no-redef]
-                    self._set_job(task_id, stage="free_live_mfa")
-                    response = transport.verify_mfa_otp(FreeProtocolMixin._totp_code(secret))
-                    continue
-                if page_type in {"phone", "phone_otp", "phone_verification"}:
-                    raise FreeRegisterError("free_live_phone_required", "深度测活手机号验证", "重新登录进入手机号验证页面，未调用接码平台", retryable=False)
-                if page_type in {"about_you", "about-you", "create_account"}:
-                    raise FreeRegisterError("free_live_incomplete_account", "确认 Free 账号状态", "重新登录进入资料创建页面，账号注册状态不完整", retryable=False)
-                if page_type in {"consent", "consent_required"}:
-                    response = transport.accept_consent(continue_url)
-                    continue
-                if continue_url:
-                    response = transport.complete_chatgpt_callback(continue_url)
-                token = str(transport.chatgpt_access_token() or "")
-                if token:
-                    _wrap_session_transient_retry(transport.session)
-                    checked = dict(
-                        self._query_account(
-                            transport.session,
-                            token,
-                            device_id=device_id,
-                            failure_node="free_live_session_rejected",
-                            proxy=proxy,
-                        )
-                    )
-                    if checked.get("status") == "live":
-                        checked["access_token"] = token
-                    return checked
-                if not continue_url:
-                    break
-                response = transport.visit_continue(continue_url, "https://auth.openai.com")
-            raise FreeRegisterError("free_live_deep", "深度测活", "重新登录完成后未取得新的 access token")
-        except FreeRegisterError:
-            raise
-        except Exception as exc:
-            if _is_deactivated(exc):
-                return self._deactivated_result(getattr(exc, "provider_status", None))
-            transport_context = _live_transport_context(proxy, "https://auth.openai.com/", exc)
-            raise FreeRegisterError(
-                "free_live_deep",
-                "深度测活",
-                f"重新登录异常（{type(exc).__name__}）",
-                error_code=transport_context.get("transport_error_code") or "free_live_deep_failed",
-                **transport_context,
-            ) from exc
-        finally:
-            otp_close = getattr(otp, "close", None)
-            if callable(otp_close):
-                otp_close()
-            for candidate in (getattr(transport, "session", None), transport):
-                close = getattr(candidate, "close", None)
-                if callable(close):
-                    try:
-                        close()
-                    except Exception as exc:
-                        # Best-effort resource cleanup must not mask the live-check result.
-                        self._note_quiet("resource_close", exc)
+        # Preserve the historic module-level injection point used by
+        # tests and integrations while keeping production on the shared
+        # Free mailbox network policy above.
+        return MailboxUrlOtpProvider(
+            str(context["mailbox_url"]), proxy,
+            timeout=int(config.get("email_code_timeout") or 90),
+            log_fn=log_fn, task_id=task_id, stage_fn=stage_fn,
+        )
 
     @staticmethod
     def _deactivated_result(http_status: Any = None) -> dict[str, Any]:
@@ -1470,6 +1286,7 @@ __all__ = [
     "ACTIVE_LIVE_STATUSES",
     "FreeLiveCheckService",
     "build_free_live_check_service",
+    "delete_deactivated_pool_row",
     "LIVE_MODES",
     "LIVE_STAGE_LABELS",
     "TERMINAL_LIVE_STATUSES",
