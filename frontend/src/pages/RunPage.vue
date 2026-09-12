@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { incidentCenterUrl } from '../utils/incidentLink'
+import { openMailboxUrlInTab } from '../utils/openMailboxTab'
 import { errorMessage } from '../utils/errorMessage'
 import { useRowClipboard } from '../composables/useRowClipboard'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -30,7 +32,6 @@ import type { MailboxMutationResult, RuntimeTask } from '../types/api'
 import { buildOpenAIConnectivityView } from '../utils/openAIConnectivity'
 import { TASK_TERMINAL_STATUSES } from '../utils/taskResultViews'
 import { freeTaskSecretLookup } from '../utils/freeSecretLookup'
-import { safeMailboxUrl } from '../utils/safeMailboxUrl'
 import {
   MAX_RUN_LOG_PANEL_WIDTH,
   MIN_RUN_LOG_PANEL_WIDTH,
@@ -99,26 +100,39 @@ const terminalStatuses = TASK_TERMINAL_STATUSES
 const tasks = computed(() => controller.runtime.value.tasks || [])
 const summary = computed(() => {
   const current = controller.runtime.value.summary || {}
-  const success = current.success ?? tasks.value.filter(task => task.status === 'success').length
-  const stopped = current.stopped ?? tasks.value.filter(task => String(task.status).startsWith('stopped')).length
-  const active = current.active ?? tasks.value.filter(task => !terminalStatuses.has(String(task.status || ''))).length
-  const failed = current.failed ?? Math.max(0, tasks.value.length - success - stopped - active)
-  const smsCostCny = current.sms_cost_cny ?? tasks.value.reduce(
-    (total, task) => total + Number(task.result?.sms_cost_cny || 0),
-    0,
-  )
-  const smsCostUsd = current.sms_cost_usd ?? tasks.value.reduce(
-    (total, task) => total + Number(task.result?.sms_cost_usd || 0),
-    0,
-  )
+  // Fallback aggregates accumulate in one pass over the task list instead
+  // of five filters/reduces per poll tick (mirrors the other run pages).
+  let success = 0
+  let stopped = 0
+  let active = 0
+  let smsCostCny = 0
+  let smsCostUsd = 0
+  if (
+    current.success === undefined || current.stopped === undefined
+    || current.active === undefined || current.sms_cost_cny === undefined
+    || current.sms_cost_usd === undefined
+  ) {
+    for (const task of tasks.value) {
+      const status = String(task.status || '')
+      if (status === 'success') success += 1
+      if (status.startsWith('stopped')) stopped += 1
+      if (!terminalStatuses.has(status)) active += 1
+      smsCostCny += Number(task.result?.sms_cost_cny || 0)
+      smsCostUsd += Number(task.result?.sms_cost_usd || 0)
+    }
+  }
+  const finalSuccess = current.success ?? success
+  const finalStopped = current.stopped ?? stopped
+  const finalActive = current.active ?? active
+  const failed = current.failed ?? Math.max(0, tasks.value.length - finalSuccess - finalStopped - finalActive)
   return {
     ...current,
-    success,
-    stopped,
-    active,
+    success: finalSuccess,
+    stopped: finalStopped,
+    active: finalActive,
     failed,
-    sms_cost_cny: smsCostCny,
-    sms_cost_usd: smsCostUsd,
+    sms_cost_cny: current.sms_cost_cny ?? smsCostCny,
+    sms_cost_usd: current.sms_cost_usd ?? smsCostUsd,
   }
 })
 
@@ -239,7 +253,7 @@ function openDiagnostic(task: RuntimeTask) {
     ElMessage.info('该任务尚未生成日志 ID')
     return
   }
-  emit('navigate', `/logs?incident_id=${encodeURIComponent(incidentId)}`)
+  emit('navigate', incidentCenterUrl(incidentId))
 }
 
 async function copyFreeTaskSecret(payload: { kind: 'token' | 'password' | 'totp' | 'credential'; tasks: RuntimeTask[] }) {
@@ -335,21 +349,9 @@ async function openTaskMailboxUrl(task: RuntimeTask) {
     return
   }
   if (openingMailboxUrlTaskIds.value.includes(taskId)) return
-  const target = window.open('', '_blank')
-  if (!target) {
-    ElMessage.error('浏览器阻止了新窗口，请允许弹出窗口后重试')
-    return
-  }
-  target.opener = null
   openingMailboxUrlTaskIds.value = [...openingMailboxUrlTaskIds.value, taskId]
   try {
-    const result = await getRuntimeTaskMailboxUrl(taskId)
-    const destination = safeMailboxUrl(result.mailbox_url)
-    if (!destination) throw new Error('取件 URL 无效或协议不安全')
-    target.location.replace(destination)
-  } catch (error) {
-    target.close()
-    ElMessage.error(errorMessage(error) || '打开取件 URL 失败')
+    await openMailboxUrlInTab(() => getRuntimeTaskMailboxUrl(taskId).then(result => result.mailbox_url))
   } finally {
     openingMailboxUrlTaskIds.value = openingMailboxUrlTaskIds.value.filter(id => id !== taskId)
   }

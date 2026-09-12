@@ -1,4 +1,5 @@
 import { nextTick } from 'vue'
+import { openMailboxUrlInTab } from '../utils/openMailboxTab'
 import { errorMessage } from '../utils/errorMessage'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -17,7 +18,6 @@ import {
 } from '../api/client'
 import type { MailboxMutationResult, MailboxPayload, MailboxRow, MailboxRowAction } from '../types/api'
 import { needsSub2Rerun } from '../utils/mailboxFilters'
-import { safeMailboxUrl } from '../utils/safeMailboxUrl'
 
 type ReadonlyValue<T> = { readonly value: T }
 type MutableValue<T> = { value: T }
@@ -99,24 +99,16 @@ export function useMailboxRowActions(options: MailboxRowActionOptions) {
       ElMessage.info('该邮箱暂无取件 URL')
       return
     }
-    const target = window.open('', '_blank')
-    if (!target) {
-      ElMessage.error('浏览器阻止了新窗口，请允许弹出窗口后重试')
-      return
-    }
-    try {
-      target.opener = null
-      const result = await getMailboxUrl({ row_id: row.row_id, line_no: row.line_no })
-      const destination = safeMailboxUrl(result.mailbox_url)
-      if (!destination) throw new Error('取件 URL 无效或协议不安全')
-      target.location.replace(destination)
-    } catch (error) {
-      target.close()
-      if (error instanceof ApiError && error.payload?.code === 'mailbox_row_stale') {
-        await options.refresh()
-      }
-      ElMessage.error(errorMessage(error) || '打开取件 URL 失败')
-    }
+    await openMailboxUrlInTab(
+      () => getMailboxUrl({ row_id: row.row_id, line_no: row.line_no }).then(result => result.mailbox_url),
+      {
+        onStale: async error => {
+          if (error instanceof ApiError && error.payload?.code === 'mailbox_row_stale') {
+            await options.refresh()
+          }
+        },
+      },
+    )
   }
 
   async function copyLatestCode(row: MailboxRow) {

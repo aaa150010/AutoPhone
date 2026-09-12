@@ -1,6 +1,7 @@
 /** Row-level Free task actions: secret copying, mailbox URL and latest code. */
 
 import { ref } from 'vue'
+import { openMailboxUrlInTab } from '../utils/openMailboxTab'
 import { errorMessage } from '../utils/errorMessage'
 import { ElMessage } from 'element-plus'
 import {
@@ -10,7 +11,6 @@ import {
   type FreeTaskRow,
 } from '../api/client'
 import { freeTaskSecretLookup } from '../utils/freeSecretLookup'
-import { safeMailboxUrl } from '../utils/safeMailboxUrl'
 
 export type FreeSecretKind = 'token' | 'password' | 'totp' | 'credential'
 
@@ -88,21 +88,9 @@ export function useFreeTaskRowActions() {
       return
     }
     if (openingMailboxUrlTaskIds.value.includes(taskId)) return
-    const target = window.open('', '_blank')
-    if (!target) {
-      ElMessage.error('浏览器阻止了新窗口，请允许弹出窗口后重试')
-      return
-    }
-    target.opener = null
     openingMailboxUrlTaskIds.value = [...openingMailboxUrlTaskIds.value, taskId]
     try {
-      const result = await getFreeMailboxUrl(rowId)
-      const destination = safeMailboxUrl(result.mailbox_url)
-      if (!destination) throw new Error('取件 URL 无效或协议不安全')
-      target.location.replace(destination)
-    } catch (error) {
-      target.close()
-      ElMessage.error(errorMessage(error) || '打开取件 URL 失败')
+      await openMailboxUrlInTab(() => getFreeMailboxUrl(rowId).then(result => result.mailbox_url))
     } finally {
       openingMailboxUrlTaskIds.value = openingMailboxUrlTaskIds.value.filter(id => id !== taskId)
     }

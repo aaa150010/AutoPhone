@@ -1,5 +1,7 @@
 import { ref } from 'vue'
 
+export type DragColumn = { label?: string; noLabelText?: string }
+
 // Persist user-dragged column widths per table, keyed by column label so the
 // mapping survives column reordering in future edits.
 // Bump to force another one-time reset of every table's saved widths.
@@ -38,7 +40,7 @@ export function useColumnWidths(storageKey: string, options?: { autoResetOnce?: 
     return Number.isFinite(saved) && Number(saved) >= 40 ? Number(saved) : fallback
   }
 
-  function handleHeaderDragend(newWidth: number, _oldWidth: number, column: { label?: string; noLabelText?: string }) {
+  function handleHeaderDragend(newWidth: number, _oldWidth: number, column: DragColumn) {
     const key = String(column?.label || column?.noLabelText || '').trim()
     if (!key) return
     const width = Math.max(40, Math.round(Number(newWidth) || 0))

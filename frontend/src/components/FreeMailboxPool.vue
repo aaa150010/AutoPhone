@@ -38,9 +38,8 @@ import {
   mailboxRegisteredLabel,
   mailboxRegisteredType,
 } from '../utils/freeLiveDisplay'
-import { useColumnWidths } from '../composables/useColumnWidths'
+import { useColumnWidths, type DragColumn } from '../composables/useColumnWidths'
 import { usePolling } from '../composables/usePolling'
-type DragColumn = { label?: string; noLabelText?: string }
 
 const FAST_LIVE_CHECK_TIP = '用注册时保存的 Token，通过代理池分配的代理查询一次账号状态：正常 / Token 失效 / 已停用 / 被出口或安全策略拒绝。不重新登录、不收取邮件。'
 const DEEP_LIVE_CHECK_TIP = '通过代理池分配的代理完整重新登录确认账号状态：可能收取一封邮箱 OTP 验证码，并按需校验密码 / 2FA。成功后刷新 Token 并同步套餐与 Plus 资格；确认封禁的账号会自动移出邮箱池。'
@@ -73,18 +72,20 @@ const logRow = ref<FreeMailboxRow | null>(null)
 const logDialog = ref<{ refresh: (options?: { forceLatest?: boolean; silent?: boolean }) => Promise<void> }>()
 const { colWidth: poolColWidth, handleHeaderDragend: onPoolHeaderDragend, resetWidths: resetPoolWidths } = useColumnWidths('gptphone.table.widths.free-mailbox-pool', { autoResetOnce: true })
 
-const filteredRows = computed(() => rows.value.filter(row => {
+const filteredRows = computed(() => {
   const needle = search.value.trim().toLowerCase()
-  const haystack = [
-    row.email,
-    row.live_check_failure?.node_label, row.live_check_failure?.node_code,
-    row.failure?.node_label, row.failure?.node_code,
-  ].join(' ').toLowerCase()
-  return (!needle || haystack.includes(needle))
-    && (!statusFilter.value || row.status === statusFilter.value)
-    && (!driverFilter.value || row.driver === driverFilter.value)
-    && (!liveStatusFilter.value || (liveStatusFilter.value === 'active' ? ['queued', 'running'].includes(String(row.live_check_status || '')) : row.live_check_status === liveStatusFilter.value))
-}))
+  return rows.value.filter(row => {
+    const haystack = [
+      row.email,
+      row.live_check_failure?.node_label, row.live_check_failure?.node_code,
+      row.failure?.node_label, row.failure?.node_code,
+    ].join(' ').toLowerCase()
+    return (!needle || haystack.includes(needle))
+      && (!statusFilter.value || row.status === statusFilter.value)
+      && (!driverFilter.value || row.driver === driverFilter.value)
+      && (!liveStatusFilter.value || (liveStatusFilter.value === 'active' ? ['queued', 'running'].includes(String(row.live_check_status || '')) : row.live_check_status === liveStatusFilter.value))
+  })
+})
 const pageRows = computed(() => filteredRows.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value))
 const metrics = computed(() => {
   // One pass instead of eleven filters per poll tick.
@@ -311,7 +312,8 @@ async function copyEmail(row: FreeMailboxRow) {
     // the raw address through the existing on-demand secret boundary.
     produce: async () => {
       const value = String((await getFreeSecret('email', freeRowSecretLookup(row.row_id))).value || '')
-      if (!value || !navigator.clipboard?.writeText) throw new Error('当前环境不支持复制')
+      // The clipboard guard already ran in useRowClipboard before produce.
+      if (!value) throw new Error('当前环境不支持复制')
       return value
     },
     successMessage: '已复制邮箱',
@@ -389,6 +391,14 @@ async function copySecret(kind: 'token' | 'password' | 'totp' | 'credential', se
   }
 }
 
+function skippedSuffix(items: Array<{ email?: string; reason?: string }> | undefined, skippedCount: number) {
+  const details = (items || [])
+    .slice(0, 3)
+    .map(item => `${item.email || '选中行'}：${item.reason}`)
+    .join('；')
+  return details ? `；${details}${skippedCount > 3 ? '；其余跳过项未展开' : ''}` : ''
+}
+
 async function copyMailboxFormat(mode: 'mailbox' | 'full') {
   const rowIds = selected.value.map(row => row.row_id).filter(Boolean)
   if (!rowIds.length) {
@@ -418,11 +428,7 @@ async function copyMailboxFormat(mode: 'mailbox' | 'full') {
       skipped ? `跳过 ${skipped} 条` : '',
       noPassword ? `${noPassword} 条为 passwordless（未填假密码）` : '',
     ].filter(Boolean).join('，')
-    const skippedDetails = (result.skipped_items || [])
-      .slice(0, 3)
-      .map(item => `${item.email || '选中行'}：${item.reason}`)
-      .join('；')
-    const suffix = skippedDetails ? `；${skippedDetails}${skipped > 3 ? '；其余跳过项未展开' : ''}` : ''
+    const suffix = skippedSuffix(result.skipped_items, skipped)
     if (skipped) ElMessage.warning(`${details}${suffix}`)
     else ElMessage.success(details)
   } catch (error) {
@@ -452,11 +458,7 @@ async function transferSelected() {
     selected.value = []
     tableRef.value?.clearSelection()
     const summary = `已传输 ${Number(result.imported || 0)} 条${skipped ? `，跳过 ${skipped} 条` : ''}`
-    const skippedDetails = (result.skipped_items || [])
-      .slice(0, 3)
-      .map(item => `${item.email || '选中行'}：${item.reason}`)
-      .join('；')
-    if (skipped) ElMessage.warning(`${summary}${skippedDetails ? `；${skippedDetails}${skipped > 3 ? '；其余跳过项未展开' : ''}` : ''}`)
+    if (skipped) ElMessage.warning(`${summary}${skippedSuffix(result.skipped_items, skipped)}`)
     else ElMessage.success(summary)
   } catch (error) {
     ElMessage.error(errorMessage(error) || 'Free 邮箱传输失败')

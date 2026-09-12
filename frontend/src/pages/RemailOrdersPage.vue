@@ -5,9 +5,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, RefreshLeft } from '@element-plus/icons-vue'
 import { getRemailOrders, hideRemailOrders, importRemailOrders, type RemailOrder } from '../api/client'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
-import { useColumnWidths } from '../composables/useColumnWidths'
+import { useColumnWidths, type DragColumn } from '../composables/useColumnWidths'
 import { formatDateTimeOrDash } from '../utils/datetime'
-type DragColumn = { label?: string; noLabelText?: string }
 const loading = ref(false); const rows = ref<RemailOrder[]>([]); const selected = ref<RemailOrder[]>([]); const filter = ref(''); const importedFilter = ref<boolean | 'all'>(false); const includeFailed = ref(false); const currentPage = ref(1); const pageSize = ref(50); const total = ref(0)
 const { colWidth: orderColWidth, handleHeaderDragend: onOrderHeaderDragend, resetWidths: resetOrderWidths } = useColumnWidths('gptphone.table.widths.remail-orders', { autoResetOnce: true })
 const formatTime = (value?: string) => formatDateTimeOrDash(value)

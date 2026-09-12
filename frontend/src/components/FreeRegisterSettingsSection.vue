@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { incidentCenterUrl } from '../utils/incidentLink'
 import { errorMessage } from '../utils/errorMessage'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleCheck, CopyDocument, Refresh, View } from '@element-plus/icons-vue'
@@ -188,7 +189,7 @@ async function copyProxyCheckIncident() {
 
 function openProxyCheckIncident() {
   if (proxyCheckIncidentId.value) {
-    emit('navigate', `/logs?incident_id=${encodeURIComponent(proxyCheckIncidentId.value)}`)
+    emit('navigate', incidentCenterUrl(proxyCheckIncidentId.value))
   }
 }
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { errorMessage } from '../utils/errorMessage'
+import { copyText } from '../utils/clipboard'
 import { freeDriverLabel } from '../utils/freeDriverLabel'
 import { ElMessage } from 'element-plus'
 import { Aim, ArrowLeft, ArrowRight, Bottom, CopyDocument, Refresh } from '@element-plus/icons-vue'
@@ -179,12 +180,9 @@ async function locateFirstError() {
 }
 
 async function copyIncidentId(value: string) {
-  if (!value || !navigator.clipboard?.writeText) {
-    ElMessage.warning('当前环境不支持复制')
-    return
-  }
-  await navigator.clipboard.writeText(value)
-  ElMessage.success('日志 ID 已复制')
+  // copyText keeps the guard/success wording and additionally surfaces
+  // clipboard rejections that previously failed silently.
+  if (value) await copyText(value, '日志 ID 已复制')
 }
 
 watch(() => props.modelValue, (open) => {

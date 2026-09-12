@@ -9,7 +9,7 @@ export function taskDriverLabel(driver: unknown): string {
   return freeDriverLabel(driver, '全协议')
 }
 
-export function isHistoricalDriver(task: FreeTaskRow | null | undefined): boolean {
+export function isHistoricalDriver(task: { driver?: unknown } | null | undefined): boolean {
   const value = String(task?.driver || '').trim().toLowerCase()
   return Boolean(value) && value !== 'protocol' && value !== 'camoufox'
 }

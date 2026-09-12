@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { freeLiveStateFingerprint, freeStateFingerprint } from '../utils/fingerprint'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { incidentCenterUrl } from '../utils/incidentLink'
 import { errorMessage } from '../utils/errorMessage'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, CircleCheck, CircleClose, CopyDocument, Delete, Document, Key, Link, Lock, MoreFilled, Refresh, RefreshLeft, RefreshRight, Setting, Tickets, VideoPause, VideoPlay, Warning } from '@element-plus/icons-vue'
@@ -20,7 +21,7 @@ import {
   isRetryResolved,
 } from '../utils/freeFailure'
 import { useTaskProgressClock } from '../composables/useTaskProgressClock'
-import { useColumnWidths } from '../composables/useColumnWidths'
+import { useColumnWidths, type DragColumn } from '../composables/useColumnWidths'
 import { usePolling } from '../composables/usePolling'
 import { useFreeTaskRowActions } from '../composables/useFreeTaskRowActions'
 import { liveStatusLabel, liveStatusType } from '../utils/freeLiveDisplay'
@@ -44,7 +45,6 @@ import {
   taskTwofaLabel,
   taskTwofaType,
 } from '../utils/freeTaskDisplay'
-type DragColumn = { label?: string; noLabelText?: string }
 
 const defaultConfig: FreeConfig = defaultFreeConfig()
 
@@ -395,7 +395,7 @@ const dialogTask = computed(() => selectedTask.value ?? liveLogTask.value ?? und
 
 function openIncidentCenter(value: string) {
   const incidentId = String(value || '').trim()
-  if (incidentId) emit('navigate', `/logs?incident_id=${encodeURIComponent(incidentId)}`)
+  if (incidentId) emit('navigate', incidentCenterUrl(incidentId))
 }
 
 function openTaskIncident(task: FreeTaskRow) {

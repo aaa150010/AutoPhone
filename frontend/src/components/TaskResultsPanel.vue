@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { isHistoricalDriver } from '../utils/freeTaskDisplay'
 import { CopyDocument, Document, Key, Link, Loading, MoreFilled, RefreshLeft, Tickets, Warning } from '@element-plus/icons-vue'
 import ContentEmptyState from './ContentEmptyState.vue'
 import TaskDetailsDrawer from './TaskDetailsDrawer.vue'
 import TaskProgressCell from './TaskProgressCell.vue'
 import TaskVerificationInput from './TaskVerificationInput.vue'
 import { useTaskProgressClock } from '../composables/useTaskProgressClock'
-import { useColumnWidths } from '../composables/useColumnWidths'
+import { useColumnWidths, type DragColumn } from '../composables/useColumnWidths'
 import type { RuntimeTask } from '../types/api'
 import {
   failedTaskStatuses,
@@ -23,7 +24,6 @@ import {
   isCurrentAccountBanned,
   isRetryResolved,
 } from '../utils/freeFailure'
-type DragColumn = { label?: string; noLabelText?: string }
 
 const props = withDefaults(defineProps<{
   tasks: RuntimeTask[]
@@ -94,7 +94,8 @@ const visibleFreeTasks = computed(() => visibleTasks.value.filter(task => task.r
 watch(() => props.tasks, (tasks) => {
   const current = new Set<string>()
   for (const task of tasks) {
-    if (acceptedVerificationKeys.value.has(verificationKey(task)) && shouldShowManualVerification(task)) current.add(verificationKey(task))
+    const key = verificationKey(task)
+    if (acceptedVerificationKeys.value.has(key) && shouldShowManualVerification(task)) current.add(key)
   }
   acceptedVerificationKeys.value = current
   const pendingKeys = new Set(pendingTasks.value.map(task => (
@@ -162,10 +163,7 @@ function failureTooltip(row: RuntimeTask) {
     : details.join(' · ')
 }
 
-function isHistoricalDriver(row: RuntimeTask) {
-  const driver = String(row?.driver || '').trim().toLowerCase()
-  return Boolean(driver) && driver !== 'protocol' && driver !== 'camoufox'
-}
+
 
 function openDetails(row: RuntimeTask) {
   selectedTaskKey.value = taskRowKey(row)

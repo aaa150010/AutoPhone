@@ -18,7 +18,7 @@ import ContentEmptyState from './ContentEmptyState.vue'
 import TaskProgressCell from './TaskProgressCell.vue'
 import StateDot from './StateDot.vue'
 import { useTaskProgressClock } from '../composables/useTaskProgressClock'
-import { useColumnWidths } from '../composables/useColumnWidths'
+import { useColumnWidths, type DragColumn } from '../composables/useColumnWidths'
 import type { MailboxRow, MailboxRowAction } from '../types/api'
 import { needsSub2Rerun } from '../utils/mailboxFilters'
 import {
@@ -36,7 +36,6 @@ import {
   sub2Label,
   sub2Tone,
 } from '../utils/mailboxRowDisplay'
-type DragColumn = { label?: string; noLabelText?: string }
 
 const props = defineProps<{
   rows: MailboxRow[]
