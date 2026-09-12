@@ -134,7 +134,7 @@ class FreeProxyRobustnessTests(unittest.TestCase):
         """An edge authorization response proves the proxy path reached ChatGPT."""
         for status in (401, 403):
             with self.subTest(status=status), patch(
-                "mac_overrides.free_proxy_store.get_via_proxy",
+                "mac_overrides.free_proxy_store_health.get_via_proxy",
                 return_value=SimpleNamespace(status_code=status, content=b""),
             ) as request:
                 self.assertEqual(
@@ -151,7 +151,7 @@ class FreeProxyRobustnessTests(unittest.TestCase):
         marker = b"Just a moment... /cdn-cgi/challenge-platform/"
         for status in (200, 401, 403):
             with self.subTest(status=status), patch(
-                "mac_overrides.free_proxy_store.get_via_proxy",
+                "mac_overrides.free_proxy_store_health.get_via_proxy",
                 return_value=SimpleNamespace(status_code=status, content=marker),
             ):
                 with self.assertRaises(FreeRegisterError) as raised:
@@ -171,7 +171,7 @@ class FreeProxyRobustnessTests(unittest.TestCase):
         pool = FreeProxyPool(self.data_dir)
         pool.import_text("http://proxy.example.test:8000\n")
         with patch(
-            "mac_overrides.free_proxy_store.get_via_proxy",
+            "mac_overrides.free_proxy_store_health.get_via_proxy",
             return_value=SimpleNamespace(status_code=403, content=b"anonymous edge denial"),
         ):
             bindings = pool.bind(1, probe_url="https://chatgpt.com/")
@@ -185,7 +185,7 @@ class FreeProxyRobustnessTests(unittest.TestCase):
         pool = FreeProxyPool(self.data_dir, failure_threshold=1)
         pool.import_text("http://proxy.example.test:8000\n")
         with patch(
-            "mac_overrides.free_proxy_store.get_via_proxy",
+            "mac_overrides.free_proxy_store_health.get_via_proxy",
             return_value=SimpleNamespace(
                 status_code=403,
                 content=b"<html>Just a moment... /cdn-cgi/challenge-platform/</html>",
@@ -201,7 +201,7 @@ class FreeProxyRobustnessTests(unittest.TestCase):
 
     def test_non_chatgpt_http_403_remains_a_failed_probe(self) -> None:
         with patch(
-            "mac_overrides.free_proxy_store.get_via_proxy",
+            "mac_overrides.free_proxy_store_health.get_via_proxy",
             return_value=SimpleNamespace(status_code=403, content=b""),
         ):
             with self.assertRaisesRegex(_ProxyProbeHTTPError, "HTTP 403"):
@@ -332,7 +332,7 @@ class FreeProxyRobustnessTests(unittest.TestCase):
         proxy = "socks5h://probe-user:probe-pass@proxy.example.test:3000"
 
         fake_socket = patch(
-            "mac_overrides.free_proxy_store.socket.create_connection",
+            "mac_overrides.free_proxy_store_health.socket.create_connection",
         )
         with fake_socket as create_connection:
             create_connection.return_value.__enter__.return_value = object()
