@@ -718,14 +718,17 @@ def start_bounded_importer(
                 thread_name_prefix="email-auth-import",
             )
             importer.executor = executor
-            for task_id, ordinal, entry, _restore_on_cancel in reserved:
+            # One independent settings copy per task, prepared before the
+            # submit loop instead of N deepcopies under the shared lock.
+            settings_copies = [copy.deepcopy(settings) for _ in reserved]
+            for (task_id, ordinal, entry, _restore_on_cancel), settings_copy in zip(reserved, settings_copies):
                 try:
                     queued_at = float(task_admission.now_fn()) if task_admission is not None else time.monotonic()
                 except Exception:
                     queued_at = time.monotonic()
                 future = executor.submit(
                     run_after_start,
-                    copy.deepcopy(settings),
+                    settings_copy,
                     ordinal,
                     entry,
                     task_id,
@@ -767,7 +770,8 @@ def start_bounded_importer(
                             run_after_start(*args)
 
                     try:
-                        for task_id, ordinal, entry in appended_specs:
+                        staged_settings_copies = [copy.deepcopy(settings) for _ in appended_specs]
+                        for (task_id, ordinal, entry), staged_settings in zip(appended_specs, staged_settings_copies):
                             importer._task_state(
                                 task_id,
                                 status="queued",
@@ -790,7 +794,7 @@ def start_bounded_importer(
                                 queued_at = time.monotonic()
                             future = importer.executor.submit(
                                 run_staged,
-                                copy.deepcopy(settings),
+                                staged_settings,
                                 ordinal,
                                 entry,
                                 task_id,
@@ -854,11 +858,13 @@ def start_bounded_importer(
                     observed = 0
                     while True:
                         with append_condition:
-                            current = list(importer.futures)
-                            if observed >= len(current):
+                            # Only the count and one indexed element are needed;
+                            # copying the whole futures list per iteration was
+                            # O(N²) over a batch.
+                            if observed >= len(importer.futures):
                                 importer._gptphone_append_accepting = False
                                 break
-                            future = current[observed]
+                            future = importer.futures[observed]
                             observed += 1
                         try:
                             future.result()

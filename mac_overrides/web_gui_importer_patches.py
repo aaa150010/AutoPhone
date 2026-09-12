@@ -530,6 +530,22 @@ def patched_password_credentials_rejected(host, result):
     return host._ORIGINAL_PASSWORD_CREDENTIALS_REJECTED(result)
 
 
+# Terminal statuses that render as failures. ``host`` is late-bound per call,
+# so the constant set is memoized per progress extension module.
+_FAILURE_STATUS_CACHE: dict[int, set[str]] = {}
+
+
+def _failure_statuses(host) -> set[str]:
+    ext = host._task_progress_ext
+    cached = _FAILURE_STATUS_CACHE.get(id(ext))
+    if cached is None:
+        cached = set(ext.TERMINAL_TASK_STATUSES).difference(
+            {"success", "stopped", "stopped_before_start"}
+        )
+        _FAILURE_STATUS_CACHE[id(ext)] = cached
+    return cached
+
+
 def patched_persist_result(host, self, settings, task_id, entry, result, *, error="", status="failed"):
     persisted_settings = host._result_persistence_runtime_ext.settings_with_absolute_results_dir(
         settings,
@@ -538,9 +554,7 @@ def patched_persist_result(host, self, settings, task_id, entry, result, *, erro
     if status == "success":
         host._TASK_PROGRESS.set_stage(task_id, "finalizing_save")
     failure = None
-    failure_statuses = set(host._task_progress_ext.TERMINAL_TASK_STATUSES).difference(
-        {"success", "stopped", "stopped_before_start"}
-    )
+    failure_statuses = _failure_statuses(host)
     secrets = host._failure_secrets(self, entry, settings)
     batch_id = str((settings or {}).get("batch_id") or "").strip()[:80]
     batch_started_at = host._int_value((settings or {}).get("batch_started_at"), 0, minimum=0)
@@ -805,7 +819,7 @@ def patched_retire_after_failure(host, self, settings, pool, entry, task_id, res
 def patched_task_state(host, self, task_id: str, **values):
     values = dict(values)
     status = str(values.get("status") or "").strip().lower()
-    failure_statuses = set(host._task_progress_ext.TERMINAL_TASK_STATUSES).difference({"success", "stopped", "stopped_before_start"})
+    failure_statuses = _failure_statuses(host)
     if status in failure_statuses:
         task_result = values.get("result") if isinstance(values.get("result"), dict) else {}
         failure = host._classify_task_failure(

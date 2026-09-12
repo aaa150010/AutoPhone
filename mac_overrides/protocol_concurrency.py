@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 import hashlib
 import re
+from functools import lru_cache
 import threading
 import time
 from typing import Any, Callable, Iterator
@@ -41,6 +42,11 @@ def _note_stderr(where: str, exc: BaseException) -> None:
     note_stderr('protocol_concurrency', where, exc)
 
 
+def _pressure_text(value: Any) -> str:
+    type_name = "" if value is None else type(value).__name__
+    return f"{type_name}: {value or ''}".lower()
+
+
 def _http_status(value: Any) -> int | None:
     status_candidates = [value, getattr(value, "response", None)]
     if isinstance(value, Mapping):
@@ -66,7 +72,7 @@ def _http_status(value: Any) -> int | None:
                 return status
             if 100 <= status <= 599:
                 return status
-    text = f"{type(value).__name__}: {value or ''}".lower()
+    text = _pressure_text(value)
     match = re.search(
         r"\b(?:http(?:error|/\d+(?:\.\d+)?)?(?:\s+(?:status|response))?"
         r"|status(?:_code)?)\s*[:=]?\s*(\d{3})\b",
@@ -84,8 +90,7 @@ def is_http_429_error(value: Any) -> bool:
     if status is not None:
         return status == 429
 
-    type_name = "" if value is None else type(value).__name__
-    text = f"{type_name}: {value or ''}".lower()
+    text = _pressure_text(value)
     if re.search(r"\b429\b", text) and any(
         marker in text
         for marker in ("http", "status", "too many requests", "rate limit")
@@ -109,8 +114,7 @@ def is_protocol_pressure_error(value: Any) -> bool:
         return status == 429
     if is_http_429_error(value):
         return True
-    type_name = "" if value is None else type(value).__name__
-    text = f"{type_name}: {value or ''}".lower()
+    text = _pressure_text(value)
     return any(
         marker in text
         for marker in (
@@ -195,11 +199,17 @@ class ProxyProtocolGate:
         self._follow_synchronized_capacity = True
 
     @staticmethod
-    def key(proxy: Any) -> str:
-        text = str(proxy or "").strip()
+    @lru_cache(maxsize=1024)
+    def _key_cached(text: str) -> str:
         if not text:
             return "direct"
         return f"proxy:{hashlib.sha256(text.encode('utf-8', 'replace')).hexdigest()[:16]}"
+
+    @staticmethod
+    def key(proxy: Any) -> str:
+        # The same proxy string is hashed several times per request
+        # (acquire/report/snapshot/wait); cache the stable projection.
+        return ProxyProtocolGate._key_cached(str(proxy or "").strip())
 
     def _state(self, key: str) -> _ProxyProtocolState:
         return self.states.setdefault(

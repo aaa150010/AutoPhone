@@ -67,11 +67,22 @@ def snapshot_ledger(ledger: Any) -> dict[str, list[dict[str, Any]]]:
     lock = getattr(ledger, "lock", None)
     orders = getattr(ledger, "orders", None)
     try:
+        # Orders are flat dicts of small values; one shallow container copy
+        # per order under the ledger lock keeps the snapshot consistent
+        # without the previous full deepcopy.
+        def _ledger_snapshot() -> dict[str, Any]:
+            return {
+                str(task_id): [
+                    dict(row) if isinstance(row, Mapping) else row
+                    for row in (task_orders or [])
+                ] if isinstance(task_orders, list) else task_orders
+                for task_id, task_orders in dict(orders or {}).items()
+            }
         if lock is not None:
             with lock:
-                source = copy.deepcopy(orders or {})
+                source = _ledger_snapshot()
         else:
-            source = copy.deepcopy(orders or {})
+            source = _ledger_snapshot()
     except Exception:
         return {}
     result: dict[str, list[dict[str, Any]]] = {}
@@ -379,11 +390,43 @@ class RunNotificationLifecycle:
 
     @staticmethod
     def task_snapshot(importer: Any) -> list[dict[str, Any]]:
+        """Copy the aggregate-relevant task fields under the shared lock.
+
+        The watchdog and balance refresh run every 10-60 seconds and used to
+        deepcopy every task (result credentials, timing stages/segments,
+        proxy attempts) only to read counters and the SMS-cost subset of
+        ``result``. The projection copies the small containers so worker
+        mutations under the same lock cannot tear the snapshot.
+        """
+        snapshot: list[dict[str, Any]] = []
         try:
             with importer.lock:
-                return [copy.deepcopy(dict(task)) for task in importer.tasks.values()]
+                for task in importer.tasks.values():
+                    if not isinstance(task, Mapping):
+                        continue
+                    projected = {
+                        key: task.get(key)
+                        for key in (
+                            "task_id", "status", "ordinal", "updated_at", "created_at",
+                            "sms_cost_usd", "sms_cost_cny", "sms_order_outcomes",
+                        )
+                    }
+                    progress = task.get("progress")
+                    projected["progress"] = dict(progress) if isinstance(progress, Mapping) else {}
+                    result = task.get("result")
+                    if isinstance(result, Mapping):
+                        shallow_result = dict(result)
+                        outcomes = shallow_result.get("sms_order_outcomes")
+                        if isinstance(outcomes, list):
+                            shallow_result["sms_order_outcomes"] = [
+                                dict(row) if isinstance(row, Mapping) else row
+                                for row in outcomes
+                            ]
+                        projected["result"] = shallow_result
+                    snapshot.append(projected)
         except Exception:
             return []
+        return snapshot
 
     def aggregate(
         self,

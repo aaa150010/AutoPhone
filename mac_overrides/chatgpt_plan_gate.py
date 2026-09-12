@@ -136,6 +136,24 @@ def token_claims(token: Any) -> dict[str, str]:
     }
 
 
+# Constant alias table for compacted plan names; rebuilt per call before.
+_PLAN_ALIASES = {
+    "free": "free",
+    "freeaccount": "free",
+    "freeworkspace": "free",
+    "go": "go",
+    "plus": "plus",
+    "pro": "pro",
+    "prolite": "prolite",
+    "team": "team",
+    "business": "business",
+    "enterprise": "enterprise",
+    "edu": "edu",
+    "education": "edu",
+    "k12": "k12",
+}
+
+
 def normalize_plan_type(value: Any) -> str:
     if not isinstance(value, str):
         return ""
@@ -149,22 +167,7 @@ def normalize_plan_type(value: Any) -> str:
         compact = compact[:-4]
     if compact in _UNKNOWN_PLANS:
         return ""
-    aliases = {
-        "free": "free",
-        "freeaccount": "free",
-        "freeworkspace": "free",
-        "go": "go",
-        "plus": "plus",
-        "pro": "pro",
-        "prolite": "prolite",
-        "team": "team",
-        "business": "business",
-        "enterprise": "enterprise",
-        "edu": "edu",
-        "education": "edu",
-        "k12": "k12",
-    }
-    return aliases.get(compact, "")
+    return _PLAN_ALIASES.get(compact, "")
 
 
 def _http_status(value: Any) -> int | None:

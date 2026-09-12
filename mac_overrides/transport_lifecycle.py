@@ -130,14 +130,16 @@ def _node_process_ownership(
         return False
     if transport is not None and _cached_owned_node_process(transport, process):
         return True
-    if not explicit_node_attribute and not _is_node_process(process):
+    # One process-command projection serves both checks below.
+    is_node = _is_node_process(process)
+    if not explicit_node_attribute and not is_node:
         return False
     pid = getattr(process, "pid", None)
     if not isinstance(pid, int) or pid <= 0:
         # Test doubles and not-yet-started Popen-like objects are owned only
         # when the transport used a node-specific attribute.
         return explicit_node_attribute
-    if not _is_node_process(process):
+    if not is_node:
         return False
     try:
         parent_pid = _direct_child_ppid(pid)

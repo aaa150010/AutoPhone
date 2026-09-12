@@ -1380,15 +1380,10 @@ class FreeFailureRuntimeMixin:
                 current_result = self._tasks.get(task_id, {}).get("result")
             prior_result = current_result if isinstance(current_result, Mapping) else task.get("result")
             if isinstance(prior_result, Mapping):
-                for key in (
-                    "plan_type", "subscription_plan", "has_active_subscription",
-                    "plus_trial_eligible", "plan_check_status", "plan_checked_at",
-                    "account_flow", "registration_password_used",
-                    "password_set_after_registration", "twofa_status",
-                    "has_access_token", "has_password", "has_totp",
-                    "has_credential", "registration_completed",
-                    "oauth_callback_completed", "account_created",
-                ):
+                # The hardcoded mirror of ACCOUNT_STATE_RESULT_KEYS drifted
+                # from the constant whenever either side changed; iterate the
+                # constant directly (fill-only semantics are per key).
+                for key in ACCOUNT_STATE_RESULT_KEYS:
                     if key not in continuation_result and prior_result.get(key) not in (None, ""):
                         continuation_result[key] = copy.deepcopy(prior_result[key])
         failure, _ = self._persist_task_failure(

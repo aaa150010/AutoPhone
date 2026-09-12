@@ -929,13 +929,29 @@ class Sub2Runtime:
             now_fn=self.now_fn,
         )
 
+    def _service_fingerprint_cached(self, url: str) -> str:
+        # The mailbox listing resolves the service fingerprint per row; the
+        # normalize+sha256 projection repeats N times per poll without this.
+        cache = getattr(self, "_fingerprint_cache", None)
+        if cache is None:
+            cache = {}
+            self._fingerprint_cache = cache
+        fingerprint = cache.get(url)
+        if fingerprint is None:
+            fingerprint = service_fingerprint(url)
+            cache[url] = fingerprint
+            if len(cache) > 16:
+                for stale_url in list(cache)[: len(cache) - 16]:
+                    cache.pop(stale_url, None)
+        return fingerprint
+
     def status_for(self, account_id: Any) -> dict[str, Any]:
         remote_id = str(account_id or "").strip()
         if not remote_id:
             return unlinked_status().public()
         try:
             settings, _proxy = self._settings()
-            fingerprint = service_fingerprint(settings.get("url"))
+            fingerprint = self._service_fingerprint_cached(str(settings.get("url") or ""))
         except Sub2ConfigurationError:
             return untested_status().public()
         status = self.snapshot_store.get(fingerprint, remote_id) or untested_status()

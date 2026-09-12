@@ -401,16 +401,23 @@ class RunBatchManifestStore:
         with self._lock:
             batch = self._batch_locked(batch_id)
             member = self._member_locked(batch, task_id)
+            changed = member.get("reserved_at") != (member.get("reserved_at") or now)
             member["reserved_at"] = member.get("reserved_at") or now
-            member["status"] = "queued"
+            if member.get("status") != "queued":
+                member["status"] = "queued"
+                changed = True
             fingerprint = _row_fingerprint(row_identity)
-            if fingerprint:
+            if fingerprint and member.get("row_id") != fingerprint:
                 member["row_id"] = fingerprint
-            if _safe_int(line_no) > 0:
-                member["line_no"] = _safe_int(line_no)
+                changed = True
+            line_no_value = _safe_int(line_no)
+            if line_no_value > 0 and member.get("line_no") != line_no_value:
+                member["line_no"] = line_no_value
+                changed = True
             batch["updated_at"] = now
             self._refresh_counts_locked(batch)
-            self._save_locked()
+            if changed:
+                self._save_locked()
 
     def append_member(
         self,
@@ -500,12 +507,18 @@ class RunBatchManifestStore:
         with self._lock:
             batch = self._batch_for_task_locked(task_id)
             member = self._member_locked(batch, task_id)
+            changed = member.get("started_at") != (member.get("started_at") or now)
             member["started_at"] = member.get("started_at") or now
             if not member.get("terminal_at"):
-                member["status"] = "running"
+                if member.get("status") != "running":
+                    member["status"] = "running"
+                    changed = True
             batch["updated_at"] = now
             self._refresh_counts_locked(batch)
-            self._save_locked()
+            # Repeated mark_started (retry/re-entry) must not rewrite the
+            # whole manifest document for identical state.
+            if changed:
+                self._save_locked()
 
     def observe_task(self, task_id: Any, status: Any) -> None:
         normalized = _clean(status, 64).lower()
