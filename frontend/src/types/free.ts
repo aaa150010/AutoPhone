@@ -62,6 +62,8 @@ export type FreeConfig = {
   camoufox: {
     debug_mode?: boolean
     headless: boolean
+    /** Auto mode derives pool_size/max_contexts from the batch worker width. */
+    camoufox_pool_auto?: boolean
     pool_size: number
     max_contexts_per_browser: number
     context_start_interval_ms: number

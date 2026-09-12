@@ -22,6 +22,7 @@ export function defaultFreeConfig(): FreeConfig {
     proxy_pool_target_size: 0, proxy_challenge_switch_limit: 3,
     camoufox: {
       debug_mode: true, headless: true, pool_size: 2, max_contexts_per_browser: 3, context_start_interval_ms: 175,
+      camoufox_pool_auto: true,
       startup_concurrency: 4, block_images: true, registration_timeout_seconds: 600,
       context_close_timeout_seconds: 15, browser_recycle_timeout_seconds: 45,
       browser_recycle_drain_timeout_seconds: 20, max_registrations_per_browser: 12,

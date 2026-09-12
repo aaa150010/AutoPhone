@@ -8,6 +8,7 @@ import { ApiError, getFreeConfig, getFreeProxies, preflightFree, preflightFreePr
 import type { TaskFailure } from '../types/api'
 import { defaultFreeConfig, mergeFreeConfigDraft } from '../utils/freeConfigDefaults'
 import FieldHelpLabel from './FieldHelpLabel.vue'
+import { deriveCamoufoxPoolSizing } from '../utils/camoufoxSizing'
 
 const emit = defineEmits<{ dirtyChange: [boolean]; navigate: [string] }>()
 
@@ -29,6 +30,7 @@ const loaded = ref(false)
 const savedSignature = ref('')
 const running = computed(() => Boolean(state.value.running))
 const camoufoxEffectiveHeadless = computed(() => Boolean(config.camoufox.debug_mode) ? false : Boolean(config.camoufox.headless))
+const camoufoxAutoSizing = computed(() => deriveCamoufoxPoolSizing(config.concurrency, config.target_count))
 const savedProxyAvailable = computed(() => proxyRows.value.filter(row => row.status === 'available').length)
 const savedProxyQuarantined = computed(() => proxyRows.value.filter(row => row.status === 'quarantined').length)
 const savedProxyBurned = computed(() => proxyRows.value.filter(row => row.effective_status === 'burned' || row.status === 'burned').length)
@@ -336,11 +338,12 @@ defineExpose({ save })
     </div>
     <div v-if="config.driver === 'camoufox'" class="subsection">
       <h3>Camoufox 浏览器池</h3>
+      <div class="check-row"><el-checkbox v-model="config.camoufox.camoufox_pool_auto" :disabled="running">自动推导池规模（按注册数量与并发）</el-checkbox><span v-if="config.camoufox.camoufox_pool_auto" class="muted">当前并发 {{ camoufoxAutoSizing.workers }} → 自动 {{ camoufoxAutoSizing.poolSize }} 进程 × {{ camoufoxAutoSizing.maxContexts }} context（容量 {{ camoufoxAutoSizing.capacity }}）</span></div>
       <el-row :gutter="10">
         <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="失败后保留窗口" help="默认开启调试模式：普通业务失败和 Cloudflare/Turnstile 挑战会保留当前窗口，并生成脱敏截图、DOM 和事件摘要；成功、超时、取消及浏览器进程断开会正常回收。" /></template><el-switch v-model="config.camoufox.debug_mode" active-text="开启" inactive-text="关闭" :disabled="running" /></el-form-item></el-col>
         <el-col :span="6"><el-form-item><template #label><FieldHelpLabel label="窗口模式" help="调试模式开启时必须使用有头模式才能查看失败页面；关闭调试模式后才可切换无头或有头。" /></template><el-switch :model-value="camoufoxEffectiveHeadless" active-text="无头" inactive-text="有头" :disabled="running || Boolean(config.camoufox.debug_mode)" @update:model-value="updateCamoufoxHeadless" /><small v-if="config.camoufox.debug_mode" class="field-note">调试模式实际运行：有头（关闭调试后恢复已保存偏好）</small></el-form-item></el-col>
-        <el-col :span="6"><el-form-item label="浏览器进程"><el-input-number v-model="config.camoufox.pool_size" :min="1" :max="16" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
-        <el-col :span="6"><el-form-item label="每进程 context"><el-input-number v-model="config.camoufox.max_contexts_per_browser" :min="1" :max="32" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
+        <el-col :span="6"><el-form-item label="浏览器进程"><el-input-number v-model="config.camoufox.pool_size" :min="1" :max="16" controls-position="right" :disabled="running || Boolean(config.camoufox.camoufox_pool_auto)" size="small" /><small v-if="config.camoufox.camoufox_pool_auto" class="field-note">自动：{{ camoufoxAutoSizing.poolSize }}</small></el-form-item></el-col>
+        <el-col :span="6"><el-form-item label="每进程 context"><el-input-number v-model="config.camoufox.max_contexts_per_browser" :min="1" :max="32" controls-position="right" :disabled="running || Boolean(config.camoufox.camoufox_pool_auto)" size="small" /><small v-if="config.camoufox.camoufox_pool_auto" class="field-note">自动：{{ camoufoxAutoSizing.maxContexts }}</small></el-form-item></el-col>
         <el-col :span="6"><el-form-item label="注册超时"><el-input-number v-model="config.camoufox.registration_timeout_seconds" :min="60" :max="3600" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
       </el-row>
       <el-row :gutter="10">
