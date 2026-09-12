@@ -86,6 +86,7 @@ PLAN_LABEL = "查询 Free 套餐资格"
 PLAN_MODES = frozenset({"token", "recheck"})
 RELOGIN_STAGE = "free_plan_relogin"
 RELOGIN_LABEL = "重查套餐重新登录"
+_DEACTIVATION_MARKERS = ("account_deactivated", "account_suspended", "account_banned")
 
 
 
@@ -96,6 +97,20 @@ except ImportError:  # pragma: no cover - top-level recovery import
 
 def _note_stderr(where: str, exc: BaseException) -> None:
     note_stderr('free_plan_check', where, exc)
+
+
+def _recheck_confirmed_deactivation(exc: BaseException, failure: Mapping[str, Any]) -> bool:
+    """Recognize the explicit deactivation markers from both relogin paths.
+
+    The protocol core raises ``account_deactivated`` as the error code; the
+    browser auth shell surfaces the same account-status marker through the
+    page error text. Only these explicit markers count — a bare 403 or a
+    security challenge never deletes a row.
+    """
+    if str(failure.get("error_code") or "") in _DEACTIVATION_MARKERS:
+        return True
+    text = str(exc)
+    return any(marker in text for marker in _DEACTIVATION_MARKERS)
 
 
 class FreePlanCheckError(FreeRegisterError):
@@ -398,7 +413,7 @@ class FreePlanCheckService:
             )
         return {"ok": 200 <= status < 300, "status": status, "payload": _json(response), "retry_after": retry}
 
-    def _allocate_proxy(self, config: Mapping[str, Any], row_id: str, *, driver: str = "protocol") -> tuple[str, Any | None]:
+    def _allocate_proxy(self, config: Mapping[str, Any], row_id: str, *, driver: str = "protocol", exclude_proxy_ids: Sequence[str] = ()) -> tuple[str, Any | None]:
         """Allocate one healthy shared-pool proxy for this query.
 
         The proxy recorded at registration is history only; post-registration
@@ -414,6 +429,7 @@ class FreePlanCheckService:
             probe=self.proxy_probe,
             probe_url=str(config.get("proxy_probe_url") or "https://chatgpt.com/"),
             driver=driver,
+            exclude_proxy_ids=list(exclude_proxy_ids),
             perform_probe=False,
         )
         if not bindings:
@@ -489,73 +505,133 @@ class FreePlanCheckService:
         through the browser existing-login flow.
         """
         result = self.pool.result(row_id)
-        try:
-            return self._query(row_id)
-        except FreePlanCheckError as exc:
-            if exc.error_code != "free_plan_token_missing" and exc.provider_status != 401:
-                raise
+        if str(result.get("access_token") or "").strip():
+            # Direct query first: a still-valid token answers without any
+            # login. A transport-level failure gets one more healthy exit; a
+            # 401 verdict falls through to the per-chain re-login below.
+            for attempt in range(2):
+                try:
+                    return self._query(row_id)
+                except FreePlanCheckError as exc:
+                    if exc.error_code == "free_plan_token_missing" or exc.provider_status == 401:
+                        break
+                    if attempt or not bool(exc.retryable):
+                        raise
+                except Exception as exc:
+                    # Raw transport errors (proxy TLS etc.) must not escape
+                    # the swap loop unnamed.
+                    if attempt:
+                        raise FreePlanCheckError(
+                            PLAN_STAGE, PLAN_LABEL, f"套餐查询请求异常（{type(exc).__name__}）",
+                            retryable=True, error_code="free_plan_query_transport_failed",
+                        ) from exc
+                    _note_stderr("plan_direct_query_retry", exc)
         driver = str(result.get("driver") or "protocol").strip().lower()
-        if driver == "camoufox":
-            return self._browser_recheck_result(row_id, result, task_id)
-        return self._protocol_relogin_query(row_id, result, task_id)
+        try:
+            if driver == "camoufox":
+                return self._browser_recheck_result(row_id, result, task_id)
+            return self._protocol_relogin_query(row_id, result, task_id)
+        except FreePlanCheckError as exc:
+            # OpenAI answers passwordless existing-account logins with the
+            # interactive HTML password shell, which the pure-protocol state
+            # machine cannot drive. When no real password is saved, the
+            # browser existing-login flow is the only working re-login, so
+            # fall back to it instead of failing the row.
+            has_saved_password = bool(str(result.get("password") or "").strip())
+            if (
+                driver != "camoufox"
+                and not has_saved_password
+                and callable(self.browser_recheck)
+                and bool(getattr(exc, "retryable", False))
+            ):
+                self._log(task_id, "纯协议重登无法推进（OpenAI 交互式登录页），改用浏览器重登", "warn")
+                return self._browser_recheck_result(row_id, result, task_id)
+            raise
+
+    _RELOGIN_PROXY_ATTEMPTS = 3
 
     def _protocol_relogin_query(self, row_id: str, result: Mapping[str, Any], task_id: str) -> dict[str, Any]:
-        """Re-login over pure protocol, persist the fresh token, re-query the plan."""
+        """Re-login over pure protocol, persist the fresh token, re-query the plan.
+
+        Mirrors the deep-check proxy discipline: a retryable failure swaps to
+        a fresh, unused pool exit instead of failing the row on one proxy.
+        """
         config = self._config()
-        raw_proxy, binding = self._allocate_proxy(config, row_id)
-        try:
-            proxy = protocol_relogin_proxy(raw_proxy, config, stage_label="重查套餐")
-            entry = self.pool.entry(row_id)
-            if entry is None:
-                raise FreePlanCheckError(PLAN_STAGE, PLAN_LABEL, "Free 邮箱行不存在或已变化", retryable=False, error_code="free_plan_row_missing")
-            private_state = self.pool._row_state(row_id)
-            log_fn = lambda message, level="info": self._log(task_id, str(message), str(level))
-
-            def stage_fn(*_args: Any) -> None:
-                # The re-login's internal stage transitions stay visible in
-                # the task log through log_fn; plan jobs carry no stage list.
-                return None
-
-            otp = build_free_mailbox_otp_provider(
-                entry.mailbox_url, proxy, config,
-                log_fn=log_fn, task_id=task_id, stage_fn=stage_fn,
-                mailbox_source=str(private_state.get("source") or "url").strip().lower() or "url",
-                mailbox_email=entry.email,
-                service_token=str(private_state.get("service_token") or private_state.get("serviceToken") or ""),
-            )
-            context = {
-                "email": entry.email,
-                "password": str(result.get("password") or ""),
-                "totp_secret": str(result.get("totp_secret") or ""),
-                "proxy_fingerprint": "",
-            }
+        tried_proxy_ids: list[str] = []
+        last_attempt = self._RELOGIN_PROXY_ATTEMPTS - 1
+        for attempt in range(self._RELOGIN_PROXY_ATTEMPTS):
+            raw_proxy, binding = self._allocate_proxy(config, row_id, exclude_proxy_ids=tried_proxy_ids)
+            tried_proxy_ids.append(str(getattr(binding, "proxy_id", "") or ""))
             try:
-                outcome = run_protocol_relogin(
-                    context,
-                    config,
-                    proxy=proxy,
-                    otp=otp,
-                    log_fn=log_fn,
-                    stage_fn=stage_fn,
-                    node_code=RELOGIN_STAGE,
-                    node_label=RELOGIN_LABEL,
-                )
-            except ProtocolReloginDeactivated as exc:
-                raise FreePlanCheckError(
-                    RELOGIN_STAGE, RELOGIN_LABEL, "重新登录明确返回账号已停用",
-                    retryable=False, error_code="account_deactivated",
-                    provider_status=exc.http_status,
-                    action_hint="账号已停用，将按停用规则从 Free 邮箱池移除",
-                ) from exc
-            except FreeRegisterError as exc:
-                raise self._wrap_relogin_error(exc) from exc
-        finally:
-            releaser = getattr(self.proxies, "release", None)
-            if binding is not None and callable(releaser):
-                try:
-                    releaser(binding, owner=row_id)
-                except Exception as exc:
-                    _note_stderr("proxy_release", exc)
+                return self._relogin_attempt(row_id, result, config, task_id, raw_proxy, private_state=self.pool._row_state(row_id))
+            except FreePlanCheckError as exc:
+                if attempt >= last_attempt or not bool(exc.retryable):
+                    raise
+                self._log(task_id, f"第 {attempt + 1} 次协议重登未通过（{exc.error_code}），换代理重试", "warn")
+            except Exception as exc:
+                # Provider/OTP construction failures surface as raw transport
+                # exceptions; wrap them so the proxy swap and the browser
+                # fallback can still act on them.
+                if attempt >= last_attempt:
+                    raise FreePlanCheckError(
+                        RELOGIN_STAGE, RELOGIN_LABEL, f"重新登录异常（{type(exc).__name__}）",
+                        retryable=True, error_code="free_plan_relogin_failed",
+                    ) from exc
+                self._log(task_id, f"第 {attempt + 1} 次协议重登异常（{type(exc).__name__}），换代理重试", "warn")
+            finally:
+                releaser = getattr(self.proxies, "release", None)
+                if binding is not None and callable(releaser):
+                    try:
+                        releaser(binding, owner=row_id)
+                    except Exception as exc:
+                        _note_stderr("proxy_release", exc)
+        raise FreePlanCheckError(RELOGIN_STAGE, RELOGIN_LABEL, "重新登录未完成", retryable=True, error_code="free_plan_relogin_failed")
+
+    def _relogin_attempt(self, row_id: str, result: Mapping[str, Any], config: Mapping[str, Any], task_id: str, raw_proxy: str, *, private_state: Mapping[str, Any]) -> dict[str, Any]:
+        entry = self.pool.entry(row_id)
+        if entry is None:
+            raise FreePlanCheckError(PLAN_STAGE, PLAN_LABEL, "Free 邮箱行不存在或已变化", retryable=False, error_code="free_plan_row_missing")
+        proxy = protocol_relogin_proxy(raw_proxy, config, stage_label="重查套餐")
+        log_fn = lambda message, level="info": self._log(task_id, str(message), str(level))
+
+        def stage_fn(*_args: Any) -> None:
+            # The re-login's internal stage transitions stay visible in the
+            # task log through log_fn; plan jobs carry no stage list.
+            return None
+
+        otp = build_free_mailbox_otp_provider(
+            entry.mailbox_url, proxy, config,
+            log_fn=log_fn, task_id=task_id, stage_fn=stage_fn,
+            mailbox_source=str(private_state.get("source") or "url").strip().lower() or "url",
+            mailbox_email=entry.email,
+            service_token=str(private_state.get("service_token") or private_state.get("serviceToken") or ""),
+        )
+        context = {
+            "email": entry.email,
+            "password": str(result.get("password") or ""),
+            "totp_secret": str(result.get("totp_secret") or ""),
+            "proxy_fingerprint": "",
+        }
+        try:
+            outcome = run_protocol_relogin(
+                context,
+                config,
+                proxy=proxy,
+                otp=otp,
+                log_fn=log_fn,
+                stage_fn=stage_fn,
+                node_code=RELOGIN_STAGE,
+                node_label=RELOGIN_LABEL,
+            )
+        except ProtocolReloginDeactivated as exc:
+            raise FreePlanCheckError(
+                RELOGIN_STAGE, RELOGIN_LABEL, "重新登录明确返回账号已停用",
+                retryable=False, error_code="account_deactivated",
+                provider_status=exc.http_status,
+                action_hint="账号已停用，将按停用规则从 Free 邮箱池移除",
+            ) from exc
+        except FreeRegisterError as exc:
+            raise self._wrap_relogin_error(exc) from exc
         token = str(outcome.get("access_token") or "")
         if not token:
             raise FreePlanCheckError(
@@ -563,7 +639,30 @@ class FreePlanCheckService:
                 retryable=True, error_code="free_plan_relogin_token_missing",
             )
         self._save_refreshed_token(row_id, token)
-        return self._query(row_id, token_override=token)
+        # The fresh token is proxy-independent: a failed plan query just needs
+        # another healthy exit, not a second login. Rate-limited responses
+        # keep their cooldown semantics and are never replayed here.
+        plan_error: FreePlanCheckError | None = None
+        for attempt in range(3):
+            try:
+                return self._query(row_id, token_override=token)
+            except FreePlanCheckError as exc:
+                if str(exc.error_code or "") == "free_plan_rate_limited" or not bool(exc.retryable):
+                    raise
+                plan_error = exc
+                if attempt >= 2:
+                    raise
+            except Exception as exc:
+                plan_error = FreePlanCheckError(
+                    PLAN_STAGE, PLAN_LABEL, f"套餐查询请求异常（{type(exc).__name__}）",
+                    retryable=True, error_code="free_plan_query_transport_failed",
+                )
+                if attempt >= 2:
+                    raise plan_error from exc
+                _note_stderr("plan_query_transport_retry", exc)
+        if plan_error is not None:
+            raise plan_error
+        raise FreePlanCheckError(PLAN_STAGE, PLAN_LABEL, "套餐查询未完成", retryable=True)
 
     def _browser_recheck_result(self, row_id: str, result: Mapping[str, Any], task_id: str) -> dict[str, Any]:
         """Run the camoufox browser existing-login flow and read the plan answer."""
@@ -683,7 +782,13 @@ class FreePlanCheckService:
         self._sync_task(row_id, current, promoted)
 
     def _save_failure(self, row_id: str, task_id: str, exc: BaseException) -> dict[str, Any]:
-        failure = exception_to_failure(exc, node_code=PLAN_STAGE, node_label=PLAN_LABEL)
+        # Prefer the exception's own node (e.g. the relogin node) so the
+        # recorded failure names the first real failing step, not the queue.
+        failure = exception_to_failure(
+            exc,
+            node_code=str(getattr(exc, "node_code", "") or PLAN_STAGE),
+            node_label=str(getattr(exc, "node_label", "") or PLAN_LABEL),
+        )
         current = self.pool.result(row_id)
         current.update({"plan_check_status": "failed", "plan_check_task_id": task_id, "plan_error_code": failure.get("error_code"), "plan_http_status": failure.get("http_status"), "plan_failure": failure})
         retry_after = getattr(exc, "retry_after_seconds", None)
@@ -747,7 +852,7 @@ class FreePlanCheckService:
         except Exception as exc:
             failure = self._save_failure(row_id, task_id, exc)
             retry_until = self.pool.result(row_id).get("plan_retry_after_until")
-            if mode == "recheck" and str(failure.get("error_code") or "") == "account_deactivated":
+            if mode == "recheck" and _recheck_confirmed_deactivation(exc, failure):
                 # Same contract as the deep live check: a confirmed re-login
                 # deactivation removes the row, registration results and
                 # diagnostic events stay as the audit trail.

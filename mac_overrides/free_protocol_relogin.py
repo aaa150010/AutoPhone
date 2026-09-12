@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import secrets
 from typing import Any, Callable, Mapping
+from urllib.parse import urlsplit
 
 try:
     from .free_register_common import FreeRegisterError, proxy_transport_value
@@ -117,6 +118,31 @@ def _response_status(value: Any) -> int:
         return 0
 
 
+def _unrecognized_page_summary(response: Any) -> str:
+    """Redacted fingerprint of a response the page classifier cannot read."""
+    status = getattr(response, "status_code", None)
+    keys = ""
+    detail = ""
+    extras: list[str] = []
+    if isinstance(response, Mapping):
+        try:
+            keys = ",".join(sorted(str(k) for k in response.keys()))[:120]
+        except Exception:
+            keys = ""
+        detail = str(response.get("detail") or response.get("error") or response.get("message") or "")[:100]
+        for key in ("_status", "_location", "_html_title", "_body_summary"):
+            value = str(response.get(key) or "").strip()
+            if value:
+                extras.append(f"{key}={value[:130]}")
+        url_path = urlsplit(_page_url(response)).path
+        if url_path:
+            extras.append(f"_url_path={url_path[:80]}")
+    head = f"unrecognized(status={status};keys={keys};detail={detail}"
+    if extras:
+        head += ";" + ";".join(extras)
+    return head + ")"
+
+
 def _page_type(module: Any, response: Any) -> str:
     try:
         return str(module._page_type(response) or "").strip().lower()
@@ -129,6 +155,54 @@ def _continue_url(module: Any, response: Any) -> str:
         return str(module._continue_url(response) or "").strip()
     except Exception:
         return ""
+
+
+def _page_url(response: Any) -> str:
+    if isinstance(response, Mapping):
+        return str(response.get("_url") or response.get("_location") or "")
+    return ""
+
+
+def _mfa_challenge_id(url: str) -> str:
+    """Extract the challenge id from an ``/mfa-challenge/<id>`` URL."""
+    text = str(url or "")
+    if "/mfa-challenge/" not in text:
+        return ""
+    return text.split("/mfa-challenge/")[-1].strip("/?#").split("?")[0].split("#")[0]
+
+
+def _response_http_status(response: Any) -> int:
+    status = _response_status(response)
+    if not status and isinstance(response, Mapping):
+        try:
+            status = int(response.get("_status") or 0)
+        except (TypeError, ValueError):
+            status = 0
+    return status
+
+
+def _is_html_login_password_page(response: Any) -> bool:
+    """Recognize the interactive HTML login-password shell for existing logins.
+
+    The auth server answers existing-account identifier submissions with this
+    HTML page (the JSON page descriptors only cover the signup state machine),
+    so the re-login loop must classify it from the HTML markers itself.
+    """
+    if not isinstance(response, Mapping):
+        return False
+    url = str(response.get("_url") or response.get("_location") or "")
+    if "/log-in/password" in url:
+        return True
+    title = str(response.get("_html_title") or "").casefold()
+    return "输入密码" in title or "enter password" in title
+
+
+def _is_html_mfa_challenge_page(response: Any) -> bool:
+    """Recognize the interactive HTML two-factor challenge page."""
+    if not isinstance(response, Mapping):
+        return False
+    url = str(response.get("_url") or response.get("_location") or "")
+    return "/mfa-challenge" in url
 
 
 def run_protocol_relogin(
@@ -170,9 +244,12 @@ def run_protocol_relogin(
         prompt="login",
     )
     try:
-        from .free_protocol_runtime import _ensure_oauth_context_params
+        from .free_protocol_runtime import FreeProtocolMixin, _ensure_oauth_context_params
     except ImportError:
-        from free_protocol_runtime import _ensure_oauth_context_params  # type: ignore[no-redef]
+        from free_protocol_runtime import (  # type: ignore[no-redef]
+            FreeProtocolMixin,
+            _ensure_oauth_context_params,
+        )
     oauth_url = _ensure_oauth_context_params(
         oauth_url,
         device_id=device_id,
@@ -182,13 +259,21 @@ def run_protocol_relogin(
     # The re-login shares the live-check transport profile verbatim: the codex
     # chain keys off this run mode and no caller needs a different one.
     protocol = config.get("protocol") if isinstance(config.get("protocol"), Mapping) else {}
+    # Registration resolves the SentinelRunner path before handing the chain
+    # config over; re-logins must do the same. Passing the raw (typically
+    # empty) ``node_runner`` value leaves the Node bridge unconfigured, which
+    # surfaces downstream as an unrecognized authorize/continue response.
+    try:
+        resolved_runner = str(FreeProtocolMixin.resolve_node_runner(config) or "")
+    except Exception:
+        resolved_runner = ""
     chain_config = dict(config)
     chain_config.update({
         "run_mode": "free_live_check",
         "codex_chain_mode": "real",
         "free_protocol_state_machine": True,
         "free_register_no_phone": True,
-        "codex_node_runner": str(protocol.get("node_runner") or ""),
+        "codex_node_runner": resolved_runner or str(protocol.get("node_runner") or ""),
         "_auth_account_email": email,
     })
     sentinel = codex_oauth_chain.RealNodeSentinelProvider(
@@ -244,11 +329,61 @@ def run_protocol_relogin(
             raise ProtocolReloginDeactivated(_response_status(response))
         otp.mark_sent()
         response = transport.submit_email_identifier(email)
+        last_page_type = ""
         for _attempt in range(10):
             if is_deactivated_response(response):
                 raise ProtocolReloginDeactivated(_response_status(response))
             page_type = _page_type(codex_oauth_chain, response)
+            last_page_type = page_type or _unrecognized_page_summary(response)
             continue_url = _continue_url(codex_oauth_chain, response)
+            response_status = _response_http_status(response)
+            if response_status == 429:
+                # A rate-limited login step is an exit-level rejection: swap
+                # to a fresh proxy instead of misreading it as a page state.
+                raise FreeRegisterError(
+                    node_code, node_label, "登录触发上游限流，将切换出口重试",
+                    retryable=True, provider_status=429,
+                    error_code="free_plan_relogin_rate_limited", retry_after_seconds=30,
+                )
+            if not page_type and isinstance(response, Mapping):
+                # The auth server serves interactive HTML pages for
+                # existing-account logins; the JSON classifier cannot name
+                # them. Drive them with the transport's login endpoints.
+                if _is_html_login_password_page(response):
+                    password = str(context.get("password") or "")
+                    if password:
+                        stage_fn("password")
+                        response = transport.verify_password(password)
+                        continue
+                    # Passwordless accounts switch the login to the
+                    # email-code path; the transport resolves the send and
+                    # resend endpoints from the login page URL.
+                    stage_fn("email_otp")
+                    sent = transport.send_email_otp(_page_url(response))
+                    if not bool(codex_oauth_chain._is_success_response(sent)):
+                        raise FreeRegisterError("free_live_email", "深度测活邮箱验证", "登录 OTP 发送失败")
+                    code = otp.wait_code(email)
+                    response = transport.verify_email_otp(code)
+                    continue
+                if _is_html_mfa_challenge_page(response):
+                    secret = str(context.get("totp_secret") or "")
+                    if not secret:
+                        raise FreeRegisterError("free_live_mfa", "深度测活动态口令验证", "账号已启用 2FA，但没有保存动态口令密钥", retryable=False)
+                    challenge_id = _mfa_challenge_id(_page_url(response))
+                    if not challenge_id:
+                        raise FreeRegisterError("free_live_mfa", "深度测活动态口令验证", "动态口令挑战页缺少 challenge id", retryable=False)
+                    stage_fn("mfa")
+                    # web_gui patches _post_auth_json with keyword-only
+                    # ``flow``/``referer``/``timeout``; positional extras
+                    # raise TypeError at the wrapped boundary.
+                    response = transport._post_auth_json(
+                        "/api/accounts/mfa/verify",
+                        {"code": FreeProtocolMixin._totp_code(secret), "type": "totp", "id": challenge_id},
+                        flow="mfa_verify",
+                        referer="https://auth.openai.com/mfa-challenge",
+                        timeout=30,
+                    )
+                    continue
             if page_type in {"email_otp", "email_otp_verification", "email_verification"}:
                 if not bool(getattr(transport, "_gptphone_initial_email_otp_send_confirmed", False)):
                     otp.mark_sent()
@@ -259,7 +394,10 @@ def run_protocol_relogin(
                 code = otp.wait_code(email)
                 response = transport.verify_email_otp(code)
                 continue
-            if page_type in {"password", "password_verification", "email_password"}:
+            # ``login_password`` is the page type the authorize API returns
+            # for existing-account logins (signup serves ``password``); the
+            # reference login flow treats both the same way.
+            if page_type in {"password", "login_password", "password_verification", "email_password"}:
                 password = str(context.get("password") or "")
                 try:
                     try:
@@ -296,12 +434,24 @@ def run_protocol_relogin(
                 secret = str(context.get("totp_secret") or "")
                 if not secret:
                     raise FreeRegisterError("free_live_mfa", "深度测活动态口令验证", "账号已启用 2FA，但没有保存动态口令密钥", retryable=False)
-                try:
-                    from .free_protocol_runtime import FreeProtocolMixin
-                except ImportError:
-                    from free_protocol_runtime import FreeProtocolMixin  # type: ignore[no-redef]
                 stage_fn("mfa")
-                response = transport.verify_mfa_otp(FreeProtocolMixin._totp_code(secret))
+                challenge_id = _mfa_challenge_id(continue_url) or _mfa_challenge_id(_page_url(response))
+                if challenge_id:
+                    # The TOTP challenge validates against the challenge id,
+                    # not the shared email-otp endpoint (mirrors the
+                    # reference login flow).
+                    # web_gui patches _post_auth_json with keyword-only
+                    # ``flow``/``referer``/``timeout``; positional extras
+                    # raise TypeError at the wrapped boundary.
+                    response = transport._post_auth_json(
+                        "/api/accounts/mfa/verify",
+                        {"code": FreeProtocolMixin._totp_code(secret), "type": "totp", "id": challenge_id},
+                        flow="mfa_verify",
+                        referer="https://auth.openai.com/mfa-challenge",
+                        timeout=30,
+                    )
+                else:
+                    response = transport.verify_mfa_otp(FreeProtocolMixin._totp_code(secret))
                 continue
             if page_type in {"phone", "phone_otp", "phone_verification"}:
                 raise FreeRegisterError("free_live_phone_required", "深度测活手机号验证", "重新登录进入手机号验证页面，未调用接码平台", retryable=False)
@@ -323,7 +473,10 @@ def run_protocol_relogin(
             if not continue_url:
                 break
             response = transport.visit_continue(continue_url, "https://auth.openai.com")
-        raise FreeRegisterError(node_code, node_label, "重新登录完成后未取得新的 access token")
+        raise FreeRegisterError(
+            node_code, node_label, "重新登录完成后未取得新的 access token",
+            diagnostic=f"last_page_type={last_page_type or '?'}",
+        )
     except FreeRegisterError:
         raise
     except ProtocolReloginDeactivated:
@@ -336,6 +489,7 @@ def run_protocol_relogin(
             node_code,
             node_label,
             f"重新登录异常（{type(exc).__name__}）",
+            diagnostic=f"{type(exc).__name__}: {str(exc)[:140]} | last={last_page_type or '?'}",
             error_code=str(error_context.get("transport_error_code") or "") or f"{node_code}_failed",
             **error_context,
         ) from exc

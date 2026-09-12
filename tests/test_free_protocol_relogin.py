@@ -272,6 +272,106 @@ class ProtocolReloginTests(unittest.TestCase):
         self.assertTrue(any(item.startswith("post:post-token:") for item in calls))
         self.assertIn("transport_close", calls)
 
+    def test_html_login_password_page_uses_saved_password(self):
+        calls: list = []
+
+        class FakeTransport:
+            def start_chatgpt_signup_authorize(self, _email):
+                return {"page_type": "email_identifier"}
+
+            def submit_email_identifier(self, _email):
+                return {"page_type": "login_password"}
+
+            def verify_password(self, password):
+                calls.append(f"password:{password}")
+                return {"page_type": "continue", "continue_url": "https://chatgpt.example/callback"}
+
+            def complete_chatgpt_callback(self, _url):
+                return {"page_type": "done"}
+
+            def chatgpt_access_token(self):
+                return "html-password-token"
+
+            def close(self):
+                pass
+
+        outcome = self._run(
+            FakeTransport(), calls,
+            {"email": "user@example.test", "password": "saved-pass", "totp_secret": ""},
+        )
+
+        self.assertEqual(outcome["access_token"], "html-password-token")
+        self.assertIn("password:saved-pass", calls)
+        self.assertNotIn("wait_code", calls)
+
+    def test_html_mfa_challenge_posts_totp_to_challenge_endpoint(self):
+        calls: list = []
+
+        class FakeTransport:
+            def start_chatgpt_signup_authorize(self, _email):
+                return {"page_type": "email_identifier"}
+
+            def submit_email_identifier(self, _email):
+                return {"page_type": "login_password"}
+
+            def verify_password(self, _password):
+                return {
+                    "_url": "https://auth.openai.com/mfa-challenge/abc123",
+                    "error": "",
+                }
+
+            def _post_auth_json(self, path, payload, **kwargs):
+                calls.append((path, dict(payload), kwargs.get("flow"), kwargs.get("referer")))
+                return {"page_type": "continue", "continue_url": "https://chatgpt.example/callback"}
+
+            def complete_chatgpt_callback(self, _url):
+                return {"page_type": "done"}
+
+            def chatgpt_access_token(self):
+                return "totp-token"
+
+            def close(self):
+                pass
+
+        outcome = self._run(
+            FakeTransport(), calls,
+            {"email": "user@example.test", "password": "saved-pass", "totp_secret": "JBSWY3DPEHPK3PXP"},
+        )
+
+        self.assertEqual(outcome["access_token"], "totp-token")
+        mfa_calls = [item for item in calls if isinstance(item, tuple)]
+        self.assertEqual(len(mfa_calls), 1)
+        path, payload, flow, referer = mfa_calls[0]
+        self.assertEqual(path, "/api/accounts/mfa/verify")
+        self.assertEqual(payload["type"], "totp")
+        self.assertEqual(payload["id"], "abc123")
+        self.assertEqual(flow, "mfa_verify")
+        self.assertIn("mfa-challenge", referer)
+
+    def test_rate_limited_login_step_maps_to_retryable_rate_limit(self):
+        class FakeTransport:
+            def start_chatgpt_signup_authorize(self, _email):
+                return {"page_type": "email_identifier"}
+
+            def submit_email_identifier(self, _email):
+                return {"_status": 429, "error": {"message": "Too many requests. Please try again later."}}
+
+            def close(self):
+                pass
+
+        with patch.dict(sys.modules, _fake_chain_modules(FakeTransport())):
+            with self.assertRaises(FreeRegisterError) as ctx:
+                run_protocol_relogin(
+                    {"email": "user@example.test", "password": "", "totp_secret": ""},
+                    {},
+                    proxy="http://127.0.0.1:8080",
+                    otp=FakeOtp([]),
+                    log_fn=lambda *_args, **_kwargs: None,
+                    stage_fn=lambda _code: None,
+                )
+        self.assertEqual(ctx.exception.error_code, "free_plan_relogin_rate_limited")
+        self.assertTrue(ctx.exception.retryable)
+
     def test_proxy_helper_rejects_unusable_proxy(self):
         with self.assertRaises(FreeRegisterError):
             protocol_relogin_proxy("", {})

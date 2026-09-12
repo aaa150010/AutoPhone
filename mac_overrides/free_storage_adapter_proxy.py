@@ -34,6 +34,48 @@ class SQLiteFreeProxyPool(_LegacyProxyPool):
         self.storage = storage or FreeSQLiteStore(self.data_dir)
         self.path = self.storage.path
 
+    def replace_text(self, content: str, **kwargs: Any) -> int:
+        """Replace the whole pool atomically.
+
+        The inherited ``_save`` upserts rows, so honouring the parent's
+        replace contract requires clearing the table before writing the new
+        snapshot; otherwise every settings-page save would accumulate stale
+        proxies forever.
+        """
+        try:
+            from .free_proxy_store import SINGLE_POOL_COUNTRY, SINGLE_POOL_GROUP
+        except ImportError:  # pragma: no cover - recovery imports
+            from free_proxy_store import SINGLE_POOL_COUNTRY, SINGLE_POOL_GROUP  # type: ignore[no-redef]
+        try:
+            from .free_register_common import FreeRegisterError
+        except ImportError:  # pragma: no cover - recovery imports
+            from free_register_common import FreeRegisterError  # type: ignore[no-redef]
+        incoming = self._parse_lines(
+            content,
+            country=SINGLE_POOL_COUNTRY,
+            group=SINGLE_POOL_GROUP,
+            scheme=str(kwargs.get("scheme") or self.default_scheme),
+            source_label=str(kwargs.get("source_label") or kwargs.get("provider") or ""),
+        )
+        if str(content or "").strip() and not incoming:
+            raise FreeRegisterError("free_proxy_pool", "Free 代理池", "Free 代理池没有有效代理")
+        with self.storage._transaction():  # noqa: SLF001 - adapter boundary
+            with self.storage._connection() as db:  # noqa: SLF001 - adapter boundary
+                db.execute("BEGIN IMMEDIATE")
+                try:
+                    db.execute("DELETE FROM proxies")
+                    db.execute("DELETE FROM resource_leases WHERE resource_type='proxy'")
+                    db.execute("COMMIT")
+                except BaseException:
+                    try:
+                        db.execute("ROLLBACK")
+                    except sqlite3.OperationalError:
+                        pass
+                    raise
+        self._save(incoming)
+        return len(incoming)
+
+
     def _load(self) -> list[dict[str, Any]]:
         output: list[dict[str, Any]] = []
         now_epoch = time.time()
