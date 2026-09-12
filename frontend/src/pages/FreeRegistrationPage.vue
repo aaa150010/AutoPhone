@@ -719,7 +719,10 @@ onMounted(async () => {
                   </el-tooltip>
                 </template>
                 <div v-else class="failure-cell">
-                  <span class="failure-summary"><strong v-if="row.job?.failure?.node_label || row.job?.failure?.node_code">{{ row.job?.failure?.node_label || row.job?.failure?.node_code }}</strong><span>{{ row.job?.failure?.public_message || row.job?.failure?.technical_summary || '测活未产生错误详情' }}</span></span>
+                  <el-tooltip placement="top" :disabled="!freeFailureDetails(row.job?.failure).length" :show-after="250">
+                    <template #content><div class="failure-tooltip"><span v-for="item in freeFailureDetails(row.job?.failure)" :key="item">{{ item }}</span></div></template>
+                    <span class="failure-summary"><strong v-if="row.job?.failure?.node_label || row.job?.failure?.node_code">{{ row.job?.failure?.node_label || row.job?.failure?.node_code }}</strong><span>{{ row.job?.failure?.public_message || row.job?.failure?.technical_summary || '测活未产生错误详情' }}</span></span>
+                  </el-tooltip>
                 </div>
               </template>
             </el-table-column>
