@@ -19,6 +19,7 @@ import socket
 import threading
 import time
 from typing import Any
+from urllib.parse import urlsplit
 import uuid
 
 try:
@@ -188,6 +189,22 @@ class RouteScope:
 
 
 
+def _vite_redirect_target(current_url: str) -> str:
+    """Rewrite the request URL onto the Vite dev-server origin.
+
+    Flask's ``Request`` has no ``port`` attribute, so the port to replace is
+    parsed from the URL itself.  URLs without an explicit port (or with an
+    invalid one) cannot be rewritten and fall back to the built bundle.
+    """
+    try:
+        parsed_port = urlsplit(current_url).port
+    except ValueError:
+        return current_url
+    if not parsed_port:
+        return current_url
+    return current_url.replace(f":{parsed_port}/", ":5173/", 1)
+
+
 def build_core_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]:
     """Build the recovered dashboard views: SPA hosting, state, config, and run control."""
     def route_secrets(config: Any) -> Sequence[Any]:
@@ -230,9 +247,8 @@ def build_core_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]:
         # over it. When Vite is down, fall back to the last build with a
         # no-cache entry so a fresh bundle is picked up after every rebuild.
         if _vite_dev_server_alive():
-            request = scope.module.request
-            current_url = str(request.url)
-            target = current_url.replace(f":{request.port}/", ":5173/", 1)
+            current_url = str(scope.module.request.url)
+            target = _vite_redirect_target(current_url)
             if target != current_url:
                 return scope.module.redirect(target)
         response = scope.context.send_from_directory(str(frontend_dist), "index.html")
