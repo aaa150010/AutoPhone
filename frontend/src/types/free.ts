@@ -34,6 +34,16 @@ export type FreeConfig = {
   proxy_quarantine_seconds?: number
   proxy_health_probe_ttl_seconds?: number
   proxy_retry_count?: number
+  /** Credential-tunnel sticky-session template; empty template disables minting. */
+  proxy_tunnel_enabled?: boolean
+  proxy_tunnel_gateway_host?: string
+  proxy_tunnel_gateway_port?: number
+  proxy_tunnel_scheme?: 'http' | 'https' | 'socks5' | 'socks5h' | string
+  proxy_tunnel_username_template?: string
+  proxy_tunnel_password?: string
+  proxy_tunnel_sticky_minutes?: number
+  proxy_pool_target_size?: number
+  proxy_challenge_switch_limit?: number
   /** @deprecated retained only for loading pre-v6 config responses. */
   proxy_selection?: {
     protocol?: { country?: string; group?: string }
@@ -150,6 +160,19 @@ export interface FreeProxyRow {
   last_chatgpt_login_probe_mode?: 'strict' | 'compat' | string
   latency_ms?: number | null
   consecutive_failures?: number
+  stored_status?: string
+  effective_status?: string
+  burned_reason?: string
+  burned_at?: number | null
+  window_started_at?: number | null
+  window_expires_at?: number | null
+}
+
+export interface FreeProxyBreakerState {
+  tripped: boolean
+  recent_distinct_burns: number
+  threshold: number
+  window_seconds: number
 }
 
 export interface FreeProxyPool {
@@ -159,6 +182,7 @@ export interface FreeProxyPool {
   rows: FreeProxyRow[]
   groups?: FreeProxySummary[]
   countries?: FreeProxySummary[]
+  breaker?: FreeProxyBreakerState
 }
 
 export interface FreeProxySummary {

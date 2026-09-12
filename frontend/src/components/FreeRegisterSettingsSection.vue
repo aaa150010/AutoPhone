@@ -4,7 +4,7 @@ import { incidentCenterUrl } from '../utils/incidentLink'
 import { errorMessage } from '../utils/errorMessage'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleCheck, CopyDocument, Refresh, View } from '@element-plus/icons-vue'
-import { ApiError, getFreeConfig, getFreeProxies, preflightFree, preflightFreeProxies, saveFreeConfig, type FreeConfig, type FreeState, type FreeProxyPool, type FreeProxyPreflightRow, type FreeProxyRow } from '../api/client'
+import { ApiError, getFreeConfig, getFreeProxies, preflightFree, preflightFreeProxies, resetFreeProxyBreaker, saveFreeConfig, type FreeConfig, type FreeState, type FreeProxyBreakerState, type FreeProxyPool, type FreeProxyPreflightRow, type FreeProxyRow } from '../api/client'
 import type { TaskFailure } from '../types/api'
 import { defaultFreeConfig, mergeFreeConfigDraft } from '../utils/freeConfigDefaults'
 import FieldHelpLabel from './FieldHelpLabel.vue'
@@ -23,6 +23,7 @@ const proxyCheckRows = ref<FreeProxyPreflightRow[]>([])
 const proxyCheckIncidentId = ref('')
 const proxyCheckFailure = ref<TaskFailure | null>(null)
 const proxyRows = ref<FreeProxyRow[]>([])
+const proxyBreaker = ref<FreeProxyBreakerState | null>(null)
 const busy = ref<'load' | 'save' | 'preflight' | 'proxy-preflight' | ''>('')
 const loaded = ref(false)
 const savedSignature = ref('')
@@ -30,6 +31,8 @@ const running = computed(() => Boolean(state.value.running))
 const camoufoxEffectiveHeadless = computed(() => Boolean(config.camoufox.debug_mode) ? false : Boolean(config.camoufox.headless))
 const savedProxyAvailable = computed(() => proxyRows.value.filter(row => row.status === 'available').length)
 const savedProxyQuarantined = computed(() => proxyRows.value.filter(row => row.status === 'quarantined').length)
+const savedProxyBurned = computed(() => proxyRows.value.filter(row => row.effective_status === 'burned' || row.status === 'burned').length)
+const breakerTripped = computed(() => Boolean(proxyBreaker.value?.tripped))
 const proxyCheckSummary = computed(() => {
   const total = proxyCheckRows.value.length
   if (!total) return ''
@@ -196,6 +199,7 @@ function openProxyCheckIncident() {
 function applyPublicProxies(value: FreeProxyPool | undefined | null) {
   if (!value || typeof value !== 'object') return false
   proxyRows.value = Array.isArray(value.rows) ? value.rows : []
+  proxyBreaker.value = value.breaker && typeof value.breaker === 'object' ? value.breaker : null
   if (typeof value.content === 'string') proxyText.value = value.content
   if (Number.isFinite(Number(value.count))) {
     state.value = {
@@ -204,6 +208,25 @@ function applyPublicProxies(value: FreeProxyPool | undefined | null) {
     }
   }
   return true
+}
+
+async function resetBreaker() {
+  try {
+    await ElMessageBox.confirm(
+      '确认解除代理池挑战熔断？若挑战是站点整体收紧或供应商子段被拉黑导致，解除后会继续消耗邮箱与流量。',
+      '人工确认重置熔断',
+      { type: 'warning', confirmButtonText: '确认重置', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  try {
+    const result = await resetFreeProxyBreaker()
+    proxyBreaker.value = result.breaker || null
+    ElMessage.success('代理池熔断已重置')
+  } catch (error) {
+    ElMessage.error(errorMessage(error) || '重置代理池熔断失败')
+  }
 }
 
 onMounted(load)
@@ -233,7 +256,7 @@ defineExpose({ save })
     <div class="selection-summary shared-proxy-summary">
       <span>共享健康随机代理池</span>
       <b>{{ Number(state.pool?.proxies || 0) }}</b>
-      <small>已保存 {{ savedProxyAvailable }} 个可用 · {{ savedProxyQuarantined }} 个隔离；任务共享健康随机代理</small>
+      <small>已保存 {{ savedProxyAvailable }} 个可用 · {{ savedProxyQuarantined }} 个隔离<template v-if="savedProxyBurned"> · <span class="danger-note">{{ savedProxyBurned }} 个已废弃（安全挑战）</span></template>；任务共享健康随机代理</small>
     </div>
 
     <el-row :gutter="10">
@@ -271,13 +294,31 @@ defineExpose({ save })
     <div class="subsection">
       <div class="humanize-heading"><h3>代理稳定性策略</h3><FieldHelpLabel label="规则说明" help="这些规则只作用于独立 Free 代理池：控制注册前可否更换备用代理和连续失败隔离。" /></div>
       <el-row :gutter="10">
-        <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="代理额外重试次数" help="仅对邮箱提交前的连接失败和非挑战 401/403 访问拒绝切换健康代理；Cloudflare/Turnstile 安全挑战，以及邮箱提交、验证码或账号创建后的失败不会自动换代理或重放。" /></template><el-input-number v-model="config.proxy_retry_count" :min="0" :max="5" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
+        <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="代理额外重试次数" help="仅对邮箱提交前的连接失败和非挑战 401/403 访问拒绝切换健康代理；安全挑战使用下面独立的换线预算，邮箱提交、验证码或账号创建后的失败不会自动换代理或重放。" /></template><el-input-number v-model="config.proxy_retry_count" :min="0" :max="5" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
         <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="连续失败隔离阈值" help="同一代理连续失败达到此次数后进入隔离，当前批次不再分配它。成功探测会清零连续失败次数。" /></template><el-input-number v-model="config.proxy_failure_threshold" :min="1" :max="10" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
         <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="代理隔离时间（秒）" help="代理达到失败阈值后的暂停使用时间。到期后可重新参与检测和任务分配。" /></template><el-input-number v-model="config.proxy_quarantine_seconds" :min="30" :max="86400" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
       </el-row>
       <el-row :gutter="10">
-        <el-col :span="12"><el-form-item><template #label><FieldHelpLabel label="健康探测有效期（秒）" help="代理最近一次成功探测在这段时间内直接复用；超过后仅在绑定前执行一次有界连通性探测。设为 0 可关闭自动刷新，保留手动代理检测。" /></template><el-input-number v-model="config.proxy_health_probe_ttl_seconds" :min="0" :max="86400" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
+        <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="健康探测有效期（秒）" help="代理最近一次成功探测在这段时间内直接复用；超过后仅在绑定前执行一次有界连通性探测。设为 0 可关闭自动刷新，保留手动代理检测。" /></template><el-input-number v-model="config.proxy_health_probe_ttl_seconds" :min="0" :max="86400" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
+        <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="池目标健康数（0=跟随并发）" help="可用健康代理低于该数值时自动按账密隧道模板铸造新会话出口补齐；隧道模板未配置时不生效。总隧道行数不会超过目标的 2 倍。" /></template><el-input-number v-model="config.proxy_pool_target_size" :min="0" :max="16" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
+        <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="挑战换线预算（0=关闭）" help="邮箱 OTP 请求发出前触发安全挑战时，允许同邮箱换新出口+新会话自动重试的最多次数；OTP 已发出后的挑战仍只记录并停止。" /></template><el-input-number v-model="config.proxy_challenge_switch_limit" :min="0" :max="6" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
       </el-row>
+    </div>
+
+    <div class="subsection">
+      <div class="humanize-heading"><h3>账密隧道替补（可选）</h3><FieldHelpLabel label="隧道说明" help="配置账密隧道凭据模板后，挑战触发的出口会被永久废弃，并按模板自动铸造新会话 ID 的替补行，池规模保持恒定。未配置时新机制退化为现有行为。" /></div>
+      <el-row :gutter="10">
+        <el-col :span="4"><el-form-item><template #label><FieldHelpLabel label="启用铸造" help="开启后按下方模板自动铸造新会话出口；关闭则不铸造、不删除任何行。" /></template><el-switch v-model="config.proxy_tunnel_enabled" active-text="开启" inactive-text="关闭" :disabled="running" /></el-form-item></el-col>
+        <el-col :span="7"><el-form-item><template #label><FieldHelpLabel label="网关地址" help="账密隧道主机名，例如 us.cliproxy.io。" /></template><el-input v-model="config.proxy_tunnel_gateway_host" :disabled="running" placeholder="us.cliproxy.io" size="small" /></el-form-item></el-col>
+        <el-col :span="5"><el-form-item><template #label><FieldHelpLabel label="端口" help="账密隧道端口，例如 3010 或 443。" /></template><el-input-number v-model="config.proxy_tunnel_gateway_port" :min="0" :max="65535" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
+        <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="协议" help="Camoufox 桥接要求带认证的 SOCKS5；纯协议链路 HTTP 与 SOCKS5 均可。手工导入行时此协议也是无协议行的默认值之一。" /></template><el-select v-model="config.proxy_tunnel_scheme" :disabled="running" size="small"><el-option label="SOCKS5" value="socks5" /><el-option label="SOCKS5H" value="socks5h" /><el-option label="HTTP" value="http" /><el-option label="HTTPS" value="https" /></el-select></el-form-item></el-col>
+      </el-row>
+      <el-form-item><template #label><FieldHelpLabel label="用户名模板" help="必须包含 {sid} 占位符，可包含 {t} 占位符；铸造时替换为随机会话 ID 和黏性时长。例如 atxfl200589-region-JP-sid-{sid}-t-{t}。" /></template><el-input v-model="config.proxy_tunnel_username_template" :disabled="running" placeholder="atxfl200589-region-JP-sid-{sid}-t-{t}" size="small" /></el-form-item>
+      <el-row :gutter="10">
+        <el-col :span="12"><el-form-item><template #label><FieldHelpLabel label="隧道密码" help="账密隧道的密码；已保存密码以掩码显示，输入新值即可替换。仅保存在本机 Free 配置。" /></template><el-input v-model="config.proxy_tunnel_password" type="password" show-password autocomplete="new-password" maxlength="256" :disabled="running" size="small" /></el-form-item></el-col>
+        <el-col :span="12"><el-form-item><template #label><FieldHelpLabel label="黏性时长（分钟）" help="铸造出的新会话出口保持同一 IP 的窗口时长，随用户名模板的 {t} 写入每一行。" /></template><el-input-number v-model="config.proxy_tunnel_sticky_minutes" :min="5" :max="120" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
+      </el-row>
+      <p class="danger-note">出口保鲜窗警示：黏性时长是同一出口 IP 保持不变的窗口（从该行首次被使用起算，多任务共享）。必须 ≥ 单任务最大耗时（约 3–10 分钟）+ 10 分钟窗口余量；设得过短，任务会中途被换出口，cf_clearance 作废并当场再次触发挑战。</p>
     </div>
 
     <div v-if="config.driver === 'protocol'" class="subsection">
@@ -313,11 +354,19 @@ defineExpose({ save })
 
     <div class="subsection proxy-section">
       <div class="section-heading-row"><div><h3>Free 独立代理池</h3><p class="section-hint">粘贴后可检测代理池连通性，再保存到 Free 池。</p></div><span class="muted">已保存 {{ Number(state.pool?.proxies || 0) }} 个</span></div>
+      <el-alert v-if="breakerTripped" type="error" :closable="false" show-icon class="breaker-alert">
+        <template #title>代理池已熔断：{{ proxyBreaker?.window_seconds ? Math.round(proxyBreaker.window_seconds / 60) : 30 }} 分钟内 {{ proxyBreaker?.recent_distinct_burns || 0 }} 个不同出口触发安全挑战，已暂停批量启动、重试入队与替补铸造。</template>
+        <div class="breaker-actions"><span>多为站点整体收紧或供应商子段被拉黑；确认不是系统性问题后再解除。</span><el-button size="small" type="danger" :disabled="running" @click="resetBreaker">人工确认并重置熔断</el-button></div>
+      </el-alert>
       <div class="proxy-import-meta">
         <div class="proxy-import-field"><FieldHelpLabel label="无协议默认协议" help="支持 scheme://用户名:密码@主机:端口、主机:端口:用户名:密码、用户名:密码@主机:端口、主机:端口@用户名:密码；裸格式按当前下拉协议解析，显式协议始终优先。" /><el-select v-model="proxyScheme" placeholder="无协议时默认协议" size="small"><el-option label="HTTP" value="http" /><el-option label="HTTPS" value="https" /><el-option label="SOCKS4" value="socks4" /><el-option label="SOCKS5" value="socks5" /><el-option label="SOCKS5H" value="socks5h" /></el-select></div>
         <div class="proxy-import-field"><FieldHelpLabel label="SOCKS5 DNS" help="只影响 SOCKS5 代理的域名解析位置，不改变保存的协议标签。默认使用代理端解析，避免本机 Fake-IP 或 DNS 污染导致连接失败；也可按需选择本机解析或严格声明。" /><el-select v-model="config.proxy_socks5_dns_mode" :disabled="running" size="small"><el-option label="自动适配" value="auto" /><el-option label="本机解析" value="local" /><el-option label="代理端解析" value="remote" /><el-option label="严格声明" value="declared" /></el-select></div>
         <div class="proxy-import-field"><FieldHelpLabel label="代理来源（可选）" help="仅用于报表和供应商对比，例如 1024、cliproxy；不会参与代理分配，也不会写入代理凭据。" /><el-input v-model="proxySourceLabel" maxlength="40" show-word-limit placeholder="例如 1024 / cliproxy" size="small" /></div>
       </div>
+      <el-alert type="error" :closable="false" show-icon class="sticky-warn-alert">
+        <template #title>出口保鲜期警示：粘贴行的用户名内嵌 t-XX 就是该出口的保鲜时长，供应商界面复制默认常为 t-5（5 分钟轮转），任务中途必换出口。</template>
+        <template #default>请在生成时把时长选为 ≥30 分钟（t-30），或导入前把用户名里的 t-5 批量替换为 t-30；剩余保鲜期不足 10 分钟的行不会参与分配。</template>
+      </el-alert>
       <el-input v-model="proxyText" type="textarea" :rows="5" :disabled="running" placeholder="每行一个代理，支持 URL、host:port:user:pass 和两种 @ 格式" autocomplete="off" />
       <div class="inline-actions"><el-button size="small" :icon="CircleCheck" :loading="busy === 'proxy-preflight'" :disabled="running || (!proxyText.trim() && !proxyRows.length)" @click="preflightProxyPool">{{ proxyText.trim() ? '检测代理连通性' : '复检已保存代理' }}</el-button><el-checkbox v-model="layeredProbe" :disabled="running">分层诊断</el-checkbox><span class="muted">留空时复检已保存代理，成功会解除隔离；分层诊断会额外记录 TCP、HTTPS 和 ChatGPT 登录页耗时，不保存响应正文。</span></div>
       <div v-if="proxyCheckIncidentId" class="proxy-check-incident">
@@ -364,4 +413,9 @@ defineExpose({ save })
 .free-settings-section :deep(.el-input-number), .free-settings-section :deep(.el-select) { width: 100%; }
 .free-settings-section :deep(.free-scale-number) { width: 132px; max-width: 100%; }
 .free-settings-section :deep(.el-form-item) { margin-bottom: 10px; }
+.danger-note { margin: 2px 0 0; color: var(--el-color-danger); font-size: 12px; line-height: 18px; font-weight: 650; }
+.sticky-warn-alert { margin-bottom: 8px; }
+.breaker-alert { margin-bottom: 10px; }
+.breaker-actions { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.breaker-actions span { margin-right: auto; color: var(--el-text-color-regular); font-size: 12px; line-height: 18px; }
 </style>

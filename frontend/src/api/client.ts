@@ -35,6 +35,7 @@ import type {
   FreeLiveCheckState,
   FreePlanCheckState,
   FreeProxyPreflightResult,
+  FreeProxyBreakerState,
 } from '../types/free'
 export type {
   FreeConfig,
@@ -44,6 +45,7 @@ export type {
   FreeProxyRow,
   FreeProxyPool,
   FreeProxySummary,
+  FreeProxyBreakerState,
   FreeConfigSavePayload,
   FreeCamoufoxDebugCloseResult,
   DiagnosticIncident,
@@ -250,6 +252,7 @@ export const preflightFreeProxies = (proxyContent: string, proxyProbeUrl?: strin
   failure?: TaskFailure | null
 }>('/api/free/proxies/preflight', { proxy_content: proxyContent, proxy_probe_url: proxyProbeUrl, ...options })
 export const getFreeProxies = () => api<{ ok: true; proxies: FreeProxyPool }>('/api/free/proxies')
+export const resetFreeProxyBreaker = () => api<{ ok: true; breaker: FreeProxyBreakerState }>('/api/free/proxies/breaker/reset', {})
 export const getFreeSecret = (kind: 'token' | 'password' | 'totp' | 'proxy' | 'credential' | 'email', ids: { task_ids?: string[]; row_ids?: string[] }) => api<{ ok: true; kind: string; value: string }>(
   '/api/free/secrets',
   { kind, ...ids },
