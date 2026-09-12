@@ -34,7 +34,7 @@ FREE_LEGACY_CONFIG_KEYS = frozenset({
 })
 
 DEFAULT_FREE_CONFIG: dict[str, Any] = {
-    "version": 9,
+    "version": 10,
     "driver": "protocol",
     "flow_profile": "reference_20260823",
     "proxy_allocation_mode": "healthy_random",
@@ -77,6 +77,20 @@ DEFAULT_FREE_CONFIG: dict[str, Any] = {
     "proxy_quarantine_seconds": 600,
     "proxy_health_probe_ttl_seconds": 300,
     "proxy_retry_count": 1,
+    # Credential-tunnel (账密隧道) template for self-rotating sticky-session
+    # rows. The username template must embed ``{sid}`` and may embed ``{t}``;
+    # rows minted from it carry source_label "tunnel-auto" so manually
+    # imported rows are never rewritten or deleted. An empty template
+    # disables minting and keeps every downstream behavior unchanged.
+    "proxy_tunnel_enabled": False,
+    "proxy_tunnel_gateway_host": "",
+    "proxy_tunnel_gateway_port": 0,
+    "proxy_tunnel_scheme": "socks5",
+    "proxy_tunnel_username_template": "",
+    "proxy_tunnel_password": "",
+    "proxy_tunnel_sticky_minutes": 30,
+    "proxy_pool_target_size": 0,
+    "proxy_challenge_switch_limit": 3,
     "proxy_selection": {
         "protocol": {"country": "", "group": ""},
         "camoufox": {"country": "", "group": ""},
@@ -304,6 +318,19 @@ class FreeConfigStore:
         result["proxy_quarantine_seconds"] = _int(result.get("proxy_quarantine_seconds"), 600, 30, 86400)
         result["proxy_health_probe_ttl_seconds"] = _int(result.get("proxy_health_probe_ttl_seconds"), 300, 0, 86400)
         result["proxy_retry_count"] = _int(result.get("proxy_retry_count"), 1, 0, 5)
+        result["proxy_tunnel_enabled"] = _as_bool(result.get("proxy_tunnel_enabled"), False)
+        result["proxy_tunnel_gateway_host"] = clean(result.get("proxy_tunnel_gateway_host"), 200).lower()
+        result["proxy_tunnel_gateway_port"] = _int(result.get("proxy_tunnel_gateway_port"), 0, 0, 65535)
+        tunnel_scheme = str(result.get("proxy_tunnel_scheme") or "socks5").strip().lower()
+        result["proxy_tunnel_scheme"] = tunnel_scheme if tunnel_scheme in {"http", "https", "socks5", "socks5h"} else "socks5"
+        result["proxy_tunnel_username_template"] = clean(result.get("proxy_tunnel_username_template"), 300)
+        tunnel_password = clean(result.get("proxy_tunnel_password"), 256)
+        if tunnel_password == SECRET_MASK:
+            tunnel_password = clean(base.get("proxy_tunnel_password"), 256)
+        result["proxy_tunnel_password"] = tunnel_password
+        result["proxy_tunnel_sticky_minutes"] = _int(result.get("proxy_tunnel_sticky_minutes"), 30, 5, 120)
+        result["proxy_pool_target_size"] = _int(result.get("proxy_pool_target_size"), 0, 0, 16)
+        result["proxy_challenge_switch_limit"] = _int(result.get("proxy_challenge_switch_limit"), 3, 0, 6)
         # Single-pool policy: classification fields never influence allocation,
         # so the final assignment below always writes empty values (see the
         # end of this normalizer) and any legacy selection input is discarded.
@@ -448,6 +475,8 @@ class FreeConfigStore:
         value = self.load()
         if str(value.get("account_password") or "").strip():
             value["account_password"] = SECRET_MASK
+        if str(value.get("proxy_tunnel_password") or "").strip():
+            value["proxy_tunnel_password"] = SECRET_MASK
         mailbox_proxy = str(value.get("mailbox_proxy_url") or "")
         try:
             parsed_mailbox_proxy = urlsplit(mailbox_proxy)
@@ -464,7 +493,7 @@ class FreeConfigStore:
         return value
 
     def secret(self, secret_id: str) -> str:
-        if secret_id not in {"mailbox_proxy_url", "remail_api_key"}:
+        if secret_id not in {"mailbox_proxy_url", "remail_api_key", "proxy_tunnel_password"}:
             raise FreeRegisterError("free_config_secret", "读取 Free 配置密钥", "Free 配置密钥类型无效", retryable=False)
         value = self.load()
         if secret_id == "mailbox_proxy_url":
@@ -472,6 +501,8 @@ class FreeConfigStore:
         if secret_id == "remail_api_key":
             remail = value.get("remail") if isinstance(value.get("remail"), Mapping) else {}
             return str(remail.get("api_key") or "")
+        if secret_id == "proxy_tunnel_password":
+            return str(value.get("proxy_tunnel_password") or "")
         return ""
 
     def migrate_legacy(self, local_config: Mapping[str, Any] | None, legacy_data_dir: str | Path) -> dict[str, Any]:

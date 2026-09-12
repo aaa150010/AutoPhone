@@ -81,8 +81,13 @@ except ImportError:
     from free_proxy_health import is_proxy_health_failure  # type: ignore[no-redef]
 
 
-PROXY_STATUSES = frozenset({"unknown", "available", "quarantined"})
+PROXY_STATUSES = frozenset({"unknown", "available", "quarantined", "burned"})
 PROXY_ALLOCATION_MODES = frozenset({"healthy_random"})
+# A row whose sticky-session window has less than this remaining is not
+# allocated: a task starting near the window end would observe a mid-task
+# exit rotation (which invalidates cf_clearance and re-triggers challenges).
+# Expired-window rows are replaced by the tunnel target-size maintainer.
+MIN_USABLE_WINDOW_SECONDS = 600
 
 
 try:
@@ -274,6 +279,10 @@ class FreeProxyPool(FreeProxyStoreHealthMixin):
                 None if value.get("quarantined_until") is None
                 else _safe_float(value.get("quarantined_until"), default=0, minimum=0)
             ),
+            "burned_reason": str(value.get("burned_reason") or "").strip()[:80],
+            "burned_at": _safe_float(value.get("burned_at"), minimum=0),
+            "window_started_at": _safe_float(value.get("window_started_at"), minimum=0),
+            "window_expires_at": _safe_float(value.get("window_expires_at"), minimum=0),
             "last_failure": copy.deepcopy(value.get("last_failure")) if isinstance(value.get("last_failure"), Mapping) else None,
             "last_probe_ok": value.get("last_probe_ok") if isinstance(value.get("last_probe_ok"), bool) else None,
             "last_probe_mode": str(value.get("last_probe_mode") or ""),
@@ -423,6 +432,13 @@ class FreeProxyPool(FreeProxyStoreHealthMixin):
                     current["source_label"] = str(source_label or provider or "").strip()[:40]
                 if current.get("status") == "quarantined" and self._quarantine_expired(current):
                     current["status"] = "unknown"
+                # Re-importing an identity is an explicit operator statement
+                # that the burned exit is usable again (e.g. after the
+                # provider rotated it); minted tunnel rows never collide
+                # because every mint generates a fresh sid.
+                if current.get("status") == "burned":
+                    current["status"] = "unknown"
+                    current["burned_reason"] = ""
             self._save(by_identity.values())
             return added
 
@@ -503,7 +519,15 @@ class FreeProxyPool(FreeProxyStoreHealthMixin):
         for row in self._load():
             if not row.get("enabled"):
                 continue
+            if row.get("status") == "burned":
+                continue
             if row.get("status") == "quarantined" and not self._quarantine_expired(row, current_time):
+                continue
+            # Window-aware allocation: skip rows whose sticky-session window
+            # cannot cover a full task anymore.  Rows without window metadata
+            # (manual imports) are never filtered.
+            expires = _safe_float(row.get("window_expires_at"), minimum=0) or 0
+            if expires and expires - current_time < MIN_USABLE_WINDOW_SECONDS:
                 continue
             rows.append(row)
         return rows
@@ -537,6 +561,7 @@ class FreeProxyPool(FreeProxyStoreHealthMixin):
             row for row in enabled
             if row.get("status") == "quarantined" and not self._quarantine_expired(row, now)
         ]
+        burned = [row for row in enabled if row.get("status") == "burned"]
         unsupported: list[Mapping[str, Any]] = []
         failure_nodes: list[str] = []
         for row in quarantined:
@@ -550,6 +575,7 @@ class FreeProxyPool(FreeProxyStoreHealthMixin):
             "enabled": len(enabled),
             "candidates": len(candidate_ids),
             "quarantined": len(quarantined),
+            "burned": len(burned),
             "disabled": len(rows) - len(enabled),
             "unsupported": len(unsupported),
             "failure_nodes": failure_nodes[:3],
@@ -565,6 +591,8 @@ class FreeProxyPool(FreeProxyStoreHealthMixin):
             reasons: list[str] = []
             if summary["quarantined"]:
                 reasons.append(f"已隔离 {summary['quarantined']} 条")
+            if summary.get("burned"):
+                reasons.append(f"已废弃 {summary['burned']} 条（安全挑战）")
             if summary["disabled"]:
                 reasons.append(f"已禁用 {summary['disabled']} 条")
             if summary["unsupported"]:
@@ -653,21 +681,28 @@ class FreeProxyPool(FreeProxyStoreHealthMixin):
             and stored_status == "quarantined"
             and not quarantine_expired
         )
+        # ``burned`` never expires on its own: a challenged exit stays out of
+        # allocation until an operator re-imports the identity or the
+        # regenerable tunnel row is replaced.
+        burned_active = enabled and stored_status == "burned"
         if not enabled:
             effective_status = "disabled"
+        elif burned_active:
+            effective_status = "burned"
         elif quarantine_active:
             effective_status = "quarantined"
         elif quarantine_expired:
             effective_status = "unknown"
         else:
             effective_status = stored_status
-        dispatchable = enabled and not quarantine_active
+        dispatchable = enabled and not quarantine_active and not burned_active
         return {
             "enabled": enabled,
             "stored_status": stored_status,
             "effective_status": effective_status,
             "quarantine_active": quarantine_active,
             "quarantine_expired": quarantine_expired,
+            "burned_active": burned_active,
             "eligible": dispatchable,
             "dispatchable": dispatchable,
         }
@@ -705,6 +740,10 @@ class FreeProxyPool(FreeProxyStoreHealthMixin):
             "eligible": health["eligible"],
             "dispatchable": health["dispatchable"],
             "quarantined_until": row.get("quarantined_until"),
+            "burned_reason": str(row.get("burned_reason") or ""),
+            "burned_at": row.get("burned_at") or None,
+            "window_started_at": row.get("window_started_at") or None,
+            "window_expires_at": row.get("window_expires_at") or None,
             "lease_until": max((float(lease.get("until") or 0) for lease in leases), default=None),
             "active_lease_count": len(leases),
             "last_checked_at": row.get("last_checked_at"),
@@ -1190,6 +1229,70 @@ class FreeProxyPool(FreeProxyStoreHealthMixin):
             if changed:
                 self._save(rows)
 
+    def record_challenge_burn(self, proxy_id: str, *, reason: str = "security_challenge") -> bool:
+        """Mark one proxy burned after a target-site security challenge.
+
+        Burned rows never participate in allocation again and never expire on
+        their own; regenerable tunnel rows are removed by the tunnel
+        maintainer after a replacement is minted.  Returns True when a row
+        matched.
+        """
+        with self._lock:
+            rows = self._load()
+            changed = False
+            for row in rows:
+                if str(row.get("proxy_id")) != str(proxy_id):
+                    continue
+                row.update({
+                    "status": "burned",
+                    "burned_reason": str(reason or "security_challenge").strip()[:80] or "security_challenge",
+                    "burned_at": time.time(),
+                    "quarantined_until": None,
+                    "consecutive_failures": 0,
+                })
+                self._sync_lease_compat(row)
+                changed = True
+                break
+            if changed:
+                self._save(rows)
+            return changed
+
+    def remove(self, proxy_id: str) -> bool:
+        """Delete one row by id.
+
+        Only regenerable tunnel-auto rows are removed programmatically;
+        manually imported rows are burned/disabled instead so operator data
+        is never deleted automatically.
+        """
+        with self._lock:
+            rows = self._load()
+            remaining = [row for row in rows if str(row.get("proxy_id")) != str(proxy_id)]
+            if len(remaining) == len(rows):
+                return False
+            self._save(remaining)
+            return True
+
+    def annotate_window(self, proxy_id: str, *, started_at: float, expires_at: float) -> bool:
+        """Record the sticky-session window observed for a minted tunnel row.
+
+        The window starts at the row's first transport use, so it is written
+        by the minting path right after the row enters the pool.  Rows without
+        window metadata are never filtered by the allocation window check.
+        """
+        with self._lock:
+            rows = self._load()
+            changed = False
+            for row in rows:
+                if str(row.get("proxy_id")) != str(proxy_id):
+                    continue
+                row["window_started_at"] = max(0.0, float(started_at))
+                row["window_expires_at"] = max(0.0, float(expires_at))
+                changed = True
+                break
+            if changed:
+                self._save(rows)
+            return changed
+
     def update_group(self, country: str, group: str, *, new_country: str | None = None, new_group: str | None = None, enabled: bool | None = None) -> dict[str, int]:
         with self._lock:
             rows = self._load()
@@ -1229,6 +1332,7 @@ __all__ = [
     "DEFAULT_PROXY_GROUP",
     "FreeProxyLease",
     "FreeProxyPool",
+    "MIN_USABLE_WINDOW_SECONDS",
     "infer_country",
     "normalize_country",
     "normalize_group",

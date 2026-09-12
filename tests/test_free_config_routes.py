@@ -37,7 +37,7 @@ class FreeConfigRouteTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             store = FreeConfigStore(Path(directory))
             normalized = store.normalize({})
-            self.assertEqual(normalized["version"], 9)
+            self.assertEqual(normalized["version"], 10)
             self.assertEqual(normalized["account_password"], "Aa150010150010")
             self.assertEqual(normalized["proxy_default_scheme"], "socks5")
             self.assertEqual(normalized["proxy_socks5_dns_mode"], "remote")
@@ -106,10 +106,10 @@ class FreeConfigRouteTests(unittest.TestCase):
 
             # A subsequent startup completes the new v8 -> v9 migration.
             normalized = store.load()
-            self.assertEqual(normalized["version"], 9)
-            self.assertEqual(json.loads(store.path.read_text(encoding="utf-8"))["version"], 9)
+            self.assertEqual(normalized["version"], 10)
+            self.assertEqual(json.loads(store.path.read_text(encoding="utf-8"))["version"], 10)
 
-    def test_v8_config_adds_debug_mode_and_persists_as_v9(self):
+    def test_v8_config_adds_debug_mode_and_persists_as_current(self):
         with tempfile.TemporaryDirectory() as directory:
             store = FreeConfigStore(Path(directory))
             store.path.write_text(json.dumps({
@@ -121,16 +121,16 @@ class FreeConfigRouteTests(unittest.TestCase):
 
             normalized = store.load()
 
-            self.assertEqual(normalized["version"], 9)
+            self.assertEqual(normalized["version"], 10)
             self.assertTrue(normalized["camoufox"]["debug_mode"])
             # The old user's headless preference is preserved for when debug
             # mode is later disabled.
             self.assertTrue(normalized["camoufox"]["headless"])
             persisted = json.loads(store.path.read_text(encoding="utf-8"))
-            self.assertEqual(persisted["version"], 9)
+            self.assertEqual(persisted["version"], 10)
             self.assertTrue(persisted["camoufox"]["debug_mode"])
 
-    def test_v9_explicit_debug_mode_and_headless_choice_are_preserved(self):
+    def test_v9_input_explicit_debug_mode_and_headless_choice_are_preserved(self):
         with tempfile.TemporaryDirectory() as directory:
             store = FreeConfigStore(Path(directory))
             normalized = store.normalize({
@@ -138,7 +138,7 @@ class FreeConfigRouteTests(unittest.TestCase):
                 "camoufox": {"debug_mode": False, "headless": True},
             })
 
-            self.assertEqual(normalized["version"], 9)
+            self.assertEqual(normalized["version"], 10)
             self.assertFalse(normalized["camoufox"]["debug_mode"])
             self.assertTrue(normalized["camoufox"]["headless"])
 
@@ -192,7 +192,7 @@ class FreeConfigRouteTests(unittest.TestCase):
 
             normalized = store.load()
 
-            self.assertEqual(normalized["version"], 9)
+            self.assertEqual(normalized["version"], 10)
             self.assertFalse(normalized["camoufox"]["debug_mode"])
             self.assertTrue(normalized["camoufox"]["headless"])
 
@@ -204,7 +204,7 @@ class FreeConfigRouteTests(unittest.TestCase):
                 "proxy_default_scheme": "http",
                 "proxy_socks5_dns_mode": "local",
             })
-            self.assertEqual(normalized["version"], 9)
+            self.assertEqual(normalized["version"], 10)
             self.assertEqual(normalized["proxy_default_scheme"], "http")
             self.assertEqual(normalized["proxy_socks5_dns_mode"], "local")
 

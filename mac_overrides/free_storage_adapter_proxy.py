@@ -127,7 +127,7 @@ class SQLiteFreeProxyPool(_LegacyProxyPool):
                 status = str(row["status"] or "unknown")
                 if status == "healthy":
                     status = "available"
-                if status not in {"unknown", "available", "quarantined"}:
+                if status not in {"unknown", "available", "quarantined", "burned"}:
                     status = "unknown"
                 record = {
                     **payload,
