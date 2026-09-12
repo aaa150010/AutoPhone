@@ -96,6 +96,12 @@ NODE_LABELS = {
     "free_phone_required": "Free 注册手机号节点",
     "free_protocol": "Free 注册协议",
     "free_secret": "读取 Free 敏感字段",
+    "free_proxy_challenge_burn": "安全挑战废弃出口",
+    "free_proxy_replacement_mint": "隧道替补铸造",
+    "free_proxy_replacement_mint_failed": "隧道替补铸造失败",
+    "free_proxy_breaker_tripped": "代理池挑战熔断",
+    "free_proxy_breaker_reset": "重置代理池熔断",
+    "free_task_challenge_switch": "安全挑战换出口重试",
 }
 
 ACCOUNT_BANNED_MESSAGE = "OpenAI 账号已被封禁，无法继续接码"

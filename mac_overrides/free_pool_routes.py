@@ -395,7 +395,17 @@ class FreePoolRouteController:
         if self.manager is None:
             return self.module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
         try:
-            return self.module.jsonify(ok=True, proxies=self.manager.proxies.public())
+            payload = self.manager.proxies.public()
+            breaker = getattr(self.manager, "proxy_breaker", None)
+            if breaker is not None:
+                state = breaker.state()
+                payload["breaker"] = {
+                    "tripped": bool(state.tripped),
+                    "recent_distinct_burns": int(state.recent_distinct_burns),
+                    "threshold": int(state.threshold),
+                    "window_seconds": int(state.window_seconds),
+                }
+            return self.module.jsonify(ok=True, proxies=payload)
         except Exception as exc:
             return self.failure_response(
                 exc,
@@ -403,6 +413,55 @@ class FreePoolRouteController:
                 default_label="读取 Free 代理池",
                 status=503,
             )
+
+    def proxy_breaker_reset(self):
+        if self.manager is None:
+            return self.module.jsonify(ok=False, error="Free 注册服务尚未初始化"), 503
+        conflict = self.mutation_conflict("重置 Free 代理池熔断")
+        if conflict is not None:
+            return conflict
+        self.request_lock.acquire()
+        try:
+            breaker = getattr(self.manager, "proxy_breaker", None)
+            if breaker is None:
+                raise ValueError("当前 Free 管理器不支持挑战熔断")
+            breaker.reset()
+            try:
+                self.manager._log(
+                    "[free-proxy/重置代理池熔断/free_proxy_breaker_reset] 操作员已人工确认并重置挑战熔断",
+                    "info",
+                    node_code="free_proxy_breaker_reset",
+                    node_label="重置代理池熔断",
+                    failure={
+                        "error_code": "free_proxy_breaker_reset",
+                        "technical_summary": "操作员人工确认后重置代理池挑战熔断",
+                        "retryable": False,
+                        "action_hint": "熔断已解除；若挑战再次批量出现请重新评估代理来源",
+                    },
+                )
+            except Exception:
+                # The reset itself succeeded; audit logging must not fail the
+                # operator request.
+                pass
+            state = breaker.state()
+            return self.module.jsonify(
+                ok=True,
+                breaker={
+                    "tripped": bool(state.tripped),
+                    "recent_distinct_burns": int(state.recent_distinct_burns),
+                    "threshold": int(state.threshold),
+                    "window_seconds": int(state.window_seconds),
+                },
+            )
+        except Exception as exc:
+            return self.failure_response(
+                exc,
+                default_code="free_proxy_breaker_reset",
+                default_label="重置 Free 代理池熔断",
+                status=400,
+            )
+        finally:
+            self.request_lock.release()
 
     def proxy_group(self):
         if self.manager is None:
@@ -722,6 +781,7 @@ class FreePoolRouteController:
             ("/api/free/proxies/import", "api_free_proxy_import", self.proxy_import, ["POST"]),
             ("/api/free/proxies/preflight", "api_free_proxy_preflight", self.proxy_preflight, ["POST"]),
             ("/api/free/proxies", "api_free_proxies", self.proxies, ["GET"]),
+            ("/api/free/proxies/breaker/reset", "api_free_proxy_breaker_reset", self.proxy_breaker_reset, ["POST"]),
             ("/api/free/proxies/group", "api_free_proxy_group", self.proxy_group, ["POST"]),
             ("/api/free/proxies/group/delete", "api_free_proxy_group_delete", self.proxy_group_delete, ["POST"]),
             ("/api/free/secrets", "api_free_secret", self.secret, ["POST"]),

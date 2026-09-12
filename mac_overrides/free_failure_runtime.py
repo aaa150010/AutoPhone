@@ -607,6 +607,8 @@ _ACTION_HINTS = {
     "free_twofa_activate": "保留已注册账号和 Token，稍后重试 2FA",
     "free_password_mfa_required": "确认账号已保存 TOTP 后重试密码设置",
     "free_password_mfa_validate": "确认 2FA 时间同步后重试密码设置",
+    "free_proxy_replacement_mint_failed": "检查隧道网关、账号模板与代理池存储后重试",
+    "free_proxy_breaker_tripped": "多为站点整体收紧或供应商子段被拉黑；请人工确认后重置熔断再恢复任务",
 }
 
 FAILURE_KEYS = (

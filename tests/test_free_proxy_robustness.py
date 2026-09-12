@@ -280,7 +280,7 @@ class FreeProxyRobustnessTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertEqual(pool.public()["rows"][0]["probe_successes"], 1)
 
-    def test_stale_refresh_challenge_is_not_quarantined(self) -> None:
+    def test_stale_refresh_challenge_burns_candidate_without_quarantine(self) -> None:
         pool = FreeProxyPool(self.data_dir, failure_threshold=1, health_probe_ttl_seconds=1)
         pool.import_text("http://proxy.example.test:8000\n")
         proxy_id = pool.public()["rows"][0]["proxy_id"]
@@ -310,7 +310,41 @@ class FreeProxyRobustnessTests(unittest.TestCase):
         row = pool.public()["rows"][0]
         self.assertEqual(row["proxy_id"], proxy_id)
         self.assertEqual(row["consecutive_failures"], 0)
+        # A challenged exit is retired permanently (challenge_burned), which
+        # is distinct from transport quarantine and never auto-expires.
+        self.assertEqual(row["status"], "burned")
         self.assertNotEqual(row["status"], "quarantined")
+        self.assertFalse(row["eligible"])
+
+    def test_stale_refresh_challenge_burns_candidate_and_continues(self) -> None:
+        pool = FreeProxyPool(self.data_dir, health_probe_ttl_seconds=300)
+        pool.import_text("http://stale-a.test:8000\nhttp://fresh-b.test:8000\n")
+
+        def probe(proxy: str, _target: str) -> str:
+            if "stale-a" in proxy:
+                raise FreeRegisterError(
+                    "free_proxy_preflight",
+                    "Free 代理预检",
+                    "ChatGPT 代理预检返回安全挑战页面",
+                    provider_status=403,
+                    retryable=False,
+                    error_code="free_proxy_chatgpt_security_challenge",
+                    page_type="security_challenge",
+                )
+            return "203.0.113.70"
+
+        bindings = pool.bind(
+            2,
+            probe=probe,
+            probe_url="https://chatgpt.com/",
+            perform_probe=False,
+            health_probe_ttl_seconds=300,
+        )
+        self.assertEqual(len(bindings), 2)
+        statuses = {row["host"]: row["status"] for row in pool.entries()}
+        self.assertEqual(statuses["stale-a.test"], "burned")
+        self.assertNotEqual(statuses["fresh-b.test"], "burned")
+        self.assertEqual(pool.healthy_count(), 1)
 
     def test_chatgpt_probe_is_recorded_when_explicitly_requested(self) -> None:
         pool = FreeProxyPool(self.data_dir)

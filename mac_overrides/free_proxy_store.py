@@ -76,9 +76,9 @@ except ImportError:
     from free_proxy_numeric import safe_float as _safe_float, safe_int as _safe_int  # type: ignore[no-redef]
 
 try:
-    from .free_proxy_health import is_proxy_health_failure
+    from .free_proxy_health import is_proxy_health_failure, is_security_challenge_failure
 except ImportError:
-    from free_proxy_health import is_proxy_health_failure  # type: ignore[no-redef]
+    from free_proxy_health import is_proxy_health_failure, is_security_challenge_failure  # type: ignore[no-redef]
 
 
 PROXY_STATUSES = frozenset({"unknown", "available", "quarantined", "burned"})
@@ -941,6 +941,11 @@ class FreeProxyPool(FreeProxyStoreHealthMixin):
                             message=proxy_error_detail(exc),
                             http_status=probe_http_statuses.get(str(record.get("proxy_id") or "")),
                         )
+                    elif is_security_challenge_failure(health_error):
+                        # A challenged candidate retires permanently and is
+                        # skipped exactly like a failed transport candidate;
+                        # binding continues with the next healthy row.
+                        self.record_challenge_burn(str(record.get("proxy_id") or ""))
             # Shared healthy_random allocation intentionally permits a
             # single healthy proxy to serve multiple concurrent tasks.
             # Once one stale candidate has passed its bounded refresh,

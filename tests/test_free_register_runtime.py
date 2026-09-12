@@ -2141,6 +2141,75 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertEqual(persisted_statuses, ["running"])
         self.assertIsNone(manager._executor)
 
+    def test_challenge_failure_burns_exit_and_counts_breaker(self):
+        FreeMailboxPool(self.data_dir).import_text(
+            "burn@example.test----https://mail.example.test/burn\n"
+        )
+        FreeProxyPool(self.data_dir).import_text("http://proxy-burn.test:8000\n")
+
+        def runner(_task, _config, _stop, _stage, _log, **_kwargs):
+            raise FreeRegisterError(
+                "free_oauth_security_challenge",
+                "等待 Free OAuth 安全验证",
+                "注册流程返回安全挑战页面",
+                retryable=False,
+                error_code="free_oauth_security_challenge",
+                page_type="security_challenge",
+            )
+
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=runner,
+            proxy_probe=lambda _proxy, _url: "203.0.113.60",
+        )
+        manager.start({"target_count": 1})
+        deadline = time.time() + 3
+        while manager._executor is not None and time.time() < deadline:
+            time.sleep(0.01)
+
+        row = manager.proxies.public()["rows"][0]
+        self.assertEqual(row["status"], "burned")
+        self.assertEqual(row["effective_status"], "burned")
+        self.assertFalse(row["eligible"])
+        self.assertEqual(manager.proxies.healthy_count(), 0)
+        state = manager.proxy_breaker.state()
+        self.assertEqual(state.recent_distinct_burns, 1)
+        self.assertFalse(state.tripped)
+
+    def test_third_distinct_challenge_burn_trips_pool_breaker(self):
+        manager = FreeRegisterManager(self.data_dir)
+        manager.proxies.import_text("a.test:8000\nb.test:8000\nc.test:8000\n")
+        rows = manager.proxies.entries()
+        manager.proxy_breaker.record_burn(str(rows[0]["proxy_id"]))
+        manager.proxy_breaker.record_burn(str(rows[1]["proxy_id"]))
+        tripped = manager._handle_challenge_failure(
+            {"task_id": "t-challenge", "proxy_id": str(rows[2]["proxy_id"]), "proxy_masked": "masked-c"},
+            "t-challenge",
+            FreeRegisterError(
+                "free_oauth_security_challenge",
+                "等待 Free OAuth 安全验证",
+                "注册流程返回安全挑战页面",
+                retryable=False,
+                error_code="free_oauth_security_challenge",
+                page_type="security_challenge",
+            ),
+        )
+        self.assertTrue(tripped)
+        self.assertTrue(manager.proxy_breaker.tripped())
+        self.assertEqual(manager.proxies.public()["rows"][2]["status"], "burned")
+
+    def test_tripped_breaker_blocks_batch_start(self):
+        manager = FreeRegisterManager(self.data_dir)
+        manager.proxies.import_text("a.test:8000\nb.test:8000\nc.test:8000\n")
+        for row in manager.proxies.entries():
+            manager.proxy_breaker.record_burn(str(row["proxy_id"]))
+        self.assertTrue(manager.proxy_breaker.tripped())
+
+        with self.assertRaises(FreeRegisterError) as raised:
+            manager.start({"target_count": 1})
+
+        self.assertEqual(raised.exception.error_code, "free_proxy_breaker_tripped")
+
     def test_safe_task_store_failure_creates_taskless_diagnostic(self):
         diagnostic_store = DiagnosticStore(self.data_dir / "diagnostics")
         manager = FreeRegisterManager(self.data_dir, diagnostic_store=diagnostic_store)

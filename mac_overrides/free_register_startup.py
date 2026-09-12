@@ -299,6 +299,17 @@ class FreeRegisterStartupMixin:
         the running check and mailbox/proxy reservation allowed two concurrent
         start requests to both pass the check.
         """
+        # A tripped challenge breaker blocks the batch before any ownership,
+        # reservation or pool mutation; reset requires operator confirmation.
+        if self.proxy_breaker.tripped():
+            raise FreeRegisterError(
+                "free_proxy_breaker_tripped",
+                "Free 代理池熔断",
+                "短时间内多个出口连续触发安全挑战，已暂停批量启动；请人工确认后重置熔断",
+                retryable=False,
+                error_code="free_proxy_breaker_tripped",
+                action_hint="多为站点整体收紧或供应商子段被拉黑；请人工确认后重置熔断再恢复任务",
+            )
         # Establish process ownership before protocol/Camoufox preflight or
         # any pool mutation.  A second Flask/LaunchAgent instance therefore
         # fails cleanly without touching the old worker's rows.
@@ -415,6 +426,9 @@ class FreeRegisterStartupMixin:
                 socks5_dns_mode=str(config.get("proxy_socks5_dns_mode") or "remote"),
                 allocation_mode="healthy_random",
             )
+            # Refill from the credential-tunnel template before binding so a
+            # shrunken pool mints back up to target (no-op without a template).
+            self._ensure_tunnel_target()
             bindings = self.proxies.bind(
                 target_count,
                 probe=self.proxy_probe,

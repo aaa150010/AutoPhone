@@ -44,7 +44,9 @@ try:
         sanitize_public_timing,
     )
     from .free_mailbox_otp import MailboxUrlOtpProvider
-    from .free_proxy_health import is_proxy_health_failure
+    from .free_proxy_health import is_proxy_health_failure, is_security_challenge_failure
+    from .free_proxy_breaker import ChallengeBreaker
+    from .free_proxy_tunnel import ensure_target, resolve_target_size, template_from_config
     from .free_register_common import (
         FREE_STAGE_LABELS,
         FIXED_PASSWORD,
@@ -116,7 +118,9 @@ except ImportError:  # pragma: no cover - top-level recovery import
         sanitize_public_timing,
     )
     from free_mailbox_otp import MailboxUrlOtpProvider  # type: ignore[no-redef]
-    from free_proxy_health import is_proxy_health_failure  # type: ignore[no-redef]
+    from free_proxy_health import is_proxy_health_failure, is_security_challenge_failure  # type: ignore[no-redef]
+    from free_proxy_breaker import ChallengeBreaker  # type: ignore[no-redef]
+    from free_proxy_tunnel import ensure_target, resolve_target_size, template_from_config  # type: ignore[no-redef]
     from free_register_common import (  # type: ignore[no-redef]
         FREE_STAGE_LABELS, FIXED_PASSWORD, FreeMailbox, FreeRegisterError, FreeTwoFaPending,
         ProxyBinding, TERMINAL_STATUSES,
@@ -232,6 +236,9 @@ class FreeRegisterManager(
         self._custom_runner = runner is not None
         self.proxy_probe = proxy_probe
         self.proxy_chatgpt_probe = proxy_chatgpt_probe
+        # Pool-level challenge circuit breaker: in-memory by design, a restart
+        # clears it while the diagnostic timeline keeps the audit record.
+        self.proxy_breaker = ChallengeBreaker()
         self.manual_broker = manual_broker
         self.config_provider = config_provider
         self._free_notification = FreeBatchNotificationAdapter(notification_config_getter) if callable(notification_config_getter) else None
@@ -695,6 +702,15 @@ class FreeRegisterManager(
         executor = self._executor
         if executor is None:
             raise RuntimeError("Free executor is not available")
+        if self.proxy_breaker.tripped():
+            raise FreeRegisterError(
+                "free_proxy_breaker_tripped",
+                "Free 代理池熔断",
+                "短时间内多个出口连续触发安全挑战，已暂停新任务入队；请人工确认后重置熔断",
+                retryable=False,
+                error_code="free_proxy_breaker_tripped",
+                action_hint="多为站点整体收紧或供应商子段被拉黑；请人工确认后重置熔断再恢复任务",
+            )
         gate = threading.Event()
         future = executor.submit(
             self._run_after_submission_gate,
@@ -1583,6 +1599,112 @@ class FreeRegisterManager(
                     workflow="cleanup",
                 )
 
+    def _handle_challenge_failure(self, snapshot: Mapping[str, Any], task_id: str, exc: BaseException) -> bool:
+        """Retire the challenged exit, feed the breaker and refill the pool.
+
+        Challenge evidence never flows through the transport quarantine path;
+        this is a separate, permanent exit retirement.  Returns True when this
+        burn tripped the pool-level challenge breaker.
+        """
+        proxy_id = str(snapshot.get("proxy_id") or "")
+        masked = str(snapshot.get("proxy_masked") or snapshot.get("proxy") or "")
+        error_code = str(getattr(exc, "error_code", "") or "security_challenge")
+        if proxy_id:
+            try:
+                self.proxies.record_challenge_burn(proxy_id)
+            except Exception as burn_error:
+                # Pool bookkeeping must not mask the original task failure.
+                self._log(
+                    f"[{task_id}/安全挑战废弃出口/free_proxy_challenge_burn] "
+                    f"出口废弃状态保存失败（{type(burn_error).__name__}）",
+                    "warn",
+                    task_id=task_id,
+                    node_code="free_proxy_challenge_burn",
+                    node_label="安全挑战废弃出口",
+                    outcome="cleanup_failed",
+                    failure={
+                        "error_code": "free_proxy_challenge_burn_write_failed",
+                        "technical_summary": f"出口废弃状态保存失败（{type(burn_error).__name__}）",
+                        "retryable": True,
+                        "action_hint": "检查 Free 代理池存储状态；本次任务失败原因不受影响。",
+                    },
+                    workflow="cleanup",
+                )
+        state = self.proxy_breaker.record_burn(proxy_id)
+        self._log(
+            f"[{task_id}/安全挑战废弃出口/free_proxy_challenge_burn] "
+            f"出口 {masked} 触发安全挑战，已废弃并退出分配（窗口内 {state.recent_distinct_burns}/{state.threshold}）",
+            "warn",
+            task_id=task_id,
+            node_code="free_proxy_challenge_burn",
+            node_label="安全挑战废弃出口",
+            failure={
+                "error_code": error_code,
+                "technical_summary": "任务触发安全挑战页，触发出口已标记 challenge_burned 并退出分配",
+                "retryable": False,
+                "action_hint": "系统已自动替换可再生的隧道出口；若批量触发熔断请人工确认后重置",
+            },
+        )
+        if state.tripped:
+            self._log(
+                "[free-proxy/代理池挑战熔断/free_proxy_breaker_tripped] "
+                f"{state.window_seconds // 60} 分钟内 {state.recent_distinct_burns} 个不同出口连续触发安全挑战，代理池已熔断",
+                "error",
+                node_code="free_proxy_breaker_tripped",
+                node_label="代理池挑战熔断",
+                failure={
+                    "error_code": "free_proxy_breaker_tripped",
+                    "technical_summary": "短时间内多个不同出口触发安全挑战，已暂停替补铸造与挑战换线",
+                    "retryable": False,
+                    "action_hint": "多为站点整体收紧或供应商子段被拉黑；请人工确认后重置熔断再恢复任务",
+                },
+            )
+            return True
+        self._ensure_tunnel_target()
+        return False
+
+    def _ensure_tunnel_target(self) -> int:
+        """Mint tunnel-session rows until the dispatchable pool hits target."""
+        config = self._last_config if isinstance(self._last_config, Mapping) else {}
+        template = template_from_config(config)
+        if template is None:
+            return 0
+        target = resolve_target_size(config)
+        if target <= 0:
+            return 0
+        try:
+            minted = ensure_target(self.proxies, template, target=target)
+        except Exception as exc:
+            self._log(
+                f"[free-proxy/隧道替补铸造失败/free_proxy_replacement_mint_failed] "
+                f"替补铸造失败（{type(exc).__name__}）",
+                "warn",
+                node_code="free_proxy_replacement_mint_failed",
+                node_label="隧道替补铸造失败",
+                failure={
+                    "error_code": "free_proxy_replacement_mint_failed",
+                    "technical_summary": f"隧道替补铸造失败（{type(exc).__name__}）",
+                    "retryable": True,
+                    "action_hint": "检查隧道网关、账号模板与代理池存储后重试",
+                },
+                workflow="cleanup",
+            )
+            return 0
+        if minted:
+            self._log(
+                f"[free-proxy/隧道替补铸造/free_proxy_replacement_mint] 已铸造 {minted} 个新会话出口补齐代理池目标",
+                "info",
+                node_code="free_proxy_replacement_mint",
+                node_label="隧道替补铸造",
+                failure={
+                    "error_code": "free_proxy_replacement_mint",
+                    "technical_summary": f"按隧道凭据模板铸造 {minted} 个新会话出口",
+                    "retryable": False,
+                    "action_hint": "新出口将在首次使用时进入保鲜窗口并按目标规模维护",
+                },
+            )
+        return minted
+
     @classmethod
     def _can_reuse_mailbox_after_failure(
         cls,
@@ -1864,6 +1986,12 @@ class FreeRegisterManager(
                     error_node = str(getattr(exc, "node_code", ""))
                     failed_proxy_id = str(snapshot.get("proxy_id") or "")
                     network_failure = is_proxy_health_failure(exc)
+                    # A target-site security challenge retires the exit
+                    # immediately and permanently, whether or not this task
+                    # is allowed to switch proxies afterwards.
+                    challenge_failure = is_security_challenge_failure(exc)
+                    if challenge_failure:
+                        self._handle_challenge_failure(snapshot, task_id, exc)
                     # OAuth bootstrap and the first email-identification POST
                     # are both route-level protocol nodes.  HTML login/error
                     # envelopes from either node may be retried on another

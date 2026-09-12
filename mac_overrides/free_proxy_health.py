@@ -102,6 +102,24 @@ _NETWORK_TEXT_MARKERS = (
 )
 _HTTP_STATUS_RE = re.compile(r"\bHTTP\s+([1-5]\d{2})\b", re.IGNORECASE)
 
+# Target-site challenge failures retire the exit permanently via the pool's
+# challenge-burn path; they are deliberately NOT proxy-health evidence and
+# must never flow through ``record_failure``/quarantine.
+_SECURITY_CHALLENGE_ERROR_CODES = frozenset({
+    "free_oauth_security_challenge",
+    "free_camoufox_security_challenge",
+    "free_proxy_chatgpt_security_challenge",
+})
+
+
+def is_security_challenge_failure(error: BaseException | None) -> bool:
+    """Return true only for explicit target-site security challenge failures."""
+    if error is None:
+        return False
+    if str(getattr(error, "page_type", "") or "").strip() == "security_challenge":
+        return True
+    return str(getattr(error, "error_code", "") or "").strip() in _SECURITY_CHALLENGE_ERROR_CODES
+
 
 def _exception_chain(error: BaseException):
     current: BaseException | None = error
@@ -181,4 +199,4 @@ def is_proxy_health_failure(error: BaseException) -> bool:
     return any(marker in combined for marker in _NETWORK_TEXT_MARKERS)
 
 
-__all__ = ["is_proxy_health_failure"]
+__all__ = ["is_proxy_health_failure", "is_security_challenge_failure"]
