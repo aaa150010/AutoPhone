@@ -23,6 +23,26 @@ class ErrorObservabilityTests(unittest.TestCase):
     def test_existing_free_login_password_has_a_public_diagnostic_label(self):
         self.assertEqual(NODE_LABELS["free_existing_login_password"], "验证已有 Free 账号密码")
 
+    def test_challenge_pool_governance_nodes_have_public_labels(self):
+        from mac_overrides.free_failure_runtime import _ACTION_HINTS
+        from mac_overrides.free_register_common import FREE_STAGE_LABELS
+
+        labels = {
+            "free_proxy_challenge_burn": "安全挑战废弃出口",
+            "free_proxy_replacement_mint": "隧道替补铸造",
+            "free_proxy_replacement_mint_failed": "隧道替补铸造失败",
+            "free_proxy_breaker_tripped": "代理池挑战熔断",
+            "free_proxy_breaker_reset": "重置代理池熔断",
+            "free_task_challenge_switch": "安全挑战换出口重试",
+        }
+        for node_code, label in labels.items():
+            with self.subTest(node_code=node_code):
+                self.assertEqual(NODE_LABELS[node_code], label)
+                self.assertEqual(FREE_STAGE_LABELS[node_code], label)
+        # Failure nodes carry an actionable Chinese hint in the failure layer.
+        self.assertIn("检查隧道网关、账号模板与代理池存储后重试", _ACTION_HINTS["free_proxy_replacement_mint_failed"])
+        self.assertIn("人工确认后重置熔断", _ACTION_HINTS["free_proxy_breaker_tripped"])
+
     def test_plan_relogin_failure_has_a_public_diagnostic_label(self):
         self.assertEqual(NODE_LABELS["free_plan_relogin"], "重查套餐重新登录")
 

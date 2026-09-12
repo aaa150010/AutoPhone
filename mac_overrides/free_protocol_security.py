@@ -30,8 +30,9 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 # An unresolved challenge usually either clears within tens of seconds or not
 # at all; the capped wait keeps failing tasks from occupying the proxy longer
 # than the natural-clear window. Callers reclassify the outcome as
-# proxy-retryable and recover faster by switching proxy.
-SECURITY_CHALLENGE_WAIT_SECONDS = 30.0
+# proxy-retryable and recover faster by switching proxy. The ceiling matches
+# the persisted ``protocol.security_challenge_wait_seconds`` upper bound (60).
+SECURITY_CHALLENGE_WAIT_SECONDS = 60.0
 SECURITY_CHALLENGE_POLL_SECONDS = 2.0
 
 _CHALLENGE_MARKERS = (

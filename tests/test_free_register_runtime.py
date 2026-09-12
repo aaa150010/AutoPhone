@@ -2210,6 +2210,96 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
 
         self.assertEqual(raised.exception.error_code, "free_proxy_breaker_tripped")
 
+    def test_pre_submit_challenge_switches_proxy_with_own_budget(self):
+        FreeMailboxPool(self.data_dir).import_text(
+            "switch@example.test----https://mail.example.test/switch\n"
+        )
+        FreeProxyPool(self.data_dir).import_text(
+            "http://p1.test:8000\nhttp://p2.test:8000\nhttp://p3.test:8000\n"
+        )
+        seen_proxies = []
+        challenge_count = {"n": 0}
+
+        def runner(task, _config, _stop, _stage, _log, **_kwargs):
+            seen_proxies.append(str(task.get("proxy_id") or ""))
+            challenge_count["n"] += 1
+            raise FreeRegisterError(
+                "free_oauth_security_challenge",
+                "等待 Free OAuth 安全验证",
+                "注册流程返回安全挑战页面",
+                retryable=False,
+                error_code="free_oauth_security_challenge",
+                page_type="security_challenge",
+            )
+
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=runner,
+            proxy_probe=lambda _proxy, _url: "203.0.113.80",
+        )
+        manager.start({"target_count": 1, "proxy_challenge_switch_limit": 2})
+        deadline = time.time() + 5
+        while manager._executor is not None and time.time() < deadline:
+            time.sleep(0.01)
+
+        # Initial attempt plus two same-mailbox challenge switches; the third
+        # challenge exhausts the independent budget and the task stops.
+        self.assertEqual(challenge_count["n"], 3)
+        self.assertEqual(len(set(seen_proxies)), 3)
+        burned = [row for row in manager.proxies.public()["rows"] if row["status"] == "burned"]
+        self.assertEqual(len(burned), 3)
+        state = manager.proxy_breaker.state()
+        self.assertEqual(state.recent_distinct_burns, 3)
+        self.assertTrue(state.tripped)
+        task = next(iter(manager.task_store.load().values()))
+        switches = [
+            item for item in (task.get("proxy_attempts") or [])
+            if item.get("challenge_switch")
+        ]
+        self.assertEqual(len(switches), 2)
+        self.assertTrue(all(item.get("switched") for item in switches))
+
+    def test_post_submit_challenge_stops_without_switching(self):
+        FreeMailboxPool(self.data_dir).import_text(
+            "confirmed@example.test----https://mail.example.test/confirmed\n"
+        )
+        FreeProxyPool(self.data_dir).import_text("http://p1.test:8000\nhttp://p2.test:8000\n")
+        runner_calls = {"n": 0}
+
+        def runner(_task, _config, _stop, _stage, _log, **_kwargs):
+            runner_calls["n"] += 1
+            raise FreeRegisterError(
+                "free_oauth_security_challenge",
+                "等待 Free OAuth 安全验证",
+                "注册流程返回安全挑战页面",
+                retryable=False,
+                error_code="free_oauth_security_challenge",
+                page_type="security_challenge",
+            )
+
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=runner,
+            proxy_probe=lambda _proxy, _url: "203.0.113.90",
+        )
+        with patch.object(manager, "_mailbox_confirmed", return_value=True):
+            manager.start({"target_count": 1})
+            deadline = time.time() + 5
+            while manager._executor is not None and time.time() < deadline:
+                time.sleep(0.01)
+
+        # The durable mailbox confirmation marks the submit boundary: the
+        # challenged exit still burns, but no same-mailbox replay happens.
+        self.assertEqual(runner_calls["n"], 1)
+        burned = [row for row in manager.proxies.public()["rows"] if row["status"] == "burned"]
+        self.assertEqual(len(burned), 1)
+        task = next(iter(manager.task_store.load().values()))
+        switches = [
+            item for item in (task.get("proxy_attempts") or [])
+            if item.get("challenge_switch")
+        ]
+        self.assertEqual(switches, [])
+
     def test_safe_task_store_failure_creates_taskless_diagnostic(self):
         diagnostic_store = DiagnosticStore(self.data_dir / "diagnostics")
         manager = FreeRegisterManager(self.data_dir, diagnostic_store=diagnostic_store)

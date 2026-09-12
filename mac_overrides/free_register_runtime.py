@@ -1969,6 +1969,11 @@ class FreeRegisterManager(
             self._assert_batch_proxy_uniqueness(snapshot)
             runner = self._runner_for(task_config)
             attempt = 0
+            challenge_switch_limit = max(
+                0,
+                min(6, int(task_config["proxy_challenge_switch_limit"]) if "proxy_challenge_switch_limit" in task_config else 3),
+            )
+            challenge_switches = 0
             while True:
                 try:
                     runner_kwargs: dict[str, Any] = {}
@@ -1992,6 +1997,45 @@ class FreeRegisterManager(
                     challenge_failure = is_security_challenge_failure(exc)
                     if challenge_failure:
                         self._handle_challenge_failure(snapshot, task_id, exc)
+                        # Same-mailbox proxy switch on a pre-submit challenge:
+                        # a fresh exit plus a fresh session recovers the task
+                        # without replaying any submitted email.  The budget is
+                        # independent of the transport retry counter, and a
+                        # tripped pool breaker falls back to stop.
+                        if (
+                            self._stop.is_set()
+                            or self._mailbox_confirmed(snapshot)
+                            or challenge_switches >= challenge_switch_limit
+                            or self.proxy_breaker.tripped()
+                        ):
+                            raise
+                        challenge_switches += 1
+                        switched = self._switch_pre_profile_proxy(snapshot, task_config)
+                        with self._lock:
+                            current = self._tasks.get(task_id)
+                            if current is not None:
+                                current.setdefault("proxy_attempts", []).append({
+                                    "proxy_id": failed_proxy_id,
+                                    "stage": exc.node_code,
+                                    "error_code": str(getattr(exc, "error_code", "") or ""),
+                                    "retryable": False,
+                                    "challenge_switch": True,
+                                    "attempt": challenge_switches,
+                                    "switched": switched,
+                                    "at": int(time.time()),
+                                })
+                                self._mark_task_dirty(task_id)
+                                self._save_tasks_safely("记录挑战换线", only_dirty=True)
+                        if not switched:
+                            # No healthy replacement exists: keep the original
+                            # challenge failure instead of replaying blindly.
+                            raise
+                        self._log(
+                            f"[{task_id}/安全挑战换出口重试/free_task_challenge_switch] "
+                            f"触发安全挑战，同邮箱切换新出口重试（第 {challenge_switches}/{challenge_switch_limit} 次）",
+                            "warn",
+                        )
+                        continue
                     # OAuth bootstrap and the first email-identification POST
                     # are both route-level protocol nodes.  HTML login/error
                     # envelopes from either node may be retried on another

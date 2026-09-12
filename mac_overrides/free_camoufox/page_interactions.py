@@ -632,7 +632,7 @@ async def _is_cloudflare_challenge(host, page: Any) -> bool:
     ))
 
 
-async def _wait_challenge_then_stop(host, page: Any, *, timeout: float = 30.0) -> None:
+async def _wait_challenge_then_stop(host, page: Any, *, timeout: float = 60.0) -> None:
     """Wait briefly for a challenge to clear, then stop without bypassing it."""
     if not await host._is_cloudflare_challenge(page):
         return

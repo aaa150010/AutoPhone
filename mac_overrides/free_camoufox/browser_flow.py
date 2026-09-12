@@ -1265,7 +1265,7 @@ async def _browser_flow(
                         page, timeout=5.0, poll_interval=0.25,
                     )
                     if recovered_state == "security":
-                        await host._wait_challenge_then_stop(page, timeout=30)
+                        await host._wait_challenge_then_stop(page, timeout=60)
                         recovered_state = await host._page_state(page)
                     if recovered_state not in host._POST_ENTRY_AUTH_STATES:
                         error_text = await host._auth_error_text(page)
@@ -1366,7 +1366,7 @@ async def _browser_flow(
                 safe_page=host._safe_url(page), page_type=state,
             )
         if state == "security":
-            await host._wait_challenge_then_stop(page, timeout=30)
+            await host._wait_challenge_then_stop(page, timeout=60)
         if state == "home":
             if plan_recheck:
                 return await _finish_plan_recheck_flow(
