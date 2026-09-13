@@ -75,6 +75,25 @@ except ImportError:  # macOS launcher imports overrides as top-level modules.
 
 
 
+# Task id namespaces map 1:1 to their diagnostic workflow. Register ids are
+# ``free-{timestamp}-{hex}-{ordinal}``, so the ``free-live-`` / ``free-plan-``
+# prefixes can never collide with them; ``rebind-*`` ids stay unreachable from
+# the run-log endpoint on purpose.
+_TASK_LOG_WORKFLOWS: tuple[tuple[str, str], ...] = (
+    ("free-live-", "live_check"),
+    ("free-plan-", "plan_check"),
+)
+
+
+def task_log_workflow(task_id: str) -> str:
+    """Return the diagnostic workflow scope that owns ``task_id``."""
+    normalized = str(task_id or "").strip()
+    for prefix, workflow in _TASK_LOG_WORKFLOWS:
+        if normalized.startswith(prefix):
+            return workflow
+    return "register"
+
+
 def _runtime_module() -> Any:
     """Resolve the composing runtime module lazily.
 
@@ -954,18 +973,20 @@ class FreeRegisterProjectionMixin:
         return {}
 
     def public_logs(self, task_id: str = "") -> list[dict[str, Any]]:
+        normalized = str(task_id or "").strip()
+        workflow = task_log_workflow(normalized)
         driver = ""
-        if task_id:
+        if normalized:
             with self._lock:
-                task = self._tasks.get(str(task_id))
+                task = self._tasks.get(normalized)
             if isinstance(task, Mapping):
                 driver = sanitize_public_identifier(task.get("driver"), limit=40).lower()
         try:
-            return self.log_store.snapshot(task_id, workflow="register", driver=driver)
+            return self.log_store.snapshot(normalized, workflow=workflow, driver=driver)
         except TypeError:
             # Third-party compatibility facades may still expose the legacy
             # one-argument snapshot signature.
-            return self.log_store.snapshot(task_id)
+            return self.log_store.snapshot(normalized)
 
     def delete_tasks(self, task_ids: Sequence[str]) -> int:
         selected = {str(task_id or "").strip() for task_id in task_ids}
