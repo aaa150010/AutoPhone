@@ -856,15 +856,15 @@ onMounted(async () => {
                   </el-tooltip>
                 </template>
                 <div v-else-if="row.plan" class="failure-cell">
-                  <el-tooltip placement="top" :disabled="!freeFailureDetails(row.plan?.failure).length" :show-after="250">
+                  <el-tooltip v-if="row.plan?.failure" placement="top" :disabled="!freeFailureDetails(row.plan?.failure).length" :show-after="250">
                     <template #content><div class="failure-tooltip"><span v-for="item in freeFailureDetails(row.plan?.failure)" :key="item">{{ item }}</span></div></template>
-                    <span class="failure-summary"><strong v-if="row.plan?.failure?.node_label || row.plan?.failure?.node_code">{{ row.plan?.failure?.node_label || row.plan?.failure?.node_code }}</strong><span>{{ row.plan?.failure?.public_message || row.plan?.failure?.technical_summary || '套餐查询未产生错误详情' }}</span></span>
+                    <span class="failure-summary"><strong v-if="row.plan?.failure?.node_label || row.plan?.failure?.node_code">{{ row.plan?.failure?.node_label || row.plan?.failure?.node_code }}</strong><span v-if="row.plan?.failure?.public_message || row.plan?.failure?.technical_summary">{{ row.plan?.failure?.public_message || row.plan?.failure?.technical_summary }}</span></span>
                   </el-tooltip>
                 </div>
                 <div v-else class="failure-cell">
-                  <el-tooltip placement="top" :disabled="!freeFailureDetails(row.job?.failure).length" :show-after="250">
+                  <el-tooltip v-if="row.job?.failure" placement="top" :disabled="!freeFailureDetails(row.job?.failure).length" :show-after="250">
                     <template #content><div class="failure-tooltip"><span v-for="item in freeFailureDetails(row.job?.failure)" :key="item">{{ item }}</span></div></template>
-                    <span class="failure-summary"><strong v-if="row.job?.failure?.node_label || row.job?.failure?.node_code">{{ row.job?.failure?.node_label || row.job?.failure?.node_code }}</strong><span>{{ row.job?.failure?.public_message || row.job?.failure?.technical_summary || '测活未产生错误详情' }}</span></span>
+                    <span class="failure-summary"><strong v-if="row.job?.failure?.node_label || row.job?.failure?.node_code">{{ row.job?.failure?.node_label || row.job?.failure?.node_code }}</strong><span v-if="row.job?.failure?.public_message || row.job?.failure?.technical_summary">{{ row.job?.failure?.public_message || row.job?.failure?.technical_summary }}</span></span>
                   </el-tooltip>
                 </div>
               </template>
