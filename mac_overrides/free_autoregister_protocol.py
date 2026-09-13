@@ -16,9 +16,11 @@ from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 try:
+    from .free_protocol_authorize_retry import authorize_403_same_session_retry
     from .free_protocol_diagnostics import response_detail, response_status
     from .free_register_common import FreeRegisterError, safe_log_message
 except ImportError:  # pragma: no cover
+    from free_protocol_authorize_retry import authorize_403_same_session_retry  # type: ignore[no-redef]
     from free_protocol_diagnostics import response_detail, response_status  # type: ignore[no-redef]
     from free_register_common import FreeRegisterError, safe_log_message  # type: ignore[no-redef]
 
@@ -193,7 +195,14 @@ def _timed(monotonic_fn, callback, stage_code: str, code: str, outcome: str = "s
         _note_stderr("L192", exc)
 
 
-def _run_reference_chatgpt_prelude(transport: Any, email: str, *, config: Mapping[str, Any] | None = None) -> Mapping[str, Any]:
+def _run_reference_chatgpt_prelude(
+    transport: Any,
+    email: str,
+    *,
+    config: Mapping[str, Any] | None = None,
+    log: Callable[..., Any] | None = None,
+    stop_requested: Callable[[], bool] | None = None,
+) -> Mapping[str, Any]:
     """Run AutoRegister's exact NextAuth prelude for the recovered transport."""
     session = getattr(transport, "session", None)
     json_get = getattr(transport, "_chatgpt_json_get", None)
@@ -268,16 +277,25 @@ def _run_reference_chatgpt_prelude(transport: Any, email: str, *, config: Mappin
         "sec-fetch-dest": "document",
     }
     authorize_started = time.monotonic()
-    final_response = session.get(
-        authorize_url,
-        headers=navigate_headers,
-        allow_redirects=True,
-        timeout=45,
+
+    def _navigate_authorize() -> dict[str, Any]:
+        final_response = session.get(
+            authorize_url,
+            headers=navigate_headers,
+            allow_redirects=True,
+            timeout=45,
+        )
+        result = _annotate_page_response(transport, _json_response(transport, final_response))
+        result["url"] = str(getattr(final_response, "url", "") or authorize_url)
+        result.setdefault("_url", result["url"])
+        return result
+
+    result = authorize_403_same_session_retry(
+        _navigate_authorize,
+        log=log,
+        stop_requested=stop_requested,
     )
     _timed(authorize_started, timing, "free_oauth_session", "prelude_authorize_navigate")
-    result = _annotate_page_response(transport, _json_response(transport, final_response))
-    result["url"] = str(getattr(final_response, "url", "") or authorize_url)
-    result.setdefault("_url", result["url"])
     setattr(transport, "last_response", result)
     setattr(transport, "last_oauth_url", result["url"])
     return result
@@ -321,9 +339,19 @@ def run_autoregister_prelude(
                 raise _failed(providers)
             _log(log, "AutoRegister providers 节点完成", "info")
         if callable(getattr(transport, "_chatgpt_json_get", None)) and getattr(transport, "session", None) is not None:
-            response = _run_reference_chatgpt_prelude(transport, str(email or ""), config=config)
+            response = _run_reference_chatgpt_prelude(
+                transport,
+                str(email or ""),
+                config=config,
+                log=log,
+                stop_requested=stop_requested,
+            )
         else:
-            response = function(str(email or ""))
+            response = authorize_403_same_session_retry(
+                lambda: function(str(email or "")),
+                log=log,
+                stop_requested=stop_requested,
+            )
     except FreeRegisterError:
         raise
     except Exception as exc:

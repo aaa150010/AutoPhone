@@ -121,6 +121,66 @@ class AutoRegisterPreludeTests(unittest.TestCase):
         self.assertEqual(query["screen_hint"], ["login_or_signup"])
         self.assertIn("callbackUrl=https%3A%2F%2Fchatgpt.com%2F", signin[2]["data"])
 
+    def test_real_transport_authorize_403_is_retried_once_in_same_session(self):
+        class Response:
+            def __init__(self, *, payload=None, url="", status=200, content_type="application/json"):
+                self.payload = payload or {}
+                self.url = url
+                self.status_code = status
+                self.headers = {"content-type": content_type}
+
+            def json(self):
+                return self.payload
+
+        class Session:
+            def __init__(self, events):
+                self.calls = []
+                self.events = events
+                self.authorize_gets = 0
+
+            def get(self, url, **kwargs):
+                self.calls.append(("GET", url, kwargs))
+                self.events.append(("GET", urlsplit(url).path))
+                self.authorize_gets += 1
+                if self.authorize_gets == 1:
+                    return Response(status=403, content_type="text/html")
+                return Response(
+                    url="https://auth.openai.com/email-verification",
+                    content_type="text/html",
+                )
+
+            def post(self, url, **kwargs):
+                self.calls.append(("POST", url, kwargs))
+                self.events.append(("POST", urlsplit(url).path))
+                return Response(payload={"url": "https://auth.openai.com/authorize?state=state"})
+
+        class RealLike:
+            def __init__(self):
+                self.events = []
+                self.session = Session(self.events)
+                self.device_id = "device-private"
+                self._gptphone_auth_session_logging_id = "auth-log-private"
+
+            def start_chatgpt_signup_authorize(self, _email):
+                raise AssertionError("the maintained reference prelude should be used")
+
+            def _chatgpt_json_get(self, path, **kwargs):
+                self.events.append(("GET", path))
+                return {"_status": 200, "csrfToken": "csrf-private"}
+
+        transport = RealLike()
+        logs: list[tuple[str, str]] = []
+        result = run_autoregister_prelude(
+            transport,
+            "user@example.test",
+            log=lambda message, level="info": logs.append((message, level)),
+        )
+        authorize_gets = [item for item in transport.session.calls if item[0] == "GET"]
+        self.assertEqual(len(authorize_gets), 2)
+        self.assertEqual(transport.session.authorize_gets, 2)
+        self.assertEqual(result["page"]["type"], "email_otp_verification")
+        self.assertTrue(any(level == "warn" and "403" in message for message, level in logs))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -15,8 +15,10 @@ from typing import Any, Callable, Mapping
 from urllib.parse import urlsplit
 
 try:
+    from .free_protocol_authorize_retry import authorize_403_same_session_retry
     from .free_register_common import FreeRegisterError, proxy_transport_value
 except ImportError:  # pragma: no cover - top-level recovery import
+    from free_protocol_authorize_retry import authorize_403_same_session_retry  # type: ignore[no-redef]
     from free_register_common import FreeRegisterError, proxy_transport_value  # type: ignore[no-redef]
 
 
@@ -324,7 +326,12 @@ def run_protocol_relogin(
                 error_code="free_live_deep_preflight_failed",
             ) from exc
     try:
-        response = transport.start_chatgpt_signup_authorize(email)
+        response = authorize_403_same_session_retry(
+            lambda: transport.start_chatgpt_signup_authorize(email),
+            log=log_fn,
+            node_code=node_code,
+            node_label=node_label,
+        )
         if is_deactivated_response(response):
             raise ProtocolReloginDeactivated(_response_status(response))
         otp.mark_sent()

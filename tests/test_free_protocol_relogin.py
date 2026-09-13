@@ -113,6 +113,55 @@ class ProtocolReloginTests(unittest.TestCase):
         self.assertIn("transport_close", calls)
         self.assertIn("session_close", calls)
 
+    def test_authorize_plain_403_is_retried_once_in_same_session(self):
+        calls: list = []
+
+        class FakeTransport:
+            def start_chatgpt_signup_authorize(self, _email):
+                calls.append("start")
+                if calls.count("start") == 1:
+                    # A plain pre-email access denial: the refreshed Cloudflare
+                    # cookie in the same session must get one in-place retry.
+                    return {"_status": 403, "_body_summary": "Access denied"}
+                return {"page_type": "email_identifier"}
+
+            def submit_email_identifier(self, _email):
+                calls.append("submit")
+                return {"page_type": "email_otp_verification", "continue_url": "https://auth.example/otp"}
+
+            def send_email_otp(self, _url):
+                calls.append("send")
+                return {"ok": True}
+
+            def verify_email_otp(self, code):
+                calls.append(f"verify:{code}")
+                return {"page_type": "continue", "continue_url": "https://chatgpt.example/callback"}
+
+            def complete_chatgpt_callback(self, _url):
+                calls.append("callback")
+                return {"page_type": "done"}
+
+            def chatgpt_access_token(self):
+                calls.append("token")
+                return "fresh-token"
+
+            def close(self):
+                calls.append("transport_close")
+
+        outcome = self._run(
+            FakeTransport(), calls,
+            {"email": "user@example.test", "password": "", "totp_secret": ""},
+        )
+
+        self.assertEqual(outcome["access_token"], "fresh-token")
+        non_log_calls = [item for item in calls if not item.startswith("log:")]
+        self.assertEqual(
+            non_log_calls[:8],
+            ["start", "start", "mark_sent", "submit", "mark_sent", "send",
+             "stage:email_otp", "wait_code"],
+        )
+        self.assertTrue(any(item.startswith("log:") and "403" in item for item in calls))
+
     def test_password_login_submits_saved_password_on_login_page(self):
         calls: list = []
 

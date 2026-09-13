@@ -21,8 +21,10 @@ from urllib.parse import urljoin
 
 try:
     from .free_batch_concurrency import ProxyPoolConcurrencyGate
+    from .free_protocol_authorize_retry import authorize_403_same_session_retry
 except ImportError:  # pragma: no cover - top-level recovery import
     from free_batch_concurrency import ProxyPoolConcurrencyGate  # type: ignore[no-redef]
+    from free_protocol_authorize_retry import authorize_403_same_session_retry  # type: ignore[no-redef]
 
 try:
     from .free_failure_runtime import canonical_failure, exception_to_failure, sanitize_failure_text, sanitize_log_message
@@ -987,7 +989,13 @@ class FreeRebindService:
         except ImportError:  # injected transports in unit/integration tests
             codex_oauth_chain = None
         stage_label = REBIND_STAGE_LABELS.get(stage, stage)
-        response = transport.initiate_oauth(oauth_url)
+        response = authorize_403_same_session_retry(
+            lambda: transport.initiate_oauth(oauth_url),
+            log=log,
+            node_code=stage,
+            node_label=stage_label,
+            stop_requested=self._check_stop,
+        )
         response = transport.submit_email_identifier(email)
         response = self._advance_password_mfa(transport, response, password, totp_secret, stage=stage, task_id=task_id, log=log)
         for _ in range(8):
