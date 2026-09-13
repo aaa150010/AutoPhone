@@ -990,20 +990,24 @@ onMounted(async () => {
 .task-start-bar, .task-filter-row { display: flex; align-items: center; gap: var(--workspace-gap); min-width: 0; }
 .task-launch-column { display: grid; gap: 8px; }
 .task-start-status { --el-alert-padding: 6px 12px; }
+.task-start-status :deep(.el-alert__title),
+.task-start-status :deep(.el-alert__description) { font-size: 12px; line-height: 16px; }
 .start-progress { display: grid; gap: 12px; }
 .start-progress-stages { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-.start-progress-stages li { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--el-text-color-secondary); }
+.start-progress-stages li { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--el-text-color-secondary); }
 .start-progress-stages li.is-active { color: var(--el-color-primary); font-weight: 600; }
 .start-progress-stages li.is-done { color: var(--el-text-color-regular); }
 .start-progress-stages .stage-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--el-fill-color-darker); flex: 0 0 auto; }
 .start-progress-stages .stage-detail { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--el-text-color-secondary); }
 .start-progress-elapsed { margin: 0; font-size: 12px; color: var(--el-text-color-secondary); }
 .start-progress-error { --el-alert-padding: 6px 12px; }
+.start-progress-error :deep(.el-alert__title),
+.start-progress-error :deep(.el-alert__description) { font-size: 12px; line-height: 16px; }
 .is-spin { animation: start-progress-spin 1s linear infinite; }
 @keyframes start-progress-spin { to { transform: rotate(360deg); } }
 .task-start-bar { min-height: 32px; }
 .task-start-bar .task-start-meta { margin-right: auto; }
-.quick-run-field { display: inline-flex; align-items: center; gap: 8px; color: var(--el-text-color-regular); font-size: 14px; white-space: nowrap; }
+.quick-run-field { display: inline-flex; align-items: center; gap: 8px; color: var(--el-text-color-regular); font-size: 12px; white-space: nowrap; }
 .quick-run-field.quick-run-switch span { font-size: 12px; color: var(--el-text-color-secondary); }
 .driver-inline-radio { flex: 0 0 auto; white-space: nowrap; }
 .driver-inline-radio :deep(.el-radio-button__inner) { padding: 5px 12px; font-size: 12px; }
@@ -1025,7 +1029,7 @@ onMounted(async () => {
 .quick-run-field :deep(.quick-run-number .el-input__inner) {
   height: 28px;
   line-height: 28px;
-  font-size: 14px;
+  font-size: 12px;
   text-align: center;
 }
 .quick-run-field :deep(.quick-run-number .el-input-number__increase),
@@ -1038,7 +1042,7 @@ onMounted(async () => {
 .summary-cell { display: flex; align-items: center; justify-content: center; gap: 6px; flex: 1 1 0; min-width: 0; padding: 0 10px; border: 0; border-right: 1px solid var(--workspace-border); background: transparent; white-space: nowrap; }
 .summary-cell:last-child { border-right: 0; }
 .summary-cell span { color: var(--el-text-color-secondary); font-size: 12px; line-height: 16px; }
-.summary-cell strong { color: var(--el-text-color-primary); font-size: 14px; line-height: 18px; font-variant-numeric: tabular-nums; }
+.summary-cell strong { color: var(--el-text-color-primary); font-size: 12px; line-height: 16px; font-variant-numeric: tabular-nums; }
 .summary-cell.is-filter { cursor: pointer; font: inherit; }
 .summary-cell.is-filter:hover { background: var(--workspace-subtle); }
 .summary-cell.is-filter.is-active { background: var(--workspace-accent-soft); }
@@ -1054,6 +1058,7 @@ onMounted(async () => {
 .task-panel :deep(.el-table) { min-height: 0; }
 .task-panel :deep(.el-table td.el-table__cell),
 .task-panel :deep(.el-table th.el-table__cell) { padding-top: 3px; padding-bottom: 3px; }
+.task-panel :deep(.el-table th.el-table__cell .cell) { font-size: 12px; }
 .task-panel :deep(.el-table .cell) { line-height: 18px; }
 .account-cell { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .account-subline { display: block; overflow: hidden; color: var(--el-text-color-secondary); font-size: 11px; line-height: 15px; text-overflow: ellipsis; white-space: nowrap; }
