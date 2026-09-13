@@ -4,7 +4,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { incidentCenterUrl } from '../utils/incidentLink'
 import { errorMessage } from '../utils/errorMessage'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowDown, CircleCheck, CircleClose, CopyDocument, Delete, Document, Key, Link, Lock, MoreFilled, Refresh, RefreshLeft, RefreshRight, Setting, Tickets, VideoPause, VideoPlay, Warning } from '@element-plus/icons-vue'
+import { ArrowDown, Check, CircleCheck, CircleClose, CopyDocument, Delete, Document, Key, Link, Loading, Lock, MoreFilled, Refresh, RefreshLeft, RefreshRight, Setting, Tickets, VideoPause, VideoPlay, Warning } from '@element-plus/icons-vue'
 import { closeFreeCamoufoxDebug, deleteFreeTasks, freeBatchRetry, getFreeConfig, getFreeLiveCheckState, getFreeState, preflightFree, rerunFreeTask, retryFreePassword, retryFreeTwofa, startFree, startFreePlanCheck, stopFree, type FreeConfig, type FreeLiveCheckState, type FreeState, type FreeTaskRow } from '../api/client'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import ContentEmptyState from '../components/ContentEmptyState.vue'
@@ -69,8 +69,59 @@ const quickTargetCount = ref(defaultConfig.target_count)
 const quickConcurrency = ref(defaultConfig.concurrency)
 const quickRunDirty = ref(false)
 const running = computed(() => Boolean(state.value.running))
+const startPending = computed(() => Boolean(state.value.starting))
+const startFailure = computed(() => state.value.start_failure || null)
+const startFailureDismissed = ref(false)
+const startProgressOpen = ref(false)
+const startProgressDone = ref(false)
+const START_STAGES = [
+  { key: 'owner', label: '校验熔断与运行归属' },
+  { key: 'preflight', label: '网络与链路预检' },
+  { key: 'mailbox', label: '校验邮箱池与账号证据' },
+  { key: 'tunnel_mint', label: '铸造隧道替补代理' },
+  { key: 'proxy_bind', label: '分配代理' },
+  { key: 'tasks', label: '创建任务并上线' },
+] as const
+
+const startStageIndex = computed(() => {
+  const stage = state.value.startup?.stage
+  return START_STAGES.findIndex(item => item.key === stage)
+})
+const startProgressPercent = computed(() => {
+  if (startProgressDone.value || state.value.running) return 100
+  const index = startStageIndex.value
+  if (index < 0) return 8
+  return Math.round(((index + 1) / (START_STAGES.length + 1)) * 100)
+})
+const startProgressStatus = computed<'success' | 'exception' | undefined>(() => {
+  if (state.value.start_failure) return 'exception'
+  if (startProgressDone.value || state.value.running) return 'success'
+  return undefined
+})
+const startElapsedSeconds = computed(() => {
+  const at = Number(state.value.startup?.updated_at || 0)
+  if (!at) return 0
+  return Math.max(0, Math.floor(nowSeconds.value - at))
+})
+
+function startStageClass(index: number) {
+  const current = startStageIndex.value
+  if (startProgressDone.value || state.value.running || index < current) return 'is-done'
+  if (index === current) return 'is-active'
+  return 'is-todo'
+}
+
+watch(() => state.value.running, (value, previous) => {
+  if (value && !previous && startProgressOpen.value) {
+    startProgressDone.value = true
+    window.setTimeout(() => {
+      startProgressOpen.value = false
+      startProgressDone.value = false
+    }, 1400)
+  }
+})
 const debugWindowsOpen = computed(() => Number(state.value.camoufox_debug?.open_contexts || 0) > 0)
-const nowSeconds = useTaskProgressClock(() => state.value.tasks || [], () => Boolean(state.value.running || liveState.value.running))
+const nowSeconds = useTaskProgressClock(() => state.value.tasks || [], () => Boolean(state.value.running || liveState.value.running || state.value.starting))
 const { colWidth: taskColWidth, handleHeaderDragend: onTaskHeaderDragend, resetWidths: resetTaskWidths } = useColumnWidths('gptphone.table.widths.free-register', { autoResetOnce: true })
 function automaticOtpRemaining(task: FreeTaskRow) {
   return automaticOtpRemainingPure(task, nowSeconds.value)
@@ -307,6 +358,7 @@ async function preflight() {
 }
 
 async function start() {
+  startFailureDismissed.value = false
   busy.value = 'start'
   try {
     const submittedConfig = quickRunConfig()
@@ -327,6 +379,7 @@ async function start() {
       // 启动请求已受理，批次在后台准备中；立即进入 1s 快速轮询，
       // 任务渐进上线后 running 状态自然出现。
       scheduleRefresh()
+      startProgressOpen.value = true
       ElMessage.success('启动已受理，批次正在后台准备，任务将陆续上线')
     } else {
       ElMessage.success('Free 注册已启动')
@@ -595,7 +648,7 @@ function taskFailureNode(task: FreeTaskRow) {
   return freeFailureNodeIdentity(task?.failure)
 }
 
-const polling = usePolling(refresh, () => (running.value || logDialogOpen.value ? 1000 : 3000))
+const polling = usePolling(refresh, () => (running.value || logDialogOpen.value || startPending.value || startProgressOpen.value ? 1000 : 3000))
 const scheduleRefresh = polling.schedule
 
 onMounted(async () => {
@@ -609,6 +662,7 @@ onMounted(async () => {
     <div class="task-view">
       <WorkspacePanel fill body-padding="none">
         <div class="task-panel">
+          <div class="task-launch-column">
           <div class="task-start-bar">
             <el-radio-group v-model="config.driver" class="driver-inline-radio" :disabled="running || Boolean(busy)" size="small" @update:model-value="markQuickRunDirty">
               <el-radio-button value="protocol">全协议</el-radio-button>
@@ -619,8 +673,9 @@ onMounted(async () => {
             <label class="quick-run-field quick-run-switch"><span>密码设置</span><el-switch v-model="config.auto_set_password" :disabled="running || Boolean(busy)" size="small" aria-label="注册后补设账号密码" @update:model-value="markQuickRunDirty" /></label>
             <label class="quick-run-field quick-run-switch"><span>2FA</span><el-switch v-model="config.auto_set_2fa" :disabled="running || Boolean(busy)" size="small" aria-label="注册后设置 2FA" @update:model-value="markQuickRunDirty" /></label>
             <span class="muted task-start-meta">可用邮箱 {{ Number(state.pool?.available || 0) }} · 代理 {{ Number(state.pool?.proxies || 0) }}</span>
-            <el-button size="small" :icon="CircleCheck" :loading="busy === 'preflight'" :disabled="running" @click="preflight" aria-label="预检">预检</el-button>
-            <el-button size="small" type="primary" :icon="VideoPlay" :loading="busy === 'start'" :disabled="running || !Number(state.pool?.available || 0)" @click="start" aria-label="开始注册">开始注册</el-button>
+            <el-button v-if="startPending && !startProgressOpen" size="small" link type="primary" @click="startProgressOpen = true" aria-label="查看启动进度">启动进度</el-button>
+            <el-button size="small" :icon="CircleCheck" :loading="busy === 'preflight'" :disabled="running || startPending" @click="preflight" aria-label="预检">预检</el-button>
+            <el-button size="small" type="primary" :icon="VideoPlay" :loading="busy === 'start' || startPending" :disabled="running || startPending || !Number(state.pool?.available || 0)" @click="start" aria-label="开始注册">开始注册</el-button>
             <el-button size="small" type="danger" plain :icon="VideoPause" :loading="busy === 'stop'" :disabled="!running" @click="stop" aria-label="停止">停止</el-button>
             <el-tooltip content="关闭保留的 Camoufox 调试窗口" placement="top" :show-after="250">
               <el-button size="small" plain :icon="CircleClose" :loading="busy === 'close-debug'" :disabled="!debugWindowsOpen || Boolean(busy)" aria-label="关闭 Camoufox 调试窗口" @click="closeDebugWindows">关闭调试窗口</el-button>
@@ -629,6 +684,23 @@ onMounted(async () => {
             <el-tooltip content="撤销本表拖拽保存的列宽，恢复默认列宽" placement="top" :show-after="250">
               <el-button size="small" :icon="RefreshLeft" aria-label="重置列宽" @click="resetTaskWidths">重置列宽</el-button>
             </el-tooltip>
+          </div>
+          <el-alert
+            v-if="startPending"
+            class="task-start-status"
+            type="info"
+            :closable="false"
+            title="启动已受理，批次正在后台准备，任务将陆续上线"
+          />
+          <el-alert
+            v-else-if="startFailure && !startFailureDismissed"
+            class="task-start-status"
+            type="error"
+            show-icon
+            :title="`上次启动失败：${startFailure.node_label}（${startFailure.node_code}）`"
+            :description="startFailure.public_message"
+            @close="startFailureDismissed = true"
+          />
           </div>
           <div class="task-filter-row">
             <div class="task-summary-strip" role="group" aria-label="任务状态筛选">
@@ -769,6 +841,35 @@ onMounted(async () => {
       </WorkspacePanel>
     </div>
     <FreeTaskLogDialog ref="logDialog" v-model="logDialogOpen" :task="dialogTask" />
+    <el-dialog v-model="startProgressOpen" title="Free 注册启动进度" width="440px" append-to-body :close-on-click-modal="false">
+      <div class="start-progress">
+        <el-progress :percentage="startProgressPercent" :status="startProgressStatus" :stroke-width="10" />
+        <ul class="start-progress-stages">
+          <li v-for="(item, index) in START_STAGES" :key="item.key" :class="startStageClass(index)">
+            <el-icon v-if="startStageClass(index) === 'is-done'"><Check /></el-icon>
+            <el-icon v-else-if="startStageClass(index) === 'is-active'" class="is-spin"><Loading /></el-icon>
+            <span v-else class="stage-dot"></span>
+            <span class="stage-label">{{ item.label }}</span>
+            <span v-if="startStageClass(index) === 'is-active' && state.startup?.detail" class="stage-detail">{{ state.startup.detail }}</span>
+          </li>
+        </ul>
+        <p class="start-progress-elapsed">
+          当前阶段：{{ state.startup?.label || '准备中' }}<template v-if="startElapsedSeconds > 0"> · 已进行 {{ startElapsedSeconds }} 秒</template>
+        </p>
+        <el-alert
+          v-if="state.start_failure"
+          class="start-progress-error"
+          type="error"
+          :closable="false"
+          show-icon
+          :title="`启动失败：${state.start_failure.node_label}（${state.start_failure.node_code}）`"
+          :description="state.start_failure.public_message"
+        />
+      </div>
+      <template #footer>
+        <el-button size="small" @click="startProgressOpen = false">后台等待</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -780,6 +881,19 @@ onMounted(async () => {
 .task-panel { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; gap: var(--workspace-gap); height: 100%; min-height: 0; padding: 10px; }
 .task-pager { justify-content: flex-end; }
 .task-start-bar, .task-filter-row { display: flex; align-items: center; gap: var(--workspace-gap); min-width: 0; }
+.task-launch-column { display: grid; gap: 8px; }
+.task-start-status { --el-alert-padding: 6px 12px; }
+.start-progress { display: grid; gap: 12px; }
+.start-progress-stages { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.start-progress-stages li { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--el-text-color-secondary); }
+.start-progress-stages li.is-active { color: var(--el-color-primary); font-weight: 600; }
+.start-progress-stages li.is-done { color: var(--el-text-color-regular); }
+.start-progress-stages .stage-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--el-fill-color-darker); flex: 0 0 auto; }
+.start-progress-stages .stage-detail { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--el-text-color-secondary); }
+.start-progress-elapsed { margin: 0; font-size: 12px; color: var(--el-text-color-secondary); }
+.start-progress-error { --el-alert-padding: 6px 12px; }
+.is-spin { animation: start-progress-spin 1s linear infinite; }
+@keyframes start-progress-spin { to { transform: rotate(360deg); } }
 .task-start-bar { min-height: 32px; }
 .task-start-bar .task-start-meta { margin-right: auto; }
 .quick-run-field { display: inline-flex; align-items: center; gap: 8px; color: var(--el-text-color-regular); font-size: 14px; white-space: nowrap; }

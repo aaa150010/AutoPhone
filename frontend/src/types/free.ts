@@ -94,6 +94,21 @@ export type FreeConfig = {
   [legacyKey: string]: unknown
 }
 
+export interface FreeStartFailure {
+  node_code: string
+  node_label: string
+  error_code: string
+  public_message: string
+  retryable: boolean
+}
+
+export interface FreeStartupProgress {
+  stage: string
+  label: string
+  detail?: string
+  updated_at?: number
+}
+
 export interface FreeState {
   runtime_version?: string
   otp_parser_revision?: string
@@ -105,6 +120,12 @@ export interface FreeState {
   scheduler?: { concurrency?: number; active_slots?: number; queued_slots?: number }
   camoufox_debug?: FreeCamoufoxDebugState
   summary?: { total?: number; active?: number; success?: number; failed?: number; stopped?: number }
+  /** True while the async start coordinator is preparing the batch. */
+  starting?: boolean
+  /** Last rejected background start, cleared when the next start is accepted. */
+  start_failure?: FreeStartFailure
+  /** Background preparation stage published by the manager (lock-free read). */
+  startup?: FreeStartupProgress
 }
 
 export interface FreeCamoufoxDebugSession {
