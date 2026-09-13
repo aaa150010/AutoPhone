@@ -243,6 +243,7 @@ class FreeRegisterRetryMixin:
         retry_node: str,
         twofa_retry: bool = False,
         password_retry: bool = False,
+        retry_trigger: str = "manual",
     ) -> dict[str, Any]:
         if twofa_retry and password_retry:
             raise FreeRegisterError(
@@ -544,12 +545,21 @@ class FreeRegisterRetryMixin:
                     "cleanup_status": "pending",
                     "retry_of": str(original.get("task_id") or ""),
                     "retry_attempt": int(original.get("retry_attempt") or 0) + 1,
+                    "retry_trigger": "auto" if str(retry_trigger).strip().lower() == "auto" else "manual",
                     "retry_node_code": retry_node,
                     "retry_key": retry_key,
                     "manual_generation": 0,
                     "progress": {"stage": "free_twofa_enroll" if twofa_retry else "free_password_eligibility" if password_retry else "free_oauth_session", "group": "free", "started_at": now, "updated_at": now, "finished_at": None},
                     "result": merged_result or saved_result or {"twofa_status": ""},
                     "retry_mode": "password" if password_retry else "twofa" if twofa_retry else "registration",
+                    # The password budget is a separate counter so a 2FA retry
+                    # (or any unrelated rerun) can never consume password
+                    # auto-retry attempts; it only advances on password retries.
+                    "password_retry_attempt": (
+                        int(original.get("password_retry_attempt") or 0) + 1
+                        if password_retry
+                        else int(original.get("password_retry_attempt") or 0)
+                    ),
                 }
                 self._tasks[retry_id] = task
                 self._retry_leases[retry_key] = retry_id
@@ -583,7 +593,7 @@ class FreeRegisterRetryMixin:
                 )
                 submitted = True
                 self._save_tasks_safely("重试任务提交后")
-                self._log(f"[{retry_id}/Free 重试/{retry_node}] 已排队（第 {task['retry_attempt']} 次）", "info", task_id=retry_id, retry_of=task["retry_of"], retry_node_code=retry_node)
+                self._log(f"[{retry_id}/Free 重试/{retry_node}] 已排队（第 {task['retry_attempt']} 次，{'自动' if task['retry_trigger'] == 'auto' else '人工'}）", "info", task_id=retry_id, retry_of=task["retry_of"], retry_node_code=retry_node)
                 return self._public_task(task)
             except Exception:
                 # After submit the worker owns the task and lease.  Keep the

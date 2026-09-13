@@ -46,7 +46,7 @@ try:
     from .free_mailbox_otp import MailboxUrlOtpProvider
     from .free_proxy_health import is_proxy_health_failure, is_security_challenge_failure
     from .free_proxy_breaker import ChallengeBreaker
-    from .free_proxy_tunnel import ensure_target, resolve_target_size, template_from_config
+    from .free_proxy_maintenance import maintain_proxy_pool
     from .free_register_common import (
         FREE_STAGE_LABELS,
         FIXED_PASSWORD,
@@ -120,7 +120,7 @@ except ImportError:  # pragma: no cover - top-level recovery import
     from free_mailbox_otp import MailboxUrlOtpProvider  # type: ignore[no-redef]
     from free_proxy_health import is_proxy_health_failure, is_security_challenge_failure  # type: ignore[no-redef]
     from free_proxy_breaker import ChallengeBreaker  # type: ignore[no-redef]
-    from free_proxy_tunnel import ensure_target, resolve_target_size, template_from_config  # type: ignore[no-redef]
+    from free_proxy_maintenance import maintain_proxy_pool  # type: ignore[no-redef]
     from free_register_common import (  # type: ignore[no-redef]
         FREE_STAGE_LABELS, FIXED_PASSWORD, FreeMailbox, FreeRegisterError, FreeTwoFaPending,
         ProxyBinding, TERMINAL_STATUSES,
@@ -239,6 +239,10 @@ class FreeRegisterManager(
         # Pool-level challenge circuit breaker: in-memory by design, a restart
         # clears it while the diagnostic timeline keeps the audit record.
         self.proxy_breaker = ChallengeBreaker()
+        # One shared lock serializes pool maintenance across every consumer
+        # (startup, challenge refill, live checks, plan rechecks, rebind) so
+        # concurrent passes cannot mint beyond the target deficit.
+        self._proxy_maintenance_lock = threading.Lock()
         self.manual_broker = manual_broker
         self.config_provider = config_provider
         self._free_notification = FreeBatchNotificationAdapter(notification_config_getter) if callable(notification_config_getter) else None
@@ -318,6 +322,7 @@ class FreeRegisterManager(
             self.data_dir,
             pool=self.pool, proxies=self.proxies, log_store=self.log_store,
             proxy_probe=self.proxy_probe, task_store=self.task_store,
+            pool_maintainer=self._maintain_proxy_pool, breaker=self.proxy_breaker,
         )
         self.plan_checks = build_free_plan_check_service(
             self.data_dir,
@@ -328,6 +333,8 @@ class FreeRegisterManager(
             task_updater=self._sync_plan_task_snapshot,
             proxies=self.proxies,
             proxy_probe=self.proxy_probe,
+            pool_maintainer=self._maintain_proxy_pool,
+            breaker=self.proxy_breaker,
             browser_recheck=build_camoufox_plan_recheck(
                 config_provider=self._plan_config,
                 debug_artifact_dir=str(self.data_dir / "camoufox_debug"),
@@ -1607,8 +1614,11 @@ class FreeRegisterManager(
         """Retire the challenged exit, feed the breaker and refill the pool.
 
         Challenge evidence never flows through the transport quarantine path;
-        this is a separate, permanent exit retirement.  Returns True when this
-        burn tripped the pool-level challenge breaker.
+        this is a separate, permanent exit retirement.  The breaker consumes
+        the observed egress IP (proxy id fallback) plus tunnel minting context
+        so the pool-level trip dedupes by real exit and the gateway layer can
+        recognize a provider-side block of freshly minted sessions.  Returns
+        True when this burn tripped the pool-level challenge breaker.
         """
         proxy_id = str(snapshot.get("proxy_id") or "")
         masked = str(snapshot.get("proxy_masked") or snapshot.get("proxy") or "")
@@ -1634,7 +1644,43 @@ class FreeRegisterManager(
                     },
                     workflow="cleanup",
                 )
-        state = self.proxy_breaker.record_burn(proxy_id)
+        source_label = ""
+        minted_at = 0.0
+        exit_ip = ""
+        gateway_fingerprint = ""
+        if proxy_id:
+            row = next(
+                (
+                    item for item in self.proxies.entries()
+                    if isinstance(item, Mapping) and str(item.get("proxy_id") or "") == proxy_id
+                ),
+                None,
+            )
+            if row is not None:
+                source_label = str(row.get("source_label") or "")
+                try:
+                    minted_at = float(row.get("minted_at") or 0.0)
+                except (TypeError, ValueError):
+                    minted_at = 0.0
+                exit_ip = str(row.get("last_exit_ip") or snapshot.get("exit_ip") or "").strip()
+                host = str(row.get("host") or "")
+                try:
+                    port = int(row.get("port") or 0)
+                except (TypeError, ValueError):
+                    port = 0
+                if host and port > 0:
+                    # Only the credential-safe digest is ever recorded or fed
+                    # to the breaker: never the gateway host, username,
+                    # password or session id.
+                    gateway_fingerprint = _fingerprint(f"{host.lower()}:{port}")
+        was_gateway_blocked = self.proxy_breaker.gateway_blocked()
+        state = self.proxy_breaker.record_burn(
+            proxy_id,
+            exit_ip=exit_ip,
+            source_label=source_label,
+            minted_at=minted_at,
+            gateway_fingerprint=gateway_fingerprint,
+        )
         self._log(
             f"[{task_id}/安全挑战废弃出口/free_proxy_challenge_burn] "
             f"出口 {masked} 触发安全挑战，已废弃并退出分配（窗口内 {state.recent_distinct_burns}/{state.threshold}）",
@@ -1664,21 +1710,46 @@ class FreeRegisterManager(
                 },
             )
             return True
+        if state.gateway_blocked and not was_gateway_blocked:
+            self._log(
+                "[free-proxy/隧道网关疑似封锁/free_proxy_gateway_blocked] "
+                f"{state.gateway_window_seconds // 60} 分钟内同一网关指纹连续 {state.recent_new_mint_challenges} 个新铸隧道出口触发安全挑战，该隧道模板已停止补铸",
+                "error",
+                node_code="free_proxy_gateway_blocked",
+                node_label="隧道网关疑似封锁",
+                failure={
+                    "error_code": "free_proxy_gateway_blocked",
+                    "technical_summary": f"网关指纹 {gateway_fingerprint} 的新铸隧道出口连续触发安全挑战，已停止该模板补铸（其余健康代理照常分配）",
+                    "retryable": False,
+                    "action_hint": "先更换或修正隧道网关凭据模板，再在设置页人工确认并重置熔断（同时清除网关封锁）",
+                },
+            )
         self._ensure_tunnel_target()
         return False
 
     def _ensure_tunnel_target(self) -> int:
         """Mint tunnel-session rows until the dispatchable pool hits target."""
-        config = self._last_config if isinstance(self._last_config, Mapping) else {}
-        template = template_from_config(config)
-        if template is None:
-            return 0
-        target = resolve_target_size(config)
-        if target <= 0:
-            return 0
+        return self._maintain_proxy_pool()
+
+    def _maintain_proxy_pool(self, config: Mapping[str, Any] | None = None) -> int:
+        """Shared, serialized pool refill used by every Free consumer.
+
+        Tripped breaker or gateway-block state makes this a no-op (the
+        operator's breaker reset stays the single recovery entry); mint
+        failures keep the burned rows and their challenge evidence intact.
+        """
+        settings: Mapping[str, Any] = config if isinstance(config, Mapping) else {}
+        if not settings:
+            settings = self._last_config if isinstance(self._last_config, Mapping) else {}
         try:
             on_mint = self._startup_mint_progress_callback()
-            minted = ensure_target(self.proxies, template, target=target, on_progress=on_mint)
+            minted = maintain_proxy_pool(
+                self.proxies,
+                settings,
+                breaker=self.proxy_breaker,
+                lock=self._proxy_maintenance_lock,
+                on_progress=on_mint,
+            )
         except Exception as exc:
             self._log(
                 f"[free-proxy/隧道替补铸造失败/free_proxy_replacement_mint_failed] "
@@ -1874,6 +1945,7 @@ class FreeRegisterManager(
                 config,
                 retry_node="free_twofa_activate",
                 twofa_retry=True,
+                retry_trigger="auto",
             )
             retry_id = str(queued.get("task_id") or "") if isinstance(queued, Mapping) else ""
             if retry_id:
@@ -1888,6 +1960,93 @@ class FreeRegisterManager(
                 task_id=str(task.get("task_id") or ""),
                 node_code="free_twofa_activate",
                 node_label="激活 Free 账号 2FA",
+                outcome="retry_enqueue_failed",
+            )
+            return ""
+
+    @staticmethod
+    def _password_auto_retry_allowed(result: Mapping[str, Any]) -> bool:
+        """Classify a pending password result before scheduling an automatic retry.
+
+        Mirrors the 2FA policy: only transient transport/session failures are
+        replayed.  Security challenges, captchas, security-policy rejections,
+        banned/disabled accounts, rate limits (429), a missing TOTP secret and
+        a failed OTP preparation must never auto-retry; existing-login results
+        are excluded by ``password_retry_allowed`` itself.
+        """
+        failure = result.get("password_failure") if isinstance(result.get("password_failure"), Mapping) else {}
+        if isinstance(failure, Mapping) and failure.get("retryable") is False:
+            return False
+        try:
+            status = int(failure.get("http_status") or 0)
+        except (TypeError, ValueError):
+            status = 0
+        if status in {400, 401, 403, 409, 422, 429}:
+            return False
+        text = " ".join(
+            str(failure.get(key) or "").lower()
+            for key in ("node_code", "error_code", "provider_code", "public_message", "technical_summary")
+        )
+        blocked = (
+            "challenge", "captcha", "security",
+            "account_disabled", "account_banned", "suspended",
+            "invalid_totp", "invalid code", "rate_limit", "429",
+            "totp_missing", "otp_prepare_failed",
+        )
+        return not any(marker in text for marker in blocked)
+
+    def _schedule_auto_password_retry(
+        self,
+        task: Mapping[str, Any],
+        result: Mapping[str, Any],
+        config: Mapping[str, Any],
+    ) -> str:
+        """Enqueue one bounded password-setup retry and return its task id, if any.
+
+        The budget uses the dedicated ``password_retry_attempt`` counter so
+        2FA retries (and any unrelated rerun) never consume password attempts,
+        and vice versa.  ``_worker`` calls this only when the task finished
+        without a pending 2FA step, which keeps the chained order fixed:
+        automatic 2FA first, automatic password only after 2FA succeeded.
+        """
+        if str(result.get("password_status") or "").strip().lower() != "pending":
+            return ""
+        if not password_retry_allowed(result):
+            return ""
+        # The key is intentionally presence-sensitive for compatibility with
+        # direct/integration manager callers (mirrors the 2FA scheduler):
+        # omitting it retains the historical manual-only password behavior.
+        if "password_auto_retry_attempts" not in config:
+            return ""
+        try:
+            limit = max(0, min(2, int(config.get("password_auto_retry_attempts") or 0)))
+            attempt = int(task.get("password_retry_attempt") or 0)
+        except (TypeError, ValueError):
+            return ""
+        if limit <= attempt or not self._password_auto_retry_allowed(result):
+            return ""
+        try:
+            queued = self._enqueue_retry(
+                task,
+                config,
+                retry_node="free_password_enroll",
+                password_retry=True,
+                retry_trigger="auto",
+            )
+            retry_id = str(queued.get("task_id") or "") if isinstance(queued, Mapping) else ""
+            if retry_id:
+                self._save_task(str(task.get("task_id") or ""), auto_password_retry_task_id=retry_id)
+            return retry_id
+        except Exception as exc:
+            # Automatic recovery is best-effort; preserve the original
+            # password failure and leave the account in its manual pending
+            # partial state.
+            self._log(
+                f"[{task.get('task_id', '')}/密码自动重试/free_password_enroll] 自动重试入队失败（{type(exc).__name__}）",
+                "warn",
+                task_id=str(task.get("task_id") or ""),
+                node_code="free_password_enroll",
+                node_label="设置 Free 账号密码",
                 outcome="retry_enqueue_failed",
             )
             return ""
@@ -2165,6 +2324,12 @@ class FreeRegisterManager(
             self._finish_progress(task_id, "success" if status == "success" else "partial")
             if status == "twofa_pending":
                 self._schedule_auto_twofa_retry(snapshot, result, task_config)
+            elif status in {"success", "partial_success"}:
+                # Fixed chain: the automatic password retry is only considered
+                # once no 2FA step is pending anymore, so automatic 2FA always
+                # runs first and this fires after it (possibly on a 2FA retry
+                # child whose merged result still carries password_pending).
+                self._schedule_auto_password_retry(snapshot, result, task_config)
             self._release_task_lease(snapshot)
             failure_identity = f"{(result_failure or {}).get('node_label', '后置检查')}/{(result_failure or {}).get('node_code', 'unknown')}"
             result_label = "完成" if status == "success" else f"注册完成，{failure_identity}{'待重试' if status == 'twofa_pending' else '待处理'}"
@@ -2287,6 +2452,14 @@ class FreeRegisterManager(
             )
             self._record_proxy_failure(snapshot, exc)
             self._release_task_lease(snapshot)
+            if password_retry:
+                # Mirror the 2FA precedent: feed the bounded automatic
+                # password budget from the continuation's own snapshot only
+                # after its task lease has been released, so the queued child
+                # never races the mailbox-lease bookkeeping.
+                self._schedule_auto_password_retry(
+                    snapshot, pending_result, task_config,
+                )
             self._log(
                 f"[{task_id}/{node_label}/{node_code}] {failure['public_message']}", "error",
                 task_id=task_id, stage=node_code, stage_label=node_label,

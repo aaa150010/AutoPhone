@@ -10,7 +10,7 @@ import {
   getFreeTaskLatestCode,
   type FreeTaskRow,
 } from '../api/client'
-import { freeTaskSecretLookup } from '../utils/freeSecretLookup'
+import { freeRowSecretLookup, freeTaskSecretLookup } from '../utils/freeSecretLookup'
 
 export type FreeSecretKind = 'token' | 'password' | 'totp' | 'credential'
 
@@ -76,6 +76,28 @@ export function useFreeTaskRowActions() {
     }
   }
 
+  /** Copy the real mailbox email for a live/plan job row via its pool row id. */
+  async function copyRunEmail(row: { task_id?: string; row_id?: string }) {
+    const jobId = String(row?.task_id || '').trim()
+    const rowId = String(row?.row_id || '').trim()
+    if (!jobId || !rowId || loadingEmailTaskIds.value.includes(jobId)) return
+    if (!navigator.clipboard?.writeText) {
+      ElMessage.error('当前浏览器不支持安全剪贴板写入')
+      return
+    }
+    loadingEmailTaskIds.value = [...loadingEmailTaskIds.value, jobId]
+    try {
+      const email = String((await getFreeSecret('email', freeRowSecretLookup(rowId))).value || '').trim()
+      if (!email) throw new Error('服务端未返回可复制邮箱')
+      await navigator.clipboard.writeText(email)
+      ElMessage.success('已复制真实邮箱')
+    } catch (error) {
+      ElMessage.error(errorMessage(error) || '邮箱复制失败')
+    } finally {
+      loadingEmailTaskIds.value = loadingEmailTaskIds.value.filter(id => id !== jobId)
+    }
+  }
+
   async function openTaskMailboxUrl(task: FreeTaskRow) {
     const taskId = String(task?.task_id || '').trim()
     const rowId = String(task?.row_id || '').trim()
@@ -136,6 +158,7 @@ export function useFreeTaskRowActions() {
     copyTaskTokens,
     copyTaskToken,
     copyTaskEmail,
+    copyRunEmail,
     openTaskMailboxUrl,
     copyTaskLatestCode,
   }

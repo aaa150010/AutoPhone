@@ -18,10 +18,16 @@ except ImportError:  # pragma: no cover - top-level recovery import
     from free_batch_concurrency import ProxyPoolConcurrencyGate  # type: ignore[no-redef]
 
 try:
+    from .free_proxy_maintenance import bind_with_pool_maintenance, pool_empty_error_code
+except ImportError:  # pragma: no cover - top-level recovery import
+    from free_proxy_maintenance import bind_with_pool_maintenance, pool_empty_error_code  # type: ignore[no-redef]
+
+try:
     from .free_failure_runtime import canonical_failure, exception_to_failure
     from .free_mailbox_otp import MailboxUrlOtpProvider, build_free_mailbox_otp_provider
     from .free_subject_fingerprint import subject_fingerprint
     from .free_register_common import (
+        FREE_STAGE_LABELS,
         FreeRegisterError,
         ProxyBinding,
         atomic_write,
@@ -40,6 +46,7 @@ except ImportError:
     from free_mailbox_otp import MailboxUrlOtpProvider, build_free_mailbox_otp_provider  # type: ignore[no-redef]
     from free_subject_fingerprint import subject_fingerprint  # type: ignore[no-redef]
     from free_register_common import (  # type: ignore[no-redef]
+        FREE_STAGE_LABELS,
         FreeRegisterError,
         ProxyBinding,
         atomic_write,
@@ -383,6 +390,8 @@ class FreeLiveCheckService:
         task_store: Any = None,
         fast_runner: Callable[[Mapping[str, Any], Mapping[str, Any]], Mapping[str, Any]] | None = None,
         deep_runner: Callable[[Mapping[str, Any], Mapping[str, Any]], Mapping[str, Any]] | None = None,
+        pool_maintainer: Callable[[Mapping[str, Any]], int] | None = None,
+        breaker: Any | None = None,
         workers: int = 3,
         max_concurrency: int = 16,
         queue_limit: int = 500,
@@ -397,6 +406,12 @@ class FreeLiveCheckService:
         self.task_store = task_store
         self.config_provider = config_provider
         self.proxy_probe = proxy_probe
+        # Pool-level maintenance and breaker references are injected by the
+        # Free manager so an empty pool gets one refill pass before the check
+        # fails, and the public error code distinguishes a breaker gate from
+        # a genuinely empty pool.
+        self.pool_maintainer = pool_maintainer
+        self.breaker = breaker
         self.fast_runner = fast_runner or self._run_fast
         self.deep_runner = deep_runner or self._run_deep
         # ``workers`` is the fallback ceiling for environments where the
@@ -723,21 +738,45 @@ class FreeLiveCheckService:
         may be stale or rejected by OpenAI edge hosts, while every Free
         workflow shares the same healthy_random pool (mirrors rebind).
         ``exclude_proxy_ids`` keeps proxy-swapping retries off exits that
-        already failed in this run.
+        already failed in this run.  An empty pool first gets one gated
+        maintenance pass (breaker/gateway rules live inside the manager's
+        maintainer) and only then surfaces a breaker-tripped vs pool-empty
+        distinction.
         """
         binder = getattr(self.proxies, "bind", None)
         if not callable(binder):
             raise FreeRegisterError("free_live_network_error", "Free 账号测活", "共享 Free 代理池不可用", retryable=False)
-        bindings = binder(
-            1,
-            probe=self.proxy_probe,
-            probe_url=str(config.get("proxy_probe_url") or "https://chatgpt.com/"),
-            driver="protocol",
-            exclude_proxy_ids=exclude_proxy_ids,
-            perform_probe=False,
+        bindings, _empty_error = bind_with_pool_maintenance(
+            lambda: binder(
+                1,
+                probe=self.proxy_probe,
+                probe_url=str(config.get("proxy_probe_url") or "https://chatgpt.com/"),
+                driver="protocol",
+                exclude_proxy_ids=exclude_proxy_ids,
+                perform_probe=False,
+            ),
+            config=config,
+            maintainer=self.pool_maintainer,
+            note_maintain_failure=lambda exc: self._note_quiet("pool_maintain", exc),
         )
         if not bindings:
-            raise FreeRegisterError("free_live_network_error", "Free 账号测活", "共享 Free 代理池没有健康代理", retryable=False)
+            if pool_empty_error_code(self.breaker) == "free_proxy_breaker_tripped":
+                raise FreeRegisterError(
+                    "free_proxy_breaker_tripped",
+                    FREE_STAGE_LABELS.get("free_proxy_breaker_tripped", "代理池挑战熔断"),
+                    "共享 Free 代理池没有健康代理，且挑战熔断已触发：请先人工确认并重置熔断",
+                    retryable=False,
+                    error_code="free_proxy_breaker_tripped",
+                    action_hint="重置熔断或修正隧道网关模板后，测活会自动从健康池重新分配代理",
+                )
+            raise FreeRegisterError(
+                "free_proxy_pool_empty",
+                FREE_STAGE_LABELS.get("free_proxy_pool_empty", "代理池无健康代理"),
+                "共享 Free 代理池没有健康代理",
+                retryable=False,
+                error_code="free_proxy_pool_empty",
+                action_hint="请导入健康代理，或配置账密隧道模板后重新测活",
+            )
         binding = bindings[0]
         lease = getattr(self.proxies, "lease", None)
         if callable(lease) and str(getattr(binding, "proxy_id", "") or ""):
@@ -1264,6 +1303,8 @@ def build_free_live_check_service(
     log_store: Any,
     proxy_probe: Callable[[str, str], str] | None = None,
     task_store: Any = None,
+    pool_maintainer: Callable[[Mapping[str, Any]], int] | None = None,
+    breaker: Any | None = None,
 ) -> FreeLiveCheckService:
     """Construct the Free-only service without expanding the main manager."""
     try:
@@ -1279,6 +1320,8 @@ def build_free_live_check_service(
         task_store=task_store,
         config_provider=config_store.load,
         proxy_probe=proxy_probe,
+        pool_maintainer=pool_maintainer,
+        breaker=breaker,
     )
 
 

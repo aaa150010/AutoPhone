@@ -41,7 +41,7 @@ const searchError = ref('')
 let refreshTimer = 0
 const query = ref({
   incident_id: '', task_id: '', batch_id: '', subject: '', from: '', to: '',
-  chain: '', driver: '', outcome: '', first_node_code: '', limit: 100,
+  chain: '', driver: '', outcome: '', first_node_code: '', limit: 100, sort: 'recent',
 })
 
 const statusOptions = [

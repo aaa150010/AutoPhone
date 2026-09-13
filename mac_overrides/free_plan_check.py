@@ -28,6 +28,11 @@ except ImportError:  # pragma: no cover - top-level recovery import
     from free_batch_concurrency import ProxyPoolConcurrencyGate  # type: ignore[no-redef]
 
 try:
+    from .free_proxy_maintenance import bind_with_pool_maintenance, pool_empty_error_code
+except ImportError:  # pragma: no cover - top-level recovery import
+    from free_proxy_maintenance import bind_with_pool_maintenance, pool_empty_error_code  # type: ignore[no-redef]
+
+try:
     from .free_account_service import (
         CHATGPT_ACCOUNTS_URL,
         CHATGPT_ELIGIBILITY_URL,
@@ -45,6 +50,7 @@ try:
     )
     from .free_subject_fingerprint import subject_fingerprint
     from .free_register_common import (
+        FREE_STAGE_LABELS,
         FreeRegisterError,
         atomic_write,
         fingerprint,
@@ -70,6 +76,7 @@ except ImportError:  # pragma: no cover - recovery import
     )
     from free_subject_fingerprint import subject_fingerprint  # type: ignore[no-redef]
     from free_register_common import (  # type: ignore[no-redef]
+        FREE_STAGE_LABELS,
         FreeRegisterError,
         atomic_write,
         fingerprint,
@@ -157,6 +164,8 @@ class FreePlanCheckService:
         proxies: Any = None,
         proxy_probe: Callable[[str, str], str] | None = None,
         browser_recheck: Callable[[str, Mapping[str, Any], Callable[[str, str], None]], Mapping[str, Any]] | None = None,
+        pool_maintainer: Callable[[Mapping[str, Any]], int] | None = None,
+        breaker: Any | None = None,
         workers: int = 2,
         max_concurrency: int = 16,
         queue_limit: int = 500,
@@ -172,6 +181,11 @@ class FreePlanCheckService:
         self.proxies = proxies
         self.proxy_probe = proxy_probe
         self.browser_recheck = browser_recheck
+        # Injected by the Free manager: an empty pool gets one gated
+        # maintenance pass before the job fails, and the breaker reference
+        # lets the public error distinguish "reset needed" from "no proxy".
+        self.pool_maintainer = pool_maintainer
+        self.breaker = breaker
         # ``workers`` is the fallback ceiling; the live ceiling follows the
         # shared healthy pool so plan queries scale with available proxies.
         self.workers = max(1, min(int(workers), 5))
@@ -424,16 +438,30 @@ class FreePlanCheckService:
         binder = getattr(self.proxies, "bind", None) if self.proxies is not None else None
         if not callable(binder):
             return "", None
-        bindings = binder(
-            1,
-            probe=self.proxy_probe,
-            probe_url=str(config.get("proxy_probe_url") or "https://chatgpt.com/"),
-            driver=driver,
-            exclude_proxy_ids=list(exclude_proxy_ids),
-            perform_probe=False,
+        bindings, _empty_error = bind_with_pool_maintenance(
+            lambda: binder(
+                1,
+                probe=self.proxy_probe,
+                probe_url=str(config.get("proxy_probe_url") or "https://chatgpt.com/"),
+                driver=driver,
+                exclude_proxy_ids=list(exclude_proxy_ids),
+                perform_probe=False,
+            ),
+            config=config,
+            maintainer=self.pool_maintainer,
+            note_maintain_failure=lambda exc: _note_stderr("pool_maintain", exc),
         )
         if not bindings:
-            raise FreePlanCheckError(PLAN_STAGE, PLAN_LABEL, "共享 Free 代理池没有健康代理", retryable=True, error_code="free_proxy_pool_empty")
+            if pool_empty_error_code(self.breaker) == "free_proxy_breaker_tripped":
+                raise FreePlanCheckError(
+                    "free_proxy_breaker_tripped",
+                    FREE_STAGE_LABELS.get("free_proxy_breaker_tripped", "代理池挑战熔断"),
+                    "共享 Free 代理池没有健康代理，且挑战熔断已触发：请先人工确认并重置熔断",
+                    retryable=False,
+                    error_code="free_proxy_breaker_tripped",
+                    action_hint="重置熔断或修正隧道网关模板后，重新查询套餐会自动从健康池分配代理",
+                )
+            raise FreePlanCheckError(PLAN_STAGE, PLAN_LABEL, "共享 Free 代理池没有健康代理", retryable=True, error_code="free_proxy_pool_empty", action_hint="请导入健康代理，或配置账密隧道模板后重新查询套餐")
         binding = bindings[0]
         lease = getattr(self.proxies, "lease", None)
         if callable(lease) and str(getattr(binding, "proxy_id", "") or ""):
@@ -628,7 +656,7 @@ class FreePlanCheckService:
                 RELOGIN_STAGE, RELOGIN_LABEL, "重新登录明确返回账号已停用",
                 retryable=False, error_code="account_deactivated",
                 provider_status=exc.http_status,
-                action_hint="账号已停用，将按停用规则从 Free 邮箱池移除",
+                action_hint="账号已停用（重新登录明确确认）",
             ) from exc
         except FreeRegisterError as exc:
             raise self._wrap_relogin_error(exc) from exc
@@ -856,11 +884,20 @@ class FreePlanCheckService:
                 # Same contract as the deep live check: a confirmed re-login
                 # deactivation removes the row, registration results and
                 # diagnostic events stay as the audit trail.
-                delete_deactivated_pool_row(
+                removed = delete_deactivated_pool_row(
                     self.pool,
                     row_id,
                     log_fn=lambda message, level: self._log(task_id, message, str(level)),
                     origin="free_plan_check",
+                )
+                # The deletion outcome is known by now; the persisted job
+                # failure must describe it in completed form, never as a
+                # pending promise.
+                failure = dict(failure)
+                failure["action_hint"] = (
+                    "账号已停用，已从 Free 邮箱池移除（注册结果与诊断日志保留）"
+                    if removed
+                    else "账号已停用，邮箱行移除失败，已标记为不可用"
                 )
             self._set_job(task_id, status="failed", checked_at=int(time.time()), http_status=failure.get("http_status"), retry_after_until=retry_until, failure=failure)
             self._log(task_id, failure.get("public_message", "套餐查询失败"), "error")
@@ -869,8 +906,8 @@ class FreePlanCheckService:
         self._executor.shutdown(wait=wait, cancel_futures=False)
 
 
-def build_free_plan_check_service(data_dir: Any, *, pool: Any, task_store: Any = None, log_store: Any = None, config_provider: Callable[[], Mapping[str, Any]] | None = None, task_updater: Callable[[str, Mapping[str, Any], bool], None] | None = None, proxies: Any = None, proxy_probe: Callable[[str, str], str] | None = None, browser_recheck: Callable[[str, Mapping[str, Any], Callable[[str, str], None]], Mapping[str, Any]] | None = None) -> FreePlanCheckService:
-    return FreePlanCheckService(data_dir, pool=pool, task_store=task_store, log_store=log_store, config_provider=config_provider, task_updater=task_updater, proxies=proxies, proxy_probe=proxy_probe, browser_recheck=browser_recheck)
+def build_free_plan_check_service(data_dir: Any, *, pool: Any, task_store: Any = None, log_store: Any = None, config_provider: Callable[[], Mapping[str, Any]] | None = None, task_updater: Callable[[str, Mapping[str, Any], bool], None] | None = None, proxies: Any = None, proxy_probe: Callable[[str, str], str] | None = None, browser_recheck: Callable[[str, Mapping[str, Any], Callable[[str, str], None]], Mapping[str, Any]] | None = None, pool_maintainer: Callable[[Mapping[str, Any]], int] | None = None, breaker: Any | None = None) -> FreePlanCheckService:
+    return FreePlanCheckService(data_dir, pool=pool, task_store=task_store, log_store=log_store, config_provider=config_provider, task_updater=task_updater, proxies=proxies, proxy_probe=proxy_probe, browser_recheck=browser_recheck, pool_maintainer=pool_maintainer, breaker=breaker)
 
 
 __all__ = ["FreePlanCheckError", "FreePlanCheckService", "build_free_plan_check_service"]

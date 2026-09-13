@@ -15,14 +15,27 @@ function freeStateFingerprint(state: FreeState | undefined): string {
   if (!state) return 'none'
   const tasks = state.tasks || []
   const taskPart = tasks
-    .map(task => `${task.task_id || ''}:${task.status || ''}:${task.updated_at || 0}:${task.retry_resolved ? 1 : 0}`)
+    .map(task => [
+      task.task_id || '',
+      task.status || '',
+      task.updated_at || 0,
+      task.retry_resolved ? 1 : 0,
+      // Folded auto-retry children write back onto the parent through
+      // ``retry_updated_at``/``retry_failure`` without touching the parent's
+      // own ``updated_at``; include them so the fold change is not swallowed.
+      task.retry_updated_at || 0,
+      task.retry_failure?.error_code || '',
+    ].join(':'))
     .join('|')
   const pool = state.pool || {}
   const scheduler = state.scheduler || {}
   const summary = state.summary || {}
   const camoufox = state.camoufox_debug || {}
+  const startup = state.startup
+  const startFailure = state.start_failure
   return [
     state.running ? 1 : 0,
+    state.starting ? 1 : 0,
     state.batch_id || '',
     state.driver || '',
     pool.total ?? '',
@@ -38,6 +51,13 @@ function freeStateFingerprint(state: FreeState | undefined): string {
     summary.stopped ?? '',
     camoufox.used ?? '',
     camoufox.available ?? '',
+    // The start-progress dialog renders `startup`/`start_failure`; without
+    // these parts a stage change alone would be swallowed by the fingerprint
+    // skip and the dialog would sit on one percentage until tasks launch.
+    startup?.stage || '',
+    startup?.detail || '',
+    startup?.updated_at ?? '',
+    startFailure ? `${startFailure.node_code}:${startFailure.public_message}` : '',
     taskPart,
   ].join('\u0000')
 }

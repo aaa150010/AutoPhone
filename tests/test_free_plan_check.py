@@ -10,7 +10,7 @@ from mac_overrides.free_account_service import plan_details_with_fallbacks
 from mac_overrides.diagnostic_store import DiagnosticStore
 from mac_overrides.free_log_runtime import FreeLogStore
 from mac_overrides.free_plan_check import FreePlanCheckError, FreePlanCheckService
-from mac_overrides.free_register_store import FreeMailboxPool
+from mac_overrides.free_register_store import FreeMailboxPool, FreeProxyPool
 
 
 class FreePlanCheckTests(unittest.TestCase):
@@ -422,8 +422,73 @@ class FreePlanCheckTests(unittest.TestCase):
             while service.public_state()["active"] and time.time() < deadline:
                 time.sleep(0.01)
             self.assertIsNone(self.pool.entry(self.row.row_id))
+            jobs = service.public_state()["jobs"]
+            self.assertTrue(jobs)
+            failure = jobs[0].get("failure") or {}
+            # WS4: the persisted result copy must be completed-form, never a
+            # pending promise.
+            self.assertIn("已从 Free 邮箱池移除", str(failure.get("action_hint") or ""))
+            self.assertNotIn("将按", str(failure.get("action_hint") or ""))
         finally:
             service.shutdown()
+
+
+class PlanCheckAllocationMaintenanceTests(unittest.TestCase):
+    """WS5: empty-pool rechecks refill once through the injected maintainer."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="gptphone-free-plan-alloc-")
+        self.addCleanup(self.temp.cleanup)
+        self.pool = FreeMailboxPool(self.temp.name)
+        self.pool.import_text("user@example.test----https://mailbox.test/inbox")
+        self.row = self.pool.entries()[0]
+
+    def _service(self, proxies, **kwargs):
+        return FreePlanCheckService(
+            self.temp.name, pool=self.pool, proxies=proxies, workers=1, recover=False, **kwargs,
+        )
+
+    def test_empty_pool_runs_maintainer_then_allocates(self):
+        proxies = FreeProxyPool(self.temp.name)
+        calls: list[dict] = []
+
+        def maintainer(config):
+            calls.append(dict(config))
+            proxies.import_text("http://user-refill:secret@refill.example.test:9999\n", source_label="tunnel-auto")
+            return 1
+
+        service = self._service(proxies, pool_maintainer=maintainer)
+        try:
+            proxy, binding = service._allocate_proxy({"proxy_probe_url": "https://probe.example.test"}, self.row.row_id)
+        finally:
+            service.shutdown()
+        self.assertEqual(len(calls), 1)
+        self.assertIn("refill.example.test", str(proxy))
+        self.assertIsNotNone(binding)
+
+    def test_empty_pool_reports_breaker_tripped_after_maintenance(self):
+        from mac_overrides.free_proxy_breaker import ChallengeBreaker
+
+        proxies = FreeProxyPool(self.temp.name)
+        breaker = ChallengeBreaker(threshold=1)
+        breaker.record_burn("any", now=time.time())
+        service = self._service(proxies, pool_maintainer=lambda _config: 0, breaker=breaker)
+        try:
+            with self.assertRaises(FreePlanCheckError) as raised:
+                service._allocate_proxy({"proxy_probe_url": "https://probe.example.test"}, self.row.row_id)
+        finally:
+            service.shutdown()
+        self.assertEqual(str(raised.exception.error_code), "free_proxy_breaker_tripped")
+
+    def test_empty_pool_without_maintainer_reports_pool_empty(self):
+        proxies = FreeProxyPool(self.temp.name)
+        service = self._service(proxies)
+        try:
+            with self.assertRaises(FreePlanCheckError) as raised:
+                service._allocate_proxy({"proxy_probe_url": "https://probe.example.test"}, self.row.row_id)
+        finally:
+            service.shutdown()
+        self.assertEqual(str(raised.exception.error_code), "free_proxy_pool_empty")
 
 
 if __name__ == "__main__":

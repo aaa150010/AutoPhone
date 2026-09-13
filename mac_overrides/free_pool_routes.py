@@ -97,6 +97,20 @@ def import_free_mailboxes(
     raise TypeError("Free 邮箱导入器签名不兼容")
 
 
+def _breaker_state_payload(state: Any) -> dict[str, Any]:
+    """Serialize the breaker snapshot (pool circuit + gateway block layer)."""
+    return {
+        "tripped": bool(state.tripped),
+        "recent_distinct_burns": int(state.recent_distinct_burns),
+        "threshold": int(state.threshold),
+        "window_seconds": int(state.window_seconds),
+        "gateway_blocked": bool(state.gateway_blocked),
+        "recent_new_mint_challenges": int(state.recent_new_mint_challenges),
+        "gateway_window_seconds": int(state.gateway_window_seconds),
+        "gateway_threshold": int(state.gateway_threshold),
+    }
+
+
 def _request_row_ids(data: Any) -> list[str]:
     """Normalize an explicit row selection without turning invalid input into all rows."""
     if not isinstance(data, Mapping) or not isinstance(data.get("row_ids"), list):
@@ -398,13 +412,7 @@ class FreePoolRouteController:
             payload = self.manager.proxies.public()
             breaker = getattr(self.manager, "proxy_breaker", None)
             if breaker is not None:
-                state = breaker.state()
-                payload["breaker"] = {
-                    "tripped": bool(state.tripped),
-                    "recent_distinct_burns": int(state.recent_distinct_burns),
-                    "threshold": int(state.threshold),
-                    "window_seconds": int(state.window_seconds),
-                }
+                payload["breaker"] = _breaker_state_payload(breaker.state())
             return self.module.jsonify(ok=True, proxies=payload)
         except Exception as exc:
             return self.failure_response(
@@ -428,13 +436,13 @@ class FreePoolRouteController:
             breaker.reset()
             try:
                 self.manager._log(
-                    "[free-proxy/重置代理池熔断/free_proxy_breaker_reset] 操作员已人工确认并重置挑战熔断",
+                    "[free-proxy/重置代理池熔断/free_proxy_breaker_reset] 操作员已人工确认并重置挑战熔断（含网关封锁状态）",
                     "info",
                     node_code="free_proxy_breaker_reset",
                     node_label="重置代理池熔断",
                     failure={
                         "error_code": "free_proxy_breaker_reset",
-                        "technical_summary": "操作员人工确认后重置代理池挑战熔断",
+                        "technical_summary": "操作员人工确认后重置代理池挑战熔断及网关封锁状态",
                         "retryable": False,
                         "action_hint": "熔断已解除；若挑战再次批量出现请重新评估代理来源",
                     },
@@ -443,16 +451,7 @@ class FreePoolRouteController:
                 # The reset itself succeeded; audit logging must not fail the
                 # operator request.
                 pass
-            state = breaker.state()
-            return self.module.jsonify(
-                ok=True,
-                breaker={
-                    "tripped": bool(state.tripped),
-                    "recent_distinct_burns": int(state.recent_distinct_burns),
-                    "threshold": int(state.threshold),
-                    "window_seconds": int(state.window_seconds),
-                },
-            )
+            return self.module.jsonify(ok=True, breaker=_breaker_state_payload(breaker.state()))
         except Exception as exc:
             return self.failure_response(
                 exc,

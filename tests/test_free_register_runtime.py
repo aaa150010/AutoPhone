@@ -2210,6 +2210,116 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
 
         self.assertEqual(raised.exception.error_code, "free_proxy_breaker_tripped")
 
+    def _challenge_exc(self):
+        return FreeRegisterError(
+            "free_oauth_security_challenge",
+            "等待 Free OAuth 安全验证",
+            "注册流程返回安全挑战页面",
+            retryable=False,
+            error_code="free_oauth_security_challenge",
+            page_type="security_challenge",
+        )
+
+    def test_challenge_breaker_dedupes_by_egress_ip_before_proxy_id(self):
+        manager = FreeRegisterManager(self.data_dir)
+        manager.proxies.import_text(
+            "http://p1a.test:8000\nhttp://p1b.test:8001\nhttp://p2.test:8002\nhttp://p3.test:8003\n"
+        )
+        rows = manager.proxies.entries()
+        by_host = {str(row["host"]): row for row in rows}
+        # Two proxy rows report the same observed egress IP: one physical exit.
+        manager.proxies.record_success(str(by_host["p1a.test"]["proxy_id"]), exit_ip="9.9.9.1")
+        manager.proxies.record_success(str(by_host["p1b.test"]["proxy_id"]), exit_ip="9.9.9.1")
+        manager.proxies.record_success(str(by_host["p2.test"]["proxy_id"]), exit_ip="9.9.9.2")
+        for host in ("p1a.test", "p1b.test", "p2.test"):
+            row = by_host[host]
+            tripped = manager._handle_challenge_failure(
+                {"task_id": f"t-{host}", "proxy_id": str(row["proxy_id"]), "proxy_masked": host},
+                f"t-{host}",
+                self._challenge_exc(),
+            )
+        self.assertFalse(tripped)
+        state = manager.proxy_breaker.state()
+        # Distinct exits are 9.9.9.1 and 9.9.9.2 only; the threshold of three
+        # different exits has not been reached.
+        self.assertEqual(state.recent_distinct_burns, 2)
+        row3 = by_host["p3.test"]
+        manager.proxies.record_success(str(row3["proxy_id"]), exit_ip="9.9.9.3")
+        tripped = manager._handle_challenge_failure(
+            {"task_id": "t-p3", "proxy_id": str(row3["proxy_id"]), "proxy_masked": "p3.test"},
+            "t-p3",
+            self._challenge_exc(),
+        )
+        self.assertTrue(tripped)
+
+    def test_gateway_block_stops_template_mint_and_is_logged(self):
+        from mac_overrides.free_proxy_breaker import ChallengeBreaker
+
+        diagnostics = DiagnosticStore(self.data_dir / "gw-diag")
+        manager = FreeRegisterManager(self.data_dir, diagnostic_store=diagnostics)
+        # Pool circuit raised above the gateway gate so the gateway layer can
+        # be observed in isolation on three minted-row challenges.
+        manager.proxy_breaker = ChallengeBreaker(threshold=99, gateway_threshold=3)
+        manager.proxies.import_text(
+            "socks5://sid-a-1:pw@gw.test:3010\n"
+            "socks5://sid-a-2:pw@gw.test:3010\n"
+            "socks5://sid-a-3:pw@gw.test:3010\n",
+            source_label="tunnel-auto",
+        )
+        rows = manager.proxies.entries()
+        for index, row in enumerate(rows):
+            manager.proxies.annotate_window(
+                str(row["proxy_id"]), started_at=1000.0, expires_at=900000.0, minted_at=1000.0 + index,
+            )
+        for index, row in enumerate(rows):
+            manager._handle_challenge_failure(
+                {"task_id": f"t-gw-{index}", "proxy_id": str(row["proxy_id"]), "proxy_masked": "gw.test"},
+                f"t-gw-{index}",
+                self._challenge_exc(),
+            )
+        self.assertTrue(manager.proxy_breaker.gateway_blocked())
+        # Maintenance for the blocked gateway mints nothing.
+        manager._last_config = {
+            "proxy_tunnel_enabled": True,
+            "proxy_tunnel_gateway_host": "gw.test",
+            "proxy_tunnel_gateway_port": 3010,
+            "proxy_tunnel_scheme": "socks5",
+            "proxy_tunnel_username_template": "sid-a-{sid}",
+            "proxy_tunnel_password": "pw",
+            "proxy_tunnel_sticky_minutes": 30,
+            "proxy_pool_target_size": 3,
+            "concurrency": 1,
+        }
+        before = len([row for row in manager.proxies.entries()])
+        self.assertEqual(manager._maintain_proxy_pool(), 0)
+        self.assertEqual(len(manager.proxies.entries()), before)
+        # The async diagnostic writer flushes off-thread; poll for the
+        # gateway-block event instead of asserting immediately.
+        found = False
+        deadline = time.time() + 6
+        while time.time() < deadline and not found:
+            for row in diagnostics.search({"limit": 200}):
+                detail = diagnostics.incident(row["incident_id"]) or {}
+                if any(
+                    str(event.get("node_code") or "") == "free_proxy_gateway_blocked"
+                    for event in detail.get("events") or []
+                ):
+                    found = True
+                    break
+            if not found:
+                time.sleep(0.05)
+        self.assertTrue(found, "gateway block diagnostic event missing")
+        manager.proxy_breaker.reset()
+        self.assertFalse(manager.proxy_breaker.gateway_blocked())
+        # With a healthy deficit the maintainer now replaces the burned rows
+        # one-for-one after each successful mint.
+        burned_before = sum(
+            1 for row in manager.proxies.entries() if str(row.get("status") or "") == "burned"
+        )
+        self.assertEqual(burned_before, 3)
+        minted = manager._maintain_proxy_pool()
+        self.assertGreaterEqual(minted, 1)
+
     def test_pre_submit_challenge_switches_proxy_with_own_budget(self):
         FreeMailboxPool(self.data_dir).import_text(
             "switch@example.test----https://mail.example.test/switch\n"
@@ -2567,6 +2677,175 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         self.assertEqual(len(retry_config_keys), 1)
         self.assertNotIn("_confirm_mailbox_lease", retry_config_keys[0])
         self.assertNotIn("_abort_mailbox_lease_confirmation", retry_config_keys[0])
+
+    def test_auto_password_retry_budget_is_independent_and_projected(self):
+        """Password auto-retries get their own 0-2 budget and fold into the parent."""
+        FreeMailboxPool(self.data_dir).import_text(
+            "pwd-retry@example.test----https://mail.example.test/pwd-retry\n"
+        )
+        FreeProxyPool(self.data_dir).import_text("http://proxy-pwdr.test:8000\n")
+        calls: list[dict] = []
+
+        def runner(task, _config, _stop, _stage, _log, **kwargs):
+            calls.append(dict(kwargs))
+            return {
+                "access_token": "token-private",
+                "password_status": "pending",
+                "password_failure": {
+                    "node_code": "free_password_enroll",
+                    "error_code": "free_password_enroll_failed",
+                    "retryable": True,
+                    "public_message": "密码设置请求超时",
+                },
+            }
+
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=runner,
+            proxy_probe=lambda _proxy, _url: "203.0.113.61",
+        )
+        manager.start({
+            "target_count": 1,
+            "twofa_auto_retry_attempts": 2,
+            "password_auto_retry_attempts": 2,
+            "auto_set_password": True,
+        })
+        deadline = time.time() + 6
+        while manager._executor is not None and time.time() < deadline:
+            time.sleep(0.02)
+        password_calls = [entry for entry in calls if entry.get("password_retry")]
+        self.assertEqual(len(password_calls), 2)
+        tasks = {task["task_id"]: task for task in manager.public_state()["tasks"]}
+        roots = [task for task in tasks.values() if not task.get("retry_of")]
+        self.assertEqual(len(roots), 1)
+        root = roots[0]
+        self.assertEqual(root["status"], "partial_success")
+        self.assertIsNotNone(root.get("retry_failure"))
+        self.assertEqual(root.get("retry_trigger"), None)
+        children = [task for task in tasks.values() if task.get("retry_mode") == "password"]
+        self.assertEqual(len(children), 2)
+        self.assertTrue(all(str(task.get("retry_trigger") or "") == "auto" for task in children))
+        self.assertEqual(
+            sorted(int(task.get("password_retry_attempt") or 0) for task in children),
+            [1, 2],
+        )
+
+    def test_auto_password_retry_disabled_by_zero_budget(self):
+        FreeMailboxPool(self.data_dir).import_text(
+            "pwd-off@example.test----https://mail.example.test/pwd-off\n"
+        )
+        FreeProxyPool(self.data_dir).import_text("http://proxy-pwdfalse.test:8000\n")
+        calls: list[dict] = []
+
+        def runner(task, _config, _stop, _stage, _log, **kwargs):
+            calls.append(dict(kwargs))
+            return {
+                "access_token": "token-private",
+                "password_status": "pending",
+                "password_failure": {"node_code": "free_password_enroll", "retryable": True},
+            }
+
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=runner,
+            proxy_probe=lambda _proxy, _url: "203.0.113.62",
+        )
+        manager.start({"target_count": 1, "password_auto_retry_attempts": 0})
+        deadline = time.time() + 4
+        while manager._executor is not None and time.time() < deadline:
+            time.sleep(0.02)
+        self.assertEqual([entry for entry in calls if entry.get("password_retry")], [])
+
+    def test_password_auto_retry_classifier_blocks_known_bad_categories(self):
+        from mac_overrides.free_account_service import password_retry_allowed
+
+        allowed = FreeRegisterManager._password_auto_retry_allowed
+        transient = {
+            "password_status": "pending",
+            "password_failure": {"node_code": "free_password_enroll", "error_code": "proxy_connect_timeout", "retryable": True},
+        }
+        self.assertTrue(allowed(transient))
+
+        def blocked(failure: dict) -> bool:
+            return not allowed({"password_status": "pending", "password_failure": failure})
+
+        self.assertTrue(blocked({"error_code": "free_oauth_security_challenge", "node_code": "free_oauth_security_challenge"}))
+        self.assertTrue(blocked({"error_code": "captcha_required"}))
+        self.assertTrue(blocked({"error_code": "security_policy_rejected"}))
+        self.assertTrue(blocked({"error_code": "account_banned"}))
+        self.assertTrue(blocked({"error_code": "account_disabled"}))
+        self.assertTrue(blocked({"error_code": "account_suspended"}))
+        self.assertTrue(blocked({"http_status": 429, "error_code": "rate_limited"}))
+        self.assertTrue(blocked({"error_code": "free_password_totp_missing"}))
+        self.assertTrue(blocked({"error_code": "free_password_otp_prepare_failed"}))
+        self.assertTrue(blocked({"retryable": False}))
+        self.assertTrue(blocked({"http_status": 403}))
+        # existing-login accounts are excluded by password_retry_allowed itself
+        self.assertFalse(
+            password_retry_allowed({"account_flow": "existing_login", "password_status": "pending"})
+        )
+
+    def test_auto_password_chains_only_after_twofa_success(self):
+        FreeMailboxPool(self.data_dir).import_text(
+            "chain@example.test----https://mail.example.test/chain\n"
+        )
+        FreeProxyPool(self.data_dir).import_text("http://proxy-chain.test:8000\n")
+
+        def runner(task, _config, _stop, _stage, _log, **kwargs):
+            if kwargs.get("twofa_retry"):
+                return {"twofa_status": "enabled", "totp_secret": "JBSWY3DPEHPK3PXP"}
+            if kwargs.get("password_retry"):
+                return {"password_status": "enabled", "password": FIXED_PASSWORD}
+            return {
+                "access_token": "token-private",
+                "twofa_status": "pending",
+                "twofa_failure": {
+                    "node_code": "free_twofa_activate",
+                    "error_code": "free_twofa_activate_failed",
+                    "retryable": True,
+                },
+                "password_status": "pending",
+                "password_failure": {
+                    "node_code": "free_password_enroll",
+                    "error_code": "free_password_enroll_failed",
+                    "retryable": True,
+                },
+            }
+
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=runner,
+            proxy_probe=lambda _proxy, _url: "203.0.113.63",
+        )
+        manager.start({
+            "target_count": 1,
+            "twofa_auto_retry_attempts": 2,
+            "password_auto_retry_attempts": 2,
+            "auto_set_password": True,
+            "auto_set_2fa": True,
+        })
+        deadline = time.time() + 8
+        while manager._executor is not None and time.time() < deadline:
+            time.sleep(0.02)
+        tasks = {task["task_id"]: task for task in manager.public_state()["tasks"]}
+        roots = [task for task in tasks.values() if not task.get("retry_of")]
+        self.assertEqual(len(roots), 1)
+        root = roots[0]
+        twofa_children = [task for task in tasks.values() if task.get("retry_mode") == "twofa"]
+        password_children = [task for task in tasks.values() if task.get("retry_mode") == "password"]
+        self.assertEqual(len(twofa_children), 1)
+        self.assertEqual(len(password_children), 1)
+        twofa_child = twofa_children[0]
+        password_child = password_children[0]
+        # The password child hangs under the 2FA child (chained), proving the
+        # fixed order: 2FA first, password only once 2FA succeeded.  Its
+        # password budget advanced independently of the 2FA retry counters.
+        self.assertEqual(password_child.get("retry_of"), twofa_child["task_id"])
+        self.assertEqual(str(password_child.get("retry_trigger") or ""), "auto")
+        self.assertEqual(int(password_child.get("password_retry_attempt") or 0), 1)
+        self.assertGreaterEqual(int(password_child.get("retry_attempt") or 0), 2)
+        self.assertEqual(str(twofa_child.get("retry_trigger") or ""), "auto")
+        self.assertEqual(root["status"], "twofa_pending")
 
     def test_registration_retry_preserves_remail_source_and_service_token(self):
         free_root = self.data_dir / "free_register"

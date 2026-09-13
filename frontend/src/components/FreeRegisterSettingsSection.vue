@@ -35,6 +35,9 @@ const savedProxyAvailable = computed(() => proxyRows.value.filter(row => row.sta
 const savedProxyQuarantined = computed(() => proxyRows.value.filter(row => row.status === 'quarantined').length)
 const savedProxyBurned = computed(() => proxyRows.value.filter(row => row.effective_status === 'burned' || row.status === 'burned').length)
 const breakerTripped = computed(() => Boolean(proxyBreaker.value?.tripped))
+// Gateway block is the finer minting gate; when the pool circuit is also
+// tripped the tripped alert already covers the recovery action.
+const gatewayBlocked = computed(() => Boolean(proxyBreaker.value?.gateway_blocked))
 const proxyCheckSummary = computed(() => {
   const total = proxyCheckRows.value.length
   if (!total) return ''
@@ -215,7 +218,7 @@ function applyPublicProxies(value: FreeProxyPool | undefined | null) {
 async function resetBreaker() {
   try {
     await ElMessageBox.confirm(
-      '确认解除代理池挑战熔断？若挑战是站点整体收紧或供应商子段被拉黑导致，解除后会继续消耗邮箱与流量。',
+      '确认解除代理池挑战熔断（含隧道网关封锁状态）？若挑战是站点整体收紧或供应商子段被拉黑导致，解除后会继续消耗邮箱与流量；网关封锁请先更换或修正隧道凭据模板再重置。',
       '人工确认重置熔断',
       { type: 'warning', confirmButtonText: '确认重置', cancelButtonText: '取消' },
     )
@@ -275,6 +278,9 @@ defineExpose({ save })
     <div class="check-row proxy-tls-options"><el-checkbox v-model="config.proxy_tls_verify" :disabled="running"><FieldHelpLabel label="严格校验探测站证书" help="默认按标准 TLS 证书校验访问探测地址。关闭后只影响连通性探测，不会改代理协议、不会切换节点，也不会影响浏览器页面证书校验。" /></el-checkbox><el-checkbox v-model="config.proxy_tls_compat_fallback" :disabled="running || !config.proxy_tls_verify"><FieldHelpLabel label="TLS/CONNECT 兼容重试" help="严格校验遇到明确证书错误时，用同一代理和同一协议再试一次；协议不匹配不会走证书兼容重试。" /></el-checkbox></div>
     <el-form-item><template #label><FieldHelpLabel label="注册账号密码" help="启用自动设置密码后，注册页和补设密码流程都会使用这里的值。默认是 Aa150010150010；已保存密码会以掩码显示，输入新值即可替换。" /></template><el-input v-model="config.account_password" type="password" show-password autocomplete="new-password" maxlength="256" :disabled="running" placeholder="Aa150010150010" size="small" /></el-form-item>
     <el-form-item><template #label><FieldHelpLabel label="注册后安全设置" help="密码和 2FA 可独立启用。每个启用的设置都会在对应分支单独重新获取一封邮箱 OTP；关闭后跳过该步骤。" /></template><div class="check-row security-options"><el-checkbox v-model="config.auto_set_password" :disabled="running">注册完成后自动设置密码</el-checkbox><el-checkbox v-model="config.auto_set_2fa" :disabled="running">注册完成后自动设置动态口令（2FA）</el-checkbox></div></el-form-item>
+    <el-row :gutter="10">
+      <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="密码自动重试次数（0-2）" help="密码设置分支失败后自动入队补设子任务的额外尝试预算，独立于 2FA 重试计数；链式顺序固定为先自动 2FA，2FA 成功后再自动密码。安全挑战、验证码、封禁/停用、限流、TOTP 缺失、OTP 准备失败和已有账号登录不会自动重试。" /></template><el-input-number v-model="config.password_auto_retry_attempts" :min="0" :max="2" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
+    </el-row>
 
     <div class="subsection mailbox-network-section">
       <div class="humanize-heading"><h3>邮箱 OTP 取件网络</h3><FieldHelpLabel label="网络隔离说明" help="这里只控制邮箱取件 URL 的网络，不会使用账号注册代理，也不会改变浏览器 Profile。" /><el-tag size="small" type="info" effect="plain">与注册代理分离</el-tag></div>
@@ -359,7 +365,11 @@ defineExpose({ save })
       <div class="section-heading-row"><div><h3>Free 独立代理池</h3><p class="section-hint">粘贴后可检测代理池连通性，再保存到 Free 池。</p></div><span class="muted">已保存 {{ Number(state.pool?.proxies || 0) }} 个</span></div>
       <el-alert v-if="breakerTripped" type="error" :closable="false" show-icon class="breaker-alert">
         <template #title>代理池已熔断：{{ proxyBreaker?.window_seconds ? Math.round(proxyBreaker.window_seconds / 60) : 30 }} 分钟内 {{ proxyBreaker?.recent_distinct_burns || 0 }} 个不同出口触发安全挑战，已暂停批量启动、重试入队与替补铸造。</template>
-        <div class="breaker-actions"><span>多为站点整体收紧或供应商子段被拉黑；确认不是系统性问题后再解除。</span><el-button size="small" type="danger" :disabled="running" @click="resetBreaker">人工确认并重置熔断</el-button></div>
+        <div class="breaker-actions"><span>多为站点整体收紧或供应商子段被拉黑；确认不是系统性问题后再解除。{{ gatewayBlocked ? '当前同时存在隧道网关封锁，重置将一并清除。' : '' }}</span><el-button size="small" type="danger" :disabled="running" @click="resetBreaker">人工确认并重置熔断</el-button></div>
+      </el-alert>
+      <el-alert v-else-if="gatewayBlocked" type="warning" :closable="false" show-icon class="breaker-alert">
+        <template #title>隧道网关疑似封锁：{{ proxyBreaker?.gateway_window_seconds ? Math.round(proxyBreaker.gateway_window_seconds / 60) : 15 }} 分钟内同一网关指纹连续 {{ proxyBreaker?.recent_new_mint_challenges || 0 }} 个新铸隧道出口触发安全挑战，该模板已停止补铸（其余健康代理照常分配）。</template>
+        <div class="breaker-actions"><span>请先更换或修正隧道网关凭据模板，再人工确认重置（同时清除池级熔断状态）。</span><el-button size="small" type="warning" :disabled="running" @click="resetBreaker">人工确认并重置熔断</el-button></div>
       </el-alert>
       <div class="proxy-import-meta">
         <div class="proxy-import-field"><FieldHelpLabel label="无协议默认协议" help="支持 scheme://用户名:密码@主机:端口、主机:端口:用户名:密码、用户名:密码@主机:端口、主机:端口@用户名:密码；裸格式按当前下拉协议解析，显式协议始终优先。" /><el-select v-model="proxyScheme" placeholder="无协议时默认协议" size="small"><el-option label="HTTP" value="http" /><el-option label="HTTPS" value="https" /><el-option label="SOCKS4" value="socks4" /><el-option label="SOCKS5" value="socks5" /><el-option label="SOCKS5H" value="socks5h" /></el-select></div>

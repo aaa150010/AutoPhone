@@ -33,6 +33,8 @@ class ErrorObservabilityTests(unittest.TestCase):
             "free_proxy_replacement_mint_failed": "隧道替补铸造失败",
             "free_proxy_breaker_tripped": "代理池挑战熔断",
             "free_proxy_breaker_reset": "重置代理池熔断",
+            "free_proxy_gateway_blocked": "隧道网关疑似封锁",
+            "free_proxy_pool_empty": "代理池无健康代理",
             "free_task_challenge_switch": "安全挑战换出口重试",
         }
         for node_code, label in labels.items():
@@ -42,6 +44,8 @@ class ErrorObservabilityTests(unittest.TestCase):
         # Failure nodes carry an actionable Chinese hint in the failure layer.
         self.assertIn("检查隧道网关、账号模板与代理池存储后重试", _ACTION_HINTS["free_proxy_replacement_mint_failed"])
         self.assertIn("人工确认后重置熔断", _ACTION_HINTS["free_proxy_breaker_tripped"])
+        self.assertIn("更换或修正隧道网关凭据模板", _ACTION_HINTS["free_proxy_gateway_blocked"])
+        self.assertIn("导入健康代理", _ACTION_HINTS["free_proxy_pool_empty"])
 
     def test_plan_relogin_failure_has_a_public_diagnostic_label(self):
         self.assertEqual(NODE_LABELS["free_plan_relogin"], "重查套餐重新登录")

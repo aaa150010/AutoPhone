@@ -609,6 +609,8 @@ _ACTION_HINTS = {
     "free_password_mfa_validate": "确认 2FA 时间同步后重试密码设置",
     "free_proxy_replacement_mint_failed": "检查隧道网关、账号模板与代理池存储后重试",
     "free_proxy_breaker_tripped": "多为站点整体收紧或供应商子段被拉黑；请人工确认后重置熔断再恢复任务",
+    "free_proxy_gateway_blocked": "先更换或修正隧道网关凭据模板，再人工确认并重置熔断（同时清除池级熔断）",
+    "free_proxy_pool_empty": "请导入健康代理，或配置账密隧道模板后重试",
 }
 
 FAILURE_KEYS = (

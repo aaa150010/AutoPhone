@@ -7,10 +7,12 @@ sticky-session proxy rows.  Every minted row carries the reserved
 programmatically, manually imported rows are never rewritten.
 
 ``ensure_target`` keeps the dispatchable pool at the configured size: it
-counts every eligible row (manual or tunnel) toward the target, deletes
-burned tunnel rows first, and mints fresh sids for the deficit bounded by a
-2x capacity cap so rows quarantined-but-recovering cannot grow the pool
-without bound.
+counts every eligible row (manual or tunnel) toward the target, mints fresh
+sids for the deficit, and drops one burned ``tunnel-auto`` row only after its
+replacement mint succeeded (a failed mint keeps the burned row and its
+challenge evidence).  Minting is bounded so total live tunnel rows stay at or
+below a 2x capacity cap, so rows quarantined-but-recovering cannot grow the
+pool without bound.
 """
 
 from __future__ import annotations
@@ -143,25 +145,34 @@ def ensure_target(
 ) -> int:
     """Mint tunnel rows until the dispatchable pool reaches ``target``.
 
-    Every eligible row counts toward the target; burned tunnel-auto rows are
-    deleted first so a replacement never accumulates behind a dead exit, and
-    the mint is capped at ``2 * target`` total tunnel rows.  ``on_progress``
-    receives ``(minted_so_far, deficit)`` after each successful mint so the
-    startup progress surface can report the replacement loop.  Returns the
+    Every eligible row counts toward the target.  Burned tunnel-auto rows are
+    treated as reclaimable capacity but are never deleted up front: each
+    replacement is a logical one-for-one swap that deletes one burned row only
+    after its own mint succeeded, so a failed mint keeps the burned row (and
+    its challenge evidence) in place instead of shrinking the pool.  Manual
+    rows are never removed.  The mint is capped so total *live* tunnel rows
+    stay at or below ``2 * target``; ``on_progress`` receives
+    ``(minted_so_far, deficit)`` after each successful mint.  Returns the
     number of rows minted.
     """
     if template is None or int(target or 0) <= 0:
         return 0
     target = int(target)
+    current_time = time.time() if now is None else float(now)
+    burned_ids: list[str] = []
     for row in _tunnel_rows(pool):
         if str(row.get("status") or "") == "burned":
-            pool.remove(str(row.get("proxy_id") or ""))
+            proxy_id = str(row.get("proxy_id") or "")
+            if proxy_id:
+                burned_ids.append(proxy_id)
     deficit = target - int(pool.healthy_count(driver="protocol"))
     if deficit <= 0:
         return 0
-    capacity = max(0, _TARGET_CAPACITY_MULTIPLIER * target - len(_tunnel_rows(pool)))
+    # Burned tunnel rows count as reclaimable capacity: they will be deleted
+    # one per successful replacement, so only live rows bound the mint.
+    live_rows = len(_tunnel_rows(pool)) - len(burned_ids)
+    capacity = max(0, _TARGET_CAPACITY_MULTIPLIER * target - live_rows)
     minted = 0
-    current_time = time.time() if now is None else float(now)
     for _ in range(min(deficit, capacity)):
         line = template.mint_proxy()
         try:
@@ -175,8 +186,13 @@ def ensure_target(
                 proxy_id,
                 started_at=current_time,
                 expires_at=current_time + template.sticky_minutes * 60,
+                minted_at=current_time,
             )
         minted += 1
+        # One-for-one logical replacement: only now that this mint succeeded
+        # may its counterpart burned row be dropped.
+        if burned_ids:
+            pool.remove(burned_ids.pop(0))
         if on_progress is not None:
             on_progress(minted, deficit)
     return minted

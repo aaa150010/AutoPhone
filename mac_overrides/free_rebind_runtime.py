@@ -22,9 +22,11 @@ from urllib.parse import urljoin
 try:
     from .free_batch_concurrency import ProxyPoolConcurrencyGate
     from .free_protocol_authorize_retry import authorize_403_same_session_retry
+    from .free_proxy_maintenance import bind_with_pool_maintenance, pool_empty_error_code
 except ImportError:  # pragma: no cover - top-level recovery import
     from free_batch_concurrency import ProxyPoolConcurrencyGate  # type: ignore[no-redef]
     from free_protocol_authorize_retry import authorize_403_same_session_retry  # type: ignore[no-redef]
+    from free_proxy_maintenance import bind_with_pool_maintenance, pool_empty_error_code  # type: ignore[no-redef]
 
 try:
     from .free_failure_runtime import canonical_failure, exception_to_failure, sanitize_failure_text, sanitize_log_message
@@ -837,20 +839,40 @@ class FreeRebindService:
         # not silently pin a new protocol session to it when the shared pool
         # is available.  The source value remains a narrow compatibility
         # fallback for injected/legacy managers that do not expose a pool.
+        # An empty pool first gets one gated maintenance pass through the
+        # manager (breaker/gateway rules apply) and only then fails with a
+        # breaker-tripped vs pool-empty distinction.
         proxies = getattr(self.free_manager, "proxies", None)
         binder = getattr(proxies, "bind", None)
         if callable(binder):
-            bindings = binder(
-                1,
-                probe=getattr(self.free_manager, "proxy_probe", None),
-                probe_url=str(config.get("proxy_probe_url") or "https://chatgpt.com/"),
-                driver="protocol",
-                perform_probe=False,
+            maintainer = getattr(self.free_manager, "_maintain_proxy_pool", None)
+            breaker = getattr(self.free_manager, "proxy_breaker", None)
+            bindings, _empty_error = bind_with_pool_maintenance(
+                lambda: binder(
+                    1,
+                    probe=getattr(self.free_manager, "proxy_probe", None),
+                    probe_url=str(config.get("proxy_probe_url") or "https://chatgpt.com/"),
+                    driver="protocol",
+                    perform_probe=False,
+                ),
+                config=config,
+                maintainer=maintainer if callable(maintainer) else None,
+                note_maintain_failure=lambda exc: _note_stderr("pool_maintain", exc),
             )
             if not bindings:
+                if pool_empty_error_code(breaker) == "free_proxy_breaker_tripped":
+                    raise FreeRegisterError(
+                        "free_proxy_breaker_tripped", "代理池挑战熔断",
+                        "共享 Free 代理池没有健康代理，且挑战熔断已触发：请先人工确认并重置熔断",
+                        retryable=False,
+                        error_code="free_proxy_breaker_tripped",
+                        action_hint="重置熔断或修正隧道网关模板后，换绑会自动从健康池重新分配代理",
+                    )
                 raise FreeRegisterError(
                     "free_rebind_proxy", "准备换绑协议代理",
                     "共享 Free 代理池没有健康代理", retryable=False,
+                    error_code="free_proxy_pool_empty",
+                    action_hint="请导入健康代理，或配置账密隧道模板后重新发起换绑",
                 )
             binding = bindings[0]
             lease = getattr(proxies, "lease", None)

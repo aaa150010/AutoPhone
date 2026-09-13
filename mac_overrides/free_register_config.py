@@ -68,6 +68,12 @@ DEFAULT_FREE_CONFIG: dict[str, Any] = {
     # 2FA attempts including the initial enrollment). Direct manager callers
     # that omit this key retain the historical manual-only behavior.
     "twofa_auto_retry_attempts": 2,
+    # Password setup failures get their own independent automatic budget; it
+    # never shares or consumes the 2FA counter. The chained order is fixed:
+    # automatic 2FA first, and only after 2FA succeeds does an automatic
+    # password retry run. Direct callers that omit this key keep the
+    # historical manual-only password retry behavior.
+    "password_auto_retry_attempts": 2,
     "proxy_probe_url": DEFAULT_PROXY_PROBE_URL,
     "proxy_default_scheme": "socks5",
     "proxy_socks5_dns_mode": "remote",
@@ -310,6 +316,7 @@ class FreeConfigStore:
             result.get("auto_set_2fa"), bool(DEFAULT_FREE_CONFIG["auto_set_2fa"])
         )
         result["twofa_auto_retry_attempts"] = _int(result.get("twofa_auto_retry_attempts"), 2, 0, 2)
+        result["password_auto_retry_attempts"] = _int(result.get("password_auto_retry_attempts"), 2, 0, 2)
         scheme = str(result.get("proxy_default_scheme") or DEFAULT_FREE_CONFIG["proxy_default_scheme"]).strip().lower()
         if scheme not in {"http", "https", "socks4", "socks5", "socks5h"}:
             scheme = DEFAULT_FREE_CONFIG["proxy_default_scheme"]

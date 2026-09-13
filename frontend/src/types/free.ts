@@ -25,6 +25,7 @@ export type FreeConfig = {
   auto_set_password: boolean
   auto_set_2fa: boolean
   twofa_auto_retry_attempts?: number
+  password_auto_retry_attempts?: number
   proxy_probe_url: string
   proxy_default_scheme?: 'http' | 'https' | 'socks4' | 'socks5' | 'socks5h' | string
   proxy_socks5_dns_mode?: 'auto' | 'declared' | 'local' | 'remote' | string
@@ -196,6 +197,11 @@ export interface FreeProxyBreakerState {
   recent_distinct_burns: number
   threshold: number
   window_seconds: number
+  /** Gateway block layer: one tunnel credential burned too many minted rows. */
+  gateway_blocked?: boolean
+  recent_new_mint_challenges?: number
+  gateway_window_seconds?: number
+  gateway_threshold?: number
 }
 
 export interface FreeProxyPool {
@@ -379,6 +385,11 @@ export interface FreeTaskRow {
   retry_attempt?: number
   retry_resolved?: boolean | string
   retry_updated_at?: number
+  retry_trigger?: string
+  auto_twofa_retry_task_id?: string
+  auto_password_retry_task_id?: string
+  password_retry_attempt?: number
+  retry_failure?: TaskFailure | null
   ordinal?: number
   slot_index?: number
   concurrency_limit?: number

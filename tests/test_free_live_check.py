@@ -790,6 +790,54 @@ class FreeLiveCheckTests(unittest.TestCase):
         self.assertIsNotNone(pool.entry(row_id))
         self.assertEqual(pool.result(row_id)["live_check_status"], "deactivated")
 
+    def test_empty_pool_allocation_runs_maintainer_then_retries(self):
+        pool = FreeProxyPool(self.data_dir / "maintain")
+        logs = FreeLogStore(self.data_dir / "maintain")
+        calls: list[dict] = []
+
+        def maintainer(config):
+            calls.append(dict(config))
+            pool.import_text("http://user-refill:secret@refill.example.test:9999\n", source_label="tunnel-auto")
+            return 1
+
+        service = self._service(
+            _MailboxStub(), pool, logs, pool_maintainer=maintainer,
+        )
+        binding = service._allocate_proxy({"proxy_probe_url": "https://probe.example.test"}, "owner", "task")
+        self.assertEqual(len(calls), 1)
+        self.assertIn("refill.example.test", str(binding.proxy))
+
+    def test_empty_pool_allocation_reports_breaker_tripped_after_maintenance(self):
+        from mac_overrides.free_proxy_breaker import ChallengeBreaker
+
+        pool = FreeProxyPool(self.data_dir / "tripped")
+        logs = FreeLogStore(self.data_dir / "tripped")
+        breaker = ChallengeBreaker(threshold=1)
+        breaker.record_burn("any", now=time.time())
+        service = self._service(
+            _MailboxStub(), pool, logs,
+            pool_maintainer=lambda _config: 0,
+            breaker=breaker,
+        )
+        with self.assertRaises(FreeRegisterError) as raised:
+            service._allocate_proxy({"proxy_probe_url": "https://probe.example.test"}, "owner", "task")
+        self.assertEqual(str(raised.exception.error_code), "free_proxy_breaker_tripped")
+
+    def test_empty_pool_without_maintainer_reports_pool_empty(self):
+        pool = FreeProxyPool(self.data_dir / "plain-empty")
+        logs = FreeLogStore(self.data_dir / "plain-empty")
+        service = self._service(_MailboxStub(), pool, logs)
+        with self.assertRaises(FreeRegisterError) as raised:
+            service._allocate_proxy({"proxy_probe_url": "https://probe.example.test"}, "owner", "task")
+        self.assertEqual(str(raised.exception.error_code), "free_proxy_pool_empty")
+
+
+class _MailboxStub:
+    """Minimal mailbox pool stand-in: allocation tests never read accounts."""
+
+    def entry(self, _row_id):
+        return None
+
 
 if __name__ == "__main__":
     unittest.main()

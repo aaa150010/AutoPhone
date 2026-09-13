@@ -283,6 +283,11 @@ class FreeProxyPool(FreeProxyStoreHealthMixin):
             "burned_at": _safe_float(value.get("burned_at"), minimum=0),
             "window_started_at": _safe_float(value.get("window_started_at"), minimum=0),
             "window_expires_at": _safe_float(value.get("window_expires_at"), minimum=0),
+            # Epoch seconds when a credential-tunnel row was minted by the
+            # template (0 for manual rows).  The gateway-block challenge
+            # accounting uses it to recognize freshly minted replacement
+            # exits; it carries no credential material.
+            "minted_at": _safe_float(value.get("minted_at"), minimum=0),
             "last_failure": copy.deepcopy(value.get("last_failure")) if isinstance(value.get("last_failure"), Mapping) else None,
             "last_probe_ok": value.get("last_probe_ok") if isinstance(value.get("last_probe_ok"), bool) else None,
             "last_probe_mode": str(value.get("last_probe_mode") or ""),
@@ -1277,12 +1282,14 @@ class FreeProxyPool(FreeProxyStoreHealthMixin):
             self._save(remaining)
             return True
 
-    def annotate_window(self, proxy_id: str, *, started_at: float, expires_at: float) -> bool:
+    def annotate_window(self, proxy_id: str, *, started_at: float, expires_at: float, minted_at: float | None = None) -> bool:
         """Record the sticky-session window observed for a minted tunnel row.
 
         The window starts at the row's first transport use, so it is written
         by the minting path right after the row enters the pool.  Rows without
         window metadata are never filtered by the allocation window check.
+        ``minted_at`` stamps the template mint time for gateway-block
+        challenge accounting.
         """
         with self._lock:
             rows = self._load()
@@ -1292,6 +1299,8 @@ class FreeProxyPool(FreeProxyStoreHealthMixin):
                     continue
                 row["window_started_at"] = max(0.0, float(started_at))
                 row["window_expires_at"] = max(0.0, float(expires_at))
+                if minted_at is not None:
+                    row["minted_at"] = max(0.0, float(minted_at))
                 changed = True
                 break
             if changed:

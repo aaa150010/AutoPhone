@@ -141,6 +141,43 @@ class DiagnosticStoreTests(unittest.TestCase):
         found = self.store.search({"workflow": "register"})
         self.assertEqual([row["incident_id"] for row in found], [register_id])
 
+    def test_search_defaults_to_recency_and_sort_selects_ordering(self) -> None:
+        """Default/``recent`` sorts by updated_at DESC; ``severity`` keeps errors-first."""
+        from datetime import datetime, timedelta, timezone
+        from mac_overrides import diagnostic_store as ds_module
+
+        base = datetime(2026, 9, 1, tzinfo=timezone.utc)
+        ticks = iter(base + timedelta(hours=index) for index in range(50))
+
+        def fake_now() -> str:
+            return next(ticks).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+        def event(task: str, outcome: str) -> str:
+            return self.store.record({
+                "event_id": f"sort-{task}", "task_id": f"sort-{task}",
+                "chain": "free", "workflow": "sort-test", "driver": "protocol",
+                "level": "info" if outcome == "success" else "error",
+                "outcome": outcome, "node_code": "sort_node",
+            })
+
+        with patch.object(ds_module, "utc_now", fake_now):
+            old_error = event("old", "failed")
+            middle_success = event("mid", "success")
+            new_error = event("new", "failed")
+        recent = [row["incident_id"] for row in self.store.search({"workflow": "sort-test"})]
+        self.assertEqual(recent, [new_error, middle_success, old_error])
+        explicit = [
+            row["incident_id"]
+            for row in self.store.search({"workflow": "sort-test", "sort": "recent"})
+        ]
+        self.assertEqual(explicit, recent)
+        severity = [
+            row["incident_id"]
+            for row in self.store.search({"workflow": "sort-test", "sort": "severity"})
+        ]
+        self.assertEqual(severity, [new_error, old_error, middle_success])
+        self.assertIn("按错误优先排序", self.store.search({"workflow": "sort-test", "sort": "severity"})[0]["match_basis"])
+
     def test_diagnostic_write_failure_is_visible_in_health(self) -> None:
         with patch.object(self.store, "_record", side_effect=sqlite3.OperationalError("locked")):
             with self.assertRaises(sqlite3.OperationalError):

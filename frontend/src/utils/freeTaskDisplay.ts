@@ -24,7 +24,7 @@ export function taskIncidentId(task: FreeTaskRow | null | undefined): string {
 }
 
 export function taskStatusLabel(status: string): string {
-  return ({ queued: '排队', running: '运行中', success: '成功', partial_success: '部分成功', failed: '失败', pending_rerun: '待重跑', stopped: '已停止', twofa_pending: '2FA 待重试', account_banned: ACCOUNT_BANNED_DISPLAY_MESSAGE } as Record<string, string>)[status] || status || '-'
+  return ({ queued: '排队', running: '运行中', success: '成功', partial_success: '部分成功', failed: '失败', pending_rerun: '待重跑', stopped: '已停止', twofa_pending: '2FA 待重试', account_banned: ACCOUNT_BANNED_DISPLAY_MESSAGE } as Record<string, string>)[status] || status || ''
 }
 
 export function displayTaskStatus(task: FreeTaskRow | null | undefined): string {

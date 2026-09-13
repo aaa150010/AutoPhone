@@ -210,9 +210,17 @@ class DiagnosticExportMixin:
             limit = min(max(int(limit_value), 1), 500)
         except (TypeError, ValueError):
             limit = 100
+        # ``sort=severity`` keeps the legacy errors-first ordering; the
+        # default and ``sort=recent`` return pure recency (updated_at DESC).
+        sort_mode = _safe_text(query.get("sort"), 20).strip().lower()
+        ordering = (
+            "CASE WHEN i.outcome IN ('error','failed','failure') THEN 0 ELSE 1 END, i.updated_at DESC"
+            if sort_mode == "severity"
+            else "i.updated_at DESC"
+        )
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         with self._lock, self._connection() as db:
-            rows = db.execute(f"SELECT i.* FROM diagnostic_incidents i {where} ORDER BY CASE WHEN i.outcome IN ('error','failed','failure') THEN 0 ELSE 1 END, i.updated_at DESC LIMIT ?", (*params, limit)).fetchall()
+            rows = db.execute(f"SELECT i.* FROM diagnostic_incidents i {where} ORDER BY {ordering} LIMIT ?", (*params, limit)).fetchall()
             results = [self._row(row) for row in rows]
             basis: list[str] = []
             if exact:
@@ -220,6 +228,8 @@ class DiagnosticExportMixin:
             for key, label in (("task_id", "任务 ID"), ("batch_id", "批次 ID"), ("run_id", "运行 ID"), ("chain", "链路"), ("workflow", "工作流"), ("driver", "驱动"), ("subject", "账号 HMAC 指纹"), ("email", "邮箱 HMAC 指纹"), ("account", "账号 HMAC 指纹"), ("date", "日期全天"), ("from", "开始时间"), ("to", "结束时间"), ("time_point", "时间点 ±30 分钟")):
                 if query.get(key):
                     basis.append(label)
+            if sort_mode == "severity":
+                basis.append("按错误优先排序")
             time_center: datetime | None = None
             if time_point:
                 # The ±30min anchor is identical for every result row; parse

@@ -134,6 +134,7 @@ const {
   copyTaskTokens,
   copyTaskToken,
   copyTaskEmail,
+  copyRunEmail,
   openTaskMailboxUrl,
   copyTaskLatestCode,
 } = useFreeTaskRowActions()
@@ -168,6 +169,7 @@ type UnifiedRunRow = {
   task?: FreeTaskRow
   job?: FreeLiveCheckState['jobs'][number]
   plan?: FreePlanCheckState['jobs'][number]
+  children?: UnifiedRunRow[]
 }
 
 function runKindOfTask(task: FreeTaskRow): RunKind {
@@ -176,6 +178,10 @@ function runKindOfTask(task: FreeTaskRow): RunKind {
   if (mode === 'password') return 'password_retry'
   if (task.retry_of) return 'register_rerun'
   return 'register'
+}
+
+function isAutoRetryTask(task: FreeTaskRow): boolean {
+  return String(task.retry_trigger || '') === 'auto' && Boolean(task.retry_of)
 }
 
 function liveRunProgress(job: NonNullable<UnifiedRunRow['job']>) {
@@ -210,10 +216,36 @@ function planStatusType(status = ''): string {
 }
 
 const unifiedRuns = computed<UnifiedRunRow[]>(() => {
-  const rows: UnifiedRunRow[] = visibleTasks.value.map(task => {
+  // Fold automatically triggered retry subtasks under their parent row (the
+  // table renders them as expandable tree children).  Manually retried rows
+  // stay independent top-level rows so the operator keeps full visibility.
+  const taskRows = new Map<string, UnifiedRunRow>()
+  for (const task of visibleTasks.value) {
     const kind = runKindOfTask(task)
-    return { key: `task:${task.task_id}`, kind, kindLabel: RUN_KIND_LABELS[kind], createdAt: Number(task.created_at || 0), task }
-  })
+    const key = `task:${task.task_id}`
+    const label = RUN_KIND_LABELS[kind]
+    taskRows.set(key, {
+      key,
+      kind,
+      kindLabel: isAutoRetryTask(task) ? `${label}（自动）` : label,
+      createdAt: Number(task.created_at || 0),
+      task,
+    })
+  }
+  const rows: UnifiedRunRow[] = []
+  for (const row of taskRows.values()) {
+    const task = row.task as FreeTaskRow
+    const parentKey = `task:${task.retry_of || ''}`
+    const parentRow = isAutoRetryTask(task) ? taskRows.get(parentKey) : undefined
+    if (parentRow && parentRow !== row) {
+      (parentRow.children ||= []).push(row)
+    } else {
+      rows.push(row)
+    }
+  }
+  for (const row of taskRows.values()) {
+    if (row.children) row.children.sort((a, b) => a.createdAt - b.createdAt)
+  }
   for (const job of liveState.value.jobs || []) {
     const kind: RunKind = job.mode === 'deep' ? 'live_deep' : 'live_fast'
     rows.push({ key: `live:${job.task_id}`, kind, kindLabel: RUN_KIND_LABELS[kind], createdAt: Number(job.created_at || 0), job })
@@ -691,20 +723,28 @@ async function refreshPlan(task: FreeTaskRow) {
   }
 }
 
+function effectiveTaskFailure(task: FreeTaskRow): FreeTaskRow['failure'] {
+  // A folded automatic retry child surfaces its structured failure through the
+  // parent ``retry_failure``; the parent's own failure (when present) wins.
+  if (task?.failure) return task.failure
+  if (isRetryResolved(task?.retry_resolved)) return null
+  return task?.retry_failure || null
+}
+
 function taskFailureCause(task: FreeTaskRow) {
-  return freeFailureCause(task?.failure, { retryResolved: task?.retry_resolved })
+  return freeFailureCause(effectiveTaskFailure(task), { retryResolved: task?.retry_resolved })
 }
 
 function taskIsAccountBanned(task: FreeTaskRow) {
-  return isCurrentAccountBanned(task?.status, task?.failure, task?.retry_resolved)
+  return isCurrentAccountBanned(task?.status, effectiveTaskFailure(task), task?.retry_resolved)
 }
 
 function taskFailureDetails(task: FreeTaskRow) {
-  return freeFailureDetails(task?.failure)
+  return freeFailureDetails(effectiveTaskFailure(task))
 }
 
 function taskFailureNode(task: FreeTaskRow) {
-  return freeFailureNodeIdentity(task?.failure)
+  return freeFailureNodeIdentity(effectiveTaskFailure(task))
 }
 
 const polling = usePolling(refresh, () => (running.value || logDialogOpen.value || startPending.value || startProgressOpen.value ? 1000 : 3000))
@@ -789,7 +829,7 @@ onMounted(async () => {
               <el-button size="small" :icon="Refresh" @click="refresh" aria-label="刷新任务">刷新任务</el-button>
             </div>
           </div>
-          <el-table ref="taskTable" v-loading="loading" :data="pagedRuns" row-key="key" height="100%" size="small" border :row-class-name="runRowClass" @header-dragend="(newWidth: number, oldWidth: number, column: DragColumn) => onTaskHeaderDragend(newWidth, oldWidth, column)" @selection-change="handleTaskSelection">
+          <el-table ref="taskTable" v-loading="loading" :data="pagedRuns" row-key="key" :tree-props="{ children: 'children' }" height="100%" size="small" border :row-class-name="runRowClass" @header-dragend="(newWidth: number, oldWidth: number, column: DragColumn) => onTaskHeaderDragend(newWidth, oldWidth, column)" @selection-change="handleTaskSelection">
             <el-table-column type="selection" width="42" reserve-selection :selectable="runSelectable" />
             <el-table-column type="index" label="序号" width="58" align="center" :index="(index: number) => index + 1 + (taskPage - 1) * taskPageSize" />
             <el-table-column label="类型" :width="taskColWidth('类型', 88)" align="center">
@@ -799,23 +839,21 @@ onMounted(async () => {
               <template #default="{ row }">
                 <div v-if="row.task" class="account-cell">
                   <el-tooltip v-if="row.task.email" :content="`${String(row.task.email)}${row.task.task_id ? ` · 任务 ${row.task.task_id}` : ''}`" placement="top" :show-after="250"><el-button link class="email-copy" :loading="loadingEmailTaskIds.includes(String(row.task.task_id || ''))" @click.stop="copyTaskEmail(row.task)"><strong>{{ row.task.email }}</strong><el-icon v-if="!loadingEmailTaskIds.includes(String(row.task.task_id || ''))"><CopyDocument /></el-icon></el-button></el-tooltip>
-                  <span v-else>-</span>
                   <span class="account-subline">{{ taskDriverLabel(row.task.driver) }}<template v-if="taskCreatedText(row.task)"> · {{ taskCreatedText(row.task) }}</template></span>
                 </div>
                 <div v-else-if="row.plan" class="account-cell">
-                  <strong>{{ row.plan.email }}</strong>
+                  <el-tooltip :content="`${String(row.plan.email)}${row.plan.task_id ? ` · 任务 ${row.plan.task_id}` : ''}`" placement="top" :show-after="250"><el-button link class="email-copy" :loading="loadingEmailTaskIds.includes(String(row.plan.task_id || ''))" @click.stop="copyRunEmail(row.plan)"><strong>{{ row.plan.email }}</strong><el-icon v-if="!loadingEmailTaskIds.includes(String(row.plan.task_id || ''))"><CopyDocument /></el-icon></el-button></el-tooltip>
                   <span class="account-subline">{{ row.kindLabel }} · {{ formatShortDateTime(row.createdAt) }}</span>
                 </div>
                 <div v-else class="account-cell">
-                  <strong>{{ row.job?.email }}</strong>
+                  <el-tooltip :content="`${String(row.job?.email)}${row.job?.task_id ? ` · 任务 ${row.job.task_id}` : ''}`" placement="top" :show-after="250"><el-button link class="email-copy" :loading="loadingEmailTaskIds.includes(String(row.job?.task_id || ''))" @click.stop="copyRunEmail(row.job || {})"><strong>{{ row.job?.email }}</strong><el-icon v-if="!loadingEmailTaskIds.includes(String(row.job?.task_id || ''))"><CopyDocument /></el-icon></el-button></el-tooltip>
                   <span class="account-subline">{{ row.kindLabel }} · {{ formatShortDateTime(row.createdAt) }}</span>
                 </div>
               </template>
             </el-table-column>
             <el-table-column label="验证码" :width="taskColWidth('验证码', 96)" align="center">
               <template #default="{ row }">
-                <template v-if="row.task"><TaskVerificationInput v-if="!isHistoricalDriver(row.task) && row.task.manual_verification?.can_submit" :task-id="row.task.task_id" :request="row.task.manual_verification" :now-seconds="nowSeconds" /><span v-else-if="!isHistoricalDriver(row.task) && row.task.mailbox_verification?.phase === 'automatic'" class="automatic-otp-wait">自动取码 <strong>{{ automaticOtpRemaining(row.task) }}s</strong></span><span v-else class="muted">-</span></template>
-                <span v-else class="muted">-</span>
+                <template v-if="row.task"><TaskVerificationInput v-if="!isHistoricalDriver(row.task) && row.task.manual_verification?.can_submit" :task-id="row.task.task_id" :request="row.task.manual_verification" :now-seconds="nowSeconds" /><span v-else-if="!isHistoricalDriver(row.task) && row.task.mailbox_verification?.phase === 'automatic'" class="automatic-otp-wait">自动取码 <strong>{{ automaticOtpRemaining(row.task) }}s</strong></span></template>
               </template>
             </el-table-column>
             <el-table-column label="阶段 / 耗时" :width="taskColWidth('阶段 / 耗时', 210)">
@@ -823,7 +861,6 @@ onMounted(async () => {
                 <TaskProgressCell v-if="row.task" :progress="row.task.progress" :timing="row.task.timing" :now-seconds="nowSeconds" :status="row.task.status" />
                 <TaskProgressCell v-else-if="row.job" :progress="liveRunProgress(row.job)" :timing="row.job.timing" :now-seconds="nowSeconds" :status="row.job.status" />
                 <TaskProgressCell v-else-if="row.plan" :progress="planRunProgress(row.plan)" :now-seconds="nowSeconds" :status="row.plan.status" />
-                <span v-else class="muted">-</span>
               </template>
             </el-table-column>
             <el-table-column label="状态" :width="taskColWidth('状态', 100)" align="center" show-overflow-tooltip>
@@ -836,13 +873,11 @@ onMounted(async () => {
             <el-table-column label="套餐" :width="taskColWidth('套餐', 90)" align="center" show-overflow-tooltip>
               <template #default="{ row }">
                 <template v-if="row.task"><el-tag size="small" :type="taskPlanType(row.task)" effect="plain">{{ taskPlanLabel(row.task) }}</el-tag><el-tooltip v-if="!isHistoricalDriver(row.task) && row.task.result?.has_access_token && String(row.task.result?.plan_check_status || '').toLowerCase() === 'failed'" content="重新查询套餐" placement="top" :show-after="250"><el-button link size="small" :icon="Refresh" :loading="planBusy === String(row.task.task_id || row.task.row_id)" :disabled="Boolean(planBusy)" aria-label="重新查询套餐" @click.stop="refreshPlan(row.task)" /></el-tooltip></template>
-                <span v-else class="muted">-</span>
               </template>
             </el-table-column>
             <el-table-column label="凭据" :width="taskColWidth('凭据', 120)">
               <template #default="{ row }">
                 <div v-if="row.task" class="credential-cell"><StateDot :tone="taskTwofaType(row.task)" :label="`2FA ${taskTwofaLabel(row.task)}`" /><StateDot :tone="taskPasswordType(row.task)" :label="`密码 ${taskPasswordLabel(row.task)}`" /></div>
-                <span v-else class="muted">-</span>
               </template>
             </el-table-column>
             <el-table-column label="错误" :min-width="taskColWidth('错误', 260)">
@@ -851,7 +886,7 @@ onMounted(async () => {
                   <el-tooltip placement="top" :disabled="!taskFailureDetails(row.task).length" :show-after="250">
                     <template #content><div class="failure-tooltip"><span v-for="item in taskFailureDetails(row.task)" :key="item">{{ item }}</span></div></template>
                     <div class="failure-cell">
-                      <span class="failure-summary"><template v-if="isRetryResolved(row.task.retry_resolved)"><strong class="resolved-text">已由重试解决</strong></template><template v-else-if="taskIsAccountBanned(row.task)"><strong>{{ ACCOUNT_BANNED_DISPLAY_MESSAGE }}<code>{{ taskFailureNode(row.task).code || 'account_banned' }}</code></strong></template><template v-else><strong v-if="taskFailureNode(row.task).label || taskFailureNode(row.task).code">{{ taskFailureNode(row.task).label || taskFailureNode(row.task).code }}<code v-if="taskFailureNode(row.task).showCode">{{ taskFailureNode(row.task).code }}</code></strong><span>{{ taskFailureCause(row.task) }}</span><span v-if="taskNeedsExistingPassword(row.task)" class="failure-action-hint">需补录真实密码后再处理；不会使用注册默认密码</span></template></span>
+                      <span class="failure-summary"><template v-if="isRetryResolved(row.task.retry_resolved)"><strong class="resolved-text">已由重试解决</strong></template><template v-else-if="taskIsAccountBanned(row.task)"><strong>{{ ACCOUNT_BANNED_DISPLAY_MESSAGE }}<code>{{ taskFailureNode(row.task).code || 'account_banned' }}</code></strong></template><template v-else><strong v-if="taskFailureNode(row.task).label || taskFailureNode(row.task).code">{{ taskFailureNode(row.task).label || taskFailureNode(row.task).code }}<code v-if="taskFailureNode(row.task).showCode">{{ taskFailureNode(row.task).code }}</code></strong><span>{{ taskFailureCause(row.task) }}</span><span v-if="!row.task.failure && row.task.retry_failure" class="failure-action-hint">自动重试子任务失败（展开本行子任务查看子任务记录）</span><span v-if="taskNeedsExistingPassword(row.task)" class="failure-action-hint">需补录真实密码后再处理；不会使用注册默认密码</span></template></span>
                     </div>
                   </el-tooltip>
                 </template>

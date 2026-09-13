@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 try:
     from mac_overrides.free_proxy_store import FreeProxyPool
@@ -178,6 +179,71 @@ class EnsureTargetTests(unittest.TestCase):
         self.pool.import_text("http://manual.example.test:8000\n", source_label="manual")
         self.assertEqual(ensure_target(self.pool, None, target=4), 0)
         self.assertEqual(len(self.pool.entries()), 1)
+
+    def test_minted_rows_carry_minted_at(self) -> None:
+        minted = ensure_target(self.pool, self.template, target=2)
+        self.assertEqual(minted, 2)
+        for row in self.pool.entries():
+            if str(row.get("source_label") or "") == TUNNEL_SOURCE_LABEL:
+                self.assertGreater(float(row.get("minted_at") or 0.0), 0.0)
+
+    def test_burned_rows_are_deleted_one_per_successful_mint_after_minting(self) -> None:
+        """Logical replacement: a burned row is dropped only once its own
+        replacement minted; a failed mint keeps every burned row (and its
+        challenge evidence) in place."""
+        ensure_target(self.pool, self.template, target=3)
+        rows = self.pool.entries()
+        self.assertEqual(len(rows), 3)
+        for row in rows:
+            self.pool.record_challenge_burn(str(row["proxy_id"]))
+        burned_before = [row for row in self.pool.entries() if str(row.get("status") or "") == "burned"]
+        self.assertEqual(len(burned_before), 3)
+
+        # Break import after one accepted line: the first mint must have
+        # paired-delete one burned row, the failed second must not delete more.
+        original_import = self.pool.import_text
+        state = {"calls": 0}
+
+        def flaky_import(line, **kwargs):
+            state["calls"] += 1
+            if state["calls"] >= 2:
+                return False
+            return original_import(line, **kwargs)
+
+        with patch.object(self.pool, "import_text", side_effect=flaky_import):
+            minted = ensure_target(self.pool, self.template, target=3)
+        self.assertEqual(minted, 1)
+        rows_after = self.pool.entries()
+        burned_after = [row for row in rows_after if str(row.get("status") or "") == "burned"]
+        healthy_after = self.pool.healthy_count()
+        self.assertEqual(healthy_after, 1)
+        # Two of the three burned rows survive: replacement was partial and
+        # evidence was never deleted up front.
+        self.assertEqual(len(burned_after), 2)
+        self.assertTrue(all(float(row.get("burned_at") or 0) > 0 for row in burned_after))
+        new_rows = [
+            row for row in rows_after
+            if str(row.get("source_label") or "") == TUNNEL_SOURCE_LABEL
+            and str(row.get("status") or "") != "burned"
+        ]
+        self.assertEqual(len(new_rows), 1)
+        self.assertGreater(float(new_rows[0].get("minted_at") or 0), 0)
+
+    def test_burned_rows_count_as_reclaimable_capacity(self) -> None:
+        """With target=1, two burned tunnel rows (old live=0) still allow one
+        mint under the 2x cap even though total rows briefly reach the cap."""
+        ensure_target(self.pool, self.template, target=1)
+        row = self.pool.entries()[0]
+        self.pool.record_challenge_burn(str(row["proxy_id"]))
+        # healthy=0, deficit=1, live rows=0, capacity=2 -> mint succeeds and
+        # deletes the single burned row it replaced.
+        minted = ensure_target(self.pool, self.template, target=1)
+        self.assertEqual(minted, 1)
+        rows = self.pool.entries()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(self.pool.healthy_count(), 1)
+        self.assertGreater(float(rows[0].get("minted_at") or 0), 0)
+        self.assertEqual(str(rows[0].get("source_label") or ""), TUNNEL_SOURCE_LABEL)
 
 
 if __name__ == "__main__":

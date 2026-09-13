@@ -578,6 +578,22 @@ class FreeRegisterProjectionMixin:
                         "retry_updated_at": now_wall,
                         "retry_resolved": child_status in {"success", "partial_success"},
                     })
+                    child_failure = task.get("failure") if isinstance(task.get("failure"), Mapping) else None
+                    if str(task.get("retry_trigger") or "") == "auto":
+                        # Auto-retried children are folded under the parent in
+                        # the public view, so the child's structured failure
+                        # (a password continuation can keep failing while the
+                        # row stays partial_success) surfaces through the
+                        # parent's ``retry_failure`` without ever touching the
+                        # parent's own status; a clean child result clears it.
+                        if child_failure is not None:
+                            parent["retry_failure"] = copy.deepcopy(dict(child_failure))
+                        elif child_status in {"success", "partial_success"}:
+                            parent["retry_failure"] = None
+                    elif child_status in {"success", "partial_success"}:
+                        # A manual retry resolves any earlier auto-retry
+                        # failure shown on the parent row.
+                        parent["retry_failure"] = None
                 persist = True
                 self._timing_checkpoint_mono.pop(task_id, None)
         if persist:
@@ -658,12 +674,14 @@ class FreeRegisterProjectionMixin:
         identifier_fields = {
             "task_id", "incident_id", "slot_id", "batch_id", "run_mode",
             "driver", "row_id", "stage", "proxy_fingerprint", "proxy_id",
-            "retry_of", "retry_task_id", "retry_mode",
+            "retry_of", "retry_task_id", "retry_mode", "retry_trigger",
+            "auto_twofa_retry_task_id", "auto_password_retry_task_id",
         }
         status_fields = {"status", "cleanup_status", "retry_status"}
         number_fields = {
             "ordinal", "slot_index", "concurrency_limit", "created_at",
             "updated_at", "retry_attempt", "retry_updated_at",
+            "password_retry_attempt",
         }
         for key in identifier_fields:
             if key in task:
@@ -888,6 +906,10 @@ class FreeRegisterProjectionMixin:
             if failure is not None:
                 public["failure"] = failure
                 public["error"] = failure["public_message"]
+        if isinstance(task.get("retry_failure"), Mapping):
+            retry_failure = canonical_failure(task["retry_failure"])
+            if retry_failure is not None:
+                public["retry_failure"] = retry_failure
         return public
 
     def _bulk_task_incidents(self, task_ids_with_missing: list[str]) -> dict[str, str]:

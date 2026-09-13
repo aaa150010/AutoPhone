@@ -129,12 +129,12 @@ export function freeFailureCause(
   const retryResolved = options.retryResolved === true
     || String(options.retryResolved || '').trim().toLowerCase() === 'true'
   if (retryResolved) return '已由重试解决'
-  if (!failure) return '-'
+  if (!failure) return ''
   if (isAccountBannedFailure(failure)) return ACCOUNT_BANNED_DISPLAY_MESSAGE
   const message = String(failure.public_message || '').trim()
   const label = String(failure.node_label || '').trim()
   const code = String(failure.node_code || '').trim()
-  if (!message) return '-'
+  if (!message) return ''
   const identity = label && code ? `${label} [${label}/${code}]` : ''
   for (const prefix of [
     identity ? `${identity}：` : '',
@@ -144,7 +144,7 @@ export function freeFailureCause(
     label ? `${label}：` : '',
     label ? `${label}:` : '',
   ]) {
-    if (prefix && message.startsWith(prefix)) return message.slice(prefix.length).trim() || '-'
+    if (prefix && message.startsWith(prefix)) return message.slice(prefix.length).trim()
   }
   return message
 }

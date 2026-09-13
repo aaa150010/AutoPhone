@@ -237,6 +237,26 @@ class FreeConfigRouteTests(unittest.TestCase):
                 self.assertEqual(public["auto_set_password"], auto_set_password)
                 self.assertEqual(public["auto_set_2fa"], auto_set_2fa)
 
+    def test_auto_retry_budgets_are_independent_clamped_defaults(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = FreeConfigStore(Path(directory))
+            defaults = store.normalize({})
+            self.assertEqual(defaults["twofa_auto_retry_attempts"], 2)
+            self.assertEqual(defaults["password_auto_retry_attempts"], 2)
+            self.assertEqual(
+                store.normalize({"password_auto_retry_attempts": 9})["password_auto_retry_attempts"], 2,
+            )
+            self.assertEqual(
+                store.normalize({"password_auto_retry_attempts": -3})["password_auto_retry_attempts"], 0,
+            )
+            self.assertEqual(
+                store.normalize({"password_auto_retry_attempts": 0})["password_auto_retry_attempts"], 0,
+            )
+            # The password budget must never borrow from the 2FA budget.
+            normalized = store.normalize({"twofa_auto_retry_attempts": 0})
+            self.assertEqual(normalized["twofa_auto_retry_attempts"], 0)
+            self.assertEqual(normalized["password_auto_retry_attempts"], 2)
+
     def test_legacy_proxy_policy_is_normalized_to_shared_pool(self):
         with tempfile.TemporaryDirectory() as directory:
             store = FreeConfigStore(Path(directory))
