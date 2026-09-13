@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { freeLiveStateFingerprint, freeStateFingerprint } from '../utils/fingerprint'
+import { freeLiveStateFingerprint, freePlanStateFingerprint, freeStateFingerprint } from '../utils/fingerprint'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { incidentCenterUrl } from '../utils/incidentLink'
 import { errorMessage } from '../utils/errorMessage'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, Check, CircleCheck, CircleClose, CopyDocument, Delete, Document, Key, Link, Loading, Lock, MoreFilled, Refresh, RefreshLeft, RefreshRight, Setting, Tickets, VideoPause, VideoPlay, Warning } from '@element-plus/icons-vue'
-import { closeFreeCamoufoxDebug, deleteFreeTasks, freeBatchRetry, getFreeConfig, getFreeLiveCheckState, getFreeState, preflightFree, rerunFreeTask, retryFreePassword, retryFreeTwofa, startFree, startFreePlanCheck, stopFree, type FreeConfig, type FreeLiveCheckState, type FreeState, type FreeTaskRow } from '../api/client'
+import { closeFreeCamoufoxDebug, deleteFreeTasks, freeBatchRetry, getFreeConfig, getFreeLiveCheckState, getFreePlanCheckState, getFreeState, preflightFree, rerunFreeTask, retryFreePassword, retryFreeTwofa, startFree, startFreePlanCheck, stopFree, type FreeConfig, type FreeLiveCheckState, type FreePlanCheckState, type FreeState, type FreeTaskRow } from '../api/client'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import ContentEmptyState from '../components/ContentEmptyState.vue'
 import FreeTaskLogDialog from '../components/FreeTaskLogDialog.vue'
@@ -52,7 +52,8 @@ const emit = defineEmits<{ navigate: [string] }>()
 const config = reactive<FreeConfig>(structuredClone(defaultConfig))
 const state = ref<FreeState>({ running: false, tasks: [], summary: {}, pool: {} })
 const liveState = ref<FreeLiveCheckState>({ running: false, workers: 3, queue_limit: 500, active: 0, jobs: [] })
-const liveLogTask = ref<{ task_id: string; email: string; stage: string } | null>(null)
+const planState = ref<FreePlanCheckState>({ running: false, workers: 0, queue_limit: 0, active: 0, jobs: [] })
+const runLogTask = ref<{ task_id: string; email: string; stage: string } | null>(null)
 const runKindFilter = ref('')
 const selectedTaskId = ref('')
 const taskSearch = ref('')
@@ -121,7 +122,7 @@ watch(() => state.value.running, (value, previous) => {
   }
 })
 const debugWindowsOpen = computed(() => Number(state.value.camoufox_debug?.open_contexts || 0) > 0)
-const nowSeconds = useTaskProgressClock(() => state.value.tasks || [], () => Boolean(state.value.running || liveState.value.running || state.value.starting))
+const nowSeconds = useTaskProgressClock(() => state.value.tasks || [], () => Boolean(state.value.running || liveState.value.running || planState.value.running || state.value.starting))
 const { colWidth: taskColWidth, handleHeaderDragend: onTaskHeaderDragend, resetWidths: resetTaskWidths } = useColumnWidths('gptphone.table.widths.free-register', { autoResetOnce: true })
 function automaticOtpRemaining(task: FreeTaskRow) {
   return automaticOtpRemainingPure(task, nowSeconds.value)
@@ -139,6 +140,7 @@ const {
 
 const stateFingerprint = ref('')
 const liveStateFingerprint = ref('')
+const planStateFingerprint = ref('')
 
 const visibleTasks = computed(() => (state.value.tasks || []).slice().sort((a, b) => {
   const batchOrder = Number(b.created_at || 0) - Number(a.created_at || 0)
@@ -148,7 +150,7 @@ const visibleTasks = computed(() => (state.value.tasks || []).slice().sort((a, b
 }))
 const taskPage = ref(1)
 const taskPageSize = ref(50)
-type RunKind = 'register' | 'register_rerun' | 'twofa_retry' | 'password_retry' | 'live_fast' | 'live_deep'
+type RunKind = 'register' | 'register_rerun' | 'twofa_retry' | 'password_retry' | 'live_fast' | 'live_deep' | 'plan_recheck'
 const RUN_KIND_LABELS: Record<RunKind, string> = {
   register: 'Free 注册',
   register_rerun: '注册重跑',
@@ -156,6 +158,7 @@ const RUN_KIND_LABELS: Record<RunKind, string> = {
   password_retry: '密码重跑',
   live_fast: '快速测活',
   live_deep: '401 重跑',
+  plan_recheck: '重查套餐',
 }
 type UnifiedRunRow = {
   key: string
@@ -164,6 +167,7 @@ type UnifiedRunRow = {
   createdAt: number
   task?: FreeTaskRow
   job?: FreeLiveCheckState['jobs'][number]
+  plan?: FreePlanCheckState['jobs'][number]
 }
 
 function runKindOfTask(task: FreeTaskRow): RunKind {
@@ -184,6 +188,27 @@ function liveRunProgress(job: NonNullable<UnifiedRunRow['job']>) {
   }
 }
 
+function planRunProgress(job: NonNullable<UnifiedRunRow['plan']>) {
+  return {
+    code: 'free_plan_check',
+    label: '套餐查询',
+    group: 'free' as const,
+    entered_at: Number(job.created_at || 0),
+    finished_at: job.checked_at ?? null,
+  }
+}
+
+function planStatusLabel(status = ''): string {
+  return ({ queued: '排队', running: '查询中', success: '已查询', partial_success: '部分成功', stopped: '已停止', failed: '失败' } as Record<string, string>)[status] || '套餐查询'
+}
+
+function planStatusType(status = ''): string {
+  if (['success', 'partial_success'].includes(status)) return status === 'success' ? 'success' : 'warning'
+  if (status === 'failed') return 'danger'
+  if (['queued', 'running'].includes(status)) return 'warning'
+  return 'info'
+}
+
 const unifiedRuns = computed<UnifiedRunRow[]>(() => {
   const rows: UnifiedRunRow[] = visibleTasks.value.map(task => {
     const kind = runKindOfTask(task)
@@ -193,6 +218,9 @@ const unifiedRuns = computed<UnifiedRunRow[]>(() => {
     const kind: RunKind = job.mode === 'deep' ? 'live_deep' : 'live_fast'
     rows.push({ key: `live:${job.task_id}`, kind, kindLabel: RUN_KIND_LABELS[kind], createdAt: Number(job.created_at || 0), job })
   }
+  for (const job of planState.value.jobs || []) {
+    rows.push({ key: `plan:${job.task_id}`, kind: 'plan_recheck', kindLabel: RUN_KIND_LABELS.plan_recheck, createdAt: Number(job.created_at || 0), plan: job })
+  }
   return rows.sort((a, b) => b.createdAt - a.createdAt)
 })
 
@@ -201,6 +229,14 @@ function runStatusBucket(row: UnifiedRunRow): string {
     const task = row.task
     if (isRetryResolved(task.retry_resolved)) return 'success'
     return String(task.status || '')
+  }
+  if (row.plan) {
+    const status = String(row.plan.status || '')
+    if (['queued', 'running'].includes(status)) return 'active'
+    if (status === 'success') return 'success'
+    if (status === 'partial_success') return 'partial_success'
+    if (status === 'stopped') return 'stopped'
+    return 'failed'
   }
   const status = String(row.job?.status || '')
   if (['queued', 'running'].includes(status)) return 'active'
@@ -244,7 +280,9 @@ const filteredRuns = computed(() => {
     const task = row.task
     const haystack = task
       ? [task.email, task.task_id || '', task.failure?.node_label, task.failure?.node_code].join(' ').toLowerCase()
-      : [row.job?.email || '', row.job?.task_id || '', row.job?.failure?.node_label || '', row.job?.failure?.node_code || ''].join(' ').toLowerCase()
+      : row.plan
+        ? [row.plan.email || '', row.plan.task_id || '', row.plan.failure?.node_label || '', row.plan.failure?.node_code || ''].join(' ').toLowerCase()
+        : [row.job?.email || '', row.job?.task_id || '', row.job?.failure?.node_label || '', row.job?.failure?.node_code || ''].join(' ').toLowerCase()
     if (query && !haystack.includes(query)) return false
     if (taskDriverFilter.value && (!task || task.driver !== taskDriverFilter.value)) return false
     if (taskStatusFilter.value !== 'all' && runStatusBucket(row) !== taskStatusFilter.value) return false
@@ -258,7 +296,7 @@ watch(() => [filteredRuns.value.length, taskSearch.value, taskStatusFilter.value
 })
 function kindTagType(kind: RunKind): string {
   if (kind === 'live_deep') return 'danger'
-  if (kind === 'twofa_retry' || kind === 'password_retry') return 'warning'
+  if (kind === 'twofa_retry' || kind === 'password_retry' || kind === 'plan_recheck') return 'warning'
   if (kind === 'live_fast') return 'info'
   return 'primary'
 }
@@ -292,9 +330,9 @@ function markQuickRunDirty() {
 }
 
 async function refresh() {
-  // 注册任务与测活任务并行拉取：合并列表一次性渲染，避免两路数据
+  // 注册、测活与重查套餐任务并行拉取：合并列表一次性渲染，避免多路数据
   // 先后到达时行数跳变。
-  const [stateSettled, liveSettled] = await Promise.allSettled([getFreeState(), getFreeLiveCheckState()])
+  const [stateSettled, liveSettled, planSettled] = await Promise.allSettled([getFreeState(), getFreeLiveCheckState(), getFreePlanCheckState()])
   if (stateSettled.status === 'fulfilled') {
     const result = stateSettled.value
     const serverRunning = Boolean(result.state?.running)
@@ -319,19 +357,28 @@ async function refresh() {
       liveStateFingerprint.value = nextLiveFingerprint
       liveState.value = liveSettled.value.state || liveState.value
     }
-    if (logDialogOpen.value && liveLogTask.value) {
-      await logDialog.value?.refresh({ silent: true })
-    }
   } else if (liveState.value.running) {
     ElMessage.error(errorMessage(liveSettled.reason) || 'Free 测活状态刷新失败')
+  }
+  if (planSettled.status === 'fulfilled') {
+    const nextPlanFingerprint = freePlanStateFingerprint(planSettled.value.state)
+    if (nextPlanFingerprint !== planStateFingerprint.value) {
+      planStateFingerprint.value = nextPlanFingerprint
+      planState.value = planSettled.value.state || planState.value
+    }
+  } else if (planState.value.running) {
+    ElMessage.error(errorMessage(planSettled.reason) || 'Free 套餐查询状态刷新失败')
+  }
+  if (logDialogOpen.value && runLogTask.value) {
+    await logDialog.value?.refresh({ silent: true })
   }
 }
 
 async function load() {
   loading.value = true
-  // 首次进入同样并行拉取测活任务，避免页面先渲染注册任务、轮询到达
-  // 之后再补入测活行的行数跳变。
-  const [configResult, liveResult] = await Promise.allSettled([getFreeConfig(), getFreeLiveCheckState()])
+  // 首次进入同样并行拉取测活与套餐查询任务，避免页面先渲染注册任务、
+  // 轮询到达之后再补入行的行数跳变。
+  const [configResult, liveResult, planResult] = await Promise.allSettled([getFreeConfig(), getFreeLiveCheckState(), getFreePlanCheckState()])
   if (configResult.status === 'fulfilled') {
     mergeConfig(configResult.value.config, true)
     state.value = configResult.value.state || state.value
@@ -340,6 +387,9 @@ async function load() {
   }
   if (liveResult.status === 'fulfilled') {
     liveState.value = liveResult.value.state || liveState.value
+  }
+  if (planResult.status === 'fulfilled') {
+    planState.value = planResult.value.state || planState.value
   }
   loading.value = false
 }
@@ -420,7 +470,7 @@ async function closeDebugWindows() {
 
 function openTaskLog(task: FreeTaskRow) {
   selectedTaskId.value = String(task?.task_id || '')
-  liveLogTask.value = null
+  runLogTask.value = null
   logDialogOpen.value = true
 }
 
@@ -428,7 +478,15 @@ function openLiveRunLog(row: UnifiedRunRow) {
   const job = row.job
   if (!job) return
   selectedTaskId.value = ''
-  liveLogTask.value = { task_id: job.task_id, email: job.email, stage: job.stage_label || liveStatusLabel(job.status) }
+  runLogTask.value = { task_id: job.task_id, email: job.email, stage: job.stage_label || liveStatusLabel(job.status) }
+  logDialogOpen.value = true
+}
+
+function openPlanRunLog(row: UnifiedRunRow) {
+  const job = row.plan
+  if (!job) return
+  selectedTaskId.value = ''
+  runLogTask.value = { task_id: job.task_id, email: job.email, stage: planStatusLabel(job.status) }
   logDialogOpen.value = true
 }
 
@@ -442,9 +500,10 @@ function runSelectable(row: UnifiedRunRow): boolean {
 
 function handleRunAction(command: string, row: UnifiedRunRow) {
   if (command === 'live_log') return openLiveRunLog(row)
+  if (command === 'plan_log') return openPlanRunLog(row)
 }
 
-const dialogTask = computed(() => selectedTask.value ?? liveLogTask.value ?? undefined)
+const dialogTask = computed(() => selectedTask.value ?? runLogTask.value ?? undefined)
 
 function openIncidentCenter(value: string) {
   const incidentId = String(value || '').trim()
@@ -743,6 +802,10 @@ onMounted(async () => {
                   <span v-else>-</span>
                   <span class="account-subline">{{ taskDriverLabel(row.task.driver) }}<template v-if="taskCreatedText(row.task)"> · {{ taskCreatedText(row.task) }}</template></span>
                 </div>
+                <div v-else-if="row.plan" class="account-cell">
+                  <strong>{{ row.plan.email }}</strong>
+                  <span class="account-subline">{{ row.kindLabel }} · {{ formatShortDateTime(row.createdAt) }}</span>
+                </div>
                 <div v-else class="account-cell">
                   <strong>{{ row.job?.email }}</strong>
                   <span class="account-subline">{{ row.kindLabel }} · {{ formatShortDateTime(row.createdAt) }}</span>
@@ -759,13 +822,15 @@ onMounted(async () => {
               <template #default="{ row }">
                 <TaskProgressCell v-if="row.task" :progress="row.task.progress" :timing="row.task.timing" :now-seconds="nowSeconds" :status="row.task.status" />
                 <TaskProgressCell v-else-if="row.job" :progress="liveRunProgress(row.job)" :timing="row.job.timing" :now-seconds="nowSeconds" :status="row.job.status" />
+                <TaskProgressCell v-else-if="row.plan" :progress="planRunProgress(row.plan)" :now-seconds="nowSeconds" :status="row.plan.status" />
                 <span v-else class="muted">-</span>
               </template>
             </el-table-column>
             <el-table-column label="状态" :width="taskColWidth('状态', 100)" align="center" show-overflow-tooltip>
               <template #default="{ row }">
-                <el-tag v-if="!row.task" size="small" :type="liveStatusType(row.job?.status)">{{ liveStatusLabel(row.job?.status) }}</el-tag>
-                <el-tag v-else size="small" :type="isRetryResolved(row.task.retry_resolved) ? 'success' : taskStatusType(row.task.status)">{{ displayTaskStatus(row.task) }}</el-tag>
+                <el-tag v-if="row.plan" size="small" :type="planStatusType(row.plan.status)">{{ planStatusLabel(row.plan.status) }}</el-tag>
+                <el-tag v-else-if="row.job" size="small" :type="liveStatusType(row.job?.status)">{{ liveStatusLabel(row.job?.status) }}</el-tag>
+                <el-tag v-else size="small" :type="isRetryResolved(row.task?.retry_resolved) ? 'success' : taskStatusType(row.task?.status || '')">{{ displayTaskStatus(row.task) }}</el-tag>
               </template>
             </el-table-column>
             <el-table-column label="套餐" :width="taskColWidth('套餐', 90)" align="center" show-overflow-tooltip>
@@ -790,6 +855,12 @@ onMounted(async () => {
                     </div>
                   </el-tooltip>
                 </template>
+                <div v-else-if="row.plan" class="failure-cell">
+                  <el-tooltip placement="top" :disabled="!freeFailureDetails(row.plan?.failure).length" :show-after="250">
+                    <template #content><div class="failure-tooltip"><span v-for="item in freeFailureDetails(row.plan?.failure)" :key="item">{{ item }}</span></div></template>
+                    <span class="failure-summary"><strong v-if="row.plan?.failure?.node_label || row.plan?.failure?.node_code">{{ row.plan?.failure?.node_label || row.plan?.failure?.node_code }}</strong><span>{{ row.plan?.failure?.public_message || row.plan?.failure?.technical_summary || '套餐查询未产生错误详情' }}</span></span>
+                  </el-tooltip>
+                </div>
                 <div v-else class="failure-cell">
                   <el-tooltip placement="top" :disabled="!freeFailureDetails(row.job?.failure).length" :show-after="250">
                     <template #content><div class="failure-tooltip"><span v-for="item in freeFailureDetails(row.job?.failure)" :key="item">{{ item }}</span></div></template>
@@ -801,10 +872,11 @@ onMounted(async () => {
             <el-table-column label="操作" :width="taskColWidth('操作', 64)" align="center" fixed="right">
               <template #default="{ row }">
                 <el-dropdown v-if="!row.task" trigger="click" @command="(command: string) => handleRunAction(command, row)">
-                  <el-button link class="row-action-button" aria-label="打开测活操作菜单" title="打开测活操作菜单"><el-icon><MoreFilled /></el-icon></el-button>
+                  <el-button link class="row-action-button" :aria-label="row.plan ? '打开套餐查询操作菜单' : '打开测活操作菜单'" :title="row.plan ? '打开套餐查询操作菜单' : '打开测活操作菜单'"><el-icon><MoreFilled /></el-icon></el-button>
                   <template #dropdown>
                     <el-dropdown-menu>
-                      <el-dropdown-item command="live_log"><el-icon><Document /></el-icon>查看测活日志</el-dropdown-item>
+                      <el-dropdown-item v-if="row.job" command="live_log"><el-icon><Document /></el-icon>查看测活日志</el-dropdown-item>
+                      <el-dropdown-item v-else-if="row.plan" command="plan_log"><el-icon><Document /></el-icon>查看运行日志</el-dropdown-item>
                     </el-dropdown-menu>
                   </template>
                 </el-dropdown>

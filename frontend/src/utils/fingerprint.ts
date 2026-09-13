@@ -8,7 +8,7 @@
  * `task_id/status/updated_at` tuples plus the scalar summary fields are a
  * sound identity for "did anything change".
  */
-import type { FreeLiveCheckState, FreeMailboxRow, FreeState } from '../types/free'
+import type { FreeLiveCheckState, FreeMailboxRow, FreePlanCheckState, FreeState } from '../types/free'
 import type { MailboxRow } from '../types/api'
 
 function freeStateFingerprint(state: FreeState | undefined): string {
@@ -51,6 +51,15 @@ function freeLiveStateFingerprint(state: FreeLiveCheckState | undefined): string
   return [state.running ? 1 : 0, state.workers ?? '', state.active ?? '', jobPart].join('\u0000')
 }
 
+function freePlanStateFingerprint(state: FreePlanCheckState | undefined): string {
+  if (!state) return 'none'
+  const jobs = state.jobs || []
+  const jobPart = jobs
+    .map(job => `${job.task_id || ''}:${job.status || ''}:${job.updated_at || 0}:${job.checked_at || 0}`)
+    .join('|')
+  return [state.running ? 1 : 0, state.workers ?? '', state.active ?? '', jobPart].join('\u0000')
+}
+
 function freeMailboxRowsFingerprint(rows: FreeMailboxRow[] | undefined | null): string {
   if (!rows) return 'none'
   return rows
@@ -68,4 +77,4 @@ function mailboxRowsFingerprint(rows: MailboxRow[] | undefined | null): string {
     .join('|')
 }
 
-export { freeLiveStateFingerprint, freeMailboxRowsFingerprint, freeStateFingerprint, mailboxRowsFingerprint }
+export { freeLiveStateFingerprint, freeMailboxRowsFingerprint, freePlanStateFingerprint, freeStateFingerprint, mailboxRowsFingerprint }
