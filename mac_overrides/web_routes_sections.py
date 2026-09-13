@@ -627,7 +627,37 @@ def build_free_routes(scope: RouteScope, ns: dict[str, Any]) -> dict[str, Any]:
             _note_stderr("L564", exc)
 
     def free_state():
-        return scope.free_manager.public_state() if scope.free_manager is not None else {"running": False, "tasks": [], "summary": {}}
+        if scope.free_manager is not None:
+            state = dict(scope.free_manager.public_state())
+        else:
+            state = {"running": False, "tasks": [], "summary": {}}
+        # The async startup coordinator owns its own progress and failure; both
+        # ride on every state read so the page can show a background
+        # preparation and surface its failure instead of leaving a silent
+        # click (coordinator contract in free_register_start_async).
+        coordinator = _start_coordinator
+        if coordinator is None:
+            return state
+        pending = coordinator.pending_summary()
+        if pending:
+            state.update(pending)
+        failure = coordinator.last_error()
+        if failure:
+            state["start_failure"] = {
+                "node_code": str(failure.get("node_code") or ""),
+                "node_label": str(failure.get("node_label") or ""),
+                "error_code": str(failure.get("error_code") or ""),
+                "public_message": str(failure.get("public_message") or ""),
+                "retryable": bool(failure.get("retryable")),
+            }
+        # The manager publishes preparation stages (tunnel minting included)
+        # while a start owns its lock; the reader is deliberately lock-free.
+        progress_reader = getattr(scope.free_manager, "startup_progress", None)
+        if callable(progress_reader):
+            progress = progress_reader()
+            if progress:
+                state["startup"] = progress
+        return state
 
     def free_config_public():
         return scope.free_config_store.public() if scope.free_config_store is not None else {}

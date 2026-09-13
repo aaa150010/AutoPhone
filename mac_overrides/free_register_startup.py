@@ -16,7 +16,7 @@ import secrets
 import threading
 import sys
 import time
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 try:
     from .free_register_common import (
@@ -134,6 +134,40 @@ class FreeRegisterStartupMixin:
                 if idle_owner:
                     self._release_runtime_owner()
             raise
+        finally:
+            # The state route reads progress lock-free; a finished (or failed)
+            # startup must not leave a stale preparation stage behind.
+            self._startup_progress_active = False
+            self._startup_progress = {}
+
+    def _startup_stage(self, stage: str, label: str, detail: str = "") -> None:
+        """Publish one startup preparation stage for the state route.
+
+        Called while ``start`` owns the manager lock; the write itself is a
+        plain dict replace so the lock-free reader always sees a consistent
+        snapshot.
+        """
+        self._startup_progress = {
+            "stage": stage,
+            "label": label,
+            "detail": detail,
+            "updated_at": int(time.time()),
+        }
+
+    def startup_progress(self) -> dict[str, Any]:
+        """Lock-free progress read: the state route must not block on the lock."""
+        data = getattr(self, "_startup_progress", None)
+        return dict(data) if isinstance(data, dict) else {}
+
+    def _startup_mint_progress_callback(self) -> Callable[[int, int], None] | None:
+        """Progress sink for tunnel minting; ``None`` outside a startup attempt."""
+        if not getattr(self, "_startup_progress_active", False):
+            return None
+
+        def _on_mint(minted: int, deficit: int) -> None:
+            self._startup_stage("tunnel_mint", "铸造隧道替补代理", f"已铸造 {minted}/{deficit} 条新出口")
+
+        return _on_mint
 
     def _note_startup_quiet(self, where: str, exc: BaseException) -> None:
         """Record a swallowed startup/shutdown cleanup failure on stderr.
@@ -311,6 +345,10 @@ class FreeRegisterStartupMixin:
         the running check and mailbox/proxy reservation allowed two concurrent
         start requests to both pass the check.
         """
+        # Startup progress rides on the lock-free state read; activate the
+        # gate first so tunnel minting inside the sequence also reports.
+        self._startup_progress_active = True
+        self._startup_stage("owner", "校验熔断与运行归属")
         # A tripped challenge breaker blocks the batch before any ownership,
         # reservation or pool mutation; reset requires operator confirmation.
         if self.proxy_breaker.tripped():
@@ -336,6 +374,7 @@ class FreeRegisterStartupMixin:
                 error_code="free_driver_unsupported",
             )
         if requested_driver == "protocol" and not self._custom_runner:
+            self._startup_stage("preflight", "网络与链路预检", requested_driver)
             self.protocol_preflight(config)
         if pool_content.strip():
             self.pool.import_text(pool_content)
@@ -350,6 +389,7 @@ class FreeRegisterStartupMixin:
             # account evidence before calculating the batch or touching a
             # proxy lease.  This keeps the guard effective for both explicit
             # selections and automatic pool dispatch.
+            self._startup_stage("mailbox", "校验邮箱池与账号证据")
             available_rows = self.pool.available(10_000)
             protected_ids = self._registration_account_exists_bulk(
                 row.row_id for row in available_rows
@@ -423,6 +463,7 @@ class FreeRegisterStartupMixin:
             if driver not in {"protocol", "camoufox"}:
                 raise FreeRegisterError("free_config", "启动 Free 注册", "Free 注册链路无效", retryable=False)
             if driver == "camoufox" and not self._custom_runner:
+                self._startup_stage("preflight", "Camoufox 预检", "camoufox")
                 _runtime_module().CamoufoxRunner.preflight(config)
             # Import pasted proxies only after mailbox/result guards pass.  A
             # rejected duplicate-registration attempt must not mutate the
@@ -440,7 +481,9 @@ class FreeRegisterStartupMixin:
             )
             # Refill from the credential-tunnel template before binding so a
             # shrunken pool mints back up to target (no-op without a template).
+            self._startup_stage("tunnel_mint", "铸造隧道替补代理")
             self._ensure_tunnel_target()
+            self._startup_stage("proxy_bind", "分配代理")
             bindings = self.proxies.bind(
                 target_count,
                 probe=self.proxy_probe,
@@ -489,6 +532,7 @@ class FreeRegisterStartupMixin:
                     # Proxy preflight is an internal transport check; do not
                     # expose a successful validation stage in task logs.
                 self._save_tasks_safely("启动任务初始状态")
+                self._startup_stage("tasks", "创建任务并启动执行器")
             except Exception:
                 if self.mailbox_leases is not None:
                     for task_id in reversed(leased_mailboxes):

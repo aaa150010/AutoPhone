@@ -1055,6 +1055,65 @@ class WebRouteTests(unittest.TestCase):
         self.assertEqual(failing_manager.calls[0][3], ["row-selected"])
         self.assertNotIn(secret, str(payload))
 
+    def test_free_state_surfaces_async_start_pending_and_failure(self):
+        """Background start progress and failure ride on /api/free/state reads."""
+        from mac_overrides.free_register_common import FreeRegisterError
+
+        release = threading.Event()
+
+        class BlockingFailingManager:
+            def public_state(self):
+                return {"running": False, "tasks": [], "summary": {}}
+
+            def startup_progress(self):
+                return {"stage": "preflight", "label": "网络与链路预检", "detail": "protocol", "updated_at": 1}
+
+            def start(self, config, *, pool_content="", proxy_content="", row_ids=()):
+                release.wait(2)
+                raise FreeRegisterError(
+                    "free_proxy_preflight",
+                    "Free 代理预检",
+                    "Free 代理池没有可分配的健康代理",
+                    retryable=False,
+                )
+
+        manager = BlockingFailingManager()
+        config_store = FreeConfigStore(Path(self.tempdir.name) / "free-start-state-surface")
+        app = self._app(replace(
+            self.context,
+            free_register_manager=manager,
+            free_config_store=config_store,
+        ))
+        with app.test_client() as client:
+            started = client.post(
+                "/api/free/start",
+                json={"target_count": 1, "concurrency": 1},
+            )
+            self.assertEqual(started.status_code, 200)
+            self.assertTrue(started.get_json().get("async_start"))
+
+            pending = client.get("/api/free/state").get_json()["state"]
+            self.assertTrue(pending.get("starting"))
+            self.assertFalse(pending.get("running"))
+            self.assertIsNone(pending.get("start_failure"))
+            self.assertEqual(pending.get("startup", {}).get("stage"), "preflight")
+
+            release.set()
+            deadline = time.time() + 2
+            failure: dict = {}
+            while time.time() < deadline:
+                state = client.get("/api/free/state").get_json()["state"]
+                failure = state.get("start_failure") or {}
+                if failure:
+                    break
+                time.sleep(0.02)
+
+        self.assertFalse(bool(pending.get("running")))
+        self.assertEqual(failure.get("node_code"), "free_proxy_preflight")
+        self.assertEqual(failure.get("node_label"), "Free 代理预检")
+        self.assertIn("健康代理", failure.get("public_message") or "")
+        self.assertFalse(failure.get("retryable"))
+
     def test_free_state_read_failure_blocks_config_and_pool_mutations(self):
         class RecordingPool:
             def __init__(self):

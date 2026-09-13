@@ -270,6 +270,10 @@ class FreeRegisterManager(
         self._circuit_stop_requested = False
         self._user_stop_requested = False
         self._last_config: dict[str, Any] = {}
+        # Startup preparation progress for the state route.  Writes happen
+        # under the manager lock inside ``_start_locked``; reads are lock-free.
+        self._startup_progress: dict[str, Any] = {}
+        self._startup_progress_active = False
         self._stage_started_mono: dict[str, float] = {}
         self._task_started_mono: dict[str, float] = {}
         # Adapter timing is diagnostic-only.  Keep a short checkpoint window
@@ -1673,7 +1677,8 @@ class FreeRegisterManager(
         if target <= 0:
             return 0
         try:
-            minted = ensure_target(self.proxies, template, target=target)
+            on_mint = self._startup_mint_progress_callback()
+            minted = ensure_target(self.proxies, template, target=target, on_progress=on_mint)
         except Exception as exc:
             self._log(
                 f"[free-proxy/隧道替补铸造失败/free_proxy_replacement_mint_failed] "

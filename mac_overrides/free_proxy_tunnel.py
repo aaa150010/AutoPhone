@@ -16,7 +16,7 @@ without bound.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 from urllib.parse import quote
 import secrets
 import string
@@ -133,12 +133,21 @@ def _row_id_for_line(pool: Any, line: str, scheme: str) -> str:
     return ""
 
 
-def ensure_target(pool: Any, template: TunnelTemplate | None, *, target: int, now: float | None = None) -> int:
+def ensure_target(
+    pool: Any,
+    template: TunnelTemplate | None,
+    *,
+    target: int,
+    now: float | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
+) -> int:
     """Mint tunnel rows until the dispatchable pool reaches ``target``.
 
     Every eligible row counts toward the target; burned tunnel-auto rows are
     deleted first so a replacement never accumulates behind a dead exit, and
-    the mint is capped at ``2 * target`` total tunnel rows.  Returns the
+    the mint is capped at ``2 * target`` total tunnel rows.  ``on_progress``
+    receives ``(minted_so_far, deficit)`` after each successful mint so the
+    startup progress surface can report the replacement loop.  Returns the
     number of rows minted.
     """
     if template is None or int(target or 0) <= 0:
@@ -168,6 +177,8 @@ def ensure_target(pool: Any, template: TunnelTemplate | None, *, target: int, no
                 expires_at=current_time + template.sticky_minutes * 60,
             )
         minted += 1
+        if on_progress is not None:
+            on_progress(minted, deficit)
     return minted
 
 

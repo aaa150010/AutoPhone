@@ -105,6 +105,20 @@ class EnsureTargetTests(unittest.TestCase):
             self.assertTrue(row["window_started_at"] > 0)
             self.assertEqual(row["window_expires_at"], row["window_started_at"] + 30 * 60)
 
+    def test_mint_progress_reports_each_replacement(self) -> None:
+        """on_progress receives (minted_so_far, deficit) after every mint."""
+        self.pool.import_text("http://manual.example.test:8000\n", source_label="manual")
+        events: list[tuple[int, int]] = []
+        minted = ensure_target(
+            self.pool,
+            self.template,
+            target=4,
+            on_progress=lambda done, deficit: events.append((done, deficit)),
+        )
+        self.assertEqual(minted, 3)
+        self.assertEqual([done for done, _ in events], [1, 2, 3])
+        self.assertTrue(all(deficit == 3 for _, deficit in events))
+
     def test_burned_tunnel_rows_are_removed_and_replaced_manual_rows_survive(self) -> None:
         self.pool.import_text("http://manual.example.test:8000\n", source_label="manual")
         ensure_target(self.pool, self.template, target=3)
