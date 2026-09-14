@@ -54,11 +54,9 @@ const state = ref<FreeState>({ running: false, tasks: [], summary: {}, pool: {} 
 const liveState = ref<FreeLiveCheckState>({ running: false, workers: 3, queue_limit: 500, active: 0, jobs: [] })
 const planState = ref<FreePlanCheckState>({ running: false, workers: 0, queue_limit: 0, active: 0, jobs: [] })
 const runLogTask = ref<{ task_id: string; email: string; stage: string } | null>(null)
-const runKindFilter = ref('')
 const selectedTaskId = ref('')
 const taskSearch = ref('')
 const taskStatusFilter = ref('all')
-const taskDriverFilter = ref('')
 const selectedTasks = ref<FreeTaskRow[]>([])
 const taskTable = ref<{ clearSelection: () => void } | null>(null)
 const logDialogOpen = ref(false)
@@ -170,6 +168,9 @@ type UnifiedRunRow = {
   job?: FreeLiveCheckState['jobs'][number]
   plan?: FreePlanCheckState['jobs'][number]
   children?: UnifiedRunRow[]
+  // Folded automatic-retry child: internal continuation of the parent row.
+  // It gets no sequence number and is not independently selectable.
+  isRetryChild?: boolean
 }
 
 function runKindOfTask(task: FreeTaskRow): RunKind {
@@ -238,7 +239,9 @@ const unifiedRuns = computed<UnifiedRunRow[]>(() => {
     const parentKey = `task:${task.retry_of || ''}`
     const parentRow = isAutoRetryTask(task) ? taskRows.get(parentKey) : undefined
     if (parentRow && parentRow !== row) {
-      (parentRow.children ||= []).push(row)
+      // Folded automatic-retry child: internal continuation of the parent
+      // (no sequence number, not independently selectable).
+      (parentRow.children ||= []).push({ ...row, isRetryChild: true })
     } else {
       rows.push(row)
     }
@@ -308,7 +311,6 @@ const statusFilters = computed(() => [
 const filteredRuns = computed(() => {
   const query = taskSearch.value.trim().toLowerCase()
   return unifiedRuns.value.filter(row => {
-    if (runKindFilter.value && row.kind !== runKindFilter.value) return false
     const task = row.task
     const haystack = task
       ? [task.email, task.task_id || '', task.failure?.node_label, task.failure?.node_code].join(' ').toLowerCase()
@@ -316,13 +318,12 @@ const filteredRuns = computed(() => {
         ? [row.plan.email || '', row.plan.task_id || '', row.plan.failure?.node_label || '', row.plan.failure?.node_code || ''].join(' ').toLowerCase()
         : [row.job?.email || '', row.job?.task_id || '', row.job?.failure?.node_label || '', row.job?.failure?.node_code || ''].join(' ').toLowerCase()
     if (query && !haystack.includes(query)) return false
-    if (taskDriverFilter.value && (!task || task.driver !== taskDriverFilter.value)) return false
     if (taskStatusFilter.value !== 'all' && runStatusBucket(row) !== taskStatusFilter.value) return false
     return true
   })
 })
 const pagedRuns = computed(() => filteredRuns.value.slice((taskPage.value - 1) * taskPageSize.value, taskPage.value * taskPageSize.value))
-watch(() => [filteredRuns.value.length, taskSearch.value, taskStatusFilter.value, taskDriverFilter.value, runKindFilter.value], () => {
+watch(() => [filteredRuns.value.length, taskSearch.value, taskStatusFilter.value], () => {
   const maxPage = Math.max(1, Math.ceil(filteredRuns.value.length / taskPageSize.value))
   if (taskPage.value > maxPage) taskPage.value = maxPage
 })
@@ -523,11 +524,14 @@ function openPlanRunLog(row: UnifiedRunRow) {
 }
 
 function runRowClass({ row }: { row: UnifiedRunRow }): string {
+  if (row.isRetryChild) return 'is-retry-child'
   return row.task ? taskRowClass({ row: row.task }) : ''
 }
 
 function runSelectable(row: UnifiedRunRow): boolean {
-  return Boolean(row.task)
+  // Automatic-retry children are internal continuations of their parent row:
+  // they carry no sequence number and are never independently selectable.
+  return Boolean(row.task) && !row.isRetryChild
 }
 
 function handleRunAction(command: string, row: UnifiedRunRow) {
@@ -594,8 +598,13 @@ async function handleTaskAction(command: string, task: FreeTaskRow) {
   if (command === 'password') return retryPasswordTaskAction(task)
 }
 
-function handleTaskSelection(rows: FreeTaskRow[]) {
+function handleTaskSelection(rows: UnifiedRunRow[]) {
+  // The table renders unified rows; every downstream consumer (retry button
+  // enablement, batch retry, delete, bulk copy) speaks FreeTaskRow.  Unwrap
+  // once here so row.status/row.task_id are never read off a UnifiedRunRow.
   selectedTasks.value = rows
+    .map(row => row.task)
+    .filter((task): task is FreeTaskRow => Boolean(task))
 }
 
 async function deleteSelectedTasks() {
@@ -808,11 +817,9 @@ onMounted(async () => {
               </button>
             </div>
             <el-input v-model="taskSearch" size="small" clearable class="task-search" placeholder="搜索邮箱、任务 ID 或失败节点" />
-            <el-select v-model="taskDriverFilter" size="small" clearable placeholder="链路" class="task-driver-filter"><el-option label="全协议" value="protocol" /><el-option label="Camoufox" value="camoufox" /></el-select>
-            <el-select v-model="runKindFilter" size="small" clearable placeholder="类型" class="task-driver-filter"><el-option v-for="(label, kind) in RUN_KIND_LABELS" :key="kind" :label="label" :value="kind" /></el-select>
             <div class="task-actions">
               <span class="muted">已选 {{ selectedTasks.length }} 个</span>
-              <el-button v-if="['success', 'partial_success', 'twofa_pending', 'pending_rerun'].includes(taskStatusFilter)" size="small" type="warning" :icon="Refresh" :disabled="!selectedTasks.some(task => !isHistoricalDriver(task) && (['failed', 'stopped', 'pending_rerun', 'twofa_pending'].includes(String(task.status || '')) || canRetryPassword(task)))" aria-label="按当前失败节点批量重试" @click="batchRetryCurrentNode">按当前失败节点批量重试</el-button>
+              <el-button size="small" type="warning" :icon="Refresh" :disabled="!selectedTasks.some(task => !isHistoricalDriver(task) && (['failed', 'stopped', 'pending_rerun', 'twofa_pending'].includes(String(task.status || '')) || canRetryPassword(task)))" aria-label="按当前失败节点批量重试" @click="batchRetryCurrentNode">按当前失败节点批量重试</el-button>
               <el-dropdown trigger="click" @command="(command: string) => handleCopyCommand(command)">
                 <el-button size="small" :icon="CopyDocument" :disabled="!selectedTasks.length" aria-label="批量复制账号凭据">复制<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
                 <template #dropdown>
@@ -831,7 +838,12 @@ onMounted(async () => {
           </div>
           <el-table ref="taskTable" v-loading="loading" :data="pagedRuns" row-key="key" :tree-props="{ children: 'children' }" height="100%" size="small" border :row-class-name="runRowClass" @header-dragend="(newWidth: number, oldWidth: number, column: DragColumn) => onTaskHeaderDragend(newWidth, oldWidth, column)" @selection-change="handleTaskSelection">
             <el-table-column type="selection" width="42" reserve-selection :selectable="runSelectable" />
-            <el-table-column type="index" label="序号" width="58" align="center" :index="(index: number) => index + 1 + (taskPage - 1) * taskPageSize" />
+            <el-table-column width="30" class-name="tree-toggle-col" label=" " :resizable="false">
+              <template #default><!-- el-table renders the tree expand icon in the first data column. --></template>
+            </el-table-column>
+            <el-table-column label="序号" width="58" align="center">
+              <template #default="{ row }"><span v-if="pagedRuns.indexOf(row) >= 0">{{ pagedRuns.indexOf(row) + 1 + (taskPage - 1) * taskPageSize }}</span></template>
+            </el-table-column>
             <el-table-column label="类型" :width="taskColWidth('类型', 88)" align="center">
               <template #default="{ row }"><el-tag size="small" :type="kindTagType(row.kind)" effect="plain">{{ row.kindLabel }}</el-tag></template>
             </el-table-column>
@@ -1053,12 +1065,17 @@ onMounted(async () => {
 .summary-cell.tone-danger strong { color: var(--el-color-danger); }
 .summary-cell.is-filter.is-active strong { color: var(--el-color-primary-dark-2); }
 .task-search { width: 220px; flex: 0 0 auto; }
-.task-driver-filter { width: 118px; flex: 0 0 auto; }
 .task-actions { display: flex; align-items: center; gap: var(--workspace-gap); margin-left: auto; min-width: 0; justify-content: flex-end; }
 .task-panel :deep(.el-table) { min-height: 0; }
 .task-panel :deep(.el-table td.el-table__cell),
 .task-panel :deep(.el-table th.el-table__cell) { padding-top: 3px; padding-bottom: 3px; }
 .task-panel :deep(.el-table th.el-table__cell .cell) { font-size: 12px; }
+/* Dedicated tree-toggle column: keeps the expand arrow out of the narrow
+   类型 cell so the tag never wraps onto a second line. */
+.task-panel :deep(.tree-toggle-col .cell) { padding: 0 2px; text-align: center; }
+.task-panel :deep(.tree-toggle-col .el-table__expand-icon) { margin-right: 0; }
+/* Automatic-retry children are internal: hide their selection checkbox. */
+.task-panel :deep(.el-table tr.is-retry-child .el-checkbox) { display: none; }
 .task-panel :deep(.el-table .cell) { line-height: 18px; }
 .account-cell { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .account-subline { display: block; overflow: hidden; color: var(--el-text-color-secondary); font-size: 11px; line-height: 15px; text-overflow: ellipsis; white-space: nowrap; }
