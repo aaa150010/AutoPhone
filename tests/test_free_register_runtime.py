@@ -2320,6 +2320,115 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
         minted = manager._maintain_proxy_pool()
         self.assertGreaterEqual(minted, 1)
 
+    def test_bind_path_challenge_burn_feeds_breaker_and_gateway_alert(self):
+        """Bind-time health-refresh burns must reach the same breaker layer."""
+        from mac_overrides.free_proxy_breaker import ChallengeBreaker
+
+        diagnostics = DiagnosticStore(self.data_dir / "bind-burn-diag")
+        manager = FreeRegisterManager(self.data_dir, diagnostic_store=diagnostics)
+        # The manager wires the store hook at construction time.
+        self.assertTrue(callable(manager.proxies.challenge_burn_observer))
+        # Pool circuit kept above the storm size so the gateway layer is the
+        # one that reacts first.
+        manager.proxy_breaker = ChallengeBreaker(threshold=99, gateway_window_seconds=900, gateway_threshold=3)
+        manager.proxies.import_text(
+            "socks5://sid-b1:pw@gw.test:3010\n"
+            "socks5://sid-b2:pw@gw.test:3010\n"
+            "socks5://sid-b3:pw@gw.test:3010\n",
+            source_label="tunnel-auto",
+        )
+        rows = manager.proxies.entries()
+        for index, row in enumerate(rows):
+            manager.proxies.annotate_window(
+                str(row["proxy_id"]), started_at=1000.0, expires_at=900000.0, minted_at=1000.0 + index,
+            )
+        for row in rows:
+            proxy_id = str(row["proxy_id"])
+            manager.proxies.record_challenge_burn(proxy_id)
+            # The bind stale-refresh site calls the observer right after the
+            # burn; invoking it directly reproduces that path.
+            manager.proxies.challenge_burn_observer(proxy_id)
+        self.assertFalse(manager.proxy_breaker.tripped())
+        self.assertTrue(manager.proxy_breaker.gateway_blocked())
+        found = False
+        deadline = time.time() + 6
+        while time.time() < deadline and not found:
+            for incident_row in diagnostics.search({"limit": 200}):
+                detail = diagnostics.incident(incident_row["incident_id"]) or {}
+                if any(
+                    str(event.get("node_code") or "") == "free_proxy_gateway_blocked"
+                    for event in detail.get("events") or []
+                ):
+                    found = True
+                    break
+            if not found:
+                time.sleep(0.05)
+        self.assertTrue(found, "bind-path burn must emit the gateway-block diagnostic")
+
+    def _retry_maintain_setup(self):
+        FreeMailboxPool(self.data_dir).import_text(
+            "retry-maint@example.test----https://mail.example.test/retry-maint\n"
+        )
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=lambda *_args, **_kwargs: {},
+            proxy_probe=lambda _proxy, _url: "203.0.113.71",
+        )
+        # Keep the test synchronous: the enqueue path must reach the bind
+        # step without actually running a worker.
+        manager._submit_registered_worker = lambda *args, **kwargs: None
+        row = manager.pool.entries()[0]
+        original = {
+            "task_id": "orig-retry-maint",
+            "row_id": row.row_id,
+            "batch_id": "b-retry-maint",
+            "ordinal": 1,
+            "driver": "protocol",
+            "email": row.email,
+            "mailbox_url": row.mailbox_url,
+            "mailbox_source": "url",
+            "status": "failed",
+            "created_at": int(time.time()),
+            "retry_attempt": 0,
+        }
+        manager._tasks["orig-retry-maint"] = original
+        return manager, original
+
+    def test_retry_enqueue_maintains_empty_pool_before_binding(self):
+        manager, original = self._retry_maintain_setup()
+        maintain_calls: list[int] = []
+
+        def fake_maintain(config=None):
+            maintain_calls.append(1)
+            manager.proxies.import_text("http://retry-refill.test:8000\n", source_label="tunnel-auto")
+            return 1
+
+        manager._maintain_proxy_pool = fake_maintain
+        queued = manager._enqueue_retry(original, {"concurrency": 1, "target_count": 1}, retry_node="free_oauth_session")
+        retry_id = str(queued.get("task_id") or "")
+        self.assertTrue(retry_id)
+        self.assertEqual(len(maintain_calls), 1)
+        self.assertIn("retry-refill.test", str(manager._tasks[retry_id].get("proxy") or ""))
+
+    def test_retry_enqueue_reports_pool_empty_after_failed_maintenance(self):
+        manager, original = self._retry_maintain_setup()
+        manager._maintain_proxy_pool = lambda config=None: 0
+        with self.assertRaises(FreeRegisterError) as raised:
+            manager._enqueue_retry(original, {"concurrency": 1, "target_count": 1}, retry_node="free_oauth_session")
+        self.assertEqual(str(raised.exception.error_code), "free_proxy_pool_empty")
+
+    def test_retry_enqueue_reports_breaker_tripped_when_gateway_blocked(self):
+        from mac_overrides.free_proxy_breaker import ChallengeBreaker
+
+        manager, original = self._retry_maintain_setup()
+        breaker = ChallengeBreaker(threshold=99, gateway_window_seconds=900, gateway_threshold=1)
+        breaker.record_burn("sid-gw", source_label="tunnel-auto", minted_at=500.0, gateway_fingerprint="gw-x", now=time.time())
+        manager.proxy_breaker = breaker
+        manager._maintain_proxy_pool = lambda config=None: 0
+        with self.assertRaises(FreeRegisterError) as raised:
+            manager._enqueue_retry(original, {"concurrency": 1, "target_count": 1}, retry_node="free_oauth_session")
+        self.assertEqual(str(raised.exception.error_code), "free_proxy_breaker_tripped")
+
     def test_pre_submit_challenge_switches_proxy_with_own_budget(self):
         FreeMailboxPool(self.data_dir).import_text(
             "switch@example.test----https://mail.example.test/switch\n"

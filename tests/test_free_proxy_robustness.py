@@ -346,6 +346,75 @@ class FreeProxyRobustnessTests(unittest.TestCase):
         self.assertNotEqual(statuses["fresh-b.test"], "burned")
         self.assertEqual(pool.healthy_count(), 1)
 
+    def test_bind_stale_refresh_challenge_burn_feeds_breaker_observer(self) -> None:
+        """A bind-time challenge burn must reach the manager-side breaker hook."""
+        pool = FreeProxyPool(self.data_dir, health_probe_ttl_seconds=300)
+        pool.import_text("http://stale-a.test:8000\nhttp://fresh-b.test:8000\n")
+        seen: list[str] = []
+        pool.challenge_burn_observer = seen.append
+
+        def probe(proxy: str, _target: str) -> str:
+            if "stale-a" in proxy:
+                raise FreeRegisterError(
+                    "free_proxy_preflight",
+                    "Free 代理预检",
+                    "ChatGPT 代理预检返回安全挑战页面",
+                    provider_status=403,
+                    retryable=False,
+                    error_code="free_proxy_chatgpt_security_challenge",
+                    page_type="security_challenge",
+                )
+            return "203.0.113.70"
+
+        # Request both rows so the random candidate order cannot skip the
+        # stale row: it must be probed, burned and reported to the observer.
+        bindings = pool.bind(
+            2,
+            probe=probe,
+            probe_url="https://chatgpt.com/",
+            perform_probe=False,
+            health_probe_ttl_seconds=300,
+        )
+        self.assertEqual(len(bindings), 2)
+        burned = next(row for row in pool.entries() if row["host"] == "stale-a.test")
+        self.assertEqual(burned["status"], "burned")
+        # The observer was fed exactly once, with the burned row's proxy id.
+        self.assertEqual(seen, [str(burned["proxy_id"])])
+
+    def test_challenge_burn_observer_failure_never_breaks_bind(self) -> None:
+        """A raising observer is swallowed: bind semantics stay unchanged."""
+        pool = FreeProxyPool(self.data_dir, health_probe_ttl_seconds=300)
+        pool.import_text("http://stale-a.test:8000\nhttp://fresh-b.test:8000\n")
+
+        def bad_observer(_proxy_id: str) -> None:
+            raise RuntimeError("observer down")
+
+        pool.challenge_burn_observer = bad_observer
+
+        def probe(proxy: str, _target: str) -> str:
+            if "stale-a" in proxy:
+                raise FreeRegisterError(
+                    "free_proxy_preflight",
+                    "Free 代理预检",
+                    "ChatGPT 代理预检返回安全挑战页面",
+                    provider_status=403,
+                    retryable=False,
+                    error_code="free_proxy_chatgpt_security_challenge",
+                    page_type="security_challenge",
+                )
+            return "203.0.113.70"
+
+        bindings = pool.bind(
+            2,
+            probe=probe,
+            probe_url="https://chatgpt.com/",
+            perform_probe=False,
+            health_probe_ttl_seconds=300,
+        )
+        self.assertEqual(len(bindings), 2)
+        statuses = {row["host"]: row["status"] for row in pool.entries()}
+        self.assertEqual(statuses["stale-a.test"], "burned")
+
     def test_chatgpt_probe_is_recorded_when_explicitly_requested(self) -> None:
         pool = FreeProxyPool(self.data_dir)
         pool.import_text("http://proxy.example.test:8000\n")

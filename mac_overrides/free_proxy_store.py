@@ -141,6 +141,11 @@ except ImportError:  # macOS launcher imports overrides as top-level modules.
         _record_from_url,
     )
 
+try:
+    from .quiet_note import note_stderr
+except ImportError:  # macOS launcher imports overrides as top-level modules.
+    from quiet_note import note_stderr  # type: ignore[no-redef]
+
 
 @dataclass(frozen=True, slots=True)
 class FreeProxyLease:
@@ -196,6 +201,13 @@ class FreeProxyPool(FreeProxyStoreHealthMixin):
         # probes must receive the declared URL unchanged.
         self.socks5_dns_mode = "declared"
         self.allocation_mode = "healthy_random"
+        # Optional manager-side hook: when the bind-time health refresh burns
+        # a challenged exit, the pool itself stays agnostic of the circuit
+        # breaker, but the observer lets the manager feed the same breaker
+        # accounting (distinct-exit trip and gateway new-mint block) that the
+        # worker challenge path uses.  Never persisted, never called for
+        # transport failures.
+        self.challenge_burn_observer: Callable[[str], None] | None = None
         # Ephemeral metadata for the most recent explicit/manual bind.  It is
         # intentionally not persisted and never contains an observed exit IP.
         self._last_bind_diagnostics: list[dict[str, Any]] = []
@@ -949,8 +961,13 @@ class FreeProxyPool(FreeProxyStoreHealthMixin):
                     elif is_security_challenge_failure(health_error):
                         # A challenged candidate retires permanently and is
                         # skipped exactly like a failed transport candidate;
-                        # binding continues with the next healthy row.
-                        self.record_challenge_burn(str(record.get("proxy_id") or ""))
+                        # binding continues with the next healthy row.  The
+                        # burn also feeds the manager-side breaker observer so
+                        # a bind-time challenge storm trips the circuit and
+                        # alerts like the worker path does.
+                        burned_proxy_id = str(record.get("proxy_id") or "")
+                        self.record_challenge_burn(burned_proxy_id)
+                        self._notify_challenge_burn_observer(burned_proxy_id)
             # Shared healthy_random allocation intentionally permits a
             # single healthy proxy to serve multiple concurrent tasks.
             # Once one stale candidate has passed its bounded refresh,
@@ -1266,6 +1283,20 @@ class FreeProxyPool(FreeProxyStoreHealthMixin):
             if changed:
                 self._save(rows)
             return changed
+
+    def _notify_challenge_burn_observer(self, proxy_id: str) -> None:
+        """Feed the optional breaker observer after a bind-time burn.
+
+        The observer must never change bind semantics: any failure inside it
+        is noted on stderr (class name only) and swallowed.
+        """
+        observer = self.challenge_burn_observer
+        if not callable(observer) or not str(proxy_id or "").strip():
+            return
+        try:
+            observer(str(proxy_id))
+        except Exception as exc:
+            note_stderr("free_proxy_store", "challenge_burn_observer", exc)
 
     def remove(self, proxy_id: str) -> bool:
         """Delete one row by id.

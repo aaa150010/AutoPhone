@@ -30,6 +30,7 @@ try:
         merge_account_result_fields,
     )
     from .free_runtime_info import runtime_info
+    from .free_proxy_maintenance import bind_with_pool_maintenance, pool_empty_error_code
 except ImportError:  # macOS launcher imports overrides as top-level modules.
     from free_register_common import (  # type: ignore[no-redef]
         ProxyBinding,
@@ -44,6 +45,7 @@ except ImportError:  # macOS launcher imports overrides as top-level modules.
         merge_account_result_fields,
     )
     from free_runtime_info import runtime_info  # type: ignore[no-redef]
+    from free_proxy_maintenance import bind_with_pool_maintenance, pool_empty_error_code  # type: ignore[no-redef]
 
 
 def _runtime_module() -> Any:
@@ -462,17 +464,39 @@ class FreeRegisterRetryMixin:
                         effective_scheme=str(original.get("proxy_effective_scheme") or original.get("proxy_scheme") or row_state.get("proxy_scheme") or record_effective_scheme),
                     )
                 else:
-                    bindings = self.proxies.bind(
-                        1,
-                        content=proxy_content,
-                        probe=self.proxy_probe,
-                        probe_url=str(config.get("proxy_probe_url") or "https://chatgpt.com/"),
-                        driver=driver,
-                        perform_probe=False,
-                        health_probe_ttl_seconds=int(config["proxy_health_probe_ttl_seconds"]) if "proxy_health_probe_ttl_seconds" in config else 0,
+                    # An empty pool first gets one gated maintenance pass (the
+                    # manager's maintainer honors breaker/gateway gates), then
+                    # the bind is retried.  The final error distinguishes the
+                    # reset-needed gate from a genuinely empty pool.
+                    bindings, _empty_error = bind_with_pool_maintenance(
+                        lambda: self.proxies.bind(
+                            1,
+                            content=proxy_content,
+                            probe=self.proxy_probe,
+                            probe_url=str(config.get("proxy_probe_url") or "https://chatgpt.com/"),
+                            driver=driver,
+                            perform_probe=False,
+                            health_probe_ttl_seconds=int(config["proxy_health_probe_ttl_seconds"]) if "proxy_health_probe_ttl_seconds" in config else 0,
+                        ),
+                        config=config,
+                        maintainer=self._maintain_proxy_pool,
+                        note_maintain_failure=lambda exc: self._note_quiet("retry_pool_maintain", exc),
                     )
                     if not bindings:
-                        raise FreeRegisterError("free_proxy_binding", "绑定 Free 代理", "当前没有可用健康代理", retryable=True)
+                        if pool_empty_error_code(self.proxy_breaker) == "free_proxy_breaker_tripped":
+                            raise FreeRegisterError(
+                                "free_proxy_breaker_tripped",
+                                "代理池挑战熔断",
+                                "共享 Free 代理池没有健康代理，且挑战熔断已触发：请先人工确认并重置熔断",
+                                retryable=False,
+                                error_code="free_proxy_breaker_tripped",
+                                action_hint="重置熔断或修正隧道网关模板后，重试会自动从健康池重新分配代理",
+                            )
+                        raise FreeRegisterError(
+                            "free_proxy_binding", "绑定 Free 代理", "当前没有可用健康代理",
+                            retryable=True, error_code="free_proxy_pool_empty",
+                            action_hint="请导入健康代理，或配置账密隧道模板后重试",
+                        )
                     binding = bindings[0]
                 now = int(time.time())
                 retry_id = f"{batch_id}-{secrets.token_hex(3)}"

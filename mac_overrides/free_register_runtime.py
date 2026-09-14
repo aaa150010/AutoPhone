@@ -45,7 +45,7 @@ try:
     )
     from .free_mailbox_otp import MailboxUrlOtpProvider
     from .free_proxy_health import is_proxy_health_failure, is_security_challenge_failure
-    from .free_proxy_breaker import ChallengeBreaker
+    from .free_proxy_breaker import BreakerState, ChallengeBreaker
     from .free_proxy_maintenance import maintain_proxy_pool
     from .free_register_common import (
         FREE_STAGE_LABELS,
@@ -119,7 +119,7 @@ except ImportError:  # pragma: no cover - top-level recovery import
     )
     from free_mailbox_otp import MailboxUrlOtpProvider  # type: ignore[no-redef]
     from free_proxy_health import is_proxy_health_failure, is_security_challenge_failure  # type: ignore[no-redef]
-    from free_proxy_breaker import ChallengeBreaker  # type: ignore[no-redef]
+    from free_proxy_breaker import BreakerState, ChallengeBreaker  # type: ignore[no-redef]
     from free_proxy_maintenance import maintain_proxy_pool  # type: ignore[no-redef]
     from free_register_common import (  # type: ignore[no-redef]
         FREE_STAGE_LABELS, FIXED_PASSWORD, FreeMailbox, FreeRegisterError, FreeTwoFaPending,
@@ -243,6 +243,11 @@ class FreeRegisterManager(
         # (startup, challenge refill, live checks, plan rechecks, rebind) so
         # concurrent passes cannot mint beyond the target deficit.
         self._proxy_maintenance_lock = threading.Lock()
+        # Bind-time health-refresh burns happen deep in the store; route them
+        # through the same breaker accounting as worker challenge failures so a
+        # gateway-wide challenge storm trips the circuit and alerts instead of
+        # silently minting and burning replacements forever.
+        self.proxies.challenge_burn_observer = self._note_bind_challenge_burn
         self.manual_broker = manual_broker
         self.config_provider = config_provider
         self._free_notification = FreeBatchNotificationAdapter(notification_config_getter) if callable(notification_config_getter) else None
@@ -1644,42 +1649,15 @@ class FreeRegisterManager(
                     },
                     workflow="cleanup",
                 )
-        source_label = ""
-        minted_at = 0.0
-        exit_ip = ""
-        gateway_fingerprint = ""
-        if proxy_id:
-            row = next(
-                (
-                    item for item in self.proxies.entries()
-                    if isinstance(item, Mapping) and str(item.get("proxy_id") or "") == proxy_id
-                ),
-                None,
-            )
-            if row is not None:
-                source_label = str(row.get("source_label") or "")
-                try:
-                    minted_at = float(row.get("minted_at") or 0.0)
-                except (TypeError, ValueError):
-                    minted_at = 0.0
-                exit_ip = str(row.get("last_exit_ip") or snapshot.get("exit_ip") or "").strip()
-                host = str(row.get("host") or "")
-                try:
-                    port = int(row.get("port") or 0)
-                except (TypeError, ValueError):
-                    port = 0
-                if host and port > 0:
-                    # Only the credential-safe digest is ever recorded or fed
-                    # to the breaker: never the gateway host, username,
-                    # password or session id.
-                    gateway_fingerprint = _fingerprint(f"{host.lower()}:{port}")
-        was_gateway_blocked = self.proxy_breaker.gateway_blocked()
+        identity = self._challenge_burn_identity(proxy_id, str(snapshot.get("exit_ip") or ""))
+        was_tripped = self.proxy_breaker.tripped()
+        was_blocked = self.proxy_breaker.gateway_blocked()
         state = self.proxy_breaker.record_burn(
             proxy_id,
-            exit_ip=exit_ip,
-            source_label=source_label,
-            minted_at=minted_at,
-            gateway_fingerprint=gateway_fingerprint,
+            exit_ip=identity["exit_ip"],
+            source_label=identity["source_label"],
+            minted_at=identity["minted_at"],
+            gateway_fingerprint=identity["gateway_fingerprint"],
         )
         self._log(
             f"[{task_id}/安全挑战废弃出口/free_proxy_challenge_burn] "
@@ -1695,7 +1673,74 @@ class FreeRegisterManager(
                 "action_hint": "系统已自动替换可再生的隧道出口；若批量触发熔断请人工确认后重置",
             },
         )
+        self._log_pool_circuit_events(
+            state,
+            was_tripped=was_tripped,
+            was_blocked=was_blocked,
+            gateway_fingerprint=identity["gateway_fingerprint"],
+        )
         if state.tripped:
+            return True
+        self._ensure_tunnel_target()
+        return False
+
+    def _challenge_burn_identity(self, proxy_id: str, exit_ip_hint: str = "") -> dict[str, Any]:
+        """Collect breaker-accounting fields for one burned exit row.
+
+        Exit identity prefers the row's observed egress IP (falling back to
+        the caller's hint and then the proxy id inside the breaker); tunnel
+        rows additionally carry the source label, mint time and the
+        credential-safe gateway digest — only a host:port hash is ever fed
+        or recorded, never the raw gateway, username, password or sid.
+        """
+        source_label = ""
+        minted_at = 0.0
+        exit_ip = str(exit_ip_hint or "").strip()
+        gateway_fingerprint = ""
+        if proxy_id:
+            row = next(
+                (
+                    item for item in self.proxies.entries()
+                    if isinstance(item, Mapping) and str(item.get("proxy_id") or "") == proxy_id
+                ),
+                None,
+            )
+            if row is not None:
+                source_label = str(row.get("source_label") or "")
+                try:
+                    minted_at = float(row.get("minted_at") or 0.0)
+                except (TypeError, ValueError):
+                    minted_at = 0.0
+                exit_ip = str(row.get("last_exit_ip") or "").strip() or exit_ip
+                host = str(row.get("host") or "")
+                try:
+                    port = int(row.get("port") or 0)
+                except (TypeError, ValueError):
+                    port = 0
+                if host and port > 0:
+                    gateway_fingerprint = _fingerprint(f"{host.lower()}:{port}")
+        return {
+            "source_label": source_label,
+            "minted_at": minted_at,
+            "exit_ip": exit_ip,
+            "gateway_fingerprint": gateway_fingerprint,
+        }
+
+    def _log_pool_circuit_events(
+        self,
+        state: BreakerState,
+        *,
+        was_tripped: bool,
+        was_blocked: bool,
+        gateway_fingerprint: str,
+    ) -> None:
+        """Emit newly triggered pool-circuit and gateway-block diagnostics.
+
+        Both layers are sticky, so the events are logged once at the moment
+        they first trigger (from either the worker challenge path or the
+        bind-time health refresh) instead of on every subsequent burn.
+        """
+        if state.tripped and not was_tripped:
             self._log(
                 "[free-proxy/代理池挑战熔断/free_proxy_breaker_tripped] "
                 f"{state.window_seconds // 60} 分钟内 {state.recent_distinct_burns} 个不同出口连续触发安全挑战，代理池已熔断",
@@ -1709,8 +1754,7 @@ class FreeRegisterManager(
                     "action_hint": "多为站点整体收紧或供应商子段被拉黑；请人工确认后重置熔断再恢复任务",
                 },
             )
-            return True
-        if state.gateway_blocked and not was_gateway_blocked:
+        if state.gateway_blocked and not was_blocked:
             self._log(
                 "[free-proxy/隧道网关疑似封锁/free_proxy_gateway_blocked] "
                 f"{state.gateway_window_seconds // 60} 分钟内同一网关指纹连续 {state.recent_new_mint_challenges} 个新铸隧道出口触发安全挑战，该隧道模板已停止补铸",
@@ -1724,8 +1768,34 @@ class FreeRegisterManager(
                     "action_hint": "先更换或修正隧道网关凭据模板，再在设置页人工确认并重置熔断（同时清除网关封锁）",
                 },
             )
-        self._ensure_tunnel_target()
-        return False
+
+    def _note_bind_challenge_burn(self, proxy_id: str) -> None:
+        """Feed breaker accounting for one bind-time challenge burn.
+
+        The store already retired the row; this mirrors the worker challenge
+        path's breaker feed (distinct-exit trip, gateway new-mint block and
+        the first-time diagnostic events) without touching task state or
+        triggering a refill — consumers maintain the pool themselves.
+        """
+        proxy_id = str(proxy_id or "").strip()
+        if not proxy_id:
+            return
+        identity = self._challenge_burn_identity(proxy_id)
+        was_tripped = self.proxy_breaker.tripped()
+        was_blocked = self.proxy_breaker.gateway_blocked()
+        state = self.proxy_breaker.record_burn(
+            proxy_id,
+            exit_ip=identity["exit_ip"],
+            source_label=identity["source_label"],
+            minted_at=identity["minted_at"],
+            gateway_fingerprint=identity["gateway_fingerprint"],
+        )
+        self._log_pool_circuit_events(
+            state,
+            was_tripped=was_tripped,
+            was_blocked=was_blocked,
+            gateway_fingerprint=identity["gateway_fingerprint"],
+        )
 
     def _ensure_tunnel_target(self) -> int:
         """Mint tunnel-session rows until the dispatchable pool hits target."""
