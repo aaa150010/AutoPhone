@@ -644,6 +644,18 @@ class FreeRegisterRetryMixin:
                     except Exception as exc:
                         # Pool reset must not mask the original retry failure.
                         self._note_quiet("retry_pool_reset", exc)
+                elif continuation:
+                    # A continuation marks the row ``queued`` before the
+                    # worker submit; if submission is then rejected (e.g. the
+                    # pool breaker tripped while binding probed the exits),
+                    # restore the pre-enqueue status instead of leaking the
+                    # row as queued, which would block every later retry of
+                    # this account.
+                    try:
+                        self.pool.update(row_id, status=pool_status or "available", batch_id="", stage="", driver="", proxy="", proxy_masked="", proxy_fingerprint="", expected_exit_ip="", exit_ip="", proxy_id="", proxy_country="", proxy_group="")
+                    except Exception as exc:
+                        # Row restore must not mask the original retry failure.
+                        self._note_quiet("retry_row_restore", exc)
                 if created_executor and not self._futures:
                     try:
                         self._heartbeat_stop.set()

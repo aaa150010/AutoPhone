@@ -2417,6 +2417,44 @@ class FreeRegisterRuntimeTests(unittest.TestCase):
             manager._enqueue_retry(original, {"concurrency": 1, "target_count": 1}, retry_node="free_oauth_session")
         self.assertEqual(str(raised.exception.error_code), "free_proxy_pool_empty")
 
+    def test_retry_enqueue_rollback_restores_continuation_row_status(self):
+        """A rejected continuation submit must not leak the row as queued."""
+        pool = FreeMailboxPool(self.data_dir)
+        pool.import_text("leak@example.test----https://mail.example.test/leak\n")
+        row = pool.entries()[0]
+        pool.save_result(row.row_id, {"access_token": "tok-leak", "has_access_token": True, "twofa_status": "pending"})
+        pool.update(row.row_id, status="twofa_pending")
+        FreeProxyPool(self.data_dir).import_text("http://proxy-leak.test:8000\n")
+        manager = FreeRegisterManager(
+            self.data_dir,
+            runner=lambda *_args, **_kwargs: {},
+            proxy_probe=lambda _proxy, _url: "203.0.113.72",
+        )
+        original = {
+            "task_id": "orig-leak",
+            "row_id": row.row_id,
+            "batch_id": "b-leak",
+            "ordinal": 1,
+            "driver": "protocol",
+            "email": row.email,
+            "status": "twofa_pending",
+            "created_at": int(time.time()),
+            "retry_attempt": 0,
+        }
+        manager._tasks["orig-leak"] = original
+
+        def reject_submit(*args, **kwargs):
+            raise FreeRegisterError(
+                "free_proxy_breaker_tripped", "Free 代理池熔断",
+                "breaker tripped at submit", retryable=False,
+                error_code="free_proxy_breaker_tripped",
+            )
+
+        manager._submit_registered_worker = reject_submit
+        with self.assertRaises(FreeRegisterError):
+            manager._enqueue_retry(original, {"concurrency": 1}, retry_node="free_twofa_activate", twofa_retry=True)
+        self.assertEqual(str(manager.pool._row_state(row.row_id).get("status")), "twofa_pending")
+
     def test_retry_enqueue_reports_breaker_tripped_when_gateway_blocked(self):
         from mac_overrides.free_proxy_breaker import ChallengeBreaker
 
