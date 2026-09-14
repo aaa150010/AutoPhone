@@ -26,6 +26,10 @@ export type FreeConfig = {
   auto_set_2fa: boolean
   twofa_auto_retry_attempts?: number
   password_auto_retry_attempts?: number
+  /** Minutes to wait before auto-retrying a verification-throttle failure (5-360). */
+  throttle_retry_cooldown_minutes?: number
+  /** Bounded automatic retries for throttle failures, independent counter (0-5). */
+  throttle_auto_retry_attempts?: number
   proxy_probe_url: string
   proxy_default_scheme?: 'http' | 'https' | 'socks4' | 'socks5' | 'socks5h' | string
   proxy_socks5_dns_mode?: 'auto' | 'declared' | 'local' | 'remote' | string

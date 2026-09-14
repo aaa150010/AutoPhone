@@ -584,6 +584,10 @@ class FreeRegisterRetryMixin:
                         if password_retry
                         else int(original.get("password_retry_attempt") or 0)
                     ),
+                    # The throttle-cooldown budget is carried across generations
+                    # (a batch_retry child must not reset the parent's count),
+                    # so a chain of throttle failures still stops at the cap.
+                    "throttle_retry_attempt": int(original.get("throttle_retry_attempt") or 0),
                 }
                 self._tasks[retry_id] = task
                 self._retry_leases[retry_key] = retry_id
@@ -812,6 +816,138 @@ class FreeRegisterRetryMixin:
             "rejected": rejected,
             "rejected_count": len(rejected),
         }
+
+    # --- Throttle-cooldown automatic retry ---------------------------------
+    # Target-site verification throttling (OTP page stalls / validate
+    # rejections) must never be replayed immediately: that deepens the
+    # throttle.  A throttle-signature failure instead schedules one delayed
+    # re-dispatch per attempt after a configurable cooldown, reusing
+    # ``batch_retry`` so the node choice stays identical to the operator's
+    # "retry at current failed node" action.  Timers are in-memory by design:
+    # a restart drops pending schedules while the row/task state and the
+    # manual retry path stay intact.
+
+    _THROTTLE_NODES = frozenset({"free_email_otp_validate", "free_twofa_otp_validate"})
+    _THROTTLE_ERROR_CODES = frozenset({"camoufox_email_verification_timeout"})
+
+    @classmethod
+    def _failure_is_throttle(cls, failure: Any) -> bool:
+        """True when a structured failure matches the verification-throttle shape."""
+        if not isinstance(failure, Mapping):
+            return False
+        node = str(failure.get("node_code") or "").strip()
+        code = str(failure.get("error_code") or "").strip()
+        return node in cls._THROTTLE_NODES or code in cls._THROTTLE_ERROR_CODES
+
+    def _schedule_throttle_retry(self, task: Mapping[str, Any], config: Mapping[str, Any]) -> str:
+        """Arm the cooldown timer for one throttle failure; return the task id."""
+        task_id = str(task.get("task_id") or "").strip()
+        if not task_id:
+            return ""
+        # Presence-sensitive like the other auto budgets: direct callers that
+        # omit the keys keep the historical no-automatic-throttle behavior.
+        if "throttle_auto_retry_attempts" not in config or "throttle_retry_cooldown_minutes" not in config:
+            return ""
+        try:
+            limit = max(0, min(5, int(config.get("throttle_auto_retry_attempts") or 0)))
+            attempt = int(task.get("throttle_retry_attempt") or 0)
+            cooldown = max(5, min(360, int(config.get("throttle_retry_cooldown_minutes") or 60)))
+        except (TypeError, ValueError):
+            return ""
+        if limit <= attempt:
+            self._log(
+                f"[{task_id}/限速冷却自动重试/free_throttle_retry_scheduled] 限速自动重试预算已用尽（{attempt}/{limit}），保留人工重试入口",
+                "warn",
+                task_id=task_id,
+                node_code="free_throttle_retry_scheduled",
+                node_label="限速冷却自动重试排队",
+                outcome="budget_exhausted",
+            )
+            return ""
+        next_attempt = attempt + 1
+        fire_at = int(time.time() + cooldown * 60)
+        self._save_task(task_id, throttle_retry_attempt=next_attempt, auto_throttle_retry_at=fire_at)
+        cfg_copy = dict(config)
+
+        def _run() -> None:
+            self._throttle_retry_timers.discard(timer)
+            self._fire_throttle_retry(task_id, next_attempt, cfg_copy)
+
+        timer = threading.Timer(cooldown * 60, _run)
+        timer.daemon = True
+        self._throttle_retry_timers.add(timer)
+        timer.start()
+        self._log(
+            f"[{task_id}/限速冷却自动重试/free_throttle_retry_scheduled] 失败命中验证码限速特征，{cooldown} 分钟后自动按当前失败节点重试（第 {next_attempt}/{limit} 次）；期间请勿手工重复触发",
+            "warn",
+            task_id=task_id,
+            node_code="free_throttle_retry_scheduled",
+            node_label="限速冷却自动重试排队",
+            failure={
+                "error_code": "free_throttle_retry_scheduled",
+                "technical_summary": f"验证码限速特征命中；冷却 {cooldown} 分钟后自动重试（第 {next_attempt}/{limit} 次）",
+                "retryable": True,
+                "action_hint": "冷却期内重复提交会加深限速；到期后系统自动按当前失败节点重排队",
+            },
+        )
+        return task_id
+
+    def _fire_throttle_retry(self, task_id: str, attempt: int, config: Mapping[str, Any]) -> None:
+        """Cooldown elapsed: re-dispatch the task at its current failed node."""
+        try:
+            if self._manager_owner_acquired and not self._owner_current():
+                return
+            if self.proxy_breaker.tripped() or self.proxy_breaker.gateway_blocked():
+                self._log(
+                    f"[{task_id}/限速冷却自动重试/free_throttle_retry_skipped] 冷却到期但代理池熔断/网关封锁仍生效，本次自动重试跳过；请人工处理后重试",
+                    "warn",
+                    task_id=task_id,
+                    node_code="free_throttle_retry_skipped",
+                    node_label="限速冷却自动重试跳过",
+                )
+                return
+            with self._lock:
+                current = self._tasks.get(task_id)
+                status = str(current.get("status") or "") if current is not None else ""
+            if current is None or status in {"stopped", "queued", "running", "success"}:
+                # User stopped it, it is already in flight, or it resolved.
+                return
+            outcome = self.batch_retry([task_id], config)
+            accepted = outcome.get("accepted") or []
+            if accepted:
+                retry_task = accepted[0].get("retry_task") or {}
+                self._log(
+                    f"[{task_id}/限速冷却自动重试/free_throttle_retry_scheduled] 冷却到期，已自动重新入队（第 {attempt} 次）：{retry_task.get('task_id') or ''}",
+                    "info",
+                    task_id=task_id,
+                    node_code="free_throttle_retry_scheduled",
+                    node_label="限速冷却自动重试排队",
+                    outcome="fired",
+                )
+                return
+            reason = ""
+            for bucket in ("skipped", "rejected"):
+                rows = outcome.get(bucket) or []
+                if rows:
+                    reason = str(rows[0].get("reason") or "")
+                    break
+            self._log(
+                f"[{task_id}/限速冷却自动重试/free_throttle_retry_skipped] 冷却到期但自动重试未入队：{reason or '当前状态不可重试'}",
+                "warn",
+                task_id=task_id,
+                node_code="free_throttle_retry_skipped",
+                node_label="限速冷却自动重试跳过",
+            )
+        except Exception as exc:
+            # The timer must never crash the manager thread pool.
+            self._note_quiet("throttle_retry_fire", exc)
+            self._log(
+                f"[{task_id}/限速冷却自动重试/free_throttle_retry_skipped] 自动重试触发失败（{type(exc).__name__}），请人工处理",
+                "warn",
+                task_id=task_id,
+                node_code="free_throttle_retry_skipped",
+                node_label="限速冷却自动重试跳过",
+            )
 
     @staticmethod
     def _batch_retry_blocked(failure: Mapping[str, Any]) -> bool:

@@ -291,6 +291,9 @@ class FreeRegisterManager(
         self._timing_checkpoint_mono: dict[str, float] = {}
         self._manual_generations: dict[str, int] = {}
         self._retry_leases: dict[str, str] = {}
+        # Live handles for throttle-cooldown auto-retry timers so the GC keeps
+        # them until they fire; the fire callback discards its own handle.
+        self._throttle_retry_timers: set[threading.Timer] = set()
         self._heartbeat_stop = threading.Event()
         self._heartbeat_thread: threading.Thread | None = None
         # Process-level fencing is intentionally lazy: constructing a second
@@ -2393,13 +2396,19 @@ class FreeRegisterManager(
             self._stage(task_id, "free_result_save")
             self._finish_progress(task_id, "success" if status == "success" else "partial")
             if status == "twofa_pending":
-                self._schedule_auto_twofa_retry(snapshot, result, task_config)
+                if self._failure_is_throttle(result.get("twofa_failure")):
+                    self._schedule_throttle_retry(snapshot, task_config)
+                else:
+                    self._schedule_auto_twofa_retry(snapshot, result, task_config)
             elif status in {"success", "partial_success"}:
                 # Fixed chain: the automatic password retry is only considered
                 # once no 2FA step is pending anymore, so automatic 2FA always
                 # runs first and this fires after it (possibly on a 2FA retry
                 # child whose merged result still carries password_pending).
-                self._schedule_auto_password_retry(snapshot, result, task_config)
+                if self._failure_is_throttle(result.get("password_failure")):
+                    self._schedule_throttle_retry(snapshot, task_config)
+                else:
+                    self._schedule_auto_password_retry(snapshot, result, task_config)
             self._release_task_lease(snapshot)
             failure_identity = f"{(result_failure or {}).get('node_label', '后置检查')}/{(result_failure or {}).get('node_code', 'unknown')}"
             result_label = "完成" if status == "success" else f"注册完成，{failure_identity}{'待重试' if status == 'twofa_pending' else '待处理'}"
@@ -2522,7 +2531,12 @@ class FreeRegisterManager(
             )
             self._record_proxy_failure(snapshot, exc)
             self._release_task_lease(snapshot)
-            if password_retry:
+            if self._failure_is_throttle(failure):
+                # Verification throttling must not be replayed immediately;
+                # schedule one delayed re-dispatch per attempt instead of the
+                # instant password/2FA auto retry.
+                self._schedule_throttle_retry(snapshot, task_config)
+            elif password_retry:
                 # Mirror the 2FA precedent: feed the bounded automatic
                 # password budget from the continuation's own snapshot only
                 # after its task lease has been released, so the queued child

@@ -74,6 +74,14 @@ DEFAULT_FREE_CONFIG: dict[str, Any] = {
     # password retry run. Direct callers that omit this key keep the
     # historical manual-only password retry behavior.
     "password_auto_retry_attempts": 2,
+    # Target-site verification throttling (OTP page stalls / validate rejections)
+    # must not be retried immediately: that deepens the throttle. A throttle
+    # failure instead schedules one delayed retry per attempt after the
+    # cooldown, re-dispatched at the current failed node. Cooldown default 60
+    # minutes matches the observed IP-level decay window; the schedule lives
+    # in memory only, so a restart drops pending timers (manual retry stays).
+    "throttle_retry_cooldown_minutes": 60,
+    "throttle_auto_retry_attempts": 2,
     "proxy_probe_url": DEFAULT_PROXY_PROBE_URL,
     "proxy_default_scheme": "socks5",
     "proxy_socks5_dns_mode": "remote",
@@ -317,6 +325,8 @@ class FreeConfigStore:
         )
         result["twofa_auto_retry_attempts"] = _int(result.get("twofa_auto_retry_attempts"), 2, 0, 2)
         result["password_auto_retry_attempts"] = _int(result.get("password_auto_retry_attempts"), 2, 0, 2)
+        result["throttle_retry_cooldown_minutes"] = _int(result.get("throttle_retry_cooldown_minutes"), 60, 5, 360)
+        result["throttle_auto_retry_attempts"] = _int(result.get("throttle_auto_retry_attempts"), 2, 0, 5)
         scheme = str(result.get("proxy_default_scheme") or DEFAULT_FREE_CONFIG["proxy_default_scheme"]).strip().lower()
         if scheme not in {"http", "https", "socks4", "socks5", "socks5h"}:
             scheme = DEFAULT_FREE_CONFIG["proxy_default_scheme"]

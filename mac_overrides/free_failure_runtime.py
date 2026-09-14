@@ -611,6 +611,8 @@ _ACTION_HINTS = {
     "free_proxy_breaker_tripped": "多为站点整体收紧或供应商子段被拉黑；请人工确认后重置熔断再恢复任务",
     "free_proxy_gateway_blocked": "先更换或修正隧道网关凭据模板，再人工确认并重置熔断（同时清除池级熔断）",
     "free_proxy_pool_empty": "请导入健康代理，或配置账密隧道模板后重试",
+    "free_throttle_retry_scheduled": "命中验证码限速特征；冷却期内请勿手工重复触发，到期系统会按当前失败节点自动重排队",
+    "free_throttle_retry_skipped": "冷却到期但熔断/网关封锁仍生效或状态已变，需人工确认后重试",
 }
 
 FAILURE_KEYS = (

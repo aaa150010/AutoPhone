@@ -280,6 +280,8 @@ defineExpose({ save })
     <el-form-item><template #label><FieldHelpLabel label="注册后安全设置" help="密码和 2FA 可独立启用。每个启用的设置都会在对应分支单独重新获取一封邮箱 OTP；关闭后跳过该步骤。" /></template><div class="check-row security-options"><el-checkbox v-model="config.auto_set_password" :disabled="running">注册完成后自动设置密码</el-checkbox><el-checkbox v-model="config.auto_set_2fa" :disabled="running">注册完成后自动设置动态口令（2FA）</el-checkbox></div></el-form-item>
     <el-row :gutter="10">
       <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="密码自动重试次数（0-2）" help="密码设置分支失败后自动入队补设子任务的额外尝试预算，独立于 2FA 重试计数；链式顺序固定为先自动 2FA，2FA 成功后再自动密码。安全挑战、验证码、封禁/停用、限流、TOTP 缺失、OTP 准备失败和已有账号登录不会自动重试。" /></template><el-input-number v-model="config.password_auto_retry_attempts" :min="0" :max="2" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
+      <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="限速冷却时间（分钟，5-360）" help="失败命中验证码限速特征时不立即重试（立即重放会加深限速），冷却该时长后系统自动按当前失败节点重新入队一次；默认 60 分钟对应观察到的限速衰减窗口。冷却计划只保存在内存，重启后未触发的计划丢失，仍可人工重试；到期时若代理池熔断或网关封锁仍生效则跳过并记日志。" /></template><el-input-number v-model="config.throttle_retry_cooldown_minutes" :min="5" :max="360" :step="5" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
+      <el-col :span="8"><el-form-item><template #label><FieldHelpLabel label="限速自动重试次数（0-5）" help="命中验证码限速特征后的延迟自动重试预算，独立于密码与 2FA 重试计数，并在重试子任务间继承、不随换代重置；预算用尽后保留人工重试入口。设为 0 关闭限速自动重试。" /></template><el-input-number v-model="config.throttle_auto_retry_attempts" :min="0" :max="5" controls-position="right" :disabled="running" size="small" /></el-form-item></el-col>
     </el-row>
 
     <div class="subsection mailbox-network-section">

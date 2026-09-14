@@ -103,6 +103,8 @@ NODE_LABELS = {
     "free_proxy_breaker_reset": "重置代理池熔断",
     "free_proxy_gateway_blocked": "隧道网关疑似封锁",
     "free_proxy_pool_empty": "代理池无健康代理",
+    "free_throttle_retry_scheduled": "限速冷却自动重试排队",
+    "free_throttle_retry_skipped": "限速冷却自动重试跳过",
     "free_task_challenge_switch": "安全挑战换出口重试",
 }
 

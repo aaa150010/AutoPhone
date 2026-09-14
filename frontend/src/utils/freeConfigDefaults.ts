@@ -72,4 +72,6 @@ export function mergeFreeConfigDraft(
   draft.proxy_pool_target_size = Math.min(16, Math.max(0, Number(draft.proxy_pool_target_size) || 0))
   draft.proxy_challenge_switch_limit = Math.min(6, Math.max(0, Number(draft.proxy_challenge_switch_limit ?? 3)))
   draft.password_auto_retry_attempts = Math.min(2, Math.max(0, Number(draft.password_auto_retry_attempts ?? 2)))
+  draft.throttle_retry_cooldown_minutes = Math.min(360, Math.max(5, Number(draft.throttle_retry_cooldown_minutes ?? 60)))
+  draft.throttle_auto_retry_attempts = Math.min(5, Math.max(0, Number(draft.throttle_auto_retry_attempts ?? 2)))
 }
