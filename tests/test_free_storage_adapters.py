@@ -409,6 +409,23 @@ class SQLiteStorageAdapterTests(unittest.TestCase):
         second._save(stale_for_release)
         self.assertEqual(second._load()[0]["leases"], [])
 
+    def test_proxy_adapter_remove_deletes_row_and_leases(self) -> None:
+        """``remove`` must DELETE durably: the inherited load-filter-save flow
+        is a silent no-op because the SQLite ``_save`` only upserts.  The
+        tunnel maintainer's one-for-one burned-row replacement depends on it."""
+        pool = SQLiteFreeProxyPool(self.root)
+        self.assertEqual(pool.import_text("socks5://tunnel-a:pw@proxy.example:1080\nsocks5://tunnel-b:pw@proxy.example:1081\n"), 2)
+        binding = pool.bind(1, perform_probe=False)[0]
+        pool.lease(binding, owner="task-live", batch_id="batch", task_id="task-live")
+        victim = str(binding.proxy_id)
+        self.assertTrue(pool.remove(victim))
+        remaining = [str(row.get("proxy_id")) for row in pool.entries()]
+        self.assertNotIn(victim, remaining)
+        self.assertEqual(len(remaining), 1)
+        # Removing an unknown id is False and leaves the store untouched.
+        self.assertFalse(pool.remove("missing-id"))
+        self.assertEqual(len(pool.entries()), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

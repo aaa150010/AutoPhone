@@ -75,6 +75,28 @@ class SQLiteFreeProxyPool(_LegacyProxyPool):
         self._save(incoming)
         return len(incoming)
 
+    def remove(self, proxy_id: str) -> bool:
+        """Delete one row (and its leases) from the SQLite store.
+
+        The inherited load-filter-save flow never deletes here because
+        ``_save`` only upserts the rows it is given.  The tunnel maintainer's
+        one-for-one burned-row replacement depends on this explicit DELETE
+        reaching the durable store; without it, retired rows accumulate
+        forever and silently defeat the reclaimable-capacity accounting.
+        """
+        pid = str(proxy_id or "")
+        if not pid:
+            return False
+        with self._lock:
+            with self.storage._transaction():  # noqa: SLF001 - adapter boundary
+                with self.storage._connection() as db:  # noqa: SLF001 - adapter boundary
+                    cursor = db.execute("DELETE FROM proxies WHERE proxy_id=?", (pid,))
+                    db.execute(
+                        "DELETE FROM resource_leases WHERE resource_type='proxy' AND resource_id=?",
+                        (pid,),
+                    )
+                    return cursor.rowcount > 0
+
 
     def _load(self) -> list[dict[str, Any]]:
         output: list[dict[str, Any]] = []
